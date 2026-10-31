@@ -35,7 +35,6 @@ import { useClaimedDemands } from './useClaimedDemands';
 export interface HomeDemandPlacementsProps {
   snapshots: readonly AccountSnapshot[];
   labelOf: (snapshot: AccountSnapshot) => string;
-  loaded: boolean;
 }
 
 const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
@@ -136,7 +135,7 @@ function ParentCard({
   );
 }
 
-export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandPlacementsProps) {
+export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacementsProps) {
   const { accountId, items, loading, error, reload } = useClaimedDemands();
   const [collapsedAccounts, setCollapsedAccounts] = useState<string[]>(() => readCollapsedAccounts());
   /** 手动挑的候选配对（按行键）。切换即重算整份方案，页头的窝数随之变化。 */
@@ -199,10 +198,11 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
   const rowKeyOf = (placement: DemandPlacement): string => rowKeyOfDemand(placement.demand);
 
   const markedCount = placedRows.filter((placement) => marks[rowKeyOf(placement)]).length;
+  // 有实例号的按实例号去重；没有时用对象本身兜底，同名精灵不会被算成一只（R2-2-L06）
   const petCount = new Set(
     placedRows.flatMap((placement) => [
-      `${placement.mother.accountKey}#${placement.mother.pet.captureId ?? placement.mother.pet.name}`,
-      `${placement.father.accountKey}#${placement.father.pet.captureId ?? placement.father.pet.name}`,
+      placement.mother.pet.captureId ?? placement.mother.pet,
+      placement.father.pet.captureId ?? placement.father.pet,
     ]),
   ).size;
   const withPlacements = result.accounts.filter((account) => account.placements.length > 0);
@@ -444,8 +444,6 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
         <p className={`${HINT} rounded-xl bg-slate-50 p-3`} data-testid="home-demand-signed-out">
           开启云同步并加入收集小组后，你在需求中心接的单会汇总到这里。
         </p>
-      ) : !loaded ? (
-        <p className={HINT}>正在读取本地数据…</p>
       ) : loading && items.length === 0 ? (
         <p className={HINT} data-testid="home-demand-loading">
           正在读取接单…

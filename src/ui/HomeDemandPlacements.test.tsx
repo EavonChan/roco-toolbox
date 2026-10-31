@@ -94,9 +94,7 @@ const demandItem = (over: Record<string, unknown> = {}) => ({
 });
 
 const renderPanel = (pets: OwnedPet[]) =>
-  render(
-    <HomeDemandPlacements snapshots={[snapshot(pets)]} labelOf={() => '账号A'} loaded />,
-  );
+  render(<HomeDemandPlacements snapshots={[snapshot(pets)]} labelOf={() => '账号A'} />);
 
 afterEach(() => {
   cleanup();
@@ -114,6 +112,16 @@ describe('家园 · 接单上窝', () => {
 
     expect(screen.getByTestId('home-demand-summary')).toHaveTextContent('1 单待上窝');
     expect(screen.getByTestId('home-demand-row')).toBeTruthy();
+  });
+
+  test('没有实例号的同名精灵按两只算，不合并计数', () => {
+    h.state.items = [demandItem()];
+    renderPanel([
+      pet({ gameId: egg.gameId, gender: '母', name: '同名', captureId: undefined }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', name: '同名', captureId: undefined }),
+    ]);
+
+    expect(screen.getByTestId('home-demand-summary')).toHaveTextContent('2 只精灵');
   });
 
   test('按账号列出母本与种公卡', () => {

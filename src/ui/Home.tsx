@@ -336,7 +336,7 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
             未选择游戏账号：上面点「全选」可恢复。
           </p>
         ) : (
-          <HomeDemandPlacements snapshots={visible} labelOf={labelOf} loaded={loaded} />
+          <HomeDemandPlacements snapshots={visible} labelOf={labelOf} />
         )
       ) : snapshots.length === 0 ? (
         <EmptyState onGoImport={onGoImport} />
