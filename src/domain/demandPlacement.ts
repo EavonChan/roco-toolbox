@@ -1,8 +1,7 @@
-import { bodyGradeOf } from '../shared/bodySize.js';
 import type { DemandCriteria } from '../shared/collectionGroups';
+import { matchesParentGrade } from './demandCriteria';
 import { isBreedableGroup } from './eggs';
 import { DEFAULT_NEST_COUNT } from './nestPlan';
-import { matchesVoiceOption } from './petFilters';
 import { accountKeyOf, type AccountSnapshot } from './parseBackup';
 import type { OwnedPet, SpeciesEntry } from './types';
 
@@ -126,10 +125,6 @@ interface EggInfo {
 const groupsOf = (entry: SpeciesEntry | undefined): number[] =>
   (entry?.eggGroups ?? []).filter(isBreedableGroup);
 
-const matchesGrade = (pet: OwnedPet, criteria: DemandCriteria): boolean =>
-  (!criteria.body || bodyGradeOf(pet) === criteria.body) &&
-  (!criteria.voice || matchesVoiceOption(pet.voiceDb, criteria.voice));
-
 interface Chip {
   pet: OwnedPet;
   key: string;
@@ -197,7 +192,7 @@ function isMotherCandidate(chip: Chip, target: Target, demand: DemandPlacementDe
   } else if (!target.eggIds.includes(pet.gameId)) {
     return false;
   }
-  return matchesGrade(pet, demand);
+  return matchesParentGrade(pet, demand);
 }
 
 function isFatherCandidate(chip: Chip, target: Target, demand: DemandPlacementDemand, state: AccountState): boolean {
@@ -205,7 +200,7 @@ function isFatherCandidate(chip: Chip, target: Target, demand: DemandPlacementDe
   if (pet.gender !== '公') return false;
   const groups = groupsOf(state.speciesByGameId.get(pet.gameId));
   if (!groups.some((group) => target.groups.includes(group))) return false;
-  return matchesGrade(pet, demand);
+  return matchesParentGrade(pet, demand);
 }
 
 function pickPair(

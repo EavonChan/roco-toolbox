@@ -56,8 +56,11 @@ const matchesDemandVoice = (pet: OwnedPet, voice: string): boolean =>
  * 注意是**父母双方都要满足**：声音遗传是 (父 + 母) / 2 向零取整，
  * 要 +100 / -100 必须父母双双同号满分；体型同理（双大块头才出大块头蛋）。
  * 体型认奖牌，也认身高到顶 / 到底（2026-10-26 用户口径）。
+ *
+ * 导出给 `demandPlacement.isMotherCandidate` / `isFatherCandidate` 共用
+ * （2026-11-01 代码审查 R2-1-M09：那边曾手抄一份，声音档位改口径必然漏改）。
  */
-const matchesParentGrade = (pet: OwnedPet, criteria: DemandCriteria): boolean =>
+export const matchesParentGrade = (pet: OwnedPet, criteria: DemandCriteria): boolean =>
   (!criteria.body || bodyOfPet(pet) === criteria.body) &&
   matchesDemandVoice(pet, criteria.voice);
 
