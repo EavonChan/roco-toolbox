@@ -37,6 +37,20 @@ export interface HomeDemandPlacementsProps {
 
 const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
 
+/** 用户在本机挑的候选配对：记个体号而不是序号，方案重算后仍能认出是哪一对。 */
+interface PreferredPair {
+  motherCaptureId: string;
+  fatherCaptureId: string;
+}
+
+/** 行键的唯一入口：接单单与「排不上」共用，避免两处拼出不同的键。 */
+const rowKeyOfDemand = (
+  demand: Pick<
+    DemandPlacementDemand,
+    'groupId' | 'demanderAccountId' | 'eggGameId' | 'nature' | 'gender' | 'body' | 'voice' | 'claimedAt'
+  >,
+): string => placementRowKey(demand);
+
 const instanceIdOf = (pet: { captureId?: string }): string | null => {
   if (!pet.captureId) return null;
   const index = pet.captureId.lastIndexOf('_');
@@ -128,7 +142,8 @@ function ParentCard({
 export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandPlacementsProps) {
   const { accountId, items, loading, error, reload } = useClaimedDemands();
   const [collapsedAccounts, setCollapsedAccounts] = useState<string[]>(() => readCollapsedAccounts());
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, number>>({});
+  /** 手动挑的候选配对（按行键）。切换即重算整份方案，页头的窝数随之变化。 */
+  const [preferredPairs, setPreferredPairs] = useState<Record<string, PreferredPair>>({});
   const [marks, setMarks] = useState<PlacementMarks>(() => readPlacementMarks(accountId));
   const [openOptions, setOpenOptions] = useState<string[]>([]);
 
@@ -166,8 +181,9 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
         voice: item.voice,
         claimedAt: item.updatedAt,
         version: item.version,
+        preferredPair: preferredPairs[rowKeyOfDemand({ ...item, claimedAt: item.updatedAt })] ?? null,
       })),
-    [items],
+    [items, preferredPairs],
   );
 
   const result = useMemo(
@@ -180,17 +196,7 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
     [result],
   );
 
-  const rowKeyOf = (placement: DemandPlacement): string =>
-    placementRowKey({
-      groupId: placement.demand.groupId,
-      demanderAccountId: placement.demand.demanderAccountId,
-      eggGameId: placement.demand.eggGameId,
-      nature: placement.demand.nature,
-      gender: placement.demand.gender,
-      body: placement.demand.body,
-      voice: placement.demand.voice,
-      claimedAt: placement.demand.claimedAt,
-    });
+  const rowKeyOf = (placement: DemandPlacement): string => rowKeyOfDemand(placement.demand);
 
   const markedCount = placedRows.filter((placement) => marks[rowKeyOf(placement)]).length;
   const petCount = new Set(
@@ -232,8 +238,13 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
     const tags = conditionTags(placement.demand);
     const accountLabel = labelByAccountKey.get(placement.accountKey) ?? placement.accountKey;
     const open = openOptions.includes(rowKey);
-    const optionIndex = Math.min(selectedOptions[rowKey] ?? 0, placement.options.length - 1);
-    const active = placement.options[optionIndex] ?? placement;
+    const preferred = preferredPairs[rowKey] ?? null;
+    // 手动挑过的配对会被分配入口排到第一（方案已按它重算），所以这里始终看第一组。
+    const active = placement.options[0] ?? placement;
+    const prefHonored =
+      !preferred ||
+      (active.mother.pet.captureId === preferred.motherCaptureId &&
+        active.father.pet.captureId === preferred.fatherCaptureId);
     /**
      * 这对亲本大概能孵出多少符合要求的蛋（用户 2026-10-30 口径）：
      * 性格概率（学院 100% / 双亲同性格 60% / 单方 30%，不挑性格算 100%）× 性别概率（挑性别 50%）。
@@ -320,24 +331,40 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
           />
         </div>
 
+        {preferred && !prefHonored ? (
+          <p className="mt-1 text-[10px] text-amber-700" data-testid="home-demand-pref-fallback">
+            你选的这组这轮排不上（窝位或占用变了），已按第一组上窝。
+          </p>
+        ) : null}
+
         {open && placement.options.length > 1 ? (
           <div className="mt-1 space-y-0.5 rounded-lg bg-slate-50 p-1.5 text-[10px] text-slate-600" data-testid="home-demand-options">
-            {placement.options.map((option, index) => (
-              <button
-                key={`${option.mother.pet.captureId}-${option.father.pet.captureId}-${index}`}
-                type="button"
-                onClick={() => {
-                  setSelectedOptions((current) => ({ ...current, [rowKey]: index }));
-                  setOpenOptions((current) => current.filter((key) => key !== rowKey));
-                }}
-                className={`block w-full rounded px-1 py-0.5 text-left ${
-                  index === optionIndex ? 'bg-emerald-100 font-bold text-emerald-800' : ''
-                }`}
-                data-testid={`home-demand-option-${index}`}
-              >
-                {index === optionIndex ? '当前' : `候选 ${index + 1}`}：{option.mother.pet.name} × {option.father.pet.name}
-              </button>
-            ))}
+            {placement.options.map((option, index) => {
+              const current = index === 0;
+              const motherId = option.mother.pet.captureId;
+              const fatherId = option.father.pet.captureId;
+              return (
+                <button
+                  key={`${motherId}-${fatherId}-${index}`}
+                  type="button"
+                  onClick={() => {
+                    if (!motherId || !fatherId) return;
+                    // 换候选 = 换整份方案的偏好，分配入口会按这一对重算（页头窝数一起变）
+                    setPreferredPairs((currentPicks) => ({
+                      ...currentPicks,
+                      [rowKey]: { motherCaptureId: motherId, fatherCaptureId: fatherId },
+                    }));
+                    setOpenOptions((currentOpen) => currentOpen.filter((key) => key !== rowKey));
+                  }}
+                  className={`block w-full rounded px-1 py-0.5 text-left ${
+                    current ? 'bg-emerald-100 font-bold text-emerald-800' : ''
+                  }`}
+                  data-testid={`home-demand-option-${index}`}
+                >
+                  {current ? '当前' : `候选 ${index + 1}`}：{option.mother.pet.name} × {option.father.pet.name}
+                </button>
+              );
+            })}
           </div>
         ) : null}
       </article>

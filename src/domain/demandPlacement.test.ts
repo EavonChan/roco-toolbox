@@ -441,4 +441,63 @@ describe('buildDemandPlacements', () => {
     expect(result.unassigned[0].reason).toBe('no-data');
     expect(result.unassigned[0].message).toContain('导入游戏数据');
   });
+
+  test('手动挑的候选配对排到第一，即使它的概率低于默认配对（2026-11-01 拍板）', () => {
+    const motherAcademy = pet({ gameId: 100, gender: '母', nature: '固执', captureId: 'cap-m0' });
+    const fatherAcademy = pet({ gameId: 200, gender: '公', nature: '固执', captureId: 'cap-f0' });
+    const mother = pet({ gameId: 100, gender: '母', nature: '开朗', captureId: 'cap-m1' });
+    const fatherBest = pet({ gameId: 200, gender: '公', nature: '开朗', captureId: 'cap-f1' });
+    const fatherPicked = pet({ gameId: 200, gender: '公', nature: '固执', captureId: 'cap-f2' });
+    const snapshot = snap('账号A', 11, [motherAcademy, fatherAcademy, mother, fatherBest, fatherPicked]);
+    const demands: DemandPlacementDemand[] = [
+      demand({ claimedAt: 1, nature: '固执' }),
+      demand({ claimedAt: 2, demanderAccountId: 'm2', nature: '开朗' }),
+    ];
+
+    // 不挑配对时：第二条单默认取「双亲同性格」的 60% 组合
+    const plain = buildDemandPlacements({ demands, snapshots: [snapshot], species });
+    expect(plain.accounts[0].placements[1].father.pet).toBe(fatherBest);
+    expect(plain.accounts[0].placements[1].natureChance).toBe(0.6);
+    expect(plain.accounts[0].placements[1].options[0].father.pet).toBe(fatherBest);
+
+    // 手动挑成「只有母本带性格」的 30% 组合后：它排到第一，页头窝数随方案重算
+    const picked = buildDemandPlacements({
+      demands: [
+        demands[0],
+        {
+          ...demands[1],
+          preferredPair: { motherCaptureId: mother.captureId!, fatherCaptureId: fatherPicked.captureId! },
+        },
+      ],
+      snapshots: [snapshot],
+      species,
+    });
+    const placement = picked.accounts[0].placements[1];
+    expect(placement.father.pet).toBe(fatherPicked);
+    expect(placement.natureChance).toBe(0.3);
+    expect(placement.options[0]).toMatchObject({
+      mother: { pet: mother },
+      father: { pet: fatherPicked },
+    });
+    expect(picked.accounts[0].nestsUsed).toBe(4);
+  });
+
+  test('手动挑的配对已经排不上时回落到默认配对', () => {
+    const mother = pet({ gameId: 100, gender: '母', nature: '固执' });
+    const father = pet({ gameId: 200, gender: '公', nature: '固执' });
+    const result = buildDemandPlacements({
+      demands: [
+        demand({
+          preferredPair: { motherCaptureId: 'cap-不存在的母本', fatherCaptureId: 'cap-不存在的种公' },
+        }),
+      ],
+      snapshots: [snap('账号A', 11, [mother, father])],
+      species,
+    });
+
+    const [placement] = result.accounts[0].placements;
+    expect(placement.mother.pet).toBe(mother);
+    expect(placement.father.pet).toBe(father);
+    expect(placement.options).toHaveLength(1);
+  });
 });

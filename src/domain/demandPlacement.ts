@@ -45,6 +45,11 @@ export interface DemandPlacementDemand extends DemandCriteria {
   claimedAt: number;
   /** 需求行的版本号（界面「已上窝」记忆按它区分同款重发）。 */
   version?: number;
+  /**
+   * 用户手动挑的候选配对（本机记忆，2026-11-01）：命中时优先按这一对上窝，
+   * 但仍受 1:2 上限与窝数上限约束；排不上时回落到默认最优。
+   */
+  preferredPair?: { motherCaptureId: string; fatherCaptureId: string } | null;
 }
 
 export interface DemandPlacementParent {
@@ -161,6 +166,8 @@ interface PairPick {
 interface PairPickResult {
   best: PairPick;
   options: PairPick[];
+  /** 第一候选是否就是用户挑的那一对（没挑过时恒为 true）。 */
+  prefHonored: boolean;
 }
 
 function resolveTarget(
@@ -306,7 +313,27 @@ function pickPair(
       a.mother.key.localeCompare(b.mother.key) ||
       a.father.key.localeCompare(b.father.key),
   );
+  /**
+   * 用户手动挑过的配对排到第一（2026-11-01 拍板）：只调整顺序，不改可行性——
+   * 它本来就在这一轮的候选里，说明名额 / 窝数都过；后续单仍按新顺序接着分配。
+   */
+  const preferred = demand.preferredPair;
+  if (preferred) {
+    const pickedIndex = picks.findIndex(
+      (pick) =>
+        pick.mother.pet.captureId === preferred.motherCaptureId &&
+        pick.father.pet.captureId === preferred.fatherCaptureId,
+    );
+    if (pickedIndex > 0) {
+      const [picked] = picks.splice(pickedIndex, 1);
+      picks.unshift(picked);
+    }
+  }
   const best = picks[0];
+  const prefHonored =
+    !preferred ||
+    (best.mother.pet.captureId === preferred.motherCaptureId &&
+      best.father.pet.captureId === preferred.fatherCaptureId);
   const options: PairPick[] = picks.slice(0, 5).map((pick) => ({
     mother: pick.mother,
     father: pick.father,
@@ -315,7 +342,7 @@ function pickPair(
     newNests: pick.newNests,
     academyResident: pick.academyResident,
   }));
-  return { best, options };
+  return { best, options, prefHonored };
 }
 
 function diagnose(
@@ -472,8 +499,12 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
         if (!result) continue;
         if (
           best === null ||
-          result.best.natureChance > best.result.best.natureChance ||
-          (result.best.natureChance === best.result.best.natureChance &&
+          // 用户挑过的配对优先：能在哪个账号排上，就落到哪个账号，不再按概率比掉它。
+          Number(result.prefHonored) > Number(best.result.prefHonored) ||
+          (result.prefHonored === best.result.prefHonored &&
+            result.best.natureChance > best.result.best.natureChance) ||
+          (result.prefHonored === best.result.prefHonored &&
+            result.best.natureChance === best.result.best.natureChance &&
             result.best.newNests < best.result.best.newNests)
         ) {
           best = { state, result };
@@ -482,23 +513,19 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
       return best;
     };
 
-    let placed = false;
     // 第一轮：严格 1:1（父母都没被任何单使用过）。
     const first = pickAcrossAccounts(false);
-    if (first) {
-      commit(first.state, demand, first.result);
-      placed = true;
+    /**
+     * 第二轮：允许 1:2（复用已被占用一次的亲本）。
+     * 只在「第一轮没排上」或「第一轮没给到用户挑的配对」时才看这一轮——后者保证
+     * 用户切过候选后不会被严格轮默默换回默认（2026-11-01 拍板）。
+     */
+    const second = first && first.result.prefHonored ? null : pickAcrossAccounts(true);
+    const chosen = second?.result.prefHonored ? second : (first ?? second);
+    if (chosen) {
+      commit(chosen.state, demand, chosen.result);
+      continue;
     }
-
-    // 第二轮：允许 1:2（复用已被占用一次的亲本）。
-    if (!placed) {
-      const second = pickAcrossAccounts(true);
-      if (second) {
-        commit(second.state, demand, second.result);
-        placed = true;
-      }
-    }
-    if (placed) continue;
 
     // 都排不上：取最有信息量的原因，挂到「排不上」组。
     // 一个账号都没有（本机没导入 / 账号全被筛掉）时不能报「窝位不够」，那是误导。
