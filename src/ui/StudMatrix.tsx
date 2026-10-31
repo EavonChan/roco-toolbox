@@ -261,11 +261,10 @@ export function StudMatrix({
           >
             筛选<span aria-hidden className="ml-0.5 text-[9px]">{filterOpen ? '▲' : '▼'}</span>
             {filterActive ? (
-              <span
-                className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500"
-                data-testid="stud-matrix-filter-dot"
-                aria-hidden
-              />
+              // 状态不能只靠颜色（docs/产品交互规范.md 第 64 行）：用文字「已改」标出，读屏也能读到
+              <span className="ml-0.5 text-[9px] font-medium" data-testid="stud-matrix-filter-state">
+                已改
+              </span>
             ) : null}
           </button>
         ) : null}

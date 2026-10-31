@@ -133,7 +133,8 @@ describe('StudMatrix', () => {
       />,
     );
     expect(screen.queryByTestId('stud-matrix-filter')).toBeNull();
-    expect(screen.getByTestId('stud-matrix-filter-dot')).toBeTruthy();
+    // 筛选与默认值不同：用文字标出，不只靠颜色（docs/产品交互规范.md 第 64 行）
+    expect(screen.getByTestId('stud-matrix-filter-state')).toHaveTextContent('已改');
     fireEvent.click(screen.getByTestId('stud-matrix-filter-toggle'));
     expect(onToggleFilter).toHaveBeenCalled();
 
