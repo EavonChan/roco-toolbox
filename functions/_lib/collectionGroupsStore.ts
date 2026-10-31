@@ -575,6 +575,7 @@ function parseStoredLines(raw: string | null): SharedProductionLine[] | undefine
   }
 }
 
+/** 旧种公组兼容（说明见 `publishStudResource` 上方，R2-7-L02）。 */
 function parseStoredStudSlots(raw: string): {
   mode: CollectionTargetMode;
   covered: StudSlotCoverage[];
@@ -620,6 +621,12 @@ export interface PublishStudInput {
   resource: StudResourceDraft;
 }
 
+/**
+ * 种公组整条链路（发布 / 读槽位 / 详情分支）**仅供未执行 2026-10-27-drop-stud-groups 迁移的旧库兼容**。
+ * 创建接口已只接受母本组；确认线上已迁移后再整块删除（含 `parseStoredStudSlots`、
+ * `readCollectionGroupDetail` 的 stud 分支、`handlePublish` 的 stud 分支、需求负数 eggGameId 语义）。
+ * 见 R2-7-L02。
+ */
 export async function publishStudResource(
   db: D1Database,
   input: PublishStudInput,

@@ -290,6 +290,7 @@ async function handlePublish(
     ),
     group.groupType,
   );
+  // 种公组分支只在「未执行 2026-10-27 迁移」的旧库上可达（见 collectionGroupsStore 的说明，R2-7-L02）
   const result =
     group.groupType === 'stud'
       ? await publishStudResource(env.DB, {
@@ -435,11 +436,13 @@ async function handleTaskAction(
 /* ---------- 需求承接（2026-10-26） ---------- */
 
 const parseDemandEggGameId = (raw: unknown): number => {
-  const id = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isSafeInteger(id) || id === 0) {
+  // 只接受规范十进制整数：`Number()` 会放过 '0x10' / '1e3' / ' 12 '（R2-7-L05）
+  const text = typeof raw === 'number' ? String(raw) : raw;
+  if (typeof text !== 'string' || !/^-?[1-9]\d{0,9}$/.test(text)) {
     throw new MotherInputError('INVALID_INPUT', 'eggGameId 无效');
   }
-  // 负数 = 种公需求，绝对值是蛋组 id（2~15）；正数 = 母本需求的蛋 id。
+  const id = Number(text);
+  // 负数 = 种公需求，绝对值是蛋组 id（2~15）；种公组已下线，这里只为旧数据兼容保留
   if (id < 0) {
     const groupId = -id;
     if (groupId < 2 || groupId > 15) {

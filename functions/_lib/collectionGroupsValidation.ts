@@ -104,7 +104,6 @@ export function parseCollectionCreateBody(body: unknown): ParsedCollectionCreate
 export function parseCollectionTarget(
   value: unknown,
   groupType: CollectionGroupType,
-  options: { allowEmptyStud?: boolean } = {},
 ): GroupTargetConfig {
   const record = asRecord(value, 'target');
   if (record.kind !== groupType) invalid('目标类型与小组类型不一致');
@@ -149,7 +148,7 @@ export function parseCollectionTarget(
   if (rawSlots.length > STUD_TARGET_MAX_SLOTS) {
     invalid(`槽位最多 ${STUD_TARGET_MAX_SLOTS} 个`);
   }
-  if (rawSlots.length === 0 && options.allowEmptyStud !== true) {
+  if (rawSlots.length === 0) {
     invalid('种公目标至少要有一个槽位');
   }
   const seen = new Set<string>();
