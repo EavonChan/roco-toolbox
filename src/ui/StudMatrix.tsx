@@ -253,7 +253,7 @@ export function StudMatrix({
             aria-expanded={filterOpen}
             onClick={onToggleFilter}
             data-testid="stud-matrix-filter-toggle"
-            className={`relative min-h-[26px] shrink-0 rounded-md border px-2 text-[11px] ${
+            className={`relative min-h-[28px] shrink-0 rounded-md border px-2 text-[11px] ${
               filterOpen
                 ? 'border-emerald-500 bg-emerald-50 font-medium text-emerald-700'
                 : 'border-slate-200 text-slate-500'
@@ -280,7 +280,7 @@ export function StudMatrix({
               onClick={() => setActiveGrade(item)}
               aria-pressed={item === grade}
               data-testid={`stud-matrix-grade-${item}`}
-              className={`rounded-md px-1.5 text-[10px] leading-[1.6] ${
+              className={`min-h-[28px] rounded-md px-1.5 text-[10px] leading-[1.6] ${
                 item === grade ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'
               }`}
             >

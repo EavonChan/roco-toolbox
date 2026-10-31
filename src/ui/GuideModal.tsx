@@ -126,7 +126,7 @@ export function GuideModal({
               type="button"
               onClick={onStartTour}
               data-testid="guide-tour"
-              className="min-h-[26px] text-xs font-medium text-emerald-700"
+              className="min-h-[28px] text-xs font-medium text-emerald-700"
             >
               看分步引导 ›
             </button>
