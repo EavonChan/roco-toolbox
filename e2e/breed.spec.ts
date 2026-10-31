@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('配窝：看板直接给出完整摆位与配对，并保留覆盖度 / 换什么入口', async ({ page }) => {
+test('配窝：看板直接给出完整摆位与配对，并保留覆盖度 / 种公阵列入口', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-breed-pair.json');
   await expect(page.getByText('还没有数据')).toHaveCount(0);
@@ -21,10 +21,14 @@ test('配窝：看板直接给出完整摆位与配对，并保留覆盖度 / �
   await page.getByTestId('nest-open-coverage').click();
   await expect(page.getByTestId('coverage-group-row').first()).toBeVisible();
 
-  // 入口②：换什么页（去弄哪颗蛋）
+  // 入口②：收集 · 种公阵列（去弄哪颗蛋）
   await page.getByRole('button', { name: '看板', exact: true }).click();
   await page.getByTestId('nest-open-swap').click();
-  await expect(page.getByRole('heading', { name: '换什么' })).toBeVisible();
+  // 2026-11-01：「换什么」页已删除，入口落到「收集 · 种公阵列」。
+  // 断言页签选中态 + 该页独有标题与阵列，不用「某页可见」这种守护不到落点的写法。
+  await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: '覆盖度' })).toBeVisible();
+  await expect(page.getByTestId('stud-matrix')).toBeVisible();
 });
 
 test('「去看怎么迭代」跳过去：自动展开第一个可迭代的蛋组并滚到它，直接看到那对怎么放', async ({ page }) => {

@@ -9,7 +9,7 @@ const importSample = async (page: Page) => {
   await page.getByRole('button', { name: '看板', exact: true }).click();
 };
 
-test('旧共享记忆不影响看板求蛋：没有小组时落到新建 / 加入', async ({ page }) => {
+test('旧共享记忆不影响看板求蛋：点「全部」落到收集 · 种公阵列', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('roco.lastTab', 'swap');
     window.localStorage.setItem('roco.swapView', 'sharing');
@@ -23,9 +23,10 @@ test('旧共享记忆不影响看板求蛋：没有小组时落到新建 / 加�
   await page.getByRole('button', { name: '看板', exact: true }).click();
   await page.getByTestId('recommend-quantity-all').click();
 
-  // 求蛋直达小组页：没有组时给新建 / 加入，不会被上次的共享视图带偏
-  await expect(page.getByTestId('collection-groups')).toBeVisible();
-  await expect(page.getByTestId('group-login-hint')).toBeVisible();
+  // 2026-11-01：种公入口改到「收集 · 种公阵列」（R2-3-06 修，原小组落点到不了种公页）。
+  // 断言页签选中态 + 该页独有空态，不写成「某页可见」，否则跳错目标也能过（不会被上次的共享视图带偏）。
+  await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('empty-state')).toBeVisible();
 });
 
 test('看板两类进度一步直达目标，种公求蛋已迁到小组', async ({ page }) => {
