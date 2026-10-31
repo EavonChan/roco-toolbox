@@ -1,5 +1,8 @@
-import { isBreedableGroup } from './eggs';
-import { lineSuppliesTarget, type ProductionIndex, type ProductionLine } from './productionLines';
+import {
+  linesIndexSuppliesEgg,
+  type ProductionIndex,
+  type ProductionLinesIndex,
+} from './productionLines';
 import { speciesDisplayName } from './speciesName';
 import type { SpeciesEntry } from './types';
 
@@ -13,7 +16,7 @@ import type { SpeciesEntry } from './types';
 export interface StudCandidateMember {
   accountId: string;
   /** null = 旧摘要没带产线，只能用 `eggGameIds` 兜底判断。 */
-  lines: ProductionLine[] | null;
+  linesIndex: ProductionLinesIndex | null;
   eggGameIds: ReadonlySet<number>;
 }
 
@@ -47,32 +50,36 @@ export function findStudDemandCandidates(
     body: query.body,
     voice: query.voice,
   };
-  const candidates: StudDemandCandidate[] = [];
+  // 蛋物种清单直接取索引（`eggsByGroup` 已按「能出公的蛋物种」筛好），
+  // 不再扫全图鉴——那是 `demandCriteria` 之外的第二份口径（2026-11-01 代码审查 R2-1-M03）。
+  const eggIds = index.eggsByGroup.get(query.groupId) ?? [];
+  if (eggIds.length === 0) return [];
 
-  for (const entry of species) {
-    if (entry.eggGameId == null || entry.eggGameId !== entry.gameId) continue;
-    if (entry.maleCapable !== true) continue;
-    const groups = (entry.eggGroups ?? []).filter(isBreedableGroup);
-    if (!groups.includes(query.groupId)) continue;
+  const speciesByGameId = new Map<number, SpeciesEntry>();
+  for (const entry of species) speciesByGameId.set(entry.gameId, entry);
+
+  const candidates: StudDemandCandidate[] = [];
+  for (const eggGameId of eggIds) {
+    const entry = speciesByGameId.get(eggGameId);
+    if (!entry) continue;
 
     const supplierIds: string[] = [];
     for (const member of members) {
-      if (member.lines == null) {
-        if (member.eggGameIds.has(entry.gameId)) supplierIds.push(member.accountId);
+      if (member.linesIndex == null) {
+        if (member.eggGameIds.has(eggGameId)) supplierIds.push(member.accountId);
         continue;
       }
-      const supplies = member.lines.some(
-        (line) => line.eggGameId === entry.gameId && lineSuppliesTarget(line, target, index),
-      );
-      if (supplies) supplierIds.push(member.accountId);
+      if (linesIndexSuppliesEgg(member.linesIndex, eggGameId, target)) {
+        supplierIds.push(member.accountId);
+      }
     }
     if (supplierIds.length === 0) continue;
 
     candidates.push({
-      eggGameId: entry.gameId,
+      eggGameId,
       name: speciesDisplayName(entry, entry.name),
       supplierIds,
-      groupCount: groups.length,
+      groupCount: index.eggGroupsByGameId.get(eggGameId)?.length ?? 0,
     });
   }
 

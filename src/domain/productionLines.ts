@@ -257,6 +257,27 @@ export function buildLinesIndex(lines: readonly ProductionLine[]): ProductionLin
 }
 
 /**
+ * 索引版的「**这一颗蛋**的产线能否满足目标」。
+ *
+ * 与 `linesIndexSuppliesTarget` 共用同一套档位 / 性格判定，区别是只管调用方指定的那颗蛋
+ * （蛋组 / 能否出公由调用方筛）。`lines` 为空（旧摘要没产线）时返回 false。
+ */
+export function linesIndexSuppliesEgg(
+  lines: ProductionLinesIndex | undefined,
+  eggGameId: number,
+  target: ProductionTarget,
+): boolean {
+  const byGrade = lines?.get(eggGameId);
+  if (!byGrade) return false;
+  for (const [grade, natures] of byGrade) {
+    if (!gradeMatchesTarget(grade, target)) continue;
+    if (target.nature && !natures.has(target.nature)) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
  * 索引版的「这个成员的产线能否满足目标」，语义与 `linesSupplyTarget` 完全一致。
  * `index` 为空（旧摘要没有产线）时返回 false，调用方自己决定是否退回「有没有这只蛋」。
  */
@@ -266,18 +287,9 @@ export function linesIndexSuppliesTarget(
   productionIndex: ProductionIndex,
 ): boolean {
   if (!lines) return false;
-  const eggs =
-    target.kind === 'mother'
-      ? [target.eggGameId]
-      : (productionIndex.eggsByGroup.get(target.groupId) ?? []);
-  for (const eggGameId of eggs) {
-    const byGrade = lines.get(eggGameId);
-    if (!byGrade) continue;
-    for (const [grade, natures] of byGrade) {
-      if (!gradeMatchesTarget(grade, target)) continue;
-      if (target.nature && !natures.has(target.nature)) continue;
-      return true;
-    }
+  if (target.kind === 'mother') return linesIndexSuppliesEgg(lines, target.eggGameId, target);
+  for (const eggGameId of productionIndex.eggsByGroup.get(target.groupId) ?? []) {
+    if (linesIndexSuppliesEgg(lines, eggGameId, target)) return true;
   }
   return false;
 }

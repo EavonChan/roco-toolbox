@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { SpeciesEntry } from './types';
-import { buildProductionIndex } from './productionLines';
+import { buildLinesIndex, buildProductionIndex } from './productionLines';
 import { findStudDemandCandidates, type StudCandidateMember } from './studDemandCandidates';
 
 /**
@@ -30,7 +30,7 @@ const index = buildProductionIndex(species);
 
 const member = (accountId: string, over: Partial<StudCandidateMember> = {}): StudCandidateMember => ({
   accountId,
-  lines: [],
+  linesIndex: buildLinesIndex([]),
   eggGameIds: new Set<number>(),
   ...over,
 });
@@ -43,11 +43,11 @@ describe('findStudDemandCandidates', () => {
       index,
       [
         member('甲', {
-          lines: [
+          linesIndex: buildLinesIndex([
             { eggGameId: 100, grade: '大婉', natures: ['固执'] },
             { eggGameId: 200, grade: '大婉', natures: ['固执'] },
             { eggGameId: 300, grade: '大婉', natures: ['固执'] },
-          ],
+          ]),
         }),
       ],
     );
@@ -61,18 +61,20 @@ describe('findStudDemandCandidates', () => {
       index,
       [
         member('甲', {
-          lines: [
+          linesIndex: buildLinesIndex([
             { eggGameId: 100, grade: '大婉', natures: ['固执'] },
             { eggGameId: 200, grade: '大婉', natures: ['固执'] },
-          ],
+          ]),
         }),
         member('乙', {
-          lines: [
+          linesIndex: buildLinesIndex([
             { eggGameId: 100, grade: '大婉', natures: ['固执'] },
             { eggGameId: 200, grade: '大婉', natures: ['固执'] },
-          ],
+          ]),
         }),
-        member('丙', { lines: [{ eggGameId: 100, grade: '大婉', natures: ['固执'] }] }),
+        member('丙', {
+          linesIndex: buildLinesIndex([{ eggGameId: 100, grade: '大婉', natures: ['固执'] }]),
+        }),
       ],
     );
     // 雪绒鸟是双蛋组，即使火花能补的人更多也排第一
@@ -88,10 +90,10 @@ describe('findStudDemandCandidates', () => {
       index,
       [
         member('甲', {
-          lines: [
+          linesIndex: buildLinesIndex([
             { eggGameId: 100, grade: '大婉', natures: ['固执'] },
             { eggGameId: 200, grade: '小婉', natures: ['开朗'] },
-          ],
+          ]),
         }),
       ],
     );
@@ -103,7 +105,7 @@ describe('findStudDemandCandidates', () => {
       { groupId: 2, nature: '固执', body: '大块头', voice: '+100' },
       species,
       index,
-      [member('旧', { lines: null, eggGameIds: new Set([400, 100]) })],
+      [member('旧', { linesIndex: null, eggGameIds: new Set([400, 100]) })],
     );
     expect(result.map((item) => item.eggGameId)).toEqual([100]);
   });
@@ -113,7 +115,11 @@ describe('findStudDemandCandidates', () => {
       { groupId: 2, nature: '固执', body: '大块头', voice: '+100' },
       species,
       index,
-      [member('甲', { lines: [{ eggGameId: 201, grade: '大婉', natures: ['固执'] }] })],
+      [
+        member('甲', {
+          linesIndex: buildLinesIndex([{ eggGameId: 201, grade: '大婉', natures: ['固执'] }]),
+        }),
+      ],
     );
     expect(result[0].name).toBe('雪绒鸟_夏天的样子');
   });

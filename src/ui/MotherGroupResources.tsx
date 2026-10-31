@@ -1189,7 +1189,7 @@ export function MotherGroupResources({
     const map = new Map<string, StudDemandCandidate[]>();
     const members = group.members.map((member) => ({
       accountId: member.accountId,
-      lines: linesByMember.get(member.accountId) ?? null,
+      linesIndex: lineIndexByMember.get(member.accountId) ?? null,
       eggGameIds: new Set(
         (member.resource?.accounts ?? []).flatMap((account) => account.eggGameIds),
       ),
@@ -1214,7 +1214,7 @@ export function MotherGroupResources({
     return map;
     // demandKey 是纯函数，依赖 demands 即可
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demands, group.members, linesByMember, productionIndex, species]);
+  }, [demands, group.members, lineIndexByMember, productionIndex, species]);
 
   const candidatesOf = (demand: CollectionDemand): StudDemandCandidate[] =>
     isStudDemandKey(demand.eggGameId)
