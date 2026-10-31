@@ -481,19 +481,25 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
       if (!groupId) throw new Error('还没有打开小组');
       const call =
         action === 'claim' ? claimDemandApi : action === 'release' ? releaseDemandApi : completeDemandApi;
-      const saved = await call(groupId, {
-        demanderAccountId: demand.demanderAccountId,
-        eggGameId: demand.eggGameId,
-        nature: demand.nature,
-        gender: demand.gender,
-        body: demand.body,
-        voice: demand.voice,
-        version: demand.version,
-      });
-      mergeDemand(saved);
-      return saved;
+      try {
+        const saved = await call(groupId, {
+          demanderAccountId: demand.demanderAccountId,
+          eggGameId: demand.eggGameId,
+          nature: demand.nature,
+          gender: demand.gender,
+          body: demand.body,
+          voice: demand.voice,
+          version: demand.version,
+        });
+        mergeDemand(saved);
+        return saved;
+      } catch (failure) {
+        // 竞争失败时立即拉一次当前状态，不要等 60 秒轮询（R2-3-M04）
+        void loadDemands(groupId);
+        throw failure;
+      }
     },
-    [mergeDemand],
+    [loadDemands, mergeDemand],
   );
 
   /* ---------- 会话切换 ---------- */
@@ -513,6 +519,8 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
         const detail = nextGroupId ? readCollectionGroupCacheDetail(next, nextGroupId) : null;
         const selection = selectionOf(detail, next);
         groupRef.current = nextGroupId;
+        // 自动切组也要清掉版本基准，否则两组版本号相同会一直跳过详情（R2-3-M03）
+        versionRef.current = null;
         detailRef.current = detail;
         draftRef.current = selection;
         dirtyRef.current = false;
@@ -563,6 +571,7 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
       null;
     if (groupRef.current !== target) groupEpochRef.current += 1;
     groupRef.current = target;
+    versionRef.current = null;
     setCurrentGroupId(target);
     // 切组：先清掉上一组的需求，再用这一组的缓存补回来（2026-11-01）
     clearTasks();

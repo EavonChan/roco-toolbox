@@ -25,6 +25,7 @@ vi.mock('../api/collectionGroups', async (importOriginal) => {
     getCollectionGroupVersion: vi.fn(),
     getCollectionTasks: vi.fn(),
     getCollectionDemands: vi.fn(),
+    claimCollectionDemand: vi.fn(),
     withdrawCollectionDemand: vi.fn(),
   };
 });
@@ -230,5 +231,61 @@ describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
     );
     expect(result.current.demands.map((demand) => demand.status)).toEqual(['done']);
     expect(result.current.demands[0].eggGameId).toBe(3467);
+  });
+
+  test('接单失败后立即重拉需求列表，不用等轮询（R2-3-M04）', async () => {
+    vi.mocked(api.claimCollectionDemand).mockRejectedValueOnce(new Error('已被人接单'));
+    const { result } = renderHook(() => useCollectionGroups(input));
+    await flush();
+    const before = vi.mocked(api.getCollectionDemands).mock.calls.length;
+
+    await act(async () => {
+      await expect(result.current.claimDemand(demandOf())).rejects.toThrow('已被人接单');
+    });
+    await flush();
+    expect(vi.mocked(api.getCollectionDemands).mock.calls.length).toBeGreaterThan(before);
+  });
+
+  test('自动切组后即使两组版本号相同，也会完整拉一次详情（R2-3-M03）', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.getCollectionGroupVersion).mockResolvedValue({
+        detail: 5,
+        demands: 5,
+        tasks: 5,
+      });
+      window.localStorage.setItem(
+        'roco.collectionGroups:B',
+        JSON.stringify({ mode: 'group', lastGroupIds: { mother: 'gB' } }),
+      );
+      vi.mocked(api.getCollectionGroup).mockImplementation(async (id: string) =>
+        detailOf(id, id === 'gB' ? 'B' : 'A'),
+      );
+
+      const { result } = renderHook(() => useCollectionGroups(input));
+      await flush();
+      // 跑一轮 60 秒轮询，把 g1 的版本号记为 5
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(vi.mocked(api.getCollectionGroup).mock.calls.length).toBe(2);
+
+      act(() => {
+        window.localStorage.setItem('roco.accountId', 'B');
+        window.localStorage.setItem('roco.deviceToken', 'token-B');
+        markSynced(0);
+      });
+      await flush();
+      expect(result.current.currentGroupId).toBe('gB');
+      const afterSwitch = vi.mocked(api.getCollectionGroup).mock.calls.length;
+
+      // 新组版本号同为 5：修复后版本基准已清空，仍会拉一次详情
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(vi.mocked(api.getCollectionGroup).mock.calls.length).toBe(afterSwitch + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
