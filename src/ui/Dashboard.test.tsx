@@ -182,14 +182,20 @@ describe('Dashboard（看板）', () => {
 
     fireEvent.click(screen.getByTestId('recommend-quantity-all'));
     expect(onNavigate).toHaveBeenCalledWith({
-      type: 'open-groups',
-      groupType: 'stud',
+      type: 'open-collection',
+      location: { kind: 'studs', view: 'eggs' },
     });
 
     fireEvent.click(screen.getByTestId('nest-open-coverage'));
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'open-collection',
       location: { kind: 'studs', view: 'coverage', groupId: 3 },
+    });
+
+    fireEvent.click(screen.getByTestId('nest-open-swap'));
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'open-collection',
+      location: { kind: 'studs', view: 'eggs' },
     });
   });
 

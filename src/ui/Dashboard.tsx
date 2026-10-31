@@ -208,8 +208,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         items={recommendations}
         emptyNote={suggestionEmptyNote}
         onOpenSwap={() =>
-          // 看板的完整求蛋清单仍走个人求种公；小组里的「种公」页是另一条入口。
-          onNavigate({ type: 'open-groups', groupType: 'stud' })
+          // 个人求种公已下线（2026-10-30）：完整清单直接去收集页的种公阵列。
+          onNavigate({ type: 'open-collection', location: { kind: 'studs', view: 'eggs' } })
         }
       />
 
@@ -254,7 +254,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             </button>
             <button
               type="button"
-              onClick={() => onNavigate({ type: 'open-groups', groupType: 'stud' })}
+              onClick={() =>
+                onNavigate({ type: 'open-collection', location: { kind: 'studs', view: 'eggs' } })
+              }
               data-testid="nest-open-swap"
               className="min-h-[28px] text-xs font-medium text-emerald-700"
             >
