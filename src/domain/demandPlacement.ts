@@ -30,8 +30,10 @@ export const MAX_PLACEMENT_SHARES = 2;
 /**
  * 一个账号只有 1 个学院小窝：**学院那只也只能有一只**，但它可以和 2 只异性配对（1:2），
  * 所以同一只精灵最多服务 2 条单（用户 2026-10-30 口径：共用同一只精灵可以，不能出现第二只绿窝）。
+ * 注意与 `nestPlan.MAX_ACADEMY_PARTNERS`（那边是「配对方个数」）同名不同物，这里按「单」计数
+ * （2026-11-01 代码审查 R2-1-M08）。
  */
-export const MAX_ACADEMY_PARTNERS = 2;
+export const MAX_ACADEMY_DEMANDS = 2;
 
 export interface DemandPlacementDemand extends DemandCriteria {
   groupId: string;
@@ -141,7 +143,7 @@ interface AccountState {
   used: Set<string>;
   /** 学院小窝里那只的个体键（谁都不住时是 null——不看家园现状，按需求派）。 */
   academyPetKey: string | null;
-  /** 学院那只已经服务了几条单（上限 MAX_ACADEMY_PARTNERS：一只精灵可以 1:2）。 */
+  /** 学院那只已经服务了几条单（上限 MAX_ACADEMY_DEMANDS：一只精灵可以 1:2）。 */
   academyPartners: number;
   /** 学院簇（那只 + 它的配对方）不能再出现在普通配对里。 */
   academyReserved: Set<string>;
@@ -220,7 +222,7 @@ function pickPair(
   const mothers = state.pets.filter((chip) => isMotherCandidate(chip, target, demand, state));
   const fathers = state.pets.filter((chip) => isFatherCandidate(chip, target, demand, state));
   const picks: Array<PairPick & { bothNature: number }> = [];
-  const academyHasRoom = state.academyPartners < MAX_ACADEMY_PARTNERS;
+  const academyHasRoom = state.academyPartners < MAX_ACADEMY_DEMANDS;
   const academyFree = state.academyPetKey === null;
 
   for (const mother of mothers) {
