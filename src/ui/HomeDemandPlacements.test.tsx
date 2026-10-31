@@ -171,7 +171,7 @@ describe('家园 · 接单上窝', () => {
     ];
     const view = renderPanel(pets);
     fireEvent.click(screen.getByTestId('home-demand-account-toggle'));
-    expect(window.localStorage.getItem('roco.demandCollapsedAccounts')).toContain('uid:11');
+    expect(window.localStorage.getItem('roco.demandCollapsedAccounts:me')).toContain('uid:11');
 
     view.unmount();
     renderPanel(pets);

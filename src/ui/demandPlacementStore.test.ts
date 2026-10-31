@@ -61,11 +61,22 @@ describe('候选配对的本机记忆', () => {
 });
 
 describe('账号折叠状态', () => {
-  test('重复添加同一账号只留一份，非字符串值被忽略', () => {
-    writeCollapsedAccounts(['uid:11', 'uid:11', 'uid:12']);
-    expect(readCollapsedAccounts()).toEqual(['uid:11', 'uid:12']);
+  test('重复添加同一账号只留一份，非字符串值被忽略，且按云身份隔离', () => {
+    writeCollapsedAccounts('me', ['uid:11', 'uid:11', 'uid:12']);
+    expect(readCollapsedAccounts('me')).toEqual(['uid:11', 'uid:12']);
+    expect(readCollapsedAccounts('other')).toEqual([]);
 
-    window.localStorage.setItem('roco.demandCollapsedAccounts', JSON.stringify(['uid:11', 42, null]));
-    expect(readCollapsedAccounts()).toEqual(['uid:11']);
+    window.localStorage.setItem(
+      'roco.demandCollapsedAccounts:me',
+      JSON.stringify(['uid:11', 42, null]),
+    );
+    expect(readCollapsedAccounts('me')).toEqual(['uid:11']);
+  });
+
+  test('旧版全局折叠状态读一次迁到当前身份下，然后清掉旧键', () => {
+    window.localStorage.setItem('roco.demandCollapsedAccounts', JSON.stringify(['uid:11']));
+    expect(readCollapsedAccounts('me')).toEqual(['uid:11']);
+    expect(window.localStorage.getItem('roco.demandCollapsedAccounts')).toBeNull();
+    expect(readCollapsedAccounts('me')).toEqual(['uid:11']);
   });
 });

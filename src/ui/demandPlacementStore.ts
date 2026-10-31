@@ -1,4 +1,9 @@
-import { demandKeyOf } from '../shared/collectionGroups';
+import {
+  demandKeyOf,
+  type DemandBody,
+  type DemandGender,
+  type DemandVoice,
+} from '../shared/collectionGroups';
 
 /**
  * 「已上窝」本机记忆（需求中心二期）。
@@ -12,9 +17,9 @@ export interface PlacementRow {
   demanderAccountId: string;
   eggGameId: number;
   nature: string;
-  gender: string;
-  body: string;
-  voice: string;
+  gender: DemandGender;
+  body: DemandBody;
+  voice: DemandVoice;
   /** 我接下这单的时间（即单上的 updatedAt）；持有期间不变，每次重接都刷新。 */
   claimedAt?: number;
 }
@@ -37,9 +42,9 @@ export function placementRowKey(row: PlacementRow): string {
   const base = demandKeyOf({
     eggGameId: row.eggGameId,
     nature: row.nature,
-    gender: row.gender as never,
-    body: row.body as never,
-    voice: row.voice as never,
+    gender: row.gender,
+    body: row.body,
+    voice: row.voice,
   });
   return `${row.groupId}|${row.demanderAccountId}|${base}|${row.claimedAt ?? 0}`;
 }
@@ -114,24 +119,41 @@ export function writePlacementChoice(
   return { ...choices };
 }
 
-/** 接单上窝页里手动收起的账号（accountKey），下次打开仍然收起。 */
-export function readCollapsedAccounts(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(COLLAPSED_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    return Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === 'string')
-      : [];
-  } catch {
-    return [];
+/** 接单上窝页里手动收起的账号（accountKey），下次打开仍然收起；按云身份分开记。 */
+export function readCollapsedAccounts(accountId: string | null): string[] {
+  if (!accountId || typeof window === 'undefined') return [];
+  const parse = (raw: string | null): string[] => {
+    try {
+      const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+      return Array.isArray(parsed)
+        ? parsed.filter((value): value is string => typeof value === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  };
+  // 旧版本只有一个全局键：读一次迁到当前身份下，然后清掉（R2-2-L04）
+  const legacy = window.localStorage.getItem(COLLAPSED_KEY);
+  if (legacy != null) {
+    const migrated = parse(legacy);
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY + ':' + accountId, JSON.stringify(migrated));
+      window.localStorage.removeItem(COLLAPSED_KEY);
+    } catch {
+      // 迁移失败就继续用旧键
+    }
+    return migrated;
   }
+  return parse(window.localStorage.getItem(COLLAPSED_KEY + ':' + accountId));
 }
 
-export function writeCollapsedAccounts(accountKeys: readonly string[]): void {
-  if (typeof window === 'undefined') return;
+export function writeCollapsedAccounts(accountId: string, accountKeys: readonly string[]): void {
+  if (!accountId || typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...new Set(accountKeys)]));
+    window.localStorage.setItem(
+      COLLAPSED_KEY + ':' + accountId,
+      JSON.stringify([...new Set(accountKeys)]),
+    );
   } catch {
     // 存不下只是下次打开不再收起
   }

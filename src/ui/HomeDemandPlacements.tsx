@@ -137,7 +137,9 @@ function ParentCard({
 
 export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacementsProps) {
   const { accountId, items, loading, error, reload } = useClaimedDemands();
-  const [collapsedAccounts, setCollapsedAccounts] = useState<string[]>(() => readCollapsedAccounts());
+  const [collapsedAccounts, setCollapsedAccounts] = useState<string[]>(() =>
+    readCollapsedAccounts(accountId),
+  );
   /** 手动挑的候选配对（按行键）。切换即重算整份方案，页头的窝数随之变化。 */
   const [preferredPairs, setPreferredPairs] = useState<PlacementChoices>(() =>
     readPlacementChoices(accountId),
@@ -148,6 +150,7 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
   useEffect(() => {
     setMarks(readPlacementMarks(accountId));
     setPreferredPairs(readPlacementChoices(accountId));
+    setCollapsedAccounts(readCollapsedAccounts(accountId));
   }, [accountId]);
 
   const labelByAccountKey = useMemo(() => {
@@ -224,7 +227,7 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
       ? collapsedAccounts.filter((key) => key !== accountKey)
       : [...collapsedAccounts, accountKey];
     setCollapsedAccounts(next);
-    writeCollapsedAccounts(next);
+    if (accountId) writeCollapsedAccounts(accountId, next);
   };
 
   const toggleMark = (placement: DemandPlacement) => {
