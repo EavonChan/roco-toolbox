@@ -95,6 +95,11 @@ export default function App() {
     markTourSeen();
     setTour(false);
   };
+  // 两套引导互斥：开文字教程就结束分步引导，避免两层浮层叠在一起
+  const openGuide = () => {
+    if (tour) closeTour();
+    setGuide(true);
+  };
   /** 引导切页面：家园页内分页不在导航合同里，先写偏好再切页签 */
   const enterTourStep = useCallback(
     (step: TourStep) => {
@@ -179,7 +184,7 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={() => setGuide(true)}
+              onClick={openGuide}
               data-testid="guide-open"
               className="min-h-[30px] rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500"
             >
@@ -206,7 +211,7 @@ export default function App() {
           section={navigation.profileSection}
           returnToGroups={navigation.returnToGroups}
           onNavigate={navigate}
-          onOpenGuide={() => setGuide(true)}
+          onOpenGuide={openGuide}
         />
       ) : navigation.page === 'groups' ? (
         <CollectionGroups
