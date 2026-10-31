@@ -206,7 +206,7 @@ export async function loginAs(page: Page, accountId = 'A', token = 'mock-token')
   );
 }
 
-/** 直接进入某个组（否则二期默认落在个人求蛋）。 */
+/** 直接进入某个组（个人求蛋 2026-10-30 已删，否则默认落在新建 / 加入）。 */
 export async function enterGroup(page: Page, accountId = 'A'): Promise<void> {
   await page.addInitScript(
     ([id, groupId]) => {
