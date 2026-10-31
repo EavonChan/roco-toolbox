@@ -168,8 +168,8 @@ interface PairPickResult {
 
 function resolveTarget(
   demand: DemandPlacementDemand,
-  species: readonly SpeciesEntry[],
   eggInfo: Map<number, EggInfo>,
+  eggIdsByGroup: Map<number, number[]>,
 ): Target | null {
   if (demand.eggGameId > 0) {
     const info = eggInfo.get(demand.eggGameId);
@@ -179,15 +179,12 @@ function resolveTarget(
   }
   const groupId = -demand.eggGameId;
   if (!Number.isFinite(groupId) || groupId <= 0) return null;
-  const eggs = species.filter(
-    (entry) =>
-      entry.eggGameId != null &&
-      entry.eggGameId === entry.gameId &&
-      groupsOf(entry).includes(groupId),
-  );
-  const usable = demand.gender === '公' ? eggs.filter((entry) => entry.maleCapable === true) : eggs;
+  const eggs = eggIdsByGroup.get(groupId) ?? [];
+  // 种公需求要出公：组内出不了公的蛋不能当母本（口径与 `ProductionIndex.eggsByGroup` 一致）。
+  const usable =
+    demand.gender === '公' ? eggs.filter((id) => eggInfo.get(id)?.maleCapable === true) : eggs;
   if (usable.length === 0) return null;
-  return { eggIds: usable.map((entry) => entry.gameId), groups: [groupId] };
+  return { eggIds: usable, groups: [groupId] };
 }
 
 function isMotherCandidate(chip: Chip, target: Target, demand: DemandPlacementDemand, state: AccountState): boolean {
@@ -367,15 +364,20 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
   const speciesByGameId = new Map<number, SpeciesEntry>();
   const eggOfGameId = new Map<number, number>();
   const eggInfo = new Map<number, EggInfo>();
+  /** 蛋组 → 组内的蛋物种（种公需求一次建好，不要每条单都扫一遍全图鉴）。 */
+  const eggIdsByGroup = new Map<number, number[]>();
   for (const entry of input.species) {
     speciesByGameId.set(entry.gameId, entry);
     if (entry.eggGameId != null && entry.eggGameId > 0) {
       eggOfGameId.set(entry.gameId, entry.eggGameId);
       if (entry.eggGameId === entry.gameId) {
-        eggInfo.set(entry.gameId, {
-          groups: groupsOf(entry),
-          maleCapable: entry.maleCapable === true,
-        });
+        const groups = groupsOf(entry);
+        eggInfo.set(entry.gameId, { groups, maleCapable: entry.maleCapable === true });
+        for (const group of groups) {
+          const list = eggIdsByGroup.get(group) ?? [];
+          list.push(entry.gameId);
+          eggIdsByGroup.set(group, list);
+        }
       }
     }
   }
@@ -450,7 +452,7 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
   };
 
   for (const demand of demands) {
-    const target = resolveTarget(demand, input.species, eggInfo);
+    const target = resolveTarget(demand, eggInfo, eggIdsByGroup);
     if (!target) {
       unassigned.push({
         demand,
