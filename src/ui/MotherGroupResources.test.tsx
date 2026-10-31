@@ -1917,6 +1917,48 @@ describe('MotherGroupResources 三视图', () => {
     expect(window.localStorage.getItem('roco.demandPick')).toContain('g1|B');
   });
 
+  test('需求中心：已接单的种公需求也能撤回，并提示会取消对方承接（R2-3-H01）', async () => {
+    const withdraw = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="A"
+        species={catalog}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        demands={[
+          demandOf({
+            demanderAccountId: 'A',
+            eggGameId: -3,
+            nature: '固执',
+            gender: '公',
+            status: 'claimed',
+            claimerAccountId: 'B',
+          }),
+        ]}
+        onWithdrawDemand={withdraw}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('mother-view-mine'));
+    const card = screen.getAllByTestId('mother-demand-row')[0];
+    expect(card).toHaveTextContent('已接');
+    fireEvent.click(card);
+
+    const detail = screen.getByTestId('mother-demand-detail');
+    // 结构上仍是原来的操作区：完成 + 撤回同一排，不新增浮层
+    expect(within(detail).getByTestId('mother-demand-complete')).toBeTruthy();
+    fireEvent.click(within(detail).getByTestId('mother-demand-withdraw'));
+    expect(within(detail).getByTestId('mother-demand-withdraw-hint')).toHaveTextContent(
+      '撤回会取消对方承接',
+    );
+    fireEvent.click(within(detail).getByTestId('mother-demand-withdraw-confirm'));
+    await waitFor(() =>
+      expect(withdraw).toHaveBeenCalledWith(
+        -3,
+        expect.objectContaining({ nature: '固执', gender: '公' }),
+      ),
+    );
+  });
+
   test('需求方结单后，承接人看到完成回执，点「知道了」后不再提示', () => {
     window.localStorage.removeItem('roco.demandCompletionRead:B');
     render(

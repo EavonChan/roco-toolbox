@@ -1813,7 +1813,7 @@ export function MotherGroupResources({
     const key = demandKey(demand);
     if (confirmComplete === key) {
       return (
-        <div className="flex flex-col gap-1.5" data-testid="mother-demand-complete-confirm">
+        <div className="flex w-full flex-col gap-1.5" data-testid="mother-demand-complete-confirm">
           <span className="text-[11px] leading-snug text-amber-700">背包里未检测到，确认已完成？</span>
           <div className="flex gap-1.5">
             <button
@@ -1844,7 +1844,7 @@ export function MotherGroupResources({
         disabled={demandBusy}
         onClick={() => void runDemandAction('complete', demand)}
         data-testid="mother-demand-complete"
-        className="min-h-[40px] w-full rounded-lg bg-emerald-600 text-sm font-medium text-white disabled:opacity-50"
+        className="min-h-[40px] flex-1 rounded-lg bg-emerald-600 text-sm font-medium text-white disabled:opacity-50"
       >
         已完成 · 结单
       </button>
@@ -1859,7 +1859,57 @@ export function MotherGroupResources({
     if (demand.status === 'done') return null;
     const key = demandKey(demand);
     if (demand.status === 'claimed') {
-      if (demand.demanderAccountId === viewerAccountId) return detailCompleteControl(demand);
+      if (demand.demanderAccountId === viewerAccountId) {
+        // 已接单的单也要能撤回；提示放在同一操作区，不另开浮层（2026-11-01 审查 R2-3-H01）
+        const confirming = confirmWithdraw === key;
+        return (
+          <div className="flex flex-col gap-1.5">
+            {confirming ? (
+              <span
+                className="text-[11px] leading-snug text-rose-600"
+                data-testid="mother-demand-withdraw-hint"
+              >
+                已有人接单，撤回会取消对方承接
+              </span>
+            ) : null}
+            <div className="flex flex-wrap gap-1.5">
+              {detailCompleteControl(demand)}
+              {confirming ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={demandBusy}
+                    onClick={() => void runDemandAction('withdraw', demand)}
+                    data-testid="mother-demand-withdraw-confirm"
+                    className="min-h-[40px] flex-1 rounded-lg border border-rose-300 text-sm font-medium text-rose-600 disabled:opacity-50"
+                  >
+                    确认撤回
+                  </button>
+                  <button
+                    type="button"
+                    disabled={demandBusy}
+                    onClick={() => setConfirmWithdraw(null)}
+                    data-testid="mother-demand-withdraw-cancel"
+                    className="min-h-[40px] flex-1 rounded-lg border border-slate-200 text-sm text-slate-500 disabled:opacity-50"
+                  >
+                    取消
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={demandBusy}
+                  onClick={() => setConfirmWithdraw(key)}
+                  data-testid="mother-demand-withdraw"
+                  className="min-h-[40px] flex-1 rounded-lg border border-slate-200 text-sm text-slate-500 disabled:opacity-50"
+                >
+                  撤回这条需求
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      }
       if (demand.claimerAccountId === viewerAccountId) {
         return (
           <button
