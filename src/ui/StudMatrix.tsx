@@ -28,7 +28,8 @@ const GRADE_LABEL: Record<PetGrade, string> = {
 /**
  * 列宽 / 格子高度（2026-10-29 用户要求「左侧蛋组太占地方，卡片再收缩一点」）：
  * 蛋组列 64 → 52 → 35（2026-10-30 再缩到约 2/3），性格列 60，格子 52（头像仍 32）。
- * 蛋组列只有 35px：「巨灵组」这类三字名会截断，靠 title 悬停看全名。
+ * 蛋组列 35px 够放三字名（3×9px + 内边距 4px = 31px，图鉴蛋组名最长 3 字）；
+ * 单元格仍带 truncate + title 兜底，防以后出现更长的名字。
  */
 const EGG_GROUP_COL_WIDTH = 35;
 const NATURE_COL_WIDTH = 60;
@@ -305,7 +306,9 @@ export function StudMatrix({
       {/* 2026-10-28：表格只做横向滚动；不要加 touch-pan-x，否则触摸表格区域时整页上下也滑不动 */}
       {grades.length === 0 ? (
         <p className="mt-2 text-xs text-slate-400" data-testid="stud-matrix-empty">
-          覆盖度里还没选目标档位与性格：先点右上角「筛选」勾选要追的档位与性格。
+          {filterPanel
+            ? '覆盖度里还没选目标档位与性格：先点右上角「筛选」勾选要追的档位与性格。'
+            : '覆盖度里还没选目标档位与性格：先到「覆盖度」勾选要追的档位与性格。'}
         </p>
       ) : matrix.natures.length === 0 ? (
         <p className="mt-2 text-xs text-slate-400" data-testid="stud-matrix-no-nature">
