@@ -42,13 +42,25 @@ import {
 } from './collectionGroupsStore';
 import {
   MotherStoreError,
-  type MotherStoreErrorCode,
   dissolveGroup,
   isMember,
   resetInvite,
   updateDisplayName,
 } from './motherGroupsStore';
-import { type Env, authenticate, clientIp, json, newId, rateLimit, sha256Hex } from './util';
+import { type Env, authenticate, clientIp, newId, sha256Hex } from './util';
+import {
+  DELETE_LIMIT,
+  GROUP_ID_MAX,
+  IP_PROBE_LIMIT,
+  OWNER_WRITE_LIMIT,
+  READ_LIMIT,
+  STORE_STATUS,
+  WRITE_LIMIT,
+  failCode,
+  limited,
+  newInviteCode,
+  okJson,
+} from './collectionGroupsHttp';
 import {
   DEFAULT_DEMAND_BODY,
   DEFAULT_DEMAND_GENDER,
@@ -61,74 +73,6 @@ import {
   isValidDemandNatures,
 } from '../../src/shared/collectionGroups';
 import { MOTHER_RESOURCE_MAX_BODY_BYTES } from '../../src/shared/motherGroups';
-
-const HOUR = 3_600_000;
-const READ_LIMIT = 1800;
-const WRITE_LIMIT = 120;
-const OWNER_WRITE_LIMIT = 30;
-const DELETE_LIMIT = 30;
-const IP_PROBE_LIMIT = 120;
-
-const STORE_STATUS: Record<MotherStoreErrorCode, number> = {
-  GROUP_NOT_FOUND: 404,
-  NOT_MEMBER: 403,
-  NOT_OWNER: 403,
-  GROUP_FULL: 409,
-  REVISION_CONFLICT: 409,
-  STALE_SOURCE: 409,
-  SOURCE_MISMATCH: 409,
-  GAME_ACCOUNT_ALREADY_SHARED: 409,
-  OWNER_MUST_DISSOLVE: 409,
-  TARGET_CHANGED: 409,
-  TARGET_NOT_READY: 409,
-  TASK_TAKEN: 409,
-  TASK_ALREADY_COVERED: 409,
-  TASKS_NOT_CONFIRMED: 409,
-  TASK_NOT_FOUND: 404,
-  TASK_NOT_YOURS: 403,
-  DEMAND_UNSUPPORTED: 409,
-  DEMAND_NOT_FOUND: 404,
-  DEMAND_LIMIT: 409,
-  DEMAND_TAKEN: 409,
-  DEMAND_SELF: 409,
-  DEMAND_ALREADY_DONE: 409,
-  DEMAND_NOT_CLAIMED: 409,
-  DEMAND_NOT_YOURS: 403,
-};
-
-const failCode = (origin: string | null, status: number, code: string, error: string): Response => {
-  const response = json({ ok: false, code, error }, status, origin);
-  response.headers.set('Cache-Control', 'no-store');
-  return response;
-};
-
-const okJson = (origin: string | null, data: Record<string, unknown>): Response => {
-  const response = json({ ok: true, ...data }, 200, origin);
-  response.headers.set('Cache-Control', 'no-store');
-  return response;
-};
-
-async function limited(
-  env: Env,
-  origin: string | null,
-  bucket: string,
-  limit: number,
-): Promise<Response | null> {
-  if (await rateLimit(env, bucket, limit, HOUR)) return null;
-  const response = failCode(origin, 429, 'RATE_LIMITED', '太频繁了，稍后再试');
-  response.headers.set('Retry-After', '60');
-  return response;
-}
-
-const INVITE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-const INVITE_LENGTH = 8;
-
-function newInviteCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(INVITE_LENGTH));
-  return [...bytes].map((byte) => INVITE_ALPHABET[byte % INVITE_ALPHABET.length]).join('');
-}
-
-const GROUP_ID_MAX = 64;
 
 export async function handleCollectionGroups(
   request: Request,
