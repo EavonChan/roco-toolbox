@@ -1792,24 +1792,26 @@ export async function publishCollectionDemand(
     .all<{ nature: string }>();
   const existingNatures = new Set((existing.results ?? []).map((row) => row.nature));
   const newRows = natures.filter((nature) => !existingNatures.has(nature)).length;
+  const [accountCount, countRow] =
+    newRows > 0
+      ? await Promise.all([
+          sharedAccountCount(db, groupId, accountId),
+          db
+            .prepare(
+              `SELECT COUNT(*) AS total_open,
+                      SUM(CASE WHEN demander_account_id = ? THEN 1 ELSE 0 END) AS mine_open
+                 FROM collection_group_demands
+                WHERE group_id = ? AND status <> 'done'`,
+            )
+            .bind(accountId, groupId)
+            .first<{ total_open: number; mine_open: number | null }>(),
+        ])
+      : [0, null];
+  const limit = demandLimitPerMember(accountCount);
   if (newRows > 0) {
-    // 额度判断两条查询并发跑：原来串行 3 条 COUNT（2026-10-31）
-    const [accountCount, countRow] = await Promise.all([
-      sharedAccountCount(db, groupId, accountId),
-      db
-        .prepare(
-          `SELECT COUNT(*) AS total_open,
-                  SUM(CASE WHEN demander_account_id = ? THEN 1 ELSE 0 END) AS mine_open
-             FROM collection_group_demands
-            WHERE group_id = ? AND status <> 'done'`,
-        )
-        .bind(accountId, groupId)
-        .first<{ total_open: number; mine_open: number | null }>(),
-    ]);
     if ((countRow?.total_open ?? 0) + newRows > DEMAND_LIMIT_PER_GROUP) {
       throw new MotherStoreError('DEMAND_LIMIT', '本组需求已满，等有人完成或撤回后再发');
     }
-    const limit = demandLimitPerMember(accountCount);
     if ((countRow?.mine_open ?? 0) + newRows > limit) {
       throw new MotherStoreError(
         'DEMAND_LIMIT',
@@ -1819,20 +1821,47 @@ export async function publishCollectionDemand(
   }
 
   const now = Date.now();
-  await db.batch(
-    natures.map((nature) =>
-      db
-        .prepare(
-          `INSERT INTO collection_group_demands
-            (group_id, demander_account_id, egg_game_id, nature, gender, body, voice, status,
-             claimer_account_id, version, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'open', NULL, 0, ?, ?)
-           ON CONFLICT (group_id, demander_account_id, egg_game_id, nature, gender, body, voice)
-           DO NOTHING`,
-        )
-        .bind(groupId, accountId, eggGameId, nature, gender, body, voice, now, now),
-    ),
-  );
+  if (newRows > 0) {
+    // 额度判定下沉到插入语句：COUNT 与 INSERT 之间不再有间隙，并发发布也不会超额（R2-7-M01）。
+    // 一次写入全部性格；额度不足时整条语句 0 行，一条也不落库。
+    const natureRows =
+      natures.length === 1
+        ? 'SELECT ? AS nature'
+        : natures.map(() => 'SELECT ? AS nature').join(' UNION ALL ');
+    await db
+      .prepare(
+        `INSERT INTO collection_group_demands
+           (group_id, demander_account_id, egg_game_id, nature, gender, body, voice, status,
+            claimer_account_id, version, created_at, updated_at)
+         SELECT ?, ?, ?, n.nature, ?, ?, ?, 'open', NULL, 0, ?, ?
+           FROM (${natureRows}) AS n
+          WHERE (SELECT COUNT(*) FROM collection_group_demands
+                   WHERE group_id = ? AND status <> 'done') + ? <= ?
+            AND (SELECT COUNT(*) FROM collection_group_demands
+                   WHERE group_id = ? AND demander_account_id = ? AND status <> 'done') + ? <= ?
+         ON CONFLICT (group_id, demander_account_id, egg_game_id, nature, gender, body, voice)
+         DO NOTHING`,
+      )
+      .bind(
+        groupId,
+        accountId,
+        eggGameId,
+        gender,
+        body,
+        voice,
+        now,
+        now,
+        ...natures,
+        groupId,
+        newRows,
+        DEMAND_LIMIT_PER_GROUP,
+        groupId,
+        accountId,
+        newRows,
+        limit,
+      )
+      .run();
+  }
 
   // 一次取回这几条（原来是按性格各查一次，N 个性格 = N 条 SQL）
   const savedRows = await db
@@ -1845,6 +1874,10 @@ export async function publishCollectionDemand(
     .bind(groupId, accountId, eggGameId, gender, body, voice, ...natures)
     .all<DemandRow>();
   const byNature = new Map((savedRows.results ?? []).map((row) => [row.nature, row]));
+  // 单条语句保证额度：若仍有性格没落库，只可能是「插入时额度刚好满」，不能当成发布成功
+  if (newRows > 0 && natures.some((nature) => !byNature.has(nature))) {
+    throw new MotherStoreError('DEMAND_LIMIT', '本组或你的需求额度刚好满了，刷新后再发');
+  }
   return natures
     .map((nature) => byNature.get(nature))
     .filter((row): row is DemandRow => row != null)
