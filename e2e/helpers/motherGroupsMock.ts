@@ -120,6 +120,17 @@ export async function mockMotherGroups(page: Page, options: MockOptions = {}): P
     if (method === 'GET' && path === `/api/collection-groups/${GROUP_ID}`) {
       return fulfill(route, { ok: true, ...groupDetail });
     }
+    // 轻量版本号（2026-10-31 起客户端先比版本再决定拉不拉整包）：三段串随 mock 状态变化，
+    // 缺了这条路由时客户端会拿到 404 退回整包轮询，新主路径在 e2e 里就永远走不到。
+    if (method === 'GET' && path === `/api/collection-groups/${GROUP_ID}/version`) {
+      const tasksVersion = tasks.reduce((sum, task) => sum + Number(task.version ?? 0), 0);
+      return fulfill(route, {
+        ok: true,
+        detail: `d${revision}`,
+        demands: `m${(options.demands ?? []).length}`,
+        tasks: `t${tasks.length}:${tasksVersion}`,
+      });
+    }
     if (method === 'GET' && path === `/api/collection-groups/${GROUP_ID}/tasks`) {
       return fulfill(route, {
         ok: true,

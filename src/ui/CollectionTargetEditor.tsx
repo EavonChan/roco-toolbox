@@ -81,7 +81,7 @@ export function CollectionTargetEditor({ open, section, onClose }: CollectionTar
           <div className="space-y-3" data-testid="editor-studs">
             <ScopeSummary
               scope="个人种公目标"
-              criteria="影响看板、覆盖度、配窝与换什么；不影响个人母本进度"
+              criteria="影响看板、覆盖度、配窝与小组求蛋；不影响个人母本进度"
             />
 
             <div>
