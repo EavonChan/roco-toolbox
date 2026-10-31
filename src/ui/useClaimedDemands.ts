@@ -56,7 +56,8 @@ export function useClaimedDemands(): ClaimedDemandsState {
       setError('');
       return;
     }
-    if (cache && cache.accountId === accountId) setItems(cache.items);
+    // 换身份：缓存命中照旧秒开；不命中先清空，别拿旧账号的单顶着新身份显示（R2-2-M01）
+    setItems(cache && cache.accountId === accountId ? cache.items : []);
 
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
