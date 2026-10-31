@@ -593,7 +593,7 @@ async function handleDemandPublish(
     groupId,
     accountId,
     eggGameId,
-    natures: natures as string[],
+    natures: (natures as string[]).map((nature) => nature.trim()),
     gender,
     body: demandBody,
     voice,
@@ -616,7 +616,7 @@ async function handleDemandWithdraw(
   const eggGameId = parseDemandEggGameId(rawEggGameId);
   // 按「蛋 + 性格 + 性别 / 体型 / 声音」单独撤回：`?nature=` 为空表示撤回「不挑性格」那一条
   const params = new URL(request.url).searchParams;
-  const nature = params.get('nature') ?? '';
+  const nature = (params.get('nature') ?? '').trim();
   if (nature.length > 8) throw new MotherInputError('INVALID_INPUT', 'nature 无效');
   const gender = params.get('gender') ?? DEFAULT_DEMAND_GENDER;
   const demandBody = params.get('body') ?? DEFAULT_DEMAND_BODY;
@@ -656,7 +656,8 @@ async function handleDemandAction(
   }
   const demanderAccountId = parseDemanderAccountId(body);
   const eggGameId = parseDemandEggGameId(rawEggGameId);
-  const nature = body.nature ?? '';
+  const rawNature = body.nature ?? '';
+  const nature = typeof rawNature === 'string' ? rawNature.trim() : rawNature;
   if (typeof nature !== 'string' || nature.length > 8) {
     throw new MotherInputError('INVALID_INPUT', 'nature 无效');
   }

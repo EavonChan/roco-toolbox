@@ -1777,7 +1777,9 @@ export async function publishCollectionDemand(
 ): Promise<CollectionDemand[]> {
   const { groupId, accountId, eggGameId, gender, body, voice } = input;
   await assertMotherGroup(db, groupId);
-  const natures = input.natures.length > 0 ? [...new Set(input.natures)] : [''];
+  // 入库统一 trim：校验只 trim 判空、入库若原样保留，' 胆小' 会变成另一条需求永远接不上（R2-7-L01）
+  const natures =
+    input.natures.length > 0 ? [...new Set(input.natures.map((nature) => nature.trim()))] : [''];
 
   const existing = await db
     .prepare(
@@ -1860,10 +1862,11 @@ export async function withdrawCollectionDemand(
   body: DemandBody,
   voice: DemandVoice,
 ): Promise<void> {
+  const normalizedNature = nature.trim();
   const criteria: DemandCriteriaInput = {
     demanderAccountId: accountId,
     eggGameId,
-    nature,
+    nature: normalizedNature,
     gender,
     body,
     voice,
@@ -1888,7 +1891,7 @@ export async function withdrawCollectionDemand(
           AND gender = ? AND body = ? AND voice = ?
           AND status <> 'done'`,
     )
-    .bind(groupId, accountId, eggGameId, nature, gender, body, voice)
+    .bind(groupId, accountId, eggGameId, normalizedNature, gender, body, voice)
     .run();
   if ((result.meta.changes ?? 0) === 0) {
     // 读到的快照与删除之间可能刚被确认完成：0 行删除不能当作撤回成功
@@ -1923,7 +1926,7 @@ export interface DemandActionInput {
 const actionCriteria = (input: DemandActionInput): DemandCriteriaInput => ({
   demanderAccountId: input.demanderAccountId,
   eggGameId: input.eggGameId,
-  nature: input.nature,
+  nature: input.nature.trim(),
   gender: input.gender,
   body: input.body,
   voice: input.voice,
