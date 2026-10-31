@@ -628,7 +628,7 @@ export async function publishStudResource(
 
   const config = await readGroupConfig(db, groupId);
   if (config.groupType !== 'stud') {
-    throw new MotherStoreError('GROUP_NOT_FOUND', '这个小组不是种公组');
+    throw new MotherStoreError('GROUP_TYPE_MISMATCH', '这个小组不是种公组');
   }
   const target = config.target;
   if (!target || target.kind !== 'stud' || !isTargetReady('stud', target)) {
@@ -1037,7 +1037,7 @@ export async function publishMotherResourceToGroup(
 ): Promise<{ resourceRevision: number; publishedAt: number | null }> {
   const config = await readGroupConfig(db, input.groupId);
   if (config.groupType !== 'mother') {
-    throw new MotherStoreError('GROUP_NOT_FOUND', '这个小组不是母本组');
+    throw new MotherStoreError('GROUP_TYPE_MISMATCH', '这个小组不是母本组');
   }
   if (input.baseTargetRevision != null && input.baseTargetRevision !== config.targetRevision) {
     throw new MotherStoreError('TARGET_CHANGED', '本组口径已更新，请重新预览再发布');

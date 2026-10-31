@@ -715,7 +715,7 @@ async function handleRemoveMember(
     return failCode(origin, 400, 'INVALID_INPUT', '不能移除组长自己；退出请用解散小组');
   }
   if (!(await isMember(env.DB, groupId, memberAccountId))) {
-    return failCode(origin, 404, 'NOT_MEMBER', '该成员已经不在小组');
+    return failCode(origin, 404, 'MEMBER_NOT_FOUND', '该成员已经不在小组');
   }
   await removeCollectionGroupMember(env.DB, groupId, memberAccountId);
   return okJson(origin, { removed: memberAccountId });
