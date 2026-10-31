@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listCollectionGroups, publishCollectionDemand } from '../api/collectionGroups';
+import { readAccountId } from '../api/session';
 import { ALL_EGG_GROUP_IDS, groupRecommendedNatures } from '../domain/coverageTargets';
 import { describeCoverageCells } from '../domain/coverageDetail';
 import { TARGET_MODE_LABELS } from '../domain/petFilters';
@@ -36,6 +37,9 @@ export interface CoverageProps {
   /** 空数据时「去导入数据」按钮的跳转 */
   onGoImport?: () => void;
 }
+
+/** 淡黄格弹层里的小组列表缓存有效期：同一账号 60 秒内只拉一次（与接单页同一口径，R2-4-L05）。 */
+const DEMAND_GROUPS_TTL_MS = 60_000;
 
 export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: CoverageProps = {}) {
   // 与看板同一份摘要（2026-10-24）：覆盖矩阵不再自己算一遍
@@ -86,24 +90,51 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
   const [demandGroups, setDemandGroups] = useState<Array<{ id: string; name: string }> | null>(null);
   const [demandGroupsLoading, setDemandGroupsLoading] = useState(false);
   const [demandGroupsError, setDemandGroupsError] = useState('');
+  /** 读出的小组列表本机缓存 + 在途请求：连点多个淡黄格只拉一次（R2-4-L05）。 */
+  const demandGroupsCache = useRef<{
+    accountId: string | null;
+    groups: Array<{ id: string; name: string }>;
+    loadedAt: number;
+  } | null>(null);
+  const demandGroupsRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => demandGroupsRequest.current?.abort(), []);
 
   const loadDemandGroups = useCallback(() => {
+    const accountId = readAccountId();
+    const groupsOf = (list: Array<{ id: string; name: string; groupType: string }>) =>
+      list.filter((group) => group.groupType === 'mother').map((group) => ({ id: group.id, name: group.name }));
+
+    const cached = demandGroupsCache.current;
+    if (cached && cached.accountId === accountId && Date.now() - cached.loadedAt < DEMAND_GROUPS_TTL_MS) {
+      setDemandGroups(cached.groups);
+      setDemandGroupsError('');
+      setDemandGroupsLoading(false);
+      return;
+    }
+
+    demandGroupsRequest.current?.abort();
+    const controller = new AbortController();
+    demandGroupsRequest.current = controller;
     setDemandGroupsLoading(true);
     setDemandGroupsError('');
-    void listCollectionGroups()
+    void listCollectionGroups(controller.signal)
       .then((list) => {
-        setDemandGroups(
-          list
-            .filter((group) => group.groupType === 'mother')
-            .map((group) => ({ id: group.id, name: group.name })),
-        );
+        if (controller.signal.aborted) return;
+        const groups = groupsOf(list);
+        demandGroupsCache.current = { accountId, groups, loadedAt: Date.now() };
+        setDemandGroups(groups);
       })
       .catch((failure: unknown) => {
+        // 中止是离开页面 / 换身份的常态，不能当成「读取失败」写进界面
+        if (controller.signal.aborted) return;
         setDemandGroupsError(
           failure instanceof Error ? failure.message : '读取小组失败，请稍后再试',
         );
       })
-      .finally(() => setDemandGroupsLoading(false));
+      .finally(() => {
+        if (!controller.signal.aborted) setDemandGroupsLoading(false);
+      });
   }, []);
 
   const publishStudDemand = useCallback(async (input: StudDemandPublishInput) => {

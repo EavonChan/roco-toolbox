@@ -7,6 +7,7 @@ import { MyPets } from './MyPets';
 import { MotherView } from './MotherView';
 import { StudCollection } from './StudCollection';
 import { useCollectionSummary } from './useCollectionSummary';
+import { useTargetMode } from './targetModeStore';
 
 export interface CollectionProps {
   location: CollectionLocation;
@@ -28,6 +29,40 @@ const KINDS: Array<{ value: Kind; label: string; hint: string }> = [
 ];
 
 /**
+ * 母本分支：只有这里需要整份摘要（母本分组 + 覆盖度）。放在子组件里，
+ * 精灵背包分支就不会一进页先白算一遍覆盖度（R2-4-L07）。
+ */
+function MothersBranch({
+  searchIndex,
+  status,
+}: {
+  searchIndex: ReturnType<typeof buildEggSearchIndex>;
+  status: Extract<CollectionLocation, { kind: 'mothers' }>['status'];
+}) {
+  const { owned, motherGroups, mode } = useCollectionSummary();
+
+  return (
+    <main className="mx-auto max-w-md space-y-2 p-3">
+      <MotherView
+        owned={owned}
+        searchIndex={searchIndex}
+        eggGroupNames={eggGroupNames}
+        motherGroups={motherGroups}
+        mode={mode}
+        status={status}
+      />
+    </main>
+  );
+}
+
+/** 按代表档位查看母本：只在展开时才挂载并算摘要，收起状态不花这份计算（R2-4-L07）。 */
+function GradeInventorySection() {
+  const { owned, motherGroups, mode } = useCollectionSummary();
+
+  return <MotherGradeInventory motherGroups={motherGroups} owned={owned} mode={mode} />;
+}
+
+/**
  * 收集（2026-10-24 重构任务 7）：精灵背包 / 母本 / 种公三类目标工具。
  *
  * 2026-10-29 简化：精灵背包只放全部精灵（「合格种公」页取消，种公只留种公阵列）；
@@ -39,8 +74,8 @@ export function Collection({
   expandedGroupId,
   onToggleGroup,
 }: CollectionProps) {
-  const { owned, motherGroups, mode } = useCollectionSummary();
   const [showGradeInventory, setShowGradeInventory] = useState(false);
+  const mode = useTargetMode();
   const searchIndex = useMemo(() => buildEggSearchIndex(species), []);
 
   const kind: Kind = location.kind;
@@ -91,16 +126,7 @@ export function Collection({
       </nav>
 
       {location.kind === 'mothers' ? (
-        <main className="mx-auto max-w-md space-y-2 p-3">
-          <MotherView
-            owned={owned}
-            searchIndex={searchIndex}
-            eggGroupNames={eggGroupNames}
-            motherGroups={motherGroups}
-            mode={mode}
-            status={location.status}
-          />
-        </main>
+        <MothersBranch searchIndex={searchIndex} status={location.status} />
       ) : location.kind === 'studs' ? (
         <StudCollection
           expandedGroupId={expandedGroupId}
@@ -126,7 +152,7 @@ export function Collection({
           </div>
           {showGradeInventory ? (
             <div className="mx-auto max-w-md px-4 pt-2">
-              <MotherGradeInventory motherGroups={motherGroups} owned={owned} mode={mode} />
+              <GradeInventorySection />
             </div>
           ) : null}
           <MyPets onGoImport={() => onNavigate({ type: 'open-profile', section: 'data' })} />
