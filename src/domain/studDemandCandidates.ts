@@ -1,5 +1,6 @@
 import { isBreedableGroup } from './eggs';
 import { lineSuppliesTarget, type ProductionIndex, type ProductionLine } from './productionLines';
+import { speciesDisplayName } from './speciesName';
 import type { SpeciesEntry } from './types';
 
 /**
@@ -69,7 +70,7 @@ export function findStudDemandCandidates(
 
     candidates.push({
       eggGameId: entry.gameId,
-      name: entry.name,
+      name: speciesDisplayName(entry, entry.name),
       supplierIds,
       groupCount: groups.length,
     });

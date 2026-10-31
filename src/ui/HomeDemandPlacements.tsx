@@ -9,6 +9,7 @@ import {
   type DemandPlacementSkip,
 } from '../domain/demandPlacement';
 import { accountKeyOf, type AccountSnapshot } from '../domain/parseBackup';
+import { speciesDisplayName } from '../domain/speciesName';
 import {
   placementRowKey,
   readCollapsedAccounts,
@@ -48,7 +49,7 @@ const eggNameOf = (eggGameId: number): string => {
     const name = eggGroupNames[groupId];
     return name ? `${name.replace(/组$/, '')}组 · 种公需求` : '种公需求';
   }
-  return speciesByGameId.get(eggGameId)?.name ?? '未知的蛋';
+  return speciesDisplayName(speciesByGameId.get(eggGameId), '未知的蛋');
 };
 
 const conditionTags = (demand: DemandPlacementDemand): Array<{ text: string; className: string }> => {

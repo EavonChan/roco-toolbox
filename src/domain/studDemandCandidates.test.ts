@@ -13,6 +13,17 @@ const species: SpeciesEntry[] = [
   { key: 'egg-b', gameId: 200, name: '雪绒鸟', number: '003', eggGroups: [2, 3], maleCapable: true, eggGameId: 200 },
   { key: 'egg-c', gameId: 300, name: '纯母兽', number: '004', eggGroups: [2], maleCapable: false, eggGameId: 300 },
   { key: 'egg-d', gameId: 400, name: '水灵', number: '005', eggGroups: [3], maleCapable: true, eggGameId: 400 },
+  {
+    key: 'egg-form',
+    gameId: 201,
+    name: '雪绒鸟',
+    form: '夏天的样子',
+    officialName: '雪绒鸟_夏天的样子',
+    number: '006',
+    eggGroups: [2, 3],
+    maleCapable: true,
+    eggGameId: 201,
+  },
 ];
 
 const index = buildProductionIndex(species);
@@ -95,5 +106,15 @@ describe('findStudDemandCandidates', () => {
       [member('旧', { lines: null, eggGameIds: new Set([400, 100]) })],
     );
     expect(result.map((item) => item.eggGameId)).toEqual([100]);
+  });
+
+  test('多形态蛋的候选名带形态，不退化为基础名', () => {
+    const result = findStudDemandCandidates(
+      { groupId: 2, nature: '固执', body: '大块头', voice: '+100' },
+      species,
+      index,
+      [member('甲', { lines: [{ eggGameId: 201, grade: '大婉', natures: ['固执'] }] })],
+    );
+    expect(result[0].name).toBe('雪绒鸟_夏天的样子');
   });
 });
