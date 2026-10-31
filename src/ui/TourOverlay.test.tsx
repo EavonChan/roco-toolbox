@@ -90,6 +90,22 @@ describe('新手引导', () => {
     expect(screen.getByTestId('tour-card')).toBeTruthy();
   });
 
+  test('目标滑到屏幕外时，说明卡仍留在屏幕内', async () => {
+    const anchor = document.createElement('div');
+    anchor.setAttribute('data-tour', 'offscreen-anchor');
+    anchor.getBoundingClientRect = () =>
+      ({ top: -220, bottom: -170, left: 0, right: 100, width: 100, height: 50, x: 0, y: -220 }) as DOMRect;
+    document.body.appendChild(anchor);
+
+    render(
+      <TourOverlay steps={[{ id: 'a', title: '离屏', body: '目标已经滑出屏幕', anchor: 'offscreen-anchor' }]} onClose={() => {}} />,
+    );
+    await waitFor(() => expect(screen.getByTestId('tour-spotlight')).toBeTruthy());
+
+    const card = screen.getByTestId('tour-card');
+    expect(Number.parseFloat(card.style.top)).toBeGreaterThanOrEqual(12);
+  });
+
   test('进入每一步都会通知 App 切页面', () => {
     const onEnter = vi.fn();
     render(<TourOverlay steps={TOUR_STEPS} onClose={() => {}} onEnter={onEnter} />);

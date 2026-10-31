@@ -135,7 +135,11 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
     const placeAbove = below + TOOLTIP_ESTIMATED_HEIGHT > window.innerHeight - 12 && above > 12;
     return {
       left: Math.min(Math.max(12, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 12),
-      top: placeAbove ? above : Math.min(below, window.innerHeight - TOOLTIP_ESTIMATED_HEIGHT - 12),
+      // 目标滑到屏幕外时，卡片也要留在屏幕内（否则「下一步」会跟着滑出去，用户以为卡死）
+      top: Math.max(
+        12,
+        placeAbove ? above : Math.min(below, window.innerHeight - TOOLTIP_ESTIMATED_HEIGHT - 12),
+      ),
       width,
     };
   }, [rect]);
