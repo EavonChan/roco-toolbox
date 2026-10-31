@@ -714,8 +714,8 @@ async function handleRemoveMember(
   if (group.ownerAccountId !== accountId) {
     return failCode(origin, 403, 'NOT_OWNER', '只有组长可以移除组员');
   }
-  if (!memberAccountId || memberAccountId === accountId) {
-    return failCode(origin, 400, 'INVALID_INPUT', '不能移除组长自己；退出请用解散小组');
+  if (!memberAccountId || memberAccountId.length > GROUP_ID_MAX || memberAccountId === accountId) {
+    return failCode(origin, 400, 'INVALID_INPUT', '成员账号无效；不能移除组长自己');
   }
   if (!(await isMember(env.DB, groupId, memberAccountId))) {
     return failCode(origin, 404, 'MEMBER_NOT_FOUND', '该成员已经不在小组');
