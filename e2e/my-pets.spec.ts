@@ -40,59 +40,44 @@ test('我的精灵页：卡片展示与标签叠加筛选', async ({ page }) => 
   await expect(page.getByTestId('pet-filters-selected')).toHaveCount(0);
 });
 
-test('种公视角：只列真正覆盖了目标的种公，支持四档筛选', async ({ page }) => {
+test('种公入口落到种公阵列：只列覆盖目标的种公，档位跟全局目标', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
-  await page.getByTestId('collection-kind-inventory').click();
 
-  // 种公视角：fixture 里只有「火花」是 大块头 + 100dB + 公 + 固执 → 覆盖魔力组/巨灵组的固执
-  await page.getByRole('button', { name: '合格种公', exact: true }).click();
-  await expect(page.getByTestId('stud-view-hint')).toContainText('档位达标');
-  await expect(page.getByText('火花')).toBeVisible();
-  await expect(page.getByText('机械方方')).toHaveCount(0);
-  // 种公按账号聚拢：出现账号分组标题（2026-10-05）
-  await expect(page.getByTestId('account-section').first()).toBeVisible();
-  // 卡片上不再标「命中了哪些组×性格」
-  await expect(page.getByTestId('pet-card-note')).toHaveCount(0);
+  // 2026-10-29「合格种公」视图已删：种公统一在「收集 · 种公」的种公阵列里看
+  await page.getByTestId('collection-kind-studs').click();
+  await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('stud-matrix')).toBeVisible();
 
-  // 档位筛选（手风琴，与全部页一致）：火花是满分大婉；只看「小婉」→ 名单为空，取消后回来
-  await page.getByTestId('filter-tile-studGrade').click();
-  await page.getByTestId('filter-opt-studGrade-小婉').click();
-  await expect(page.getByTestId('stud-empty')).toBeVisible();
-  await page.getByTestId('filter-opt-studGrade-小婉').click();
-  await expect(page.getByText('火花')).toBeVisible();
+  // 档位是全局目标（默认满分 → 大婉），阵列顶部 tab 必须是选中态
+  await expect(page.getByTestId('stud-matrix-grade-大婉')).toHaveAttribute('aria-pressed', 'true');
 
-  // 种公视角下不再出现标签筛选区
-  await expect(page.getByTestId('pet-filters')).toHaveCount(0);
+  // 只列真正覆盖了目标的种公：代表格是带「共 N 只」的可点按钮（fixture 里只有火花达标）
+  const repCell = page.getByRole('button', { name: /种公 .*共 \d+ 只/ }).first();
+  await expect(repCell).toBeVisible();
+  await expect(repCell).toContainText('火花');
 });
 
-test('种公视角：非目标性格的合格公默认也在名单里，性格可筛', async ({ page }) => {
+test('种公阵列：性格筛选决定阵列的列，清空后回到未选提示', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-offtarget-stud.json');
+  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
-  await page.getByTestId('collection-kind-inventory').click();
-  await page.getByRole('button', { name: '合格种公', exact: true }).click();
 
-  // 「满分小婉 · 懒散」的公：懒散不在任何目标性格池里，但必须出现（此前会凭空消失）
-  await expect(page.getByText('梦游_穿旧睡衣的样子')).toBeVisible();
-  await expect(page.getByTestId('stud-view-hint')).toContainText('档位达标');
-  // 种公按账号聚拢：出现账号分组标题
-  await expect(page.getByTestId('account-section').first()).toBeVisible();
+  await page.getByTestId('collection-kind-studs').click();
+  await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('stud-matrix')).toBeVisible();
 
-  // 性格筛选（手风琴）：展开「性格」→ 点「固执」→ 被筛掉；取消 → 回来
-  await page.getByTestId('filter-tile-studNature').click();
-  await page.getByTestId('filter-opt-studNature-固执').click();
-  await expect(page.getByText('梦游_穿旧睡衣的样子')).toHaveCount(0);
-  await page.getByTestId('filter-opt-studNature-固执').click();
-  await expect(page.getByText('梦游_穿旧睡衣的样子')).toBeVisible();
+  // 筛收取在阵列右上角：切自选性格 → 勾「固执」→ 阵列出现「固执」列；取消 → 回到未选提示
+  await page.getByTestId('stud-matrix-filter-toggle').click();
+  await page.getByTestId('nature-mode-custom').click();
+  await page.getByTestId('custom-nature-固执').click();
+  await expect(page.getByRole('columnheader', { name: '固执' })).toBeVisible();
 
-  // 档位筛选（手风琴）：只看「满分大婉」→ 小婉的它被筛掉
-  await page.getByTestId('filter-tile-studGrade').click();
-  await page.getByTestId('filter-opt-studGrade-大婉').click();
-  await expect(page.getByText('梦游_穿旧睡衣的样子')).toHaveCount(0);
+  await page.getByTestId('custom-nature-固执').click();
+  await expect(page.getByTestId('stud-matrix-empty')).toBeVisible();
 });
 
 test('母本页：链清单一链一行（按蛋组分区），搜索即答已收集/未收集，计划不误判已达成', async ({ page }) => {
@@ -101,7 +86,9 @@ test('母本页：链清单一链一行（按蛋组分区），搜索即答已�
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-inventory').click();
-  await page.getByRole('button', { name: '母本', exact: true }).click();
+  // 2026-11-01：页签是「收集 · 母本」的卡片按钮，不再是页内的「母本」文字按钮
+  await page.getByTestId('collection-kind-mothers').click();
+  await expect(page.getByTestId('collection-kind-mothers')).toHaveAttribute('aria-pressed', 'true');
 
   // 链清单：一链一行（按蛋组分区），顶部给整体进度；默认停在「未收集」
   await expect(page.getByTestId('mother-chain-summary')).toContainText('共');
@@ -158,7 +145,9 @@ test('母本页：搜索支持进化链全员命中（搜同链其它形态名�
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-inventory').click();
-  await page.getByRole('button', { name: '母本', exact: true }).click();
+  // 2026-11-01：同上，入口是「收集 · 母本」页签
+  await page.getByTestId('collection-kind-mothers').click();
+  await expect(page.getByTestId('collection-kind-mothers')).toHaveAttribute('aria-pressed', 'true');
 
   // 火花链里有 火神/焰火/烈火战神 等形态名；搜「火神」应命中「火花」那条链
   const search = page.getByTestId('mother-search');
@@ -248,21 +237,23 @@ test('搜索按进化链全员命中：搜同链的其它形态名也能搜到�
   await expect(page.getByText('机械方方')).toBeVisible();
 });
 
-test('种公视角：搜索按进化链全员命中', async ({ page }) => {
+test('搜索按进化链命中并给空态提示（原「合格种公」搜索入口 2026-10-29 已删）', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
-  await page.getByTestId('collection-kind-inventory').click();
-  await page.getByRole('button', { name: '合格种公', exact: true }).click();
 
-  // 火花是 fixture 里唯一的合格种公；搜它同链的进化形态名「烈火战神」也要命中
-  const search = page.getByTestId('stud-search');
+  // 种公名单连同它的搜索框一起下线；搜索能力仍在精灵背包，这里守「搜得到 + 搜不到有提示」
+  await page.getByTestId('collection-kind-inventory').click();
+  await expect(page.getByTestId('collection-kind-inventory')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('pet-name-search')).toBeVisible();
+
+  const search = page.getByTestId('pet-name-search');
   await search.fill('火神');
   await expect(page.getByText('火花')).toBeVisible();
 
   await search.fill('不存在的名字XYZ');
-  await expect(page.getByTestId('stud-empty')).toBeVisible();
+  await expect(page.getByText('没有符合条件的精灵，试试取消部分标签。')).toBeVisible();
   await expect(page.getByText('火花')).toHaveCount(0);
 });
 
