@@ -409,6 +409,24 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
             markedCount > 0 ? `（已标记 ${markedCount}）` : ''
           } · ${petCount} 只精灵`;
 
+  /** 读取失败的统一入口：全部失败与「有一个组失败」都给重试，不再只剩一行黄字。 */
+  const renderError = () => (
+    <div className="space-y-1.5 rounded-xl bg-amber-50 p-3" data-testid="home-demand-error">
+      <p className="text-xs text-amber-800">{error}</p>
+      {items.length > 0 ? (
+        <p className="text-[11px] text-amber-700">下面是上一次读到的单，重试可补齐。</p>
+      ) : null}
+      <button
+        type="button"
+        onClick={reload}
+        className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] text-amber-800"
+        data-testid="home-demand-retry"
+      >
+        重试
+      </button>
+    </div>
+  );
+
   return (
     <section
       className={`${CARD} space-y-2`}
@@ -432,24 +450,17 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
         <p className={HINT} data-testid="home-demand-loading">
           正在读取接单…
         </p>
-      ) : error && items.length === 0 ? (
-        <div className="space-y-1.5 rounded-xl bg-amber-50 p-3" data-testid="home-demand-error">
-          <p className="text-xs text-amber-800">{error}</p>
-          <button
-            type="button"
-            onClick={reload}
-            className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] text-amber-800"
-          >
-            重试
-          </button>
-        </div>
       ) : items.length === 0 ? (
-        <p className={`${HINT} rounded-xl bg-slate-50 p-3`} data-testid="home-demand-empty">
-          你还没有接单。去「小组 → 需求中心 → 我能接的」接一单，这里就会出现要上窝的母本和种公。
-        </p>
+        error ? (
+          renderError()
+        ) : (
+          <p className={`${HINT} rounded-xl bg-slate-50 p-3`} data-testid="home-demand-empty">
+            你还没有接单。去「小组 → 需求中心 → 我能接的」接一单，这里就会出现要上窝的母本和种公。
+          </p>
+        )
       ) : (
         <>
-          {error ? <p className="text-[11px] text-amber-700">{error}</p> : null}
+          {error ? renderError() : null}
           {withPlacements.length === 0 ? (
             <p className={`${HINT} rounded-xl bg-slate-50 p-3`} data-testid="home-demand-nothing-placeable">
               已接的单在本机都排不上配对，原因见下方。

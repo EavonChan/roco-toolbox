@@ -337,6 +337,21 @@ describe('家园 · 接单上窝', () => {
     expect(screen.getByTestId('home-demand-signed-out')).toHaveTextContent('开启云同步');
   });
 
+  test('有一个小组读失败时也能重试，并保留已读到的单', () => {
+    h.state.items = [demandItem()];
+    h.state.error = '2 个小组读取失败，先显示已读到的单';
+    h.state.reload = vi.fn();
+    renderPanel([
+      pet({ gameId: egg.gameId, gender: '母', captureId: 'cap_academy' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公' }),
+    ]);
+
+    expect(screen.getByTestId('home-demand-error')).toHaveTextContent('重试');
+    expect(screen.getByTestId('home-demand-row')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('home-demand-retry'));
+    expect(h.state.reload).toHaveBeenCalled();
+  });
+
   test('没有接单时给出去需求中心接单的指引', () => {
     h.state.items = [];
     renderPanel([]);
