@@ -11,6 +11,7 @@ import type { CoverageSlot } from '../domain/studCoverage';
 import type { StudRecommendation } from '../domain/suggestions';
 import { recommendedNaturesForSpecies } from '../domain/studRecommendations';
 import { isBreedableGroup } from '../domain/eggs';
+import { rarityIcon } from '../domain/petIcons';
 import { speciesDisplayName } from '../domain/speciesName';
 import type { OwnedPet, SpeciesEntry } from '../domain/types';
 import type { DemandBody, DemandVoice } from '../shared/collectionGroups';
@@ -86,12 +87,21 @@ interface CellRecommendation {
 }
 
 /**
- * 格子里的名字（2026-10-28 用户口径）：名字太长时不展示形态，只留 `_` 前的基础名。
- * 例：`雪绒鸟_夏天的样子` → `雪绒鸟`；短名字原样保留。
+ * 炫彩角标（2026-11-01 R2-5-L01）：头像按「只有异色用异色立绘」取值（炫彩传 false），
+ * 导致炫彩种公在阵列 / 换代表弹层里与普通种公没有区别，这里补一个右上角稀有度角标
+ * （图标与紧凑卡同一套，见 petIcons.rarityIcon）。
+ */
+const rarityBadge = (isShiny: boolean, isColorful: boolean): string | null =>
+  isColorful ? rarityIcon(isShiny ? 'shiny-colorful' : 'colorful') : null;
+
+/**
+ * 格子里的名字（2026-10-28 用户口径）：不展示形态，只留 `_` 前的基础名。
+ * 例：`雪绒鸟_夏天的样子` → `雪绒鸟`；`棋骑士_白子` → `棋骑士`；没有形态的原样保留。
+ * 2026-11-01 R2-5-L04：不再按整串长度判断——总长正好 6 的形态名会被漏掉，长度交给 CSS truncate。
  */
 export function studMatrixCellName(name: string): string {
   const base = name.split('_')[0] ?? name;
-  return name.length > 6 && base !== name ? base : name;
+  return base !== name ? base : name;
 }
 
 /**
@@ -532,6 +542,7 @@ function MatrixCell({
   }
   const count = cell.candidates.length;
   const cellName = studMatrixCellName(rep.name);
+  const raritySrc = rarityBadge(rep.isShiny, rep.isColorful);
   return (
     <button
       type="button"
@@ -541,12 +552,17 @@ function MatrixCell({
       className="relative flex w-full flex-col items-center justify-center gap-0.5 overflow-hidden rounded bg-emerald-50/50 px-0.5 py-0.5 ring-1 ring-inset ring-emerald-100"
       style={{ height: CELL_HEIGHT }}
     >
-      <PetAvatar
-        gameId={rep.gameId}
-        name={cellName}
-        shiny={rep.isShiny}
-        size={32}
-      />
+      <span className="relative inline-flex">
+        <PetAvatar gameId={rep.gameId} name={cellName} shiny={rep.isShiny} size={32} />
+        {raritySrc ? (
+          <img
+            src={raritySrc}
+            alt=""
+            className="absolute -right-1 -top-1 h-3.5 w-3.5 drop-shadow-sm"
+            data-testid={`stud-cell-rarity-${cell.groupId}-${cell.natureName}`}
+          />
+        ) : null}
+      </span>
       <span
         className="w-full truncate text-center text-[9px] leading-tight text-slate-700"
         title={rep.name}
@@ -604,6 +620,7 @@ function PickerSheet({
         <ul className="mt-2 max-h-[52vh] space-y-1 overflow-y-auto">
           {cell.candidates.map((pet) => {
             const selected = picked ? picked.key === pet.key : auto?.key === pet.key;
+            const raritySrc = rarityBadge(pet.isShiny, pet.isColorful);
             return (
               <li key={pet.key}>
                 <button
@@ -615,12 +632,17 @@ function PickerSheet({
                     selected ? 'bg-emerald-50 ring-1 ring-emerald-500' : 'bg-slate-50'
                   }`}
                 >
-                  <PetAvatar
-                    gameId={pet.gameId}
-                    name={pet.name}
-                    shiny={pet.isShiny}
-                    size={32}
-                  />
+                  <span className="relative inline-flex shrink-0">
+                    <PetAvatar gameId={pet.gameId} name={pet.name} shiny={pet.isShiny} size={32} />
+                    {raritySrc ? (
+                      <img
+                        src={raritySrc}
+                        alt=""
+                        className="absolute -right-1 -top-1 h-3.5 w-3.5 drop-shadow-sm"
+                        data-testid={`stud-picker-rarity-${pet.key}`}
+                      />
+                    ) : null}
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-medium text-slate-800">{pet.name}</span>
                     <span className="block text-[10px] text-slate-500">

@@ -183,6 +183,8 @@ describe('StudMatrix', () => {
   test('名字过长时只显示基础名，不展示形态', () => {
     expect(studMatrixCellName('雪绒鸟_夏天的样子')).toBe('雪绒鸟');
     expect(studMatrixCellName('火花')).toBe('火花');
+    // 总长正好 6 的形态名也要去形态（2026-11-01 R2-5-L04）
+    expect(studMatrixCellName('棋骑士_白子')).toBe('棋骑士');
 
     const longSpecies: SpeciesEntry = {
       key: 'long',
@@ -311,6 +313,31 @@ describe('StudMatrix', () => {
     await waitFor(() =>
       expect(screen.getByTestId('stud-demand-publish-message')).toHaveTextContent('测试组'),
     );
+  });
+
+  test('炫彩种公在格子和换代表弹层里带炫彩角标', () => {
+    render(
+      <StudMatrix
+        slots={slots}
+        owned={[
+          pet({ gameId: 101, nature: '固执', account: '甲', weightPercent: 99, isColorful: true }),
+          ...owned.slice(1),
+        ]}
+        species={species}
+        speciesByGameId={speciesByGameId}
+        eggGroupNames={eggGroupNames}
+        mode="perfect"
+      />,
+    );
+    const cell = screen.getByTestId('stud-cell-2-固执');
+    expect(within(cell).getByTestId('stud-cell-rarity-2-固执')).toHaveAttribute(
+      'src',
+      '/ui/rarity/colorful.png',
+    );
+
+    fireEvent.click(cell);
+    const picker = screen.getByTestId('stud-picker');
+    expect(picker.querySelectorAll('[data-testid^="stud-picker-rarity-"]')).toHaveLength(1);
   });
 
   test('没有候选的目标格显示「缺」', () => {
