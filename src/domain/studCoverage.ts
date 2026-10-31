@@ -37,6 +37,11 @@ export interface CoverageCell extends CoverageSlot {
   state: CoverageState;
   /** 支撑这个格的精灵所属账号（便于用户回游戏里找） */
   owner?: string;
+  /**
+   * 这一格「算数的精灵」（同蛋组 + 同档位），由统计层算好交给明细层（2026-11-01 R2-4-M04）。
+   * 手工构造的旧数据没有该字段时，明细会退回用同一判定现算，不会出现第二套口径。
+   */
+  matched?: OwnedPet[];
 }
 
 export interface StudCoverageResult {
@@ -116,6 +121,41 @@ export function ownerAccountFor(matched: OwnedPet[], slot: CoverageSlot): string
   return matched.find((pet) => pet.gender !== '未知')?.account ?? matched[0]?.account;
 }
 
+/**
+ * 覆盖度用的图鉴索引：精灵 gameId → 可孵蛋组，以及「母方物种能不能出公」。
+ * 统计层与明细层共用一份，避免各自建一份索引、各写一套「哪些精灵属于这一格」（R2-4-M04）。
+ */
+export interface CoverageIndex {
+  gameToEggGroups: Map<number, number[]>;
+  canBreedMale: (pet: OwnedPet) => boolean;
+}
+
+export function buildCoverageIndex(species: SpeciesEntry[]): CoverageIndex {
+  const gameToEggGroups = new Map<number, number[]>();
+  for (const entry of species) {
+    gameToEggGroups.set(entry.gameId, entry.eggGroups.filter(isBreedableGroup));
+  }
+  // 母方物种能不能出公：后代随母方，母方出不了公就永远孵不出种公（`maleCapable` 由管线烘焙）
+  return { gameToEggGroups, canBreedMale: buildCanBreedMale(species) };
+}
+
+/**
+ * 某一格「算数的精灵」：同蛋组 + 档位正好是这个槽位要求的个体（档位含体型要求，声音阈值随模式）。
+ * 覆盖矩阵状态与展开后的精灵明细都只认这一处判定。
+ */
+export function matchedPetsOfCell(
+  owned: OwnedPet[],
+  index: CoverageIndex,
+  slot: Pick<CoverageSlot, 'groupId' | 'grade'>,
+  mode: TargetMode,
+): OwnedPet[] {
+  return owned.filter(
+    (pet) =>
+      classifyGrade(pet, mode) === slot.grade &&
+      (index.gameToEggGroups.get(pet.gameId) ?? []).includes(slot.groupId),
+  );
+}
+
 export function computeStudCoverage(
   slots: CoverageSlot[],
   species: SpeciesEntry[],
@@ -123,26 +163,14 @@ export function computeStudCoverage(
   _eggGroupNames: Record<number, string>,
   mode: TargetMode,
 ): StudCoverageResult {
-  // gameId → 物种蛋组（双蛋组都保留）
-  const gameToEggGroups = new Map<number, number[]>();
-  for (const entry of species) {
-    gameToEggGroups.set(entry.gameId, entry.eggGroups.filter(isBreedableGroup));
-  }
-
-  // 母方物种能不能出公：后代随母方，母方出不了公就永远孵不出种公（`maleCapable` 由管线烘焙）
-  const canBreedMale = buildCanBreedMale(species);
+  const index = buildCoverageIndex(species);
 
   const cells: CoverageCell[] = slots.map((slot) => {
-    // 该蛋组里、且档位正好是这个槽位要求的个体（档位含体型要求，声音阈值随模式）
-    const matched = owned.filter(
-      (pet) =>
-        classifyGrade(pet, mode) === slot.grade &&
-        (gameToEggGroups.get(pet.gameId) ?? []).includes(slot.groupId),
-    );
-
+    const matched = matchedPetsOfCell(owned, index, slot, mode);
     return {
       ...slot,
-      state: cellStateFor(matched, slot, canBreedMale),
+      matched,
+      state: cellStateFor(matched, slot, index.canBreedMale),
       owner: ownerAccountFor(matched, slot),
     };
   });

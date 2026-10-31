@@ -1,8 +1,12 @@
-import { classifyGrade, type PetGrade, type TargetMode } from './petFilters';
-import { isBreedableGroup } from './eggs';
-import { buildCanBreedMale } from './breedAbility';
+import type { PetGrade, TargetMode } from './petFilters';
+import {
+  buildCoverageIndex,
+  matchedPetsOfCell,
+  type CoverageCell,
+  type CoverageIndex,
+  type CoverageState,
+} from './studCoverage';
 import { speciesDisplayName } from './speciesName';
-import type { CoverageCell, CoverageState } from './studCoverage';
 import type { OwnedPet, SpeciesEntry } from './types';
 
 export interface PetRef {
@@ -74,33 +78,26 @@ export function describeCoverageCells(input: CoverageDetailInput): CoverageCellD
   const { cells, species, owned, mode } = input;
 
   const speciesByGameId = new Map<number, SpeciesEntry>();
-  const groupsByGameId = new Map<number, number[]>();
-  for (const entry of species) {
-    speciesByGameId.set(entry.gameId, entry);
-    groupsByGameId.set(
-      entry.gameId,
-      (entry.eggGroups ?? []).filter(isBreedableGroup),
-    );
-  }
-  const inGroup = (pet: OwnedPet, groupId: number): boolean =>
-    (groupsByGameId.get(pet.gameId) ?? []).includes(groupId);
-  /** 母方物种能不能出公（后代随母方，出不了公就永远孵不出种公） */
-  const canBreedMale = buildCanBreedMale(species);
+  for (const entry of species) speciesByGameId.set(entry.gameId, entry);
+  /**
+   * 图鉴索引与「哪些精灵属于这一格」只在 studCoverage 有一份：
+   * 统计层把匹配结果放进 `cell.matched`，这里直接用；只有手工构造的旧数据才按同一判定现算（R2-4-M04）。
+   */
+  let index: CoverageIndex | null = null;
+  const indexOf = (): CoverageIndex => (index ??= buildCoverageIndex(species));
   const labelFor = (pet: OwnedPet): string =>
     speciesDisplayName(speciesByGameId.get(pet.gameId), pet.name);
 
   return cells.map((cell) => {
     // 该蛋组里、档位正好是这个槽位要求的个体
-    const matched = owned.filter(
-      (pet) => inGroup(pet, cell.groupId) && classifyGrade(pet, mode) === cell.grade,
-    );
+    const matched = cell.matched ?? matchedPetsOfCell(owned, indexOf(), cell, mode);
 
     const studs = matched
       .filter((pet) => pet.gender === '公' && pet.nature === cell.natureName)
       .map((pet) => toRef(pet, labelFor(pet)));
     // 母本必须**自带这个性格**、且**她这物种能出公**（后代随母方，出不了公就孵不出种公）
     const mother = matched.find(
-      (pet) => pet.gender === '母' && pet.nature === cell.natureName && canBreedMale(pet),
+      (pet) => pet.gender === '母' && pet.nature === cell.natureName && indexOf().canBreedMale(pet),
     );
     // 学院小窝那一对必须**同账号**（2026-10-07 修）：不同账号的精灵不能一起孵蛋，
     // 之前是在全账号混池里各挑一只，会把两个账号的精灵配成一对（假的「可迭代」）。
@@ -117,7 +114,7 @@ export function describeCoverageCells(input: CoverageDetailInput): CoverageCellD
       }
       for (const pets of byAccount.values()) {
         const parent = pets.find(
-          (pet) => pet.nature === cell.natureName && pet.gender !== '未知' && canBreedMale(pet),
+          (pet) => pet.nature === cell.natureName && pet.gender !== '未知' && indexOf().canBreedMale(pet),
         );
         if (!parent) continue;
         const mate = pets.find(

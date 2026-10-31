@@ -27,6 +27,24 @@ const cell = (state: CoverageCell['state'], natureName = '固执'): CoverageCell
 });
 
 describe('describeCoverageCells', () => {
+  test('格子自带「算数的精灵」时直接用它，不再按条件重算（与统计层同源）', () => {
+    // 统计层算好的 matched 就是唯一口径：明细若还自己按「蛋组 + 档位」现筛，
+    // 两处口径迟早走偏（格子显示已通、展开却列不出种公）。R2-4-M04
+    const mother = pet({ gameId: 901, name: '母方兽', gender: '母', nature: '固执', account: '甲' });
+    const father = pet({ gameId: 902, name: '种公兽', gender: '公', account: '甲' });
+    const [detail] = describeCoverageCells({
+      cells: [{ ...cell('breedable'), matched: [mother, father] }],
+      species,
+      mode: 'perfect',
+      // owned 故意给空：若明细还在自己筛，就什么也列不出来
+      owned: [],
+    });
+
+    expect(detail.mother?.name).toBe('母方兽');
+    expect(detail.academyParent?.name).toBe('母方兽');
+    expect(detail.partner?.name).toBe('种公兽');
+  });
+
   test('可直接迭代：报出那两只精灵（含账号与盒子位置）', () => {
     const mother = pet({
       gameId: 901,
