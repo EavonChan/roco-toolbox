@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { listCollectionGroups, publishCollectionDemand } from '../api/collectionGroups';
-import { ALL_EGG_GROUP_IDS } from '../domain/coverageTargets';
+import { ALL_EGG_GROUP_IDS, groupRecommendedNatures } from '../domain/coverageTargets';
 import { describeCoverageCells } from '../domain/coverageDetail';
 import { TARGET_MODE_LABELS } from '../domain/petFilters';
-import { eggGroupNames, allNatureNames, species, targetNatureNames, targetNaturePool } from '../data/catalog';
+import { eggGroupNames, allNatureNames, species, targetNatures, targetNatureNames, targetNaturePool } from '../data/catalog';
 import { AccountFilterBar } from './AccountFilterBar';
 import { CollectionTargetEditor } from './CollectionTargetEditor';
 import { useOwnedPets } from './useOwnedPets';
@@ -49,6 +49,23 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
 
   const filter = useCoverageFilter();
   const slots = useCoverageSlots();
+  /**
+   * 「筛选与默认值不同」圆点（2026-11-01 R2-4-L03 补）：除了蛋组少选与自选模式，
+   * 推荐模式下在蛋组展开区改过本组性格也算偏离默认，与 StudMatrix 的注释契约对齐。
+   */
+  const filterActive = useMemo(() => {
+    if (filter.groupIds.length < ALL_EGG_GROUP_IDS.length) return true;
+    if (filter.natureMode === 'custom') return true;
+    const defaults = groupRecommendedNatures(targetNatures);
+    return ALL_EGG_GROUP_IDS.some((groupId) => {
+      const current = filter.naturesByGroup[groupId] ?? [];
+      const baseline = defaults[groupId] ?? [];
+      return (
+        current.length !== baseline.length ||
+        current.some((name) => !baseline.includes(name))
+      );
+    });
+  }, [filter]);
   const speciesByGameId = useMemo(
     () => new Map(species.map((entry) => [entry.gameId, entry])),
     [],
@@ -147,9 +164,7 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
             onPublishStudDemand={publishStudDemand}
             filterOpen={filtersOpen}
             onToggleFilter={() => setFiltersOpen((open) => !open)}
-            filterActive={
-              filter.groupIds.length < ALL_EGG_GROUP_IDS.length || filter.natureMode === 'custom'
-            }
+            filterActive={filterActive}
             filterPanel={
               <>
                 <CoverageFilterBar
