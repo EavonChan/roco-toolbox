@@ -26,6 +26,10 @@ import {
 export type MotherStoreErrorCode =
   | 'GROUP_NOT_FOUND'
   | 'NOT_MEMBER'
+  /** 组长要移除的成员已经不在小组（404）；`NOT_MEMBER` 只表示「你不是该组成员」（403）。 */
+  | 'MEMBER_NOT_FOUND'
+  /** 小组类型与本次操作不匹配（例如往母本组发布种公摘要），不再借 `GROUP_NOT_FOUND`。 */
+  | 'GROUP_TYPE_MISMATCH'
   | 'NOT_OWNER'
   | 'GROUP_FULL'
   | 'REVISION_CONFLICT'

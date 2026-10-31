@@ -18,6 +18,8 @@ export const IP_PROBE_LIMIT = 120;
 export const STORE_STATUS: Record<MotherStoreErrorCode, number> = {
   GROUP_NOT_FOUND: 404,
   NOT_MEMBER: 403,
+  MEMBER_NOT_FOUND: 404,
+  GROUP_TYPE_MISMATCH: 409,
   NOT_OWNER: 403,
   GROUP_FULL: 409,
   REVISION_CONFLICT: 409,

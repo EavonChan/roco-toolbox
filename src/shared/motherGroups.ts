@@ -207,8 +207,10 @@ export interface MotherCoverageRow {
 export const MOTHER_API_ERROR_CODES = [
   'UNAUTHENTICATED',
   'NOT_MEMBER',
+  'MEMBER_NOT_FOUND',
   'NOT_OWNER',
   'GROUP_NOT_FOUND',
+  'GROUP_TYPE_MISMATCH',
   'GROUP_FULL',
   'INVALID_INPUT',
   'PAYLOAD_TOO_LARGE',
