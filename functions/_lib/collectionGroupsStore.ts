@@ -973,7 +973,8 @@ async function removeMemberCleanup(
           WHERE group_id = ? AND claimer_account_id = ? AND status = 'claimed'`,
       )
       .bind(now, groupId, accountId),
-    // 成员离开改变了组内资源集合：递增 epoch，让按 epoch 失效缓存的客户端能重新拉取
+    // 成员离开改变了组内资源集合：递增 epoch。注意：客户端目前**没有**消费这个字段
+    // （缓存失效靠整份重拉），这里只是预留，别把它当成已生效的失效信号（R2-7-L03）
     db
       .prepare(
         `UPDATE collection_group_configs
