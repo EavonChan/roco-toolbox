@@ -76,7 +76,7 @@ import { SearchField } from './primitives/SearchField';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { StateNotice } from './primitives/StateNotice';
 import { GenderMark } from './GenderMark';
-import { readDemandPicks, writeDemandPicks, type DemandPicks } from './demandPickStore';
+import { demandPickKey, readDemandPicks, writeDemandPicks, type DemandPicks } from './demandPickStore';
 import { completionReadKey, markCompletionRead, readCompletionRead } from './demandCompletionReadStore';
 
 /**
@@ -1147,6 +1147,10 @@ export function MotherGroupResources({
   const demandKey = (demand: CollectionDemand): string =>
     `${demand.demanderAccountId}:${demandKeyOf(demand)}`;
 
+  /** 选蛋记忆的键带小组：同内容需求发到多个组时各自记各自的蛋（2026-11-01 审查 R2-3-M01）。 */
+  const pickKeyOf = (demand: CollectionDemand): string =>
+    demandPickKey(group.group.id, demand);
+
   /** 当前打开的需求；需求被刷新/删除后自动收起，不展示过期内容。 */
   const detailDemand = detailKey
     ? demands.find((demand) => demandKey(demand) === detailKey) ?? null
@@ -1229,7 +1233,7 @@ export function MotherGroupResources({
   const representativeOf = (demand: CollectionDemand): StudDemandCandidate | null => {
     const list = candidatesOf(demand);
     if (list.length === 0) return null;
-    const picked = demandPicks[demandKey(demand)];
+    const picked = demandPicks[pickKeyOf(demand)];
     return list.find((item) => item.eggGameId === picked) ?? list[0];
   };
 
@@ -1276,7 +1280,7 @@ export function MotherGroupResources({
 
 
   const pickDemandEgg = (demand: CollectionDemand, eggGameId: number) => {
-    const next = { ...demandPicks, [demandKey(demand)]: eggGameId };
+    const next = { ...demandPicks, [pickKeyOf(demand)]: eggGameId };
     setDemandPicks(next);
     writeDemandPicks(next);
   };
@@ -1385,7 +1389,7 @@ export function MotherGroupResources({
     if (isStudDemandKey(demand.eggGameId)) {
       const groupName = eggGroupNames[-demand.eggGameId] ?? `蛋组${-demand.eggGameId}`;
       const list = detailPairOptions.stud;
-      const picked = demandPicks[demandKey(demand)];
+      const picked = demandPicks[pickKeyOf(demand)];
       const active = list.find((item) => item.eggGameId === picked) ?? list[0] ?? null;
       if (!active) {
         return (
@@ -1445,7 +1449,7 @@ export function MotherGroupResources({
     if (isStudDemandKey(demand.eggGameId)) {
       const list = detailPairOptions.stud;
       if (list.length < 2) return null;
-      const picked = demandPicks[demandKey(demand)];
+      const picked = demandPicks[pickKeyOf(demand)];
       const activeId =
         list.find((item) => item.eggGameId === picked)?.eggGameId ?? list[0].eggGameId;
       return (

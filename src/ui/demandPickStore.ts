@@ -4,9 +4,22 @@
  * 需求本身只记蛋组，具体用组内哪一枚蛋 / 哪只精灵去接由本机选，
  * 不上传服务端：换手机或清缓存会回到「双蛋组优先」的第一颗。
  */
+import { demandKeyOf, type DemandCriteria } from '../shared/collectionGroups';
+
 const KEY = 'roco.demandPick';
 
 export type DemandPicks = Record<string, number>;
+
+/**
+ * 选蛋记忆的键：小组 + 需求方 + 需求内容（2026-11-01 代码审查 R2-3-M01）。
+ * 不带小组时，同一需求方把同内容种公需求发到多个组会互相回显。
+ */
+export function demandPickKey(
+  groupId: string,
+  demand: DemandCriteria & { demanderAccountId: string },
+): string {
+  return `${groupId}|${demand.demanderAccountId}:${demandKeyOf(demand)}`;
+}
 
 export function readDemandPicks(): DemandPicks {
   if (typeof window === 'undefined') return {};

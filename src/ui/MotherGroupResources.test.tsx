@@ -1913,6 +1913,8 @@ describe('MotherGroupResources 三视图', () => {
     fireEvent.click(within(list).getByTestId('stud-candidate-pick-901'));
     expect(within(list).getByTestId('stud-candidate-pick-901')).toHaveTextContent('已选');
     expect(within(detail).getByTestId('mother-demand-pair-advice')).toHaveTextContent('测试蛋甲');
+    // 选蛋键带小组（R2-3-M01）：同内容需求发到别的组不会读到这条选择
+    expect(window.localStorage.getItem('roco.demandPick')).toContain('g1|B');
   });
 
   test('需求方结单后，承接人看到完成回执，点「知道了」后不再提示', () => {
