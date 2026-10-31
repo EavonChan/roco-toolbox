@@ -66,6 +66,14 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
       );
     });
   }, [filter]);
+  /**
+   * 收起的「更多」里已经勾上的池外性格（2026-11-01 R2-4-M03）：
+   * 收起后这些性格仍然参与覆盖矩阵 / 种公阵列，界面上必须还能看见，否则就是「看不见却生效」。
+   */
+  const hiddenCustomNatures = useMemo(
+    () => filter.customNatures.filter((name) => !targetNatureNames.includes(name)),
+    [filter.customNatures],
+  );
   const speciesByGameId = useMemo(
     () => new Map(species.map((entry) => [entry.gameId, entry])),
     [],
@@ -242,6 +250,12 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
                           </button>
                         ) : null}
                       </div>
+                      {/* 收起「更多」时，池外已选的性格仍生效 → 用一行只读摘要让人看得见（R2-4-M03） */}
+                      {!customMore && hiddenCustomNatures.length > 0 ? (
+                        <p className="mt-1 text-xs text-slate-400" data-testid="custom-natures-hidden">
+                          更多里已选：{hiddenCustomNatures.join('、')}（点上面「更多」可改）
+                        </p>
+                      ) : null}
                       <button
                         type="button"
                         onClick={toggleAllCustomNatures}
