@@ -250,9 +250,9 @@ describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
     vi.useFakeTimers();
     try {
       vi.mocked(api.getCollectionGroupVersion).mockResolvedValue({
-        detail: 5,
-        demands: 5,
-        tasks: 5,
+        detail: '5',
+        demands: '5',
+        tasks: '5',
       });
       window.localStorage.setItem(
         'roco.collectionGroups:B',
