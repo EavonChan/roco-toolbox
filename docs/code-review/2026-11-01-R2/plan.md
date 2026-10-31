@@ -376,7 +376,9 @@ R2-7 与其余批次无文件重叠，可随时插入并行；R2-9 只碰 `TourO
 - ✅ 旧轮 22 项遗留：按「先复核再定」处理——R2-7 先出复核表（仍成立 / 已顺手修掉 / 已不适用），再定实际要修多少
 - ✅ **B3-U01 / B4-U02（D1 外键）已实测**（2026-11-01，用户批准，用一次性临时库，已清理）：
   `npx wrangler d1 execute roco-toolbox-db --local --persist-to <临时目录> --command "PRAGMA foreign_keys;"` → **`foreign_keys = 1`**。
-  配合 [functions/schema.sql](file:///d:/desk/洛克工具箱/functions/schema.sql) 里已声明的 11 处 `ON DELETE CASCADE`（第 80/88/89/114/131/149/162/168/188/193/215 行），结论是：
-  **级联删除在本地 D1 上是真实生效的，不是配置问题。** 因此上一轮担心的「删成员/删组会连带删掉已完成的需求行、导致已结单数倒退」属于**设计缺陷而非环境差异**，
-  R2-7 复核时必须确认 `demand_completions` 是否独立留存快照、能否脱离 `demands` 行存在；若不能，按高风险处理。
+  配合 [functions/schema.sql](file:///d:/desk/洛克工具箱/functions/schema.sql) 的 `ON DELETE CASCADE`，**级联删除确实生效**。
+  但进一步核对后发现，上一轮担心的「删成员会丢掉已结单」**已经不存在**了：
+  - `collection_group_demand_completions`（[schema.sql:204](file:///d:/desk/洛克工具箱/functions/schema.sql#L200-L216)）**只挂 `group_id`、不挂成员行**，注释写明「成员退出 / 被移除 / 注销都不再删除已结单凭据」；[collectionGroupsStore.ts:1598](file:///d:/desk/洛克工具箱/functions/_lib/collectionGroupsStore.ts#L1596-L1619) 也是「活动行 + 归档行」合并返回。
+  - 因此**移除组员不会让已结单数减少**；只有**删除整个小组**才会连带清掉该组的归档行（schema.sql:215），语义上可接受。
+  - 仍然真实存在的行为：移除组员会级联删除他**未完成**的需求（open / claimed），承接人会静默失去任务——这是有意设计（[collectionGroups.ts:753](file:///d:/desk/洛克工具箱/functions/_lib/collectionGroups.ts#L753) 注释「会取消他未完成的需求」），是否要给承接人提示，留给 R2-7 判断。
 - ⏳ **R2-3 的业务口径**：需求结单后能否再发同一条——旧提问随 `MotherGroupResources` 重写而作废，需在新代码上重新确认
