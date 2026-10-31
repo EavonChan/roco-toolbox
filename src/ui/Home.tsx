@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { species } from '../data/catalog';
 import type { AccountSnapshot } from '../domain/parseBackup';
 import type { HomeResident, HomeSnapshot, OwnedPet } from '../domain/types';
@@ -270,10 +270,14 @@ const readHomeView = (): HomeView => {
   return window.localStorage.getItem(HOME_VIEW_KEY) === 'demands' ? 'demands' : 'nests';
 };
 
+/** 已挂载的家园页：外部改了分页要立刻跟着切，不能等重新挂载（新手引导用）。 */
+const homeViewListeners = new Set<(view: HomeView) => void>();
+
 /** 新手引导要直接把家园切到某一页（导航合同不管页内分页）。 */
 export function saveHomeView(view: HomeView): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(HOME_VIEW_KEY, view);
+  for (const listener of homeViewListeners) listener(view);
 }
 
 /**
@@ -289,6 +293,13 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
   const visible = snapshots.filter((snapshot) => !excluded.has(labelOf(snapshot)));
   const withHome = visible.filter((snapshot) => snapshot.home);
   const [view, setView] = useState<HomeView>(() => readHomeView());
+  // 新手引导等外部调用 saveHomeView 时，已挂载的家园页要立刻跟着切分页
+  useEffect(() => {
+    homeViewListeners.add(setView);
+    return () => {
+      homeViewListeners.delete(setView);
+    };
+  }, []);
 
   const changeView = (next: string) => {
     const target: HomeView = next === 'demands' ? 'demands' : 'nests';

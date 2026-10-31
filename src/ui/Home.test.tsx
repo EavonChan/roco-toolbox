@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { AccountSnapshot } from '../domain/parseBackup';
 import { clearAccountFilter, toggleAccount } from './accountFilterStore';
-import { HomeLand } from './Home';
+import { HomeLand, saveHomeView } from './Home';
 
 const h = vi.hoisted(() => ({
   snapshots: [] as AccountSnapshot[],
@@ -263,5 +263,16 @@ describe('家园页', () => {
 
     fireEvent.click(screen.getByTestId('home-view-nests'));
     expect(screen.getByTestId('home-residents')).toBeTruthy();
+  });
+
+  test('外部切分页（新手引导）时，已挂载的家园页跟着切，不用重新挂载', () => {
+    h.snapshots = [snapshotWithHome()];
+    render(<HomeLand />);
+
+    expect(screen.getByTestId('home-residents')).toBeTruthy();
+    act(() => saveHomeView('demands'));
+    expect(screen.getByTestId('home-view-demands')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('home-demand-placements')).toBeTruthy();
+    expect(screen.queryByTestId('home-residents')).toBeNull();
   });
 });
