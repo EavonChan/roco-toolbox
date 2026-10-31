@@ -224,7 +224,6 @@ export default function App() {
       ) : (
         <Collection
           location={collection}
-          focusRevision={navigation.focusRevision}
           onNavigate={navigate}
           expandedGroupId={expandedGroupId}
           onToggleGroup={setExpandedGroupId}

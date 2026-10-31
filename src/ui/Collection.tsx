@@ -10,7 +10,6 @@ import { useCollectionSummary } from './useCollectionSummary';
 
 export interface CollectionProps {
   location: CollectionLocation;
-  focusRevision: number;
   onNavigate: (intent: NavigationIntent) => void;
   expandedGroupId?: number | null;
   onToggleGroup?: (groupId: number | null) => void;

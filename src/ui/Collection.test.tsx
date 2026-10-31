@@ -24,7 +24,6 @@ describe('Collection（收集）', () => {
     render(
       <Collection
         location={{ kind: 'mothers', status: 'missing' }}
-        focusRevision={0}
         onNavigate={onNavigate}
       />,
     );
@@ -38,7 +37,6 @@ describe('Collection（收集）', () => {
     render(
       <Collection
         location={{ kind: 'studs', view: 'coverage' }}
-        focusRevision={0}
         onNavigate={onNavigate}
       />,
     );
@@ -52,7 +50,6 @@ describe('Collection（收集）', () => {
     render(
       <Collection
         location={{ kind: 'inventory' }}
-        focusRevision={0}
         onNavigate={onNavigate}
       />,
     );
@@ -70,7 +67,6 @@ describe('Collection（收集）', () => {
     render(
       <Collection
         location={{ kind: 'mothers', status: 'missing' }}
-        focusRevision={0}
         onNavigate={onNavigate}
       />,
     );
