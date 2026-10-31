@@ -90,8 +90,7 @@ export function clearMyPetsFilters(): void {
 
 /** 精灵背包页的「重置」：只清本页标签（2026-10-24 重构任务 4）。 */
 export function clearInventoryFilters(): void {
-  selected = new Set();
-  commit();
+  clearMyPetsFilters();
 }
 
 export function useMyPetsFilters(): {
