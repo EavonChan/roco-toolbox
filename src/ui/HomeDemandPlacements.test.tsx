@@ -261,6 +261,23 @@ describe('家园 · 接单上窝', () => {
     expect(chance.className).toContain('text-emerald-700');
   });
 
+  test('同款需求撤回重发后重新接单，不继承旧的已上窝勾选', () => {
+    const pets = [
+      pet({ gameId: egg.gameId, gender: '母', captureId: 'cap_academy' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公' }),
+    ];
+    h.state.items = [demandItem({ updatedAt: 1 })];
+    const view = renderPanel(pets);
+    fireEvent.click(screen.getByTestId('home-demand-placed'));
+    expect(screen.getByTestId('home-demand-placed')).toBeChecked();
+    view.unmount();
+
+    // 服务端撤回是整行删除、重发版本号从 0 重计；只有接单时间能区分新旧单
+    h.state.items = [demandItem({ updatedAt: 2 })];
+    renderPanel(pets);
+    expect(screen.getByTestId('home-demand-placed')).not.toBeChecked();
+  });
+
   test('排不上的单单独列出原因', () => {
     h.state.items = [demandItem()];
     renderPanel([pet({ gameId: egg.gameId, gender: '母' })]);

@@ -189,7 +189,7 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
       gender: placement.demand.gender,
       body: placement.demand.body,
       voice: placement.demand.voice,
-      version: placement.demand.version,
+      claimedAt: placement.demand.claimedAt,
     });
 
   const markedCount = placedRows.filter((placement) => marks[rowKeyOf(placement)]).length;
@@ -346,7 +346,16 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
 
   const renderSkip = (skip: DemandPlacementSkip) => (
     <div
-      key={`${skip.demand.groupId}|${skip.demand.demanderAccountId}|${skip.demand.eggGameId}|${skip.demand.nature}|${skip.demand.gender}|${skip.demand.body}|${skip.demand.voice}`}
+      key={placementRowKey({
+        groupId: skip.demand.groupId,
+        demanderAccountId: skip.demand.demanderAccountId,
+        eggGameId: skip.demand.eggGameId,
+        nature: skip.demand.nature,
+        gender: skip.demand.gender,
+        body: skip.demand.body,
+        voice: skip.demand.voice,
+        claimedAt: skip.demand.claimedAt,
+      })}
       className="rounded-lg bg-amber-50 px-2 py-1.5 text-[10px] text-amber-800"
       data-testid="home-demand-skip"
     >

@@ -4,7 +4,8 @@ import { demandKeyOf } from '../shared/collectionGroups';
  * 「已上窝」本机记忆（需求中心二期）。
  *
  * 只记本机：不改云端需求状态，结单仍然在小组的需求中心做。
- * 键带上需求版本号——同款需求被撤回重发会变成新的一行，不该继承旧的勾选。
+ * 键带「接单时间」——服务端撤回是整行删除、重发后版本号从 0 重计，
+ * 只有每次接单刷新的 claimedAt 能保证同款需求重发不继承旧的勾选。
  */
 export interface PlacementRow {
   groupId: string;
@@ -14,7 +15,8 @@ export interface PlacementRow {
   gender: string;
   body: string;
   voice: string;
-  version?: number;
+  /** 我接下这单的时间（即单上的 updatedAt）；持有期间不变，每次重接都刷新。 */
+  claimedAt?: number;
 }
 
 export type PlacementMarks = Record<string, boolean>;
@@ -30,7 +32,7 @@ export function placementRowKey(row: PlacementRow): string {
     body: row.body as never,
     voice: row.voice as never,
   });
-  return `${row.groupId}|${row.demanderAccountId}|${base}|${row.version ?? 0}`;
+  return `${row.groupId}|${row.demanderAccountId}|${base}|${row.claimedAt ?? 0}`;
 }
 
 export function readPlacementMarks(accountId: string | null): PlacementMarks {
