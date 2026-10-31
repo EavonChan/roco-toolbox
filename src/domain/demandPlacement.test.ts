@@ -138,6 +138,7 @@ describe('buildDemandPlacements', () => {
 
     const [placement] = result.accounts[0].placements;
     expect(placement.tier).toBe('normal60');
+    expect(placement.natureChance).toBe(1);
     expect(placement.academyResident).toBeNull();
   });
 

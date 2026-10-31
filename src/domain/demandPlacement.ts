@@ -57,7 +57,7 @@ export interface DemandPlacementOption {
   mother: DemandPlacementParent;
   father: DemandPlacementParent;
   tier: DemandTier;
-  /** 目标性格的遗传概率：学院 1 / 普通同性格 0.6 / 普通单方 0.3。 */
+  /** 目标性格的遗传概率：不挑性格 1 / 学院 1 / 普通同性格 0.6 / 普通单方 0.3。 */
   natureChance: number;
   /** 这条单新占几个窝（0 = 父母都已在方案里）。 */
   newNests: number;
@@ -295,7 +295,8 @@ function pickPair(
       const bothNature =
         (demand.nature && mother.pet.nature === demand.nature ? 1 : 0) +
         (demand.nature && father.pet.nature === demand.nature ? 1 : 0);
-      const natureChance = tier === 'academy' ? 1 : tier === 'normal60' ? 0.6 : 0.3;
+      // 「不挑性格」= 性格这一项必然满足，概率 1（不要再用 0.6 / 0.3 当占位值，免得调用方误读）。
+      const natureChance = !demand.nature || tier === 'academy' ? 1 : tier === 'normal60' ? 0.6 : 0.3;
 
       picks.push({
         mother,
