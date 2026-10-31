@@ -468,24 +468,44 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
       continue;
     }
 
+    /**
+     * 跨账号择优（用户 2026-11-01 拍板，对齐 changelog 2026-10-30d「多个账号时取概率最高的那一对」）：
+     * 各账号先各自挑出最优配对，再比 `natureChance`，同级比新占窝数，仍相同则保留靠前的账号。
+     */
+    const pickAcrossAccounts = (
+      allowSecondShare: boolean,
+    ): { state: AccountState; result: PairPickResult } | null => {
+      let best: { state: AccountState; result: PairPickResult } | null = null;
+      for (const state of states) {
+        const result = pickPair(target, demand, state, nestCount, allowSecondShare);
+        if (!result) continue;
+        if (
+          best === null ||
+          result.best.natureChance > best.result.best.natureChance ||
+          (result.best.natureChance === best.result.best.natureChance &&
+            result.best.newNests < best.result.best.newNests)
+        ) {
+          best = { state, result };
+        }
+      }
+      return best;
+    };
+
     let placed = false;
     // 第一轮：严格 1:1（父母都没被任何单使用过）。
-    for (const state of states) {
-      const pick = pickPair(target, demand, state, nestCount, false);
-      if (!pick) continue;
-      commit(state, demand, pick);
+    const first = pickAcrossAccounts(false);
+    if (first) {
+      commit(first.state, demand, first.result);
       placed = true;
-      break;
     }
-    if (placed) continue;
 
     // 第二轮：允许 1:2（复用已被占用一次的亲本）。
-    for (const state of states) {
-      const pick = pickPair(target, demand, state, nestCount, true);
-      if (!pick) continue;
-      commit(state, demand, pick);
-      placed = true;
-      break;
+    if (!placed) {
+      const second = pickAcrossAccounts(true);
+      if (second) {
+        commit(second.state, demand, second.result);
+        placed = true;
+      }
     }
     if (placed) continue;
 

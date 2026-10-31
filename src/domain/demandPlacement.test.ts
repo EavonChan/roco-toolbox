@@ -335,6 +335,36 @@ describe('buildDemandPlacements', () => {
     expect(result.accounts.find((account) => account.accountKey === 'uid:11')?.placements).toHaveLength(0);
   });
 
+  test('多个账号都能配时取概率最高的那一对，不按账号顺序', () => {
+    // 账号 A 的学院窝先被「开朗」单占住，第二条「固执」单在 A 只能给 30%；
+    // 账号 B 能给学院 100%，应该落在 B（changelog 2026-10-30d）。
+    const residentA = pet({ gameId: 200, gender: '公', nature: '开朗', account: '账号A' });
+    const motherA1 = pet({ gameId: 100, gender: '母', nature: '开朗', account: '账号A' });
+    const motherA2 = pet({ gameId: 100, gender: '母', nature: '固执', account: '账号A' });
+    const fatherA2 = pet({ gameId: 200, gender: '公', nature: '开朗', account: '账号A' });
+    const motherB = pet({ gameId: 100, gender: '母', nature: '固执', account: '账号B' });
+    const fatherB = pet({ gameId: 200, gender: '公', nature: '固执', account: '账号B' });
+    const result = buildDemandPlacements({
+      demands: [
+        demand({ claimedAt: 1, nature: '开朗' }),
+        demand({ claimedAt: 2, demanderAccountId: 'm2', nature: '固执' }),
+      ],
+      snapshots: [
+        snap('账号A', 11, [motherA1, residentA, motherA2, fatherA2]),
+        snap('账号B', 12, [motherB, fatherB]),
+      ],
+      species,
+    });
+
+    const accountA = result.accounts.find((account) => account.accountKey === 'uid:11');
+    const accountB = result.accounts.find((account) => account.accountKey === 'uid:12');
+    expect(accountA?.placements).toHaveLength(1);
+    expect(accountB?.placements).toHaveLength(1);
+    expect(accountB?.placements[0].tier).toBe('academy');
+    expect(accountB?.placements[0].natureChance).toBe(1);
+    expect(accountB?.placements[0].mother.pet).toBe(motherB);
+  });
+
   test('多个种公时给出多个候选，学院方案排在前面', () => {
     const mother = pet({ gameId: 100, gender: '母', nature: '固执', captureId: 'cap_academy' });
     const fatherA = pet({ gameId: 200, gender: '公', nature: '固执' });
