@@ -25,7 +25,6 @@ export interface AppNavigation {
   collection: CollectionLocation;
   profileSection: ProfileSection;
   returnToGroups: boolean;
-  groupEggGameId?: number;
   /** 直达小组页时优先展示的收集类型（个人模式或兼容组）。 */
   groupType?: CollectionGroupType;
   /** 每次「精准直达」递增；页面据此重新聚焦（同一目标重复进入也要再聚焦） */
@@ -41,7 +40,7 @@ export type NavigationIntent =
   | { type: 'tab'; page: AppPage }
   | { type: 'open-collection'; location: CollectionLocation }
   | { type: 'open-profile'; section: ProfileSection; returnToGroups?: boolean }
-  | { type: 'open-groups'; eggGameId?: number; groupType?: CollectionGroupType }
+  | { type: 'open-groups'; groupType?: CollectionGroupType }
   | { type: 'consume-focus'; revision: number };
 
 /** 初始收集落点 = 母本「未收集」（新人最常问「还缺什么」）。 */
@@ -91,12 +90,11 @@ export function resolveNavigation(
   switch (intent.type) {
     case 'tab':
       // 普通主导航只改 page：同一次会话里收集页的子视图、我的页的分区都保留。
-      // 跨页的一次性标记（返回小组、蛋组聚焦）不能跟着漏到下一次手动切换。
+      // 跨页的一次性标记（返回小组、收集类型）不能跟着漏到下一次手动切换。
       return {
         ...current,
         page: intent.page,
         returnToGroups: false,
-        groupEggGameId: undefined,
         groupType: undefined,
       };
     case 'open-collection':
@@ -105,7 +103,6 @@ export function resolveNavigation(
         page: 'collection',
         collection: intent.location,
         returnToGroups: false,
-        groupEggGameId: undefined,
         groupType: undefined,
         focusRevision: current.focusRevision + 1,
       };
@@ -120,7 +117,6 @@ export function resolveNavigation(
       return {
         ...current,
         page: 'groups',
-        groupEggGameId: intent.eggGameId,
         groupType: intent.groupType,
         returnToGroups: false,
         focusRevision: current.focusRevision + 1,

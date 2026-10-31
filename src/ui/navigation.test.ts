@@ -111,15 +111,15 @@ describe('resolveNavigation：意图', () => {
     expect(resolveNavigation(profile, { type: 'tab', page: 'dashboard' }).returnToGroups).toBe(false);
   });
 
-  test('打开小组可带蛋组目标，手动切页后清掉', () => {
+  test('打开小组可带收集类型，手动切页后清掉', () => {
     const groups = resolveNavigation(initialNavigation('dashboard', null), {
       type: 'open-groups',
-      eggGameId: 3200,
+      groupType: 'stud',
     });
     expect(groups.page).toBe('groups');
-    expect(groups.groupEggGameId).toBe(3200);
+    expect(groups.groupType).toBe('stud');
     expect(
-      resolveNavigation(groups, { type: 'tab', page: 'groups' }).groupEggGameId,
+      resolveNavigation(groups, { type: 'tab', page: 'groups' }).groupType,
     ).toBeUndefined();
   });
 });
