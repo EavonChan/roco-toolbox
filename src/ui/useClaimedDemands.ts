@@ -19,7 +19,10 @@ interface Cache {
   loadedAt: number;
 }
 
-/** 切页不闪：模块级缓存，回来先用旧内容再后台刷新。 */
+/** 缓存有效期：短时间内反复切回家园页不再重拉（重试按钮会强制刷新）。 */
+const CACHE_TTL_MS = 60_000;
+
+/** 切页不闪：模块级缓存，回来先用旧内容；60 秒内直接复用，过期再后台刷新。 */
 let cache: Cache | null = null;
 
 export interface ClaimedDemandsState {
@@ -40,6 +43,8 @@ export function useClaimedDemands(): ClaimedDemandsState {
   const [error, setError] = useState('');
   const [nonce, setNonce] = useState(0);
   const requestRef = useRef(0);
+  /** 重试 / 手动刷新时绕过缓存有效期。 */
+  const forceRef = useRef(false);
 
   useEffect(
     () =>
@@ -57,20 +62,32 @@ export function useClaimedDemands(): ClaimedDemandsState {
       return;
     }
     // 换身份：缓存命中照旧秒开；不命中先清空，别拿旧账号的单顶着新身份显示（R2-2-M01）
-    setItems(cache && cache.accountId === accountId ? cache.items : []);
+    const cached = cache && cache.accountId === accountId ? cache : null;
+    setItems(cached ? cached.items : []);
+    const forced = forceRef.current;
+    forceRef.current = false;
+    // 60 秒内的缓存直接复用，反复切家园页不再把每组需求重拉一遍（R2-2-M05）
+    if (cached && !forced && Date.now() - cached.loadedAt < CACHE_TTL_MS) {
+      setLoading(false);
+      setError('');
+      return;
+    }
 
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setError('');
 
     (async () => {
       try {
-        const groups = (await listCollectionGroups()).filter((group) => group.groupType === 'mother');
+        const groups = (await listCollectionGroups(controller.signal)).filter(
+          (group) => group.groupType === 'mother',
+        );
         const results = await Promise.allSettled(
           groups.map(async (group) => {
-            const demands = await getCollectionDemands(group.id);
+            const demands = await getCollectionDemands(group.id, controller.signal);
             return demands
               .filter((demand) => demand.status === 'claimed' && demand.claimerAccountId === accountId)
               .map((demand) => ({ ...demand, groupName: group.name }));
@@ -89,7 +106,8 @@ export function useClaimedDemands(): ClaimedDemandsState {
         setItems(merged);
         setError(failed > 0 ? `${failed} 个小组读取失败，先显示已读到的单` : '');
       } catch (cause) {
-        if (cancelled || requestRef.current !== requestId) return;
+        // 中止是页面卸载 / 换号的正常结果，不能当成「读取失败」写进界面
+        if (cancelled || controller.signal.aborted || requestRef.current !== requestId) return;
         setError(cause instanceof Error ? cause.message : '读取接单失败');
       } finally {
         if (!cancelled && requestRef.current === requestId) setLoading(false);
@@ -98,10 +116,14 @@ export function useClaimedDemands(): ClaimedDemandsState {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [accountId, nonce]);
 
-  const reload = useCallback(() => setNonce((value) => value + 1), []);
+  const reload = useCallback(() => {
+    forceRef.current = true;
+    setNonce((value) => value + 1);
+  }, []);
 
   return { accountId, items, loading, error, reload };
 }
