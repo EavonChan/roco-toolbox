@@ -12,7 +12,7 @@ export interface SuggestionCardState {
   doneAt: Record<string, number>;
   /** 已换到折叠区是否展开 */
   doneOpen: boolean;
-  /** 主列表显示条数（「全部」是跳到「换什么」页，不入这里） */
+  /** 主列表显示条数（「全部」是跳到小组页，不入这里） */
   quantity: number;
 }
 

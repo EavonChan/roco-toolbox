@@ -20,7 +20,7 @@ export interface SuggestionCardProps {
    * 种公已收齐的用户会被误导以为数据没导进来）。
    */
   emptyNote: string;
-  /** 数量选项选「全部」时跳到「换什么」页看完整求蛋清单 */
+  /** 数量选项选「全部」时跳到小组页看完整求蛋入口（原「换什么」页 2026-10-30 已并入小组） */
   onOpenSwap?: () => void;
 }
 
