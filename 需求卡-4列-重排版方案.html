@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>需求卡 · 4 列方案 C（真实 79px 宽）</title>
+    <style>
+      :root {
+        --w: 79px;
+        --gap: 2px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 20px 20px 80px;
+        font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        background: #f1f5f9;
+        color: #0f172a;
+      }
+      h1 { font-size: 16px; margin: 0 0 8px; }
+      .note {
+        max-width: 860px;
+        font-size: 12px;
+        line-height: 1.75;
+        color: #475569;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+      }
+      .note b { color: #0f172a; }
+      .note code { background: #f1f5f9; padding: 0 3px; border-radius: 3px; }
+
+      .switcher { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; max-width: 860px; }
+      .switcher button {
+        text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid #cbd5e1;
+        background: #fff; cursor: pointer; font-size: 12px; line-height: 1.5; max-width: 270px;
+      }
+      .switcher button.on { border-color: #059669; background: #ecfdf5; color: #065f46; }
+      .switcher button b { display: block; font-size: 12.5px; }
+
+      .wrap { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+      .stage {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;
+      }
+      .stage h2 { font-size: 12px; margin: 0 0 8px; color: #64748b; font-weight: 500; }
+      .stage-sub { font-size: 11px; color: #94a3b8; margin: 0 0 10px; }
+
+      .phone {
+        width: 375px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff;
+        overflow: hidden; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+      }
+      .phone-top { font-size: 10px; color: #94a3b8; padding: 6px 16px 4px; border-bottom: 1px solid #f1f5f9; }
+      .page { padding: 0 16px; }
+      .section-head { font-size: 11px; color: #334155; padding: 8px 10px 4px; }
+      .page-grid {
+        padding: 0 10px 12px; display: grid;
+        grid-template-columns: repeat(4, var(--w)); gap: 8px var(--gap);
+      }
+
+      .card {
+        position: relative; width: var(--w); background: #f8fafc; border-radius: 6px;
+        overflow: hidden; flex: none;
+      }
+      .card.editable { outline: 1px dashed #94a3b8; }
+      .el { position: absolute; transform-origin: top left; white-space: nowrap; user-select: none; }
+      .avatar {
+        border-radius: 999px; background: linear-gradient(160deg, #bae6fd, #38bdf8);
+        display: flex; align-items: center; justify-content: center;
+        color: #075985; font-size: 12px; font-weight: 600;
+      }
+      /* 性别 + 名字同一行：性别做成小圆片，和名字强关联 */
+      .nameRow { display: flex; align-items: center; justify-content: center; gap: 2px; overflow: hidden; }
+      .gchip {
+        width: 12px; height: 12px; border-radius: 999px; flex: none;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 9px; line-height: 1;
+      }
+      .gchip.f { background: #fce7f3; color: #db2777; }
+      .gchip.m { background: #e0f2fe; color: #0369a1; }
+      .gchip.u { background: #f1f5f9; color: #64748b; }
+      .nm { font-size: 10px; line-height: 1.2; font-weight: 500; color: #334155; overflow: hidden; text-overflow: ellipsis; }
+      .form { font-style: normal; font-size: 8px; line-height: 1.2; color: #94a3b8; flex: none; }
+      /* 奖牌固定 12×12：满分版直接用蛋神的 extreme-medal（图标自带 MAX / MIN 缎带） */
+      .medal { width: 12px; height: 12px; }
+      .medal img { width: 12px; height: 12px; display: block; }
+      .natures { display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-start; gap: 2px; white-space: normal; }
+      .tag {
+        font-size: 9px; line-height: 1.2; border-radius: 3px; background: #ecfdf5;
+        color: #047857; padding: 0 2px; white-space: nowrap;
+      }
+      .tag.miss { background: #fff1f2; color: #e11d48; }
+      .action { font-size: 9px; line-height: 1.2; text-align: center; color: #64748b; white-space: nowrap; }
+      .action.bar {
+        background: rgba(255, 255, 255, 0.75);
+        border-top: 1px solid rgba(148, 163, 184, 0.25);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .action.good { color: #047857; }
+
+      .card .safe { position: absolute; inset: 4px; border: 1px dashed rgba(16, 185, 129, 0.45); border-radius: 5px; pointer-events: none; }
+      .card .midline { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed rgba(99, 102, 241, 0.35); pointer-events: none; }
+      .card .center-h { position: absolute; top: 50%; left: 0; right: 0; border-top: 1px dashed rgba(99, 102, 241, 0.35); pointer-events: none; }
+      .card.outlines .el { outline: 1px dotted rgba(148, 163, 184, 0.9); }
+      .el.sel { outline: 1px solid #10b981; outline-offset: 1px; }
+
+      .inspect { width: 350px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+      .inspect h2 { font-size: 12px; margin: 0 0 8px; color: #64748b; font-weight: 500; }
+      .zoom-box { padding: 8px 0 12px; }
+      .zoom-frame { transform-origin: top left; }
+      .field { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 12px; flex-wrap: wrap; }
+      .field label { width: 54px; color: #64748b; }
+      .field input[type='number'] { width: 66px; padding: 3px 5px; border: 1px solid #cbd5e1; border-radius: 5px; font-size: 12px; }
+      .field input[type='range'] { width: 120px; }
+      .el-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 4px 6px; border-radius: 5px; cursor: pointer; }
+      .el-row + .el-row { margin-top: 2px; }
+      .el-row.on { background: #ecfdf5; color: #047857; }
+      .el-row span:last-child { color: #94a3b8; font-size: 11px; }
+      .btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+      button { font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
+      button.primary { background: #059669; color: #fff; border-color: #059669; }
+      .check { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #475569; }
+      textarea { width: 100%; height: 150px; margin-top: 10px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; }
+      .overlap { margin-top: 8px; font-size: 11px; line-height: 1.6; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 8px; display: none; }
+      .desc { font-size: 11.5px; line-height: 1.7; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+      .legend { display: flex; gap: 10px; align-items: center; font-size: 11px; color: #64748b; margin-top: 6px; flex-wrap: wrap; }
+      .legend .medal { width: 26px; position: relative; display: inline-block; }
+      .legend .medal img { width: 20px; height: 20px; }
+    </style>
+  </head>
+  <body>
+    <h1>需求卡 · 4 列方案 C（真实 79px 宽）</h1>
+    <div class="note">
+      <b>宽度</b>：375 屏宽 − 页面 32 − 区块 20 = 323；4×79 + 3×2 = 322。<br />
+      本轮改动：<b>① 性别 + 名字合成一行</b>（性别做成小圆片贴在名字前，名字后带形态后缀）；<b>② 性别符号改成圆片图标</b>，不再是一根细线条；
+      <b>③ 满体重 / 满声音直接换蛋神的 extreme-medal 图标</b>（自带 MAX / MIN 缎带），普通大块头 / 婉转声仍用原奖牌；<b>④ 底部状态条底色调浅</b>（半透明白 + 细分隔线）。<br />
+      右边可以拖动 / 滚轮缩放 / 双击改文字，改完点「复制布局 JSON」发我，我 1:1 落地。
+    </div>
+
+    <div class="switcher" id="switcher"></div>
+
+    <div class="wrap">
+      <div class="stage">
+        <h2>整页密度 · 375px 真机宽 · 4 列 24 张</h2>
+        <p class="stage-sub">含 1 / 2 / 3 / 4 / 6 个性格、带形态后缀、带 MAX 奖牌与不带 MAX 的对照。</p>
+        <div class="phone">
+          <div class="phone-top">375 × auto · 4 列 · 间距 2 / 8</div>
+          <div class="page">
+            <div class="section-head">需求中心 · 共 24 条</div>
+            <div class="page-grid" id="pageGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="inspect">
+        <h2>单卡编辑 · <span id="schemeName">方案 C</span></h2>
+        <div class="desc" id="schemeDesc"></div>
+        <div class="zoom-box">
+          <div class="zoom-frame" id="zoomFrame">
+            <div class="card editable" id="card">
+              <div class="safe"></div>
+              <div class="midline"></div>
+              <div class="center-h"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>放大显示</label>
+          <input id="zoom" type="range" min="1" max="4" step="0.5" value="2" />
+          <span id="zoomLabel">2×</span>
+        </div>
+        <div class="field">
+          <label>卡片高度</label>
+          <input id="cardH" type="number" min="76" max="150" step="1" />
+          <button id="applyH">应用</button>
+        </div>
+        <div class="field">
+          <label>头像尺寸</label>
+          <input id="avatarSize" type="number" min="28" max="60" step="2" />
+        </div>
+        <div class="field">
+          <span class="check"><input type="checkbox" id="showMax" checked /> 奖牌满分图标</span>
+          <span class="check"><input type="checkbox" id="showSafe" checked /> 4px 安全区</span>
+          <span class="check"><input type="checkbox" id="showMid" checked /> 中线</span>
+          <span class="check"><input type="checkbox" id="showOutline" /> 元素边框</span>
+        </div>
+        <div class="legend">
+          <span>普通：</span>
+          <span class="medal"><img src="public/ui/medals/1001.png" alt="" /></span>
+          <span class="medal"><img src="public/ui/medals/1026.png" alt="" /></span>
+          <span>满体重 / 满声音：</span>
+          <span class="medal"><img src="public/ui/medals/1001-max.png" alt="" /></span>
+          <span class="medal"><img src="public/ui/medals/1026-max.png" alt="" /></span>
+          <span style="font-size: 10px; color: #94a3b8">（蛋神 extreme-medal，自带 MAX 缎带）</span>
+        </div>
+        <div class="overlap" id="overlap"></div>
+        <h2 style="margin-top: 12px">元素</h2>
+        <div id="list"></div>
+        <div class="field" style="margin-top: 10px">
+          <label>左右</label>
+          <input id="inLeft" type="number" step="1" />
+          <label style="width: auto">上下</label>
+          <input id="inTop" type="number" step="1" />
+        </div>
+        <div class="field">
+          <label>缩放</label>
+          <input id="inScale" type="number" step="0.05" min="0.4" max="3" />
+          <label style="width: auto">宽度</label>
+          <input id="inWidth" type="number" step="1" min="20" max="79" />
+        </div>
+        <div class="btns">
+          <button class="primary" id="copy">复制布局 JSON</button>
+          <button id="reset">恢复方案默认</button>
+        </div>
+        <textarea id="out" readonly placeholder="点「复制布局 JSON」后这里会出现结果"></textarea>
+      </div>
+    </div>
+
+    <script>
+      const CARD_W = 79;
+      const GAP = 2;
+
+      /**
+       * 元素键：avatar / bodyMedal / voiceMedal / nameRow（性别+名字+形态后缀）/ nature / action。
+       * 坐标是 79px 宽卡片里的 1:1 像素，不做任何缩放换算。
+       */
+      const SCHEMES = {
+        C: {
+          label: '方案 C · 大头像 + 满宽状态条',
+          desc:
+            '你定稿的 C：头像 44px（18/7，缩放 0.95）、两枚奖牌收在上角（4/4、63/4）、性别+名字一行（49）、性格两行内（63）、底部满宽状态条（87，高 17，半透明白底）。',
+          h: 104,
+          avatarSize: 44,
+          actionBar: true,
+          els: {
+            avatar: { left: 18, top: 7, scale: 0.95 },
+            bodyMedal: { left: 4, top: 4, scale: 1 },
+            voiceMedal: { left: 63, top: 4, scale: 1 },
+            nameRow: { left: 0, top: 49, w: 79 },
+            nature: { left: 0, top: 63, w: 79 },
+            action: { left: 0, top: 87, w: 79, h: 17 },
+          },
+        },
+        A: {
+          label: '旧方案 A · 居中五段（参考）',
+          desc: '上一轮的居中五段方案，仅留作对照。',
+          h: 106,
+          avatarSize: 40,
+          actionBar: false,
+          els: {
+            avatar: { left: 20, top: 3, scale: 1 },
+            bodyMedal: { left: 26, top: 44, scale: 1 },
+            voiceMedal: { left: 41, top: 44, scale: 1 },
+            nameRow: { left: 0, top: 58, w: 79 },
+            nature: { left: 0, top: 71, w: 79 },
+            action: { left: 0, top: 96, w: 79 },
+          },
+        },
+        B: {
+          label: '旧方案 B · 左右分栏（参考）',
+          desc: '上一轮的左右分栏方案，仅留作对照。',
+          h: 104,
+          avatarSize: 42,
+          actionBar: false,
+          els: {
+            avatar: { left: 4, top: 5, scale: 1 },
+            bodyMedal: { left: 50, top: 20, scale: 1 },
+            voiceMedal: { left: 62, top: 20, scale: 1 },
+            nameRow: { left: 0, top: 50, w: 79 },
+            nature: { left: 0, top: 64, w: 79 },
+            action: { left: 0, top: 90, w: 79 },
+          },
+        },
+      };
+
+      const LABELS = {
+        avatar: '头像',
+        bodyMedal: '奖牌 · 体型',
+        voiceMedal: '奖牌 · 声音',
+        nameRow: '性别 + 名字',
+        nature: '性格（全部）',
+        action: '状态条',
+      };
+
+      const SAMPLES = [
+        { name: '喵喵', form: '', gender: '♀', natures: ['固执'], body: '1001', voice: '1026', maxBody: true, maxVoice: true, action: '待承接', good: false },
+        { name: '火花', form: '烈焰', gender: '♂', natures: ['开朗'], body: '1001', voice: '1025', maxBody: false, maxVoice: false, action: '已接', good: true },
+        { name: '水蓝蓝', form: '', gender: '♀', natures: ['胆小', '温和'], body: '1002', voice: '1026', maxBody: true, maxVoice: false, action: '我接了', good: true },
+        { name: '火神', form: '', gender: '♂', natures: ['固执', '开朗', '胆小'], body: '1002', voice: '1025', maxBody: false, maxVoice: true, action: '已完成', good: true },
+        { name: '格兰球', form: '海神球', gender: '♀', natures: ['认真', '淘气', { t: '大胆', miss: true }, '马虎'], body: '1001', voice: '1026', maxBody: true, maxVoice: true, action: '待承接', good: false },
+        { name: '小草虫', form: '', gender: '♂', natures: ['固执', '开朗', '胆小', '淘气', '大胆', '认真'], body: '1002', voice: '1025', maxBody: false, maxVoice: false, action: '待承接', good: false },
+        { name: '纯母种', form: '', gender: '♀', natures: [], body: '1001', voice: '1026', maxBody: true, maxVoice: true, action: '待承接', good: false },
+        { name: '蹦蹦种子', form: '海神球', gender: '?', natures: ['温和'], body: '1002', voice: '1025', maxBody: false, maxVoice: true, action: '已发 1 条', good: true },
+      ];
+
+      const state = {
+        key: 'C',
+        h: SCHEMES.C.h,
+        avatarSize: SCHEMES.C.avatarSize,
+        actionBar: SCHEMES.C.actionBar,
+        els: clone(SCHEMES.C.els),
+        zoom: 2,
+        showMax: true,
+      };
+
+      const cardEl = document.getElementById('card');
+      const zoomFrame = document.getElementById('zoomFrame');
+      const pageGrid = document.getElementById('pageGrid');
+      const out = document.getElementById('out');
+      let selectedKey = 'avatar';
+      let zTop = 1;
+
+      function clone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+      function elStyle(key) {
+        const e = state.els[key] || {};
+        let s = '';
+        if (typeof e.left === 'number') s += `left:${e.left}px;`;
+        if (typeof e.top === 'number') s += `top:${e.top}px;`;
+        if (typeof e.w === 'number') s += `width:${e.w}px;`;
+        if (typeof e.h === 'number') s += `height:${e.h}px;`;
+        if (e.scale && e.scale !== 1) s += `transform:scale(${e.scale});`;
+        return s;
+      }
+
+      function natureHtml(list) {
+        if (!list || !list.length) return '<span class="tag">不挑</span>';
+        return list.map((n) => {
+          const item = typeof n === 'string' ? { t: n } : n;
+          return `<span class="tag${item.miss ? ' miss' : ''}">${item.t}</span>`;
+        }).join('');
+      }
+
+      /** 满分版贴图（蛋神 extreme-medal 素材）：满体重 1001-max、零体重 1002-min、声音 1025/1026-max */
+      function medalSrc(file, maxed) {
+        if (!maxed) return file + '.png';
+        return file === '1002' ? '1002-min.png' : file + '-max.png';
+      }
+
+      function medalHtml(key, file, maxed) {
+        const src = medalSrc(file, state.showMax && maxed);
+        return `<div class="el medal" data-key="${key}" style="${elStyle(key)}">
+          <img src="public/ui/medals/${src}" alt="" />
+        </div>`;
+      }
+
+      function chipClass(gender) {
+        return gender === '♀' ? 'f' : gender === '♂' ? 'm' : 'u';
+      }
+
+      function buildCard(sample, editor) {
+        const card = document.createElement('div');
+        card.className = 'card' + (editor ? ' editable guides' : '');
+        card.style.height = state.h + 'px';
+        if (editor) card.id = 'card';
+        card.innerHTML = `
+          ${editor ? '<div class="safe"></div><div class="midline"></div><div class="center-h"></div>' : ''}
+          <div class="el avatar" data-key="avatar" style="${elStyle('avatar')};width:${state.avatarSize}px;height:${state.avatarSize}px">${sample.name.slice(0, 1)}</div>
+          ${medalHtml('bodyMedal', sample.body, sample.maxBody)}
+          ${medalHtml('voiceMedal', sample.voice, sample.maxVoice)}
+          <div class="el nameRow" data-key="nameRow" style="${elStyle('nameRow')}">
+            <span class="gchip ${chipClass(sample.gender)}">${sample.gender}</span>
+            <span class="nm">${sample.name}</span>
+            ${sample.form ? `<i class="form">·${sample.form}</i>` : ''}
+          </div>
+          <div class="el natures" data-key="nature" style="${elStyle('nature')}">${natureHtml(sample.natures)}</div>
+          <div class="el action${state.actionBar ? ' bar' : ''}${sample.good ? ' good' : ''}" data-key="action" style="${elStyle('action')}">${sample.action}</div>
+        `;
+        return card;
+      }
+
+      function renderPage() {
+        pageGrid.innerHTML = '';
+        for (let i = 0; i < 24; i += 1) pageGrid.appendChild(buildCard(SAMPLES[i % SAMPLES.length], false));
+      }
+
+      function renderEditor() {
+        cardEl.innerHTML = `
+          <div class="safe"></div>
+          <div class="midline"></div>
+          <div class="center-h"></div>
+          <div class="el avatar" data-key="avatar" style="${elStyle('avatar')};width:${state.avatarSize}px;height:${state.avatarSize}px">喵</div>
+          <div class="el medal" data-key="bodyMedal" style="${elStyle('bodyMedal')}">
+            <img src="public/ui/medals/${medalSrc('1001', state.showMax)}" alt="" />
+          </div>
+          <div class="el medal" data-key="voiceMedal" style="${elStyle('voiceMedal')}">
+            <img src="public/ui/medals/${medalSrc('1026', state.showMax)}" alt="" />
+          </div>
+          <div class="el nameRow" data-key="nameRow" style="${elStyle('nameRow')}">
+            <span class="gchip f">♀</span><span class="nm">喵喵</span><i class="form">·海神球</i>
+          </div>
+          <div class="el natures" data-key="nature" style="${elStyle('nature')}">
+            <span class="tag">固执</span><span class="tag">开朗</span><span class="tag">胆小</span>
+          </div>
+          <div class="el action${state.actionBar ? ' bar' : ''}" data-key="action" style="${elStyle('action')}">待承接</div>
+        `;
+        cardEl.style.width = CARD_W + 'px';
+        cardEl.style.height = state.h + 'px';
+        bindEditor();
+        applyZoom();
+        buildList();
+        checkOverlap();
+      }
+
+      function applyZoom() {
+        const z = state.zoom;
+        zoomFrame.style.transform = `scale(${z})`;
+        zoomFrame.style.width = CARD_W + 'px';
+        zoomFrame.style.height = state.h + 'px';
+        document.getElementById('zoomLabel').textContent = z + '×';
+        zoomFrame.parentElement.style.height = state.h * z + 18 + 'px';
+      }
+
+      function pos(el) {
+        return { left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 };
+      }
+      function scaleOf(el) {
+        const m = /scale\(([-\d.]+)\)/.exec(el.style.transform || '');
+        return m ? Number(m[1]) : 1;
+      }
+
+      function select(key) {
+        selectedKey = key;
+        cardEl.querySelectorAll('.el').forEach((el) => el.classList.toggle('sel', el.dataset.key === key));
+        const el = cardEl.querySelector(`[data-key="${key}"]`);
+        if (el) {
+          document.getElementById('inLeft').value = pos(el).left;
+          document.getElementById('inTop').value = pos(el).top;
+          document.getElementById('inScale').value = scaleOf(el);
+          document.getElementById('inWidth').value = parseFloat(el.style.width) || 0;
+        }
+        buildList();
+      }
+
+      function buildList() {
+        const list = document.getElementById('list');
+        list.innerHTML = '';
+        cardEl.querySelectorAll('.el').forEach((el) => {
+          const key = el.dataset.key;
+          const row = document.createElement('div');
+          row.className = 'el-row' + (key === selectedKey ? ' on' : '');
+          row.innerHTML = `<span>${LABELS[key] || key}</span><span>${pos(el).left} / ${pos(el).top}</span>`;
+          row.addEventListener('click', () => select(key));
+          list.appendChild(row);
+        });
+      }
+
+      function syncFromCard() {
+        cardEl.querySelectorAll('.el').forEach((el) => {
+          const key = el.dataset.key;
+          const cur = state.els[key] || {};
+          cur.left = pos(el).left;
+          cur.top = pos(el).top;
+          cur.scale = scaleOf(el);
+          const w = parseFloat(el.style.width);
+          if (w) cur.w = w;
+          const h = parseFloat(el.style.height);
+          if (h && key !== 'avatar') cur.h = h;
+          state.els[key] = cur;
+        });
+        renderPage();
+        checkOverlap();
+      }
+
+      function bindEditor() {
+        cardEl.querySelectorAll('.el').forEach((el) => {
+          el.addEventListener('pointerdown', (event) => {
+            if (event.detail === 2) return;
+            event.preventDefault();
+            select(el.dataset.key);
+            const start = { x: event.clientX, y: event.clientY, ...pos(el) };
+            el.style.zIndex = String(++zTop);
+            el.setPointerCapture(event.pointerId);
+            const move = (e) => {
+              const dx = (e.clientX - start.x) / state.zoom;
+              const dy = (e.clientY - start.y) / state.zoom;
+              el.style.left = Math.round(start.left + dx) + 'px';
+              el.style.top = Math.round(start.top + dy) + 'px';
+              document.getElementById('inLeft').value = pos(el).left;
+              document.getElementById('inTop').value = pos(el).top;
+            };
+            const up = () => {
+              el.removeEventListener('pointermove', move);
+              el.removeEventListener('pointerup', up);
+              syncFromCard();
+              buildList();
+            };
+            el.addEventListener('pointermove', move);
+            el.addEventListener('pointerup', up);
+          });
+
+          el.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            select(el.dataset.key);
+            const next = Math.min(3, Math.max(0.4, Math.round((scaleOf(el) + (event.deltaY < 0 ? 0.05 : -0.05)) * 100) / 100));
+            el.style.transform = next === 1 ? '' : `scale(${next})`;
+            document.getElementById('inScale').value = next;
+            syncFromCard();
+            buildList();
+          }, { passive: false });
+
+          el.addEventListener('dblclick', (event) => {
+            event.stopPropagation();
+            const key = el.dataset.key;
+            if (key === 'avatar' || key.endsWith('Medal')) return;
+            if (key === 'nature') {
+              const value = prompt('性格，用空格分隔（最多 6 个）', [...el.querySelectorAll('.tag')].map((t) => t.textContent).join(' '));
+              if (value == null) return;
+              const tags = value.split(/\s+/).filter(Boolean).slice(0, 6);
+              el.innerHTML = tags.length ? tags.map((t) => `<span class="tag">${t}</span>`).join('') : '<span class="tag">不挑</span>';
+              checkOverlap();
+              return;
+            }
+            if (key === 'nameRow') {
+              const name = prompt('名字', el.querySelector('.nm').textContent);
+              if (name == null) return;
+              el.querySelector('.nm').textContent = name;
+              return;
+            }
+            const value = prompt('改成什么文字？', el.textContent.trim());
+            if (value != null) el.textContent = value;
+          });
+        });
+      }
+
+      function checkOverlap() {
+        const box = document.getElementById('overlap');
+        const cardRect = cardEl.getBoundingClientRect();
+        const z = state.zoom;
+        const items = [...cardEl.querySelectorAll('.el')].map((el) => {
+          const r = el.getBoundingClientRect();
+          return { key: el.dataset.key, x: (r.left - cardRect.left) / z, y: (r.top - cardRect.top) / z, w: r.width / z, h: r.height / z };
+        });
+        const hits = [];
+        const outOfCard = [];
+        items.forEach((a) => {
+          if (a.y + a.h > state.h + 0.5 || a.x + a.w > CARD_W + 0.5) outOfCard.push(LABELS[a.key] || a.key);
+        });
+        for (let i = 0; i < items.length; i += 1) {
+          for (let j = i + 1; j < items.length; j += 1) {
+            const a = items[i];
+            const b = items[j];
+            const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+            const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+            if (ox > 0.5 && oy > 0.5) hits.push(`${LABELS[a.key]} ↔ ${LABELS[b.key]}`);
+          }
+        }
+        const lines = [];
+        if (hits.length) lines.push('重叠：' + hits.join('、'));
+        if (outOfCard.length) lines.push('超出卡片：' + outOfCard.join('、'));
+        box.style.display = lines.length ? 'block' : 'none';
+        box.textContent = lines.join('；');
+      }
+
+      function applyScheme(key) {
+        state.key = key;
+        const s = SCHEMES[key];
+        state.h = s.h;
+        state.avatarSize = s.avatarSize;
+        state.actionBar = s.actionBar;
+        state.els = clone(s.els);
+        document.getElementById('schemeName').textContent = s.label;
+        document.getElementById('schemeDesc').textContent = s.desc;
+        document.getElementById('cardH').value = s.h;
+        document.getElementById('avatarSize').value = s.avatarSize;
+        document.querySelectorAll('#switcher button').forEach((b) => b.classList.toggle('on', b.dataset.key === key));
+        renderEditor();
+        renderPage();
+      }
+
+      function buildSwitcher() {
+        const box = document.getElementById('switcher');
+        box.innerHTML = '';
+        Object.entries(SCHEMES).forEach(([key, s]) => {
+          const b = document.createElement('button');
+          b.dataset.key = key;
+          b.innerHTML = `<b>${s.label}</b>卡高 ${s.h}px · 头像 ${s.avatarSize}px`;
+          b.addEventListener('click', () => applyScheme(key));
+          box.appendChild(b);
+        });
+      }
+
+      ['inLeft', 'inTop', 'inScale', 'inWidth'].forEach((id) => {
+        document.getElementById(id).addEventListener('input', (event) => {
+          const el = cardEl.querySelector(`[data-key="${selectedKey}"]`);
+          if (!el) return;
+          const value = Number(event.target.value);
+          if (Number.isNaN(value)) return;
+          if (id === 'inLeft') el.style.left = value + 'px';
+          if (id === 'inTop') el.style.top = value + 'px';
+          if (id === 'inScale') el.style.transform = value === 1 ? '' : `scale(${Math.min(3, Math.max(0.4, value))})`;
+          if (id === 'inWidth') el.style.width = value + 'px';
+          syncFromCard();
+        });
+      });
+
+      document.getElementById('zoom').addEventListener('input', (event) => {
+        state.zoom = Number(event.target.value);
+        applyZoom();
+        checkOverlap();
+      });
+
+      document.getElementById('cardH').addEventListener('input', (event) => {
+        const v = Number(event.target.value);
+        if (Number.isNaN(v)) return;
+        state.h = Math.min(150, Math.max(76, v));
+        cardEl.style.height = state.h + 'px';
+        renderPage();
+        applyZoom();
+        checkOverlap();
+      });
+
+      document.getElementById('avatarSize').addEventListener('input', (event) => {
+        const v = Number(event.target.value);
+        if (Number.isNaN(v)) return;
+        state.avatarSize = Math.min(60, Math.max(20, v));
+        const el = cardEl.querySelector('[data-key="avatar"]');
+        if (el) {
+          el.style.width = state.avatarSize + 'px';
+          el.style.height = state.avatarSize + 'px';
+        }
+        syncFromCard();
+      });
+
+      document.getElementById('showMax').addEventListener('change', (e) => {
+        state.showMax = e.target.checked;
+        renderEditor();
+        renderPage();
+      });
+      document.getElementById('showSafe').addEventListener('change', (e) => {
+        const safe = cardEl.querySelector('.safe');
+        if (safe) safe.style.display = e.target.checked ? '' : 'none';
+      });
+      document.getElementById('showMid').addEventListener('change', (e) => {
+        const mid = cardEl.querySelector('.midline');
+        const ch = cardEl.querySelector('.center-h');
+        if (mid) mid.style.display = e.target.checked ? '' : 'none';
+        if (ch) ch.style.display = e.target.checked ? '' : 'none';
+      });
+      document.getElementById('showOutline').addEventListener('change', (e) => {
+        cardEl.classList.toggle('outlines', e.target.checked);
+      });
+
+      document.getElementById('copy').addEventListener('click', async () => {
+        const elements = Object.entries(state.els).map(([key, e]) => ({
+          key, left: e.left ?? 0, top: e.top ?? 0, width: e.w ?? CARD_W, height: e.h ?? null, scale: e.scale ?? 1,
+        }));
+        const data = {
+          scheme: state.key,
+          cardWidth: CARD_W,
+          cardHeight: state.h,
+          avatarSize: state.avatarSize,
+          actionBar: state.actionBar,
+          showMax: state.showMax,
+          grid: { columns: 4, gap: GAP, containerWidth: 323 },
+          elements,
+        };
+        const text = JSON.stringify(data, null, 2);
+        out.value = text;
+        try {
+          await navigator.clipboard.writeText(text);
+          out.placeholder = '已复制到剪贴板';
+        } catch { out.select(); }
+      });
+
+      document.getElementById('reset').addEventListener('click', () => applyScheme(state.key));
+
+      buildSwitcher();
+      applyScheme('C');
+    </script>
+  </body>
+</html>

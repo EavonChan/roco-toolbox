@@ -184,6 +184,7 @@ CREATE TABLE IF NOT EXISTS collection_group_demands (
   gender              TEXT NOT NULL DEFAULT '母',
   body                TEXT NOT NULL DEFAULT '大块头',
   voice               TEXT NOT NULL DEFAULT '+100',
+  require_green_nest  INTEGER NOT NULL DEFAULT 0,
   status              TEXT NOT NULL DEFAULT 'open',
   claimer_account_id  TEXT REFERENCES accounts(id) ON DELETE SET NULL,
   version             INTEGER NOT NULL DEFAULT 0,
@@ -210,6 +211,7 @@ CREATE TABLE IF NOT EXISTS collection_group_demand_completions (
   gender              TEXT NOT NULL DEFAULT '母',
   body                TEXT NOT NULL DEFAULT '大块头',
   voice               TEXT NOT NULL DEFAULT '+100',
+  require_green_nest  INTEGER NOT NULL DEFAULT 0,
   created_at          INTEGER NOT NULL,
   completed_at        INTEGER NOT NULL,
   FOREIGN KEY (group_id) REFERENCES mother_groups (id) ON DELETE CASCADE

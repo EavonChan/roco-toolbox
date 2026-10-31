@@ -20,7 +20,13 @@ const PRIMARY_NATURES = targetNaturePool.map((nature) => nature.name);
 const EXTRA_NATURES = allNatureNames.filter((nature) => !PRIMARY_NATURES.includes(nature));
 
 export const GENDER_LABELS: Record<DemandGender, string> = { 母: '母', 公: '公', '': '不挑' };
-export const BODY_LABELS: Record<DemandBody, string> = { 大块头: '大块头', 小不点: '小不点', '': '不限' };
+export const BODY_LABELS: Record<DemandBody, string> = {
+  大块头: '大块头',
+  小不点: '小不点',
+  满体重: '满体重',
+  零体重: '零体重',
+  '': '不限',
+};
 export const VOICE_LABELS: Record<DemandVoice, string> = {
   '+100': '+100',
   '-100': '-100',
@@ -43,6 +49,8 @@ export interface DemandCriteriaDraft {
   gender: DemandGender;
   body: DemandBody;
   voice: DemandVoice;
+  /** 要求这对亲本进学院小窝（绿窝，性格 100%）；默认不要求（2026-11-01）。 */
+  requireGreenNest?: boolean;
 }
 
 export interface DemandPublishSheetProps {

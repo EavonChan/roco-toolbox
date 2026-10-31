@@ -360,6 +360,11 @@ export interface CollectionDemand extends DemandCriteria {
   version: number;
   createdAt: number;
   updatedAt: number;
+  /**
+   * 是否要求这对亲本进学院小窝（绿窝，性格 100% 遗传）。2026-11-01 新增：
+   * 旧需求 / 旧服务端没有这个字段时按 false 处理，不参与 demandKeyOf 与撤回条件。
+   */
+  requireGreenNest?: boolean;
 }
 
 /** 需求行的唯一标识（前端选择 / 撤回 / 接单共用，不依赖行号）。 */

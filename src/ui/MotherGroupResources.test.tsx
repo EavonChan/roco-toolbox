@@ -67,7 +67,7 @@ beforeEach(() => {
 });
 
 describe('MotherGroupResources 三视图', () => {
-  test('要求推荐性格时，每个蛋条目在右上角竖排标出本组要的性格（最多 2 个 + N）', () => {
+  test('要求推荐性格时，每个蛋条目把本组要的性格全部铺开（不再用 +N 角标）', () => {
     const target = {
       kind: 'mother' as const,
       criteriaId: 'mother-v2-test',
@@ -93,12 +93,14 @@ describe('MotherGroupResources 三视图', () => {
         .find((row) => row.textContent?.includes('火花'));
     expect(fireRow()).toBeTruthy();
     const naturesOf = () => within(fireRow()!).getByTestId('mother-resource-natures');
-    // 2026-10-30 用户口径：卡片只写第一个性格，多性格时右上角浮一个纯数字小角标（不占排版）
+    // 2026-11-01 用户口径：性格全部展示，79px 宽一行放 3 个，不再有右上角 +N 角标
     expect(naturesOf()).toHaveTextContent('固执');
-    expect(within(fireRow()!).getByTestId('mother-resource-nature-more')).toHaveTextContent('2');
-    expect(fireRow()!.style.height).toBe('95px');
+    expect(naturesOf()).toHaveTextContent('开朗');
+    expect(naturesOf()).toHaveTextContent('胆小');
+    expect(within(fireRow()!).queryByTestId('mother-resource-nature-more')).toBeNull();
+    expect(fireRow()!.style.height).toBe('104px');
 
-    // 不开该口径 → 条目上不显示性格，也没有角标；卡片高度不变（角标不参与排版）
+    // 不开该口径 → 条目上不显示性格；卡片高度不变
     rerender(
       <MotherGroupResources
         group={group}
@@ -111,7 +113,7 @@ describe('MotherGroupResources 三视图', () => {
     expect(fireRow()).toBeTruthy();
     expect(within(fireRow()!).queryByTestId('mother-resource-natures')).toBeNull();
     expect(within(fireRow()!).queryByTestId('mother-resource-nature-more')).toBeNull();
-    expect(fireRow()!.style.height).toBe('95px');
+    expect(fireRow()!.style.height).toBe('104px');
   });
 
   test('自己能产的蛋仍然展示，也可以勾选发需求（2026-10-29 取消限制）', () => {
@@ -811,7 +813,7 @@ describe('MotherGroupResources 三视图', () => {
     await waitFor(() => expect(screen.queryByTestId('demand-publish')).toBeNull());
   });
 
-  test('我缺的：先出 18 项（3 列 × 6 行），点「加载更多」追加（瀑布流）', () => {
+  test('我缺的：先出 24 项（4 列 × 6 行），点「加载更多」追加（瀑布流）', () => {
     const extraIds = Array.from({ length: 30 }, (_, index) => 601 + index);
     const manySpecies: SpeciesEntry[] = [
       // 只留火花这一颗蛋，避免其它图鉴蛋变成「组内暂时孵不了」把总数算乱
@@ -843,8 +845,8 @@ describe('MotherGroupResources 三视图', () => {
       />,
     );
 
-    expect(screen.getAllByTestId('mother-resource-row')).toHaveLength(18);
-    expect(screen.getByTestId('mother-load-more')).toHaveTextContent('已显示 18');
+    expect(screen.getAllByTestId('mother-resource-row')).toHaveLength(24);
+    expect(screen.getByTestId('mother-load-more')).toHaveTextContent('已显示 24');
 
     fireEvent.click(screen.getByTestId('mother-load-more-button'));
     expect(screen.getAllByTestId('mother-resource-row').length).toBeGreaterThan(18);
@@ -1210,12 +1212,23 @@ describe('MotherGroupResources 三视图', () => {
 
     // 2026-10-30：发需求面板常驻展开，不再需要先点「发需求」
     const panel = within(detail).getByTestId('mother-resource-publish-panel');
+    // 2026-11-01：新增「是否要求绿窝」，默认不勾；勾上后随需求一起发布
+    const greenNest = within(within(panel).getByTestId('mother-resource-green-nest')).getByRole(
+      'checkbox',
+    );
+    expect(greenNest).not.toBeChecked();
+    fireEvent.click(greenNest);
     fireEvent.click(within(panel).getByTestId('mother-resource-publish-confirm'));
     await waitFor(() =>
       expect(publish).toHaveBeenCalledWith(
         201,
         expect.any(Array),
-        expect.objectContaining({ gender: '母', body: '大块头', voice: '+100' }),
+        expect.objectContaining({
+          gender: '母',
+          body: '大块头',
+          voice: '+100',
+          requireGreenNest: true,
+        }),
       ),
     );
   });
@@ -1563,17 +1576,17 @@ describe('MotherGroupResources 三视图', () => {
     expect(rows[0]).toHaveTextContent('火花');
   });
 
-  test('固定卡片：我缺的与共同寻找都是三列 106px，卡内按 106×95 绝对定位', () => {
+  test('固定卡片：我缺的与共同寻找都是四列 79px，卡内按 79×104 绝对定位', () => {
     renderResources();
     const rows = screen.getAllByTestId('mother-resource-row');
     const list = rows[0].parentElement;
-    // 2026-11-01：按用户在布局编辑器里定稿的 3 列 106px（卡高 95）落地，不做缩放换算
-    expect(list?.getAttribute('style')).toContain('repeat(3, minmax(0, 106px))');
+    // 2026-11-01：按用户在 4 列布局编辑器里定稿的方案 C 落地（79×104），不做缩放换算
+    expect(list?.getAttribute('style')).toContain('repeat(4, minmax(0, 79px))');
     for (const row of rows) {
       expect(row.className).toContain('flex-col');
       expect(row.className).toContain('items-center');
-      // 卡片高度固定 95（共同寻找卡底有认领按钮，用最小高度），角标浮在右上角不参与排版
-      expect(row.style.height || row.style.minHeight).toBe('95px');
+      // 卡片高度固定 104（共同寻找卡底有认领按钮，用最小高度）
+      expect(row.style.height || row.style.minHeight).toBe('104px');
       // 名字过长按设计稿截断，不再换行把卡片撑高
       expect(row.querySelector('.truncate')).toBeTruthy();
     }
@@ -1581,7 +1594,7 @@ describe('MotherGroupResources 三视图', () => {
     fireEvent.click(screen.getByTestId('mother-view-seeking'));
     expect(
       screen.getAllByTestId('mother-resource-row')[0].parentElement?.getAttribute('style'),
-    ).toContain('repeat(3, minmax(0, 106px))');
+    ).toContain('repeat(4, minmax(0, 79px))');
   });
 
   test('小组卡片：左上角奖牌竖排、头像居中、名字在头像下面、性格在名字下面', () => {
@@ -1673,9 +1686,9 @@ describe('MotherGroupResources 三视图', () => {
       .getAllByTestId('mother-resource-row')
       .find((row) => row.textContent?.includes('火花'))!;
     const natures = within(fireRow).getByTestId('mother-resource-natures');
-    // 2026-10-30 用户口径：只写第一个性格，其余用右上角 +N 角标（不逐条铺开）
-    expect(natures.children).toHaveLength(1);
-    expect(within(fireRow).getByTestId('mother-resource-nature-more')).toHaveTextContent('2');
+    // 2026-11-01 用户口径：性格全部铺开，不再用右上角 +N 角标
+    expect(natures.children).toHaveLength(3);
+    expect(within(fireRow).queryByTestId('mother-resource-nature-more')).toBeNull();
   });
 
   test('我缺的：已有非目标性格的母本，仍按自己设定的收集性格判定缺口', async () => {

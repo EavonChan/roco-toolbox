@@ -80,30 +80,29 @@ import { demandPickKey, readDemandPicks, writeDemandPicks, type DemandPicks } fr
 import { completionReadKey, markCompletionRead, readCompletionRead } from './demandCompletionReadStore';
 
 /**
- * 三页（我缺的 / 需求中心 / 共同寻找）共用一张卡：3 列 × 106 宽、卡高 95。
- * 323 = 375 屏宽 - 页面左右 32 - 区块左右 20；3×106 + 2×2 = 322，留 1px 余量。
- * 坐标是用户在 `需求卡-3列-布局编辑器.html` 里拖出来的设计稿，1:1 落地，不做任何缩放换算（2026-11-01）。
+ * 三页（我缺的 / 需求中心 / 共同寻找）共用一张卡：4 列 × 79 宽、卡高 104。
+ * 323 = 375 屏宽 - 页面左右 32 - 区块左右 20；4×79 + 3×2 = 322，留 1px 余量。
+ * 坐标来自 `需求卡-4列-重排版方案.html` 方案 C（用户 2026-11-01 定稿），1:1 落地，不做缩放换算。
  */
 const DEMAND_CARD_SCALE = 1;
-const DEMAND_CARD_W = 106;
-const DEMAND_CARD_H = 95;
+const DEMAND_CARD_W = 79;
+const DEMAND_CARD_H = 104;
 /** 卡片内各元素的最终坐标（单位 px，直接落地）。 */
 const DEMAND_CARD_POS = {
-  avatar: { left: 6, top: 10, scale: 1.05 },
-  /** 多性格角标贴右上角。 */
-  badge: { left: 92, top: 1 },
-  /** 名字整卡宽居中：名字长短不同也不会偏左偏右（2026-10-30 用户口径）。 */
-  name: { top: 54, scale: 1 },
-  gender: { left: 48, top: 14 },
-  nature: { left: 58, top: 14, scale: 1 },
-  body: { left: 48, top: 32, scale: 1.15 },
-  voice: { left: 69, top: 32, scale: 1.15 },
-  /** 动作 / 状态整卡宽居中：只给 top，左右由卡片统一居中（「待承接」「已接」不会首字同位，2026-11-01）。 */
-  action: { top: 75 },
+  avatar: { left: 18, top: 7, scale: 0.95 },
+  /** 性别 + 名字 + 形态后缀合成一行，整卡宽居中（2026-11-01 用户口径：两者强关联）。 */
+  nameRow: { top: 49 },
+  /** 两枚奖牌收在两个上角；满体重 / 满声音换蛋神 MAX / MIN 图。 */
+  body: { left: 4, top: 4, scale: 1 },
+  voice: { left: 63, top: 4, scale: 1 },
+  /** 性格全部铺开：1~3 个一行，4~6 个自动换第二行（不再用 +N 角标）。 */
+  nature: { top: 63 },
+  /** 状态条：满宽、浅色半透明白底 + 细分隔线，贴卡片底部。 */
+  action: { top: 87, height: 17 },
 };
 
-/** 卡片里名字统一用 36px 头像（32 略小，2026-10-30 用户口径）。 */
-const DEMAND_CARD_AVATAR_SIZE = 36;
+/** 卡片头像统一 44px（缩放 0.95 后视觉约 42px）。 */
+const DEMAND_CARD_AVATAR_SIZE = 44;
 
 type ViewId = 'missing' | 'mine' | 'seeking';
 
@@ -120,8 +119,8 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
 /** 批量发需求时最多同时发几条：比串行快很多，又不至于触发服务端写限流。 */
 const DEMAND_PUBLISH_CONCURRENCY = 4;
 
-/** 我缺的卡片网格固定 3 列；一页 6 行 = 18 项。 */
-const RESOURCE_GRID_COLUMNS = 3;
+/** 我缺的卡片网格固定 4 列；一页 6 行 = 24 项。 */
+const RESOURCE_GRID_COLUMNS = 4;
 const MISSING_PAGE_ROWS = 6;
 const MISSING_PAGE_SIZE = RESOURCE_GRID_COLUMNS * MISSING_PAGE_ROWS;
 
@@ -171,7 +170,7 @@ export interface MotherGroupResourcesProps {
   onPublishDemand?: (
     eggGameId: number,
     natures: string[],
-    criteria: Pick<CollectionDemand, 'gender' | 'body' | 'voice'>,
+    criteria: Pick<CollectionDemand, 'gender' | 'body' | 'voice' | 'requireGreenNest'>,
   ) => Promise<unknown>;
   onWithdrawDemand?: (
     eggGameId: number,
@@ -254,7 +253,7 @@ export function MotherGroupResources({
   const [detailKey, setDetailKey] = useState<string | null>(null);
   /** 「我缺的」二级页面：点头像进入，把发需求 / 完成 / 撤回放到大按钮里操作。 */
   const [resourceDetailEggId, setResourceDetailEggId] = useState<number | null>(null);
-  /** 「我缺的」瀑布流：先出 18 项（3 列 × 6 行），滚到底自动追加；筛选 / 切视图后重置。 */
+  /** 「我缺的」瀑布流：先出 24 项，滚到底自动追加；筛选 / 切视图后重置。 */
   const [missingVisible, setMissingVisible] = useState(MISSING_PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -2018,14 +2017,17 @@ export function MotherGroupResources({
     const isStud = isStudDemandKey(demand.eggGameId);
     // 种公需求用组内产线里的一枚代表蛋当头像与标题（2026-10-30 用户口径；不再加数字角标）
     const representative = isStud ? representativeOf(demand) : null;
-    const base = isStud
+    const displayName = isStud
       ? representative?.name ?? (eggGroupNames[-demand.eggGameId] ?? `蛋组${-demand.eggGameId}`)
-      : splitDisplayName(rowByEgg.get(demand.eggGameId)?.name ?? `蛋 ${demand.eggGameId}`).base;
+      : rowByEgg.get(demand.eggGameId)?.name ?? `蛋 ${demand.eggGameId}`;
+    const base = isStud ? displayName : splitDisplayName(displayName).base;
     /**
-     * 2026-11-01 用户定稿：卡片就是 106×95 真实尺寸（3 列），内部 1:1 绝对定位，
+     * 2026-11-01 用户定稿：卡片就是 79×104 真实尺寸（4 列），内部 1:1 绝对定位，
      * 不再有任何缩放/百分比换算（换算是前几轮错位的原因）。
      */
     const pos = DEMAND_CARD_POS;
+    const bodyIcon = bodyMedalIconByLabel(demand.body);
+    const voiceIcon = voiceMedalIconByLabel(demand.voice);
     return (
       <li
         key={demandKey(demand)}
@@ -2080,33 +2082,29 @@ export function MotherGroupResources({
             )}
           </button>
 
-          {/* 性别在前、性格在后（2026-10-30 用户口径） */}
-          <span
-            className="absolute flex items-center text-[9px] leading-none"
-            style={{ left: pos.gender.left, top: pos.gender.top }}
-          >
-            <GenderMark
-              gender={demand.gender === '公' || demand.gender === '母' ? demand.gender : '未知'}
-            />
-          </span>
-          <span
-            className="absolute flex origin-top-left"
+          {/* 性格全部展示（2026-11-01 用户口径）：满宽居中，1~3 个一行，4~6 个自动换行 */}
+          <div
+            className="absolute flex flex-wrap justify-center gap-[2px]"
             data-testid="mother-demand-natures"
-            style={{
-              left: pos.nature.left,
-              top: pos.nature.top,
-              transform: `scale(${pos.nature.scale})`,
-            }}
+            style={{ left: 0, top: pos.nature.top, width: DEMAND_CARD_W }}
           >
-            <span className="inline-flex items-center whitespace-nowrap rounded bg-emerald-50 px-1 text-[9px] leading-[1.15] text-emerald-700">
+            <span className="inline-flex items-center whitespace-nowrap rounded bg-emerald-50 px-1 text-[9px] leading-[1.2] text-emerald-700">
               {demand.nature || '不挑'}
             </span>
-          </span>
+            {demand.requireGreenNest ? (
+              <span
+                className="inline-flex items-center whitespace-nowrap rounded bg-lime-50 px-1 text-[9px] leading-[1.2] text-lime-700"
+                title="要求这对亲本进学院小窝（性格 100%）"
+              >
+                绿窝
+              </span>
+            ) : null}
+          </div>
 
           {/* 目标口径的两枚奖牌（体型 / 声音），和母本详情同一套图标（2026-10-30） */}
-          {bodyMedalIconByLabel(demand.body) ? (
+          {bodyIcon ? (
             <img
-              src={bodyMedalIconByLabel(demand.body)!}
+              src={bodyIcon}
               alt={demand.body}
               title={demand.body}
               className="absolute h-3 w-3 origin-top-left"
@@ -2118,9 +2116,9 @@ export function MotherGroupResources({
               data-testid="mother-demand-body"
             />
           ) : null}
-          {voiceMedalIconByLabel(demand.voice) ? (
+          {voiceIcon ? (
             <img
-              src={voiceMedalIconByLabel(demand.voice)!}
+              src={voiceIcon}
               alt={voiceMedalLabel(demand.voice)}
               title={voiceMedalLabel(demand.voice)}
               className="absolute h-3 w-3 origin-top-left"
@@ -2133,25 +2131,27 @@ export function MotherGroupResources({
             />
           ) : null}
 
-          <span
-            className="absolute block truncate text-center text-[10px] font-medium leading-none text-slate-700"
-            style={{
-              left: 0,
-              top: pos.name.top,
-              width: DEMAND_CARD_W,
-              transform: `scale(${pos.name.scale})`,
-              transformOrigin: 'top left',
-            }}
+          {/* 性别 + 名字 + 形态后缀一行（2026-11-01 用户口径：两者强关联） */}
+          <div
+            className="absolute flex items-center justify-center"
+            style={{ left: 0, top: pos.nameRow.top, width: DEMAND_CARD_W }}
           >
-            {base}
-          </span>
+            <span className="flex min-w-0 items-center gap-[2px] px-1">
+              <GenderChip
+                gender={demand.gender === '公' || demand.gender === '母' ? demand.gender : '未知'}
+              />
+              <span className="min-w-0 truncate text-[10px] font-medium leading-none text-slate-700">
+                <NameWithForm name={displayName} />
+              </span>
+            </span>
+          </div>
 
           {/* 动作区按设计稿只占一行小字：把里面的按钮统一压成 9px 文本片，
               否则 min-h / 边框会把整块撑高，看起来就像「整张卡错位」；
               点动作按钮只做动作，不触发整卡打开的详情（2026-10-30） */}
           <div
-            className="absolute flex items-center justify-center gap-1 whitespace-nowrap text-[9px] leading-[1.2] [&>button]:min-h-0 [&>button]:rounded-[3px] [&>button]:border-0 [&>button]:bg-transparent [&>button]:p-0 [&>button]:text-[9px] [&>button]:leading-[1.2] [&>span]:text-[9px]"
-            style={{ left: 0, top: pos.action.top, width: DEMAND_CARD_W }}
+            className="absolute flex items-center justify-center gap-1 whitespace-nowrap border-t border-slate-200/70 bg-white/70 text-[9px] leading-[1.2] [&>button]:min-h-0 [&>button]:rounded-[3px] [&>button]:border-0 [&>button]:bg-transparent [&>button]:p-0 [&>button]:text-[9px] [&>button]:leading-[1.2] [&>span]:text-[9px]"
+            style={{ left: 0, top: pos.action.top, width: DEMAND_CARD_W, height: pos.action.height }}
             onClick={(event) => event.stopPropagation()}
           >
             {actions}
@@ -2754,11 +2754,6 @@ export function MotherGroupResources({
               effectiveView === 'missing' && selfBreedableEggIds.has(row.eggGameId);
             const incomplete =
               effectiveView === 'missing' && dataIncompleteEggIds.has(row.eggGameId);
-            /**
-             * 多性格时右上角浮一个 +N 小角标（2026-10-30 用户口径）。
-             * 角标不参与卡片排版：所有卡片内容坐标固定，有角标 / 没角标都一样，卡片高度也不变。
-             */
-            const extraNatures = natures.length > 1 ? natures.length - 1 : 0;
             const showIncompleteDivider =
               incomplete && absoluteIndex === publishableRows.length;
             const showBlockedDivider =
@@ -2809,8 +2804,8 @@ export function MotherGroupResources({
               data-self-breedable={selfBreedable ? 'true' : undefined}
               data-incomplete={incomplete ? 'true' : undefined}
             >
-                  {/* 2026-11-01 用户口径：和需求卡同一套 106×95 坐标——
-                      头像、性别 + 第一个性格、两枚奖牌、名字、动作；多性格时右上角 +N 角标 */}
+                  {/* 2026-11-01 用户定稿：和需求卡同一套 79×104 坐标——
+                      头像、两枚奖牌、性别 + 名字（含形态后缀）、性格全部展示、底部满宽状态条 */}
                   <div
                     className="relative overflow-hidden"
                     style={{ height: DEMAND_CARD_H, width: DEMAND_CARD_W }}
@@ -2823,17 +2818,6 @@ export function MotherGroupResources({
                         transform: `scale(${DEMAND_CARD_SCALE})`,
                       }}
                     >
-                  {extraNatures > 0 ? (
-                    // 小角标贴右上角，字号 7px、单行；两位数的 +10 也不会换行（2026-10-30 用户口径）
-                    <span
-                      className="absolute z-10 flex min-w-[11px] items-center justify-center whitespace-nowrap rounded-full bg-emerald-600 px-[2px] text-[7px] leading-[1.45] text-white"
-                      style={{ left: DEMAND_CARD_POS.badge.left, top: DEMAND_CARD_POS.badge.top }}
-                      title={`还有 ${extraNatures} 个性格`}
-                      data-testid="mother-resource-nature-more"
-                    >
-                      {extraNatures}
-                    </span>
-                  ) : null}
                   <div
                     className="pointer-events-none absolute inset-0"
                     data-testid="mother-resource-medals"
@@ -2897,56 +2881,47 @@ export function MotherGroupResources({
                       <PetAvatar gameId={row.eggGameId} name={base} size={DEMAND_CARD_AVATAR_SIZE} />
                     </span>
                   )}
-                  <span
-                    className="absolute flex items-center text-[9px] leading-none"
-                    style={{
-                      left: DEMAND_CARD_POS.gender.left,
-                      top: DEMAND_CARD_POS.gender.top,
-                    }}
-                  >
-                    <GenderMark gender="母" />
-                  </span>
-                  {natures.length > 0 ? (
-                    <span
-                      className="absolute flex origin-top-left"
-                      data-testid="mother-resource-natures"
-                      style={{
-                        left: DEMAND_CARD_POS.nature.left,
-                        top: DEMAND_CARD_POS.nature.top,
-                        transform: `scale(${DEMAND_CARD_POS.nature.scale})`,
-                      }}
-                    >
-                      <span
-                        className={`inline-flex items-center whitespace-nowrap rounded px-1 text-[9px] leading-[1.15] ${
-                          effectiveView === 'missing' && missingSet.has(natures[0])
-                            ? 'bg-rose-50 text-rose-600'
-                            : 'bg-emerald-50 text-emerald-700'
-                        }`}
-                      >
-                        {natures[0]}
-                      </span>
-                    </span>
-                  ) : null}
-                  <span
-                    className="absolute block truncate text-center text-[10px] font-medium leading-none text-slate-700"
-                    style={{
-                      left: 0,
-                      top: DEMAND_CARD_POS.name.top,
-                      width: DEMAND_CARD_W,
-                      transform: `scale(${DEMAND_CARD_POS.name.scale})`,
-                      transformOrigin: 'top left',
-                    }}
+                  {/* 性别 + 名字 + 形态后缀一行（2026-11-01 用户口径：两者强关联） */}
+                  <div
+                    className="absolute flex items-center justify-center"
+                    style={{ left: 0, top: DEMAND_CARD_POS.nameRow.top, width: DEMAND_CARD_W }}
                     data-testid="mother-resource-name"
                   >
-                    <NameWithForm name={row.name} />
-                  </span>
+                    <span className="flex min-w-0 items-center gap-[2px] px-1">
+                      <GenderChip gender="母" />
+                      <span className="min-w-0 truncate text-[10px] font-medium leading-none text-slate-700">
+                        <NameWithForm name={row.name} />
+                      </span>
+                    </span>
+                  </div>
+                  {natures.length > 0 ? (
+                    <div
+                      className="absolute flex flex-wrap justify-center gap-[2px]"
+                      data-testid="mother-resource-natures"
+                      style={{ left: 0, top: DEMAND_CARD_POS.nature.top, width: DEMAND_CARD_W }}
+                    >
+                      {natures.map((nature) => (
+                        <span
+                          key={nature}
+                          className={`inline-flex items-center whitespace-nowrap rounded px-1 text-[9px] leading-[1.2] ${
+                            effectiveView === 'missing' && missingSet.has(nature)
+                              ? 'bg-rose-50 text-rose-600'
+                              : 'bg-emerald-50 text-emerald-700'
+                          }`}
+                        >
+                          {nature}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {effectiveView === 'missing' ? (
                     <div
-                      className="absolute flex items-center justify-center gap-1 whitespace-nowrap text-[9px] leading-[1.2] [&>button]:min-h-0 [&>button]:rounded-[3px] [&>button]:border-0 [&>button]:bg-transparent [&>button]:p-0 [&>button]:text-[9px] [&>button]:leading-[1.2]"
+                      className="absolute flex items-center justify-center gap-1 whitespace-nowrap border-t border-slate-200/70 bg-white/70 text-[9px] leading-[1.2] [&>button]:min-h-0 [&>button]:rounded-[3px] [&>button]:border-0 [&>button]:bg-transparent [&>button]:p-0 [&>button]:text-[9px] [&>button]:leading-[1.2]"
                       style={{
                         left: 0,
                         top: DEMAND_CARD_POS.action.top,
                         width: DEMAND_CARD_W,
+                        height: DEMAND_CARD_POS.action.height,
                       }}
                     >
                       {myDemands.length > 0 ? (
@@ -3573,6 +3548,28 @@ function NameWithForm({ name }: { name: string }) {
   );
 }
 
+/**
+ * 性别小圆片（2026-11-01 用户口径）：性别与名字强关联，用一个 12px 小圆片贴在名字前。
+ * 单独一根 ♀ / ♂ 细线太瘦，和名字挤在一起也分不清归属，改成有底色的圆片更协调。
+ */
+function GenderChip({ gender }: { gender: '公' | '母' | '未知' }) {
+  const tone =
+    gender === '公'
+      ? 'bg-sky-100 text-sky-700'
+      : gender === '母'
+        ? 'bg-pink-100 text-pink-600'
+        : 'bg-slate-100 text-slate-500';
+  const mark = gender === '公' ? '♂' : gender === '母' ? '♀' : '?';
+  return (
+    <span
+      className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full text-[9px] leading-none ${tone}`}
+      title={gender === '未知' ? '性别未知' : gender}
+    >
+      {mark}
+    </span>
+  );
+}
+
 /** 发需求面板：八大性格先出，其余收进「更多」；体型 / 声音必须选一个，不给「不限」。 */
 const PUBLISH_PRIMARY_NATURES = targetNatureNames;
 const PUBLISH_EXTRA_NATURES = allNatureNames.filter(
@@ -3623,6 +3620,10 @@ function ResourcePublishPanel({
   const [gender, setGender] = useState<DemandGender>(defaultCriteria.gender);
   const [body, setBody] = useState<DemandBody>(defaultCriteria.body || PUBLISH_BODIES[0]);
   const [voice, setVoice] = useState<DemandVoice>(defaultCriteria.voice || PUBLISH_VOICES[0]);
+  /** 是否要求绿窝（学院小窝，性格 100%）：默认不勾（2026-11-01 用户口径）。 */
+  const [requireGreenNest, setRequireGreenNest] = useState(
+    defaultCriteria.requireGreenNest ?? false,
+  );
 
   const collectedSet = new Set(collected);
   const sentSet = new Set(sent);
@@ -3732,6 +3733,19 @@ function ResourcePublishPanel({
         {optionRow('性别', DEMAND_GENDERS, gender, GENDER_LABELS, setGender, 'mother-publish-gender')}
         {optionRow('体型', PUBLISH_BODIES, body, BODY_LABELS, setBody, 'mother-publish-body')}
         {optionRow('声音', PUBLISH_VOICES, voice, VOICE_LABELS, setVoice, 'mother-publish-voice')}
+        <label
+          className="flex min-h-[26px] items-center gap-1.5 text-[11px] text-slate-500"
+          data-testid="mother-resource-green-nest"
+        >
+          <input
+            type="checkbox"
+            checked={requireGreenNest}
+            onChange={(event) => setRequireGreenNest(event.target.checked)}
+            className="h-3.5 w-3.5 shrink-0 accent-emerald-600"
+          />
+          是否要求绿窝
+          <span className="text-[10px] text-slate-400">（学院小窝，性格 100%）</span>
+        </label>
       </div>
       {warning ? (
         <p
@@ -3770,7 +3784,7 @@ function ResourcePublishPanel({
         <button
           type="button"
           disabled={busy || !publishable}
-          onClick={() => onConfirm(picked, { gender, body, voice })}
+          onClick={() => onConfirm(picked, { gender, body, voice, requireGreenNest })}
           data-testid="mother-resource-publish-confirm"
           className="min-h-[34px] flex-[2] rounded-lg bg-emerald-600 text-xs font-medium text-white disabled:bg-slate-200 disabled:text-slate-500"
         >
@@ -3797,6 +3811,9 @@ function DemandCriteriaTags({ demand, testId }: { demand: CollectionDemand; test
     { key: 'body', text: BODY_LABELS[demand.body], tone: 'bg-emerald-50 text-emerald-700', filled: Boolean(demand.body) },
     { key: 'voice', text: VOICE_LABELS[demand.voice], tone: 'bg-amber-50 text-amber-700', filled: Boolean(demand.voice) },
     { key: 'nature', text: demand.nature || '不挑', tone: 'bg-violet-50 text-violet-700', filled: Boolean(demand.nature) },
+    ...(demand.requireGreenNest
+      ? [{ key: 'nest', text: '要求绿窝', tone: 'bg-lime-50 text-lime-700', filled: true }]
+      : []),
   ];
   return (
     <span className="flex flex-wrap items-center gap-1" data-testid={testId}>

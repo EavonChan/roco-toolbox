@@ -560,6 +560,8 @@ function parseDemand(value: unknown): CollectionDemand {
     version: asNumber(record.version, 'version'),
     createdAt: asNumber(record.createdAt, 'createdAt'),
     updatedAt: asNumber(record.updatedAt, 'updatedAt'),
+    // 老服务端 / 旧记录没有这个字段：按「不要求绿窝」处理（2026-11-01）
+    ...(record.requireGreenNest === true ? { requireGreenNest: true } : {}),
   };
 }
 
@@ -592,6 +594,8 @@ export async function publishCollectionDemand(
     gender: DemandGender;
     body: DemandBody;
     voice: DemandVoice;
+    /** 要求这对亲本进学院小窝（绿窝）；不传按 false 处理（2026-11-01）。 */
+    requireGreenNest?: boolean;
   },
   signal?: AbortSignal,
 ): Promise<CollectionDemand[]> {

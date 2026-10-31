@@ -26,17 +26,28 @@ export function voiceMedalName(voiceDb: number | null | undefined): string | nul
 }
 
 /**
- * 需求/目标里的声音取图：同时认数值写法（`+100` / `-100`）和奖牌名（`婉转声` / `粗嗓门`）。
+ * 需求 / 目标里的声音取图（2026-11-01 用户口径：满分档换蛋神 extreme-medal 图）：
+ * - `+100` / `-100` = 满声音 / 满粗嗓门 → 带 MAX 缎带的图；
+ * - `婉转声` / `粗嗓门` = 双牌档（≥96 / ≤-96，不保证满分）→ 普通奖牌图。
  * 空字符串、「不挑」等返回 null。
  */
 export function voiceMedalIconByLabel(label: string | null | undefined): string | null {
-  if (label === '+100' || label === '婉转声') return '/ui/medals/1026.png';
-  if (label === '-100' || label === '粗嗓门') return '/ui/medals/1025.png';
+  if (label === '+100') return '/ui/medals/1026-max.png';
+  if (label === '-100') return '/ui/medals/1025-max.png';
+  if (label === '婉转声') return '/ui/medals/1026.png';
+  if (label === '粗嗓门') return '/ui/medals/1025.png';
   return null;
 }
 
-/** 体型目标取图：直接复用奖牌名字映射（`大块头` / `小不点`） */
-export const bodyMedalIconByLabel = bodyMedalIcon;
+/**
+ * 体型目标取图（2026-11-01 用户口径：体重正好 100% / 0% 才换 MAX / MIN 图标）。
+ * `满体重` / `零体重` 是新增的极端档；`大块头` / `小不点` 仍是普通奖牌。
+ */
+export function bodyMedalIconByLabel(label: string | null | undefined): string | null {
+  if (label === '满体重') return '/ui/medals/1001-max.png';
+  if (label === '零体重') return '/ui/medals/1002-min.png';
+  return bodyMedalIcon(label);
+}
 
 /** 声音目标的名字（`+100` → 婉转声、`-100` → 粗嗓门），用于 title / alt */
 export function voiceMedalLabel(label: string | null | undefined): string {

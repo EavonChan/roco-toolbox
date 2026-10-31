@@ -91,6 +91,24 @@ describe('petMatchesDemand', () => {
     expect(petMatchesDemand(at(99), { ...anyCriteria, voice: '+100' }, eggOf)).toBe(false);
   });
 
+  test('满分体型（满体重 / 零体重）按体重百分位 100% / 0% 判定（2026-11-01）', () => {
+    const eggOf = eggMapOf(species);
+    // 有奖牌 + 体重正好 100% 才算满体重；98% 的大块头不算
+    const full = mother(101, { medalBody: '大块头', weightPercent: 100 });
+    const near = mother(101, { medalBody: '大块头', weightPercent: 98 });
+    expect(petMatchesDemand(full, { ...anyCriteria, body: '满体重' }, eggOf)).toBe(true);
+    expect(petMatchesDemand(near, { ...anyCriteria, body: '满体重' }, eggOf)).toBe(false);
+    // 满体重也满足普通「大块头」口径（极端档是奖牌档的子集）
+    expect(petMatchesDemand(full, { ...anyCriteria, body: '大块头' }, eggOf)).toBe(true);
+
+    const zero = mother(101, { medalBody: '小不点', weightPercent: 0 });
+    expect(petMatchesDemand(zero, { ...anyCriteria, body: '零体重' }, eggOf)).toBe(true);
+    expect(petMatchesDemand(zero, { ...anyCriteria, body: '小不点' }, eggOf)).toBe(true);
+    // 缺体重字段 → 判不了，不猜
+    const noWeight = mother(101, { medalBody: '大块头' });
+    expect(petMatchesDemand(noWeight, { ...anyCriteria, body: '满体重' }, eggOf)).toBe(false);
+  });
+
   test('进化形态也算同一颗蛋', () => {
     const evolved = mother(102, { nature: '开朗' });
     const criteria = { ...anyCriteria, nature: '开朗' };

@@ -1535,6 +1535,7 @@ interface DemandRow {
   gender: string;
   body: string;
   voice: string;
+  require_green_nest?: number | null;
   status: string;
   claimer_account_id: string | null;
   version: number;
@@ -1562,10 +1563,11 @@ const toDemand = (row: DemandRow): CollectionDemand => ({
   version: row.version,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  ...(row.require_green_nest === 1 ? { requireGreenNest: true } : {}),
 });
 
 const DEMAND_COLUMNS = `group_id, demander_account_id, egg_game_id, nature,
-  gender, body, voice, status, claimer_account_id, version, created_at, updated_at`;
+  gender, body, voice, require_green_nest, status, claimer_account_id, version, created_at, updated_at`;
 
 interface CompletionRow {
   group_id: string;
@@ -1576,12 +1578,13 @@ interface CompletionRow {
   gender: string;
   body: string;
   voice: string;
+  require_green_nest?: number | null;
   created_at: number;
   completed_at: number;
 }
 
 const COMPLETION_COLUMNS = `group_id, demander_account_id, claimer_account_id, egg_game_id, nature,
-  gender, body, voice, created_at, completed_at`;
+  gender, body, voice, require_green_nest, created_at, completed_at`;
 
 /** 归档行映射回需求形状：前端仍按 `status = 'done'` 统计已结单，接口契约不变。 */
 const toCompletedDemand = (row: CompletionRow): CollectionDemand => ({
@@ -1598,6 +1601,7 @@ const toCompletedDemand = (row: CompletionRow): CollectionDemand => ({
   version: 0,
   createdAt: row.created_at,
   updatedAt: row.completed_at,
+  ...(row.require_green_nest === 1 ? { requireGreenNest: true } : {}),
 });
 
 /**
@@ -1769,6 +1773,8 @@ export interface PublishDemandInput {
   gender: DemandGender;
   body: DemandBody;
   voice: DemandVoice;
+  /** 要求这对亲本进学院小窝（绿窝）；缺省 false（2026-11-01）。 */
+  requireGreenNest?: boolean;
 }
 
 /**
@@ -1784,6 +1790,7 @@ export async function publishCollectionDemand(
   input: PublishDemandInput,
 ): Promise<CollectionDemand[]> {
   const { groupId, accountId, eggGameId, gender, body, voice } = input;
+  const requireGreenNest = input.requireGreenNest === true ? 1 : 0;
   await assertMotherGroup(db, groupId);
   // 入库统一 trim：校验只 trim 判空、入库若原样保留，' 胆小' 会变成另一条需求永远接不上（R2-7-L01）
   const natures =
@@ -1839,9 +1846,9 @@ export async function publishCollectionDemand(
     await db
       .prepare(
         `INSERT INTO collection_group_demands
-           (group_id, demander_account_id, egg_game_id, nature, gender, body, voice, status,
-            claimer_account_id, version, created_at, updated_at)
-         SELECT ?, ?, ?, n.nature, ?, ?, ?, 'open', NULL, 0, ?, ?
+           (group_id, demander_account_id, egg_game_id, nature, gender, body, voice,
+            require_green_nest, status, claimer_account_id, version, created_at, updated_at)
+         SELECT ?, ?, ?, n.nature, ?, ?, ?, ?, 'open', NULL, 0, ?, ?
            FROM (${natureRows}) AS n
           WHERE (SELECT COUNT(*) FROM collection_group_demands
                    WHERE group_id = ? AND status <> 'done') + ? <= ?
@@ -1857,6 +1864,7 @@ export async function publishCollectionDemand(
         gender,
         body,
         voice,
+        requireGreenNest,
         now,
         now,
         ...natures,
@@ -2108,9 +2116,9 @@ export async function completeCollectionDemand(
       .prepare(
         `INSERT INTO collection_group_demand_completions
           (group_id, demander_account_id, claimer_account_id, egg_game_id, nature,
-           gender, body, voice, created_at, completed_at)
+           gender, body, voice, require_green_nest, created_at, completed_at)
          SELECT group_id, demander_account_id, claimer_account_id, egg_game_id, nature,
-                gender, body, voice, created_at, ?
+                gender, body, voice, require_green_nest, created_at, ?
            FROM collection_group_demands
           WHERE group_id = ? AND demander_account_id = ? AND egg_game_id = ? AND nature = ?
             AND gender = ? AND body = ? AND voice = ?

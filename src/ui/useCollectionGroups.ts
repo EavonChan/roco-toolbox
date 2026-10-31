@@ -427,7 +427,7 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
     async (
       eggGameId: number,
       natures: string[],
-      criteria: Pick<CollectionDemand, 'gender' | 'body' | 'voice'>,
+      criteria: Pick<CollectionDemand, 'gender' | 'body' | 'voice' | 'requireGreenNest'>,
     ) => {
       const groupId = groupRef.current;
       if (!groupId) throw new Error('还没有打开小组');

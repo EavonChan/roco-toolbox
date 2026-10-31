@@ -43,6 +43,22 @@ const accountKeyOfSnapshot = (snapshot: AccountSnapshot): string =>
 const bodyOfPet = (pet: OwnedPet): string => bodyGradeOf(pet);
 
 /**
+ * 体型口径是否命中（2026-11-01 新增满体重 / 零体重）：
+ * - `大块头` / `小不点`：奖牌档，满体重 / 零体重个体也算命中（极端档是它们的子集）；
+ * - `满体重` / `零体重`：要求体重百分位正好 100% / 0%，缺体重字段判不了就返回 false。
+ */
+const bodyMatchesCriteria = (pet: OwnedPet, body: string): boolean => {
+  if (!body) return true;
+  const grade = bodyOfPet(pet);
+  if (body === '大块头' || body === '小不点') return grade === body;
+  const percent = pet.weightPercent;
+  if (typeof percent !== 'number' || !Number.isFinite(percent)) return false;
+  if (body === '满体重') return grade === '大块头' && percent >= 100;
+  if (body === '零体重') return grade === '小不点' && percent <= 0;
+  return false;
+};
+
+/**
  * 声音是否命中需求里的选项；空字符串 = 不挑。
  * 统一走 `petFilters.matchesVoiceOption`（2026-10-29 代码审查 B1-M01：此处曾复制一份，
  * 婉转声漏了 ≤100 上界，后续改口径必然漏改）。
@@ -61,7 +77,7 @@ const matchesDemandVoice = (pet: OwnedPet, voice: string): boolean =>
  * （2026-11-01 代码审查 R2-1-M09：那边曾手抄一份，声音档位改口径必然漏改）。
  */
 export const matchesParentGrade = (pet: OwnedPet, criteria: DemandCriteria): boolean =>
-  (!criteria.body || bodyOfPet(pet) === criteria.body) &&
+  bodyMatchesCriteria(pet, criteria.body) &&
   matchesDemandVoice(pet, criteria.voice);
 
 /** 这只个体是否满足需求的所有已选字段（空字段跳过）。 */
@@ -73,7 +89,7 @@ export function petMatchesDemand(
   if (eggOfGameId.get(pet.gameId) !== criteria.eggGameId) return false;
   if (criteria.nature && pet.nature !== criteria.nature) return false;
   if (criteria.gender && pet.gender !== criteria.gender) return false;
-  if (criteria.body && bodyOfPet(pet) !== criteria.body) return false;
+  if (criteria.body && !bodyMatchesCriteria(pet, criteria.body)) return false;
   if (!matchesDemandVoice(pet, criteria.voice)) return false;
   return true;
 }
@@ -378,7 +394,7 @@ export function hasStockForStudDemand(
     for (const pet of snapshot.pets) {
       if (pet.gender !== '公') continue;
       if (demand.nature && pet.nature !== demand.nature) continue;
-      if (demand.body && bodyOfPet(pet) !== demand.body) continue;
+      if (!bodyMatchesCriteria(pet, demand.body)) continue;
       if (!matchesDemandVoice(pet, demand.voice)) continue;
       if ((groupsByGameId.get(pet.gameId) ?? []).includes(groupId)) return true;
     }

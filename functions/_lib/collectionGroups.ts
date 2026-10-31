@@ -536,6 +536,8 @@ async function handleDemandPublish(
   if (!isDemandGender(gender)) throw new MotherInputError('INVALID_INPUT', '性别无效');
   if (!isDemandBody(demandBody)) throw new MotherInputError('INVALID_INPUT', '体型无效');
   if (!isDemandVoice(voice)) throw new MotherInputError('INVALID_INPUT', '声音无效');
+  // 要求进学院小窝（绿窝）：可选，缺省 false（2026-11-01）
+  const requireGreenNest = body.requireGreenNest === true;
   const demand = await publishCollectionDemand(env.DB, {
     groupId,
     accountId,
@@ -544,6 +546,7 @@ async function handleDemandPublish(
     gender,
     body: demandBody,
     voice,
+    requireGreenNest,
   });
   return okJson(origin, { demands: demand });
 }
