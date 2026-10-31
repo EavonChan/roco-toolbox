@@ -46,6 +46,16 @@ describe('myPetsFilterStore 持久化读取', () => {
 
     expect([...store.getMyPetsSelected()]).toEqual(['body:大块头']);
   });
+
+  test('存了已下线的账号标签：读取时丢弃，不再静默过滤列表', async () => {
+    // 2026-10-05 起账号维度移到页面顶部，筛选面板里不再有账号标签；
+    // 旧版本存下的 account:* 会变成「看不见、也点不掉」的条件（R2-4-M02）。
+    localStorage.setItem(KEY, JSON.stringify({ selected: ['account:小号', 'body:大块头'] }));
+
+    const store = await import('./myPetsFilterStore');
+
+    expect([...store.getMyPetsSelected()]).toEqual(['body:大块头']);
+  });
 });
 
 describe('重置只清精灵背包的标签', () => {

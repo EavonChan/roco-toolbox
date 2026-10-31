@@ -179,7 +179,8 @@ export function MyPets({ onGoImport }: MyPetsProps) {
               options: rowTags.map((tag) => ({
                 value: tag.id,
                 label: `${tag.label} (${facetCounts[tag.id] ?? 0})`,
-                disabled: (facetCounts[tag.id] ?? 0) === 0,
+                // 已选项即使当前命中 0 也必须能取消（已选但被置灰就点不掉，只能整页重置；R2-4-M02）
+                disabled: (facetCounts[tag.id] ?? 0) === 0 && !selected.has(tag.id),
               })),
               selected: rowTags.filter((tag) => selected.has(tag.id)).map((tag) => tag.id),
               onToggle: (id) => toggle(id),

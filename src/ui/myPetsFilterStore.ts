@@ -35,6 +35,15 @@ const readPersisted = (): PersistedFilter => {
 const persisted = readPersisted();
 
 /**
+ * 面板里还会显示的标签维度（账号维度 2026-10-05 起移到页面顶部的账号筛选条，本面板不再展示）。
+ * 旧版本存下的 `account:*` 若原样读回，会变成「看不见、也点不掉」的筛选条件，
+ * 换账号 / 重新导入后表现为列表被静默筛空（R2-4-M02）。
+ */
+const LIVE_TAG_PREFIXES = ['gender', 'body', 'voice', 'nature', 'eggGroup', 'shiny'];
+
+const isLiveTag = (tagId: string): boolean => LIVE_TAG_PREFIXES.includes(tagId.split(':')[0] ?? '');
+
+/**
  * localStorage 里的字段可能是任意脏值（用户手改 / 旧版本数据）。这里逐项校验，
  * 非数组或非字符串一律丢掉——模块顶层直接用 `new Set(...)`，脏值会抛错导致**整个应用白屏**。
  */
@@ -42,7 +51,9 @@ const toStringSet = <T extends string>(value: unknown): Set<T> =>
   new Set(Array.isArray(value) ? value.filter((item): item is T => typeof item === 'string') : []);
 
 /** 全部视角：已选的标签 + 面板是否展开（展开态不持久化；2026-10-05 拍板默认打开） */
-let selected: ReadonlySet<string> = toStringSet(persisted.selected);
+let selected: ReadonlySet<string> = new Set(
+  [...toStringSet<string>(persisted.selected)].filter(isLiveTag),
+);
 let filtersOpen = true;
 
 const listeners = new Set<Listener>();
