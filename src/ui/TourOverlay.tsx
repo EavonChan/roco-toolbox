@@ -26,13 +26,39 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const targetRef = useRef<HTMLElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const onEnterRef = useRef(onEnter);
+  const onCloseRef = useRef(onClose);
   const step = steps[index];
   const last = index === steps.length - 1;
 
   useEffect(() => {
     onEnterRef.current = onEnter;
+    onCloseRef.current = onClose;
   });
+
+  // 无障碍（对照 primitives/ModalSurface 的既有做法）：聚焦卡片、Esc 关闭、关闭后还原焦点
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    return () => restoreFocusRef.current?.focus?.();
+  }, []);
+
+  useEffect(() => {
+    cardRef.current?.focus();
+  }, [index]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      // 上层还有模态弹层（例如文字教程）时让给它关，别一次 Esc 关两层
+      if (document.querySelector('[aria-modal="true"]')) return;
+      event.preventDefault();
+      onCloseRef.current();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // 进步骤：先切页面，再等锚点出现、滚到视野中间并量位置
   useEffect(() => {
@@ -188,10 +214,13 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
       ) : null}
 
       <div
+        ref={cardRef}
         role="dialog"
         aria-label="新手引导"
+        aria-describedby="tour-card-body"
+        tabIndex={-1}
         data-testid="tour-card"
-        className="pointer-events-auto absolute rounded-2xl bg-white p-4 shadow-2xl"
+        className="pointer-events-auto absolute rounded-2xl bg-white p-4 shadow-2xl focus:outline-none"
         style={tooltipStyle}
       >
         <div className="flex items-center justify-between">
@@ -207,12 +236,18 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
             跳过
           </button>
         </div>
-        <h3 className="mt-1 text-base font-semibold text-slate-800" data-testid="tour-title">
-          {step.title}
-        </h3>
-        <p className="mt-1 text-[13px] leading-relaxed text-slate-600" data-testid="tour-body">
-          {step.body}
-        </p>
+        <div aria-live="polite">
+          <h3 className="mt-1 text-base font-semibold text-slate-800" data-testid="tour-title">
+            {step.title}
+          </h3>
+          <p
+            id="tour-card-body"
+            className="mt-1 text-[13px] leading-relaxed text-slate-600"
+            data-testid="tour-body"
+          >
+            {step.body}
+          </p>
+        </div>
         <div className="mt-3 flex items-center gap-2">
           {index > 0 ? (
             <button

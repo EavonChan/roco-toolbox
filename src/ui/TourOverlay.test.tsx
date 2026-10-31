@@ -106,6 +106,15 @@ describe('新手引导', () => {
     expect(Number.parseFloat(card.style.top)).toBeGreaterThanOrEqual(12);
   });
 
+  test('打开时焦点落在卡片上，Esc 可关闭', () => {
+    const onClose = vi.fn();
+    render(<TourOverlay steps={TOUR_STEPS} onClose={onClose} />);
+
+    expect(document.activeElement).toBe(screen.getByTestId('tour-card'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   test('进入每一步都会通知 App 切页面', () => {
     const onEnter = vi.fn();
     render(<TourOverlay steps={TOUR_STEPS} onClose={() => {}} onEnter={onEnter} />);
