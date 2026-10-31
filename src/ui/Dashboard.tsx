@@ -250,7 +250,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               data-testid="nest-open-coverage"
               className="min-h-[28px] text-xs font-medium text-emerald-700"
             >
-              去看怎么迭代 ›
+              看缺口 ›
             </button>
             <button
               type="button"
@@ -260,7 +260,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               data-testid="nest-open-swap"
               className="min-h-[28px] text-xs font-medium text-emerald-700"
             >
-              去看怎么收集 ›
+              看推荐种公 ›
             </button>
           </div>
           <NestPlanCard plans={plans} emptyNote={nestEmptyNote} />
