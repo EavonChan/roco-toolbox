@@ -1187,13 +1187,17 @@ export function MotherGroupResources({
    */
   const studCandidatesByDemand = useMemo(() => {
     const map = new Map<string, StudDemandCandidate[]>();
-    const members = group.members.map((member) => ({
-      accountId: member.accountId,
-      linesIndex: lineIndexByMember.get(member.accountId) ?? null,
-      eggGameIds: new Set(
-        (member.resource?.accounts ?? []).flatMap((account) => account.eggGameIds),
-      ),
-    }));
+    // 「数据不可比（口径 / 图鉴版本不匹配）」的成员按未知处理：不参与「谁能补我」的角标与代表蛋排序，
+    // 与同页 `targetRows` / `memberSupplies` 的口径一致（2026-11-01 代码审查 R2-1-M05）。
+    const members = group.members
+      .filter((member) => isMotherResourceComparable(member.resource, catalogVersion, criteriaId))
+      .map((member) => ({
+        accountId: member.accountId,
+        linesIndex: lineIndexByMember.get(member.accountId) ?? null,
+        eggGameIds: new Set(
+          (member.resource?.accounts ?? []).flatMap((account) => account.eggGameIds),
+        ),
+      }));
     for (const demand of demands) {
       if (!isStudDemandKey(demand.eggGameId)) continue;
       map.set(
