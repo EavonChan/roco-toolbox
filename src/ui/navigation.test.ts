@@ -169,9 +169,9 @@ describe('legacyLocation：新页面写回旧键', () => {
     });
   });
 
-  test('收集页的种公求蛋视图仍可写回 swap/eggs（旧版可理解）', () => {
+  test('收集页的种公页不再写回已下线的 swap/eggs（2026-11-01 R2-5-M02）', () => {
     expect(legacyLocation({ ...base, page: 'collection', collection: EGG_LOCATION })).toEqual({
-      lastTab: 'swap',
+      lastTab: 'coverage',
       swapView: 'eggs',
     });
   });

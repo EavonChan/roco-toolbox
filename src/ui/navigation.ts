@@ -152,9 +152,9 @@ export function legacyLocation(state: AppNavigation): LegacyLocation {
   if (state.page === 'home') return { lastTab: 'home', swapView: 'eggs' };
   if (state.page === 'dashboard') return { lastTab: 'dashboard', swapView: 'eggs' };
   if (state.collection.kind === 'studs') {
-    return state.collection.view === 'eggs'
-      ? { lastTab: 'swap', swapView: 'eggs' }
-      : { lastTab: 'coverage', swapView: 'eggs' };
+    // 2026-11-01 R2-5-M02：种公页的两个视图都在收集页里，「个人求蛋」下线后
+    // 再写回 swap/eggs 会让重开应用落回已删除的小组·求种公，统一记成 coverage。
+    return { lastTab: 'coverage', swapView: 'eggs' };
   }
   return { lastTab: 'myPets', swapView: 'eggs' };
 }

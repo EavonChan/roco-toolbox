@@ -133,28 +133,29 @@ export default function App() {
   // 覆盖度矩阵的展开态放在这里，切页签回来不会收起
   const [expandedGroupId, setExpandedGroupId] = useState<number | null>(null);
   /**
-   * 精准直达的聚焦（2026-10-24）：看板「去看怎么迭代」带着蛋组跳过来时，
-   * 展开它并滚到视野中间。等数据读完后才滚；成功后消费这次 revision，
-   * 用户手动离开再回来不会被旧聚焦重新改列表。
+   * 精准直达的聚焦（2026-10-24）：看板「看缺口」带着蛋组跳过来时，展开它并滚到视野中间；
+   * 「看推荐种公」（view = eggs）滚到种公阵列卡（2026-11-01 R2-5-M02：这两个入口此前落点完全相同）。
+   * 等数据读完后才滚；成功后消费这次 revision，用户手动离开再回来不会被旧聚焦重新改列表。
    */
   useEffect(() => {
     if (!focusPending(navigation) || navigation.page !== 'collection') return;
     const location = navigation.collection;
-    if (location.kind !== 'studs' || location.view !== 'coverage') return;
+    if (location.kind !== 'studs') return;
     if (!loaded) return;
     const revision = navigation.focusRevision;
-    if (location.groupId == null) {
+    const toStudMatrix = location.view === 'eggs';
+    const groupId = location.view === 'coverage' ? location.groupId : undefined;
+    if (!toStudMatrix && groupId == null) {
       navigate({ type: 'consume-focus', revision });
       return;
     }
-    setExpandedGroupId(location.groupId);
+    if (groupId != null) setExpandedGroupId(groupId);
     // 等这次渲染提交完再滚（顶部栏是 sticky，所以用 center 而不是 start）
     const timer = window.setTimeout(() => {
-      document
-        .querySelector(
-          `[data-testid="coverage-group-row"][data-group-id="${location.groupId}"]`,
-        )
-        ?.scrollIntoView({ block: 'center' });
+      const selector = toStudMatrix
+        ? '[data-testid="stud-matrix"]'
+        : `[data-testid="coverage-group-row"][data-group-id="${groupId}"]`;
+      document.querySelector(selector)?.scrollIntoView({ block: 'center' });
       navigate({ type: 'consume-focus', revision });
     }, 0);
     return () => window.clearTimeout(timer);
