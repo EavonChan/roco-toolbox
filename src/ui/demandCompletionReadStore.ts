@@ -33,7 +33,11 @@ export function markCompletionRead(
   const read = readCompletionRead(accountId);
   for (const key of keys) read[key] = true;
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(KEY_PREFIX + accountId, JSON.stringify(read));
+    try {
+      window.localStorage.setItem(KEY_PREFIX + accountId, JSON.stringify(read));
+    } catch {
+      // 存不下只是下次还会提示一次（同 lastTab.ts / demandPickStore.ts）
+    }
   }
   return { ...read };
 }

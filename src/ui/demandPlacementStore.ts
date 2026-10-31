@@ -55,7 +55,11 @@ export function togglePlacementMark(
   if (placed) marks[rowKey] = true;
   else delete marks[rowKey];
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(KEY_PREFIX + accountId, JSON.stringify(marks));
+    try {
+      window.localStorage.setItem(KEY_PREFIX + accountId, JSON.stringify(marks));
+    } catch {
+      // 隐私模式 / 配额满：记不住不影响本次勾选（同 lastTab.ts / demandPickStore.ts）
+    }
   }
   return { ...marks };
 }
@@ -76,5 +80,9 @@ export function readCollapsedAccounts(): string[] {
 
 export function writeCollapsedAccounts(accountKeys: readonly string[]): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...new Set(accountKeys)]));
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...new Set(accountKeys)]));
+  } catch {
+    // 存不下只是下次打开不再收起
+  }
 }

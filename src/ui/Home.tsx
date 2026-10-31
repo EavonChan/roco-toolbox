@@ -276,7 +276,11 @@ const homeViewListeners = new Set<(view: HomeView) => void>();
 /** 新手引导要直接把家园切到某一页（导航合同不管页内分页）。 */
 export function saveHomeView(view: HomeView): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(HOME_VIEW_KEY, view);
+  try {
+    window.localStorage.setItem(HOME_VIEW_KEY, view);
+  } catch {
+    // 隐私模式 / 配额满：本次切换照样生效，只是下次打开不记住（同 lastTab.ts）
+  }
   for (const listener of homeViewListeners) listener(view);
 }
 
