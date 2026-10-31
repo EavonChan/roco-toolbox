@@ -254,7 +254,7 @@ export function MotherGroupResources({
   const [detailKey, setDetailKey] = useState<string | null>(null);
   /** 「我缺的」二级页面：点头像进入，把发需求 / 完成 / 撤回放到大按钮里操作。 */
   const [resourceDetailEggId, setResourceDetailEggId] = useState<number | null>(null);
-  /** 「我缺的」瀑布流：先出 24 项，滚到底自动追加；筛选 / 切视图后重置。 */
+  /** 「我缺的」瀑布流：先出 18 项（3 列 × 6 行），滚到底自动追加；筛选 / 切视图后重置。 */
   const [missingVisible, setMissingVisible] = useState(MISSING_PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -2004,6 +2004,7 @@ export function MotherGroupResources({
     setSelected([]);
     setDemandError('');
     setDemandMessage('');
+    setTaskError('');
     setPublishItems(null);
     setPublishError('');
     setConfirmWithdraw(null);
