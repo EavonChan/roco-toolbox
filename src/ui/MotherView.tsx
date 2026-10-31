@@ -384,7 +384,7 @@ export function MotherView({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-tour="collection-mothers">
       {/* 搜索 + 蛋组筛选同一行：蛋组用页内下拉多选，不再单开一段面板（2026-10-25 用户要求） */}
       <div className="flex items-center gap-1.5">
         <SearchField
@@ -511,7 +511,7 @@ export function MotherView({
               data-testid="mother-nature-editor"
               className="min-h-[28px] rounded-lg border border-slate-200 bg-white px-1.5 text-[11px] text-slate-500"
             >
-              编辑性格
+              编辑推荐性格
             </button>
             <SegmentedControl
               label="母本收集状态"

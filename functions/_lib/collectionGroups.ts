@@ -32,6 +32,7 @@ import {
   publishMotherResourceToGroup,
   publishStudResource,
   readCollectionGroupDetail,
+  readCollectionGroupVersion,
   releaseCollectionDemand,
   releaseCollectionTask,
   removeCollectionGroupMember,
@@ -168,17 +169,24 @@ export async function handleCollectionGroups(
       if (method === 'GET') {
         const readLimited = await limited(env, origin, `cg-read:${accountId}`, READ_LIMIT);
         if (readLimited) return readLimited;
-        const group = await findCollectionGroup(env.DB, groupId);
-        if (!group) return failCode(origin, 404, 'GROUP_NOT_FOUND', '小组不存在');
-        if (!(await isMember(env.DB, groupId, accountId))) {
-          return failCode(origin, 403, 'NOT_MEMBER', '不是该组成员');
-        }
+        // 详情本身已经带组成员表：不再额外读组 + 成员（原来同一请求里组行读了两次）
         const detail = await readCollectionGroupDetail(env.DB, groupId);
         if (!detail) return failCode(origin, 404, 'GROUP_NOT_FOUND', '小组不存在');
+        if (!detail.members.some((member) => member.accountId === accountId)) {
+          return failCode(origin, 403, 'NOT_MEMBER', '不是该组成员');
+        }
         return okJson(origin, { group: detail.group, members: detail.members });
       }
       if (method === 'DELETE') return await handleDissolve(env, origin, accountId, groupId);
       return failCode(origin, 404, 'GROUP_NOT_FOUND', '没有这个接口');
+    }
+
+    if (rest.length === 2 && rest[1] === 'version' && method === 'GET') {
+      const readLimited = await limited(env, origin, `cg-read:${accountId}`, READ_LIMIT);
+      if (readLimited) return readLimited;
+      const denied = await requireMember(env, origin, accountId, groupId);
+      if (denied) return denied;
+      return okJson(origin, { ...(await readCollectionGroupVersion(env.DB, groupId)) });
     }
 
     if (rest.length === 3 && rest[1] === 'resources' && rest[2] === 'me' && method === 'PUT') {
@@ -432,9 +440,13 @@ async function handleTaskAction(
 ): Promise<Response> {
   const writeLimited = await limited(env, origin, `cg-write:${accountId}`, WRITE_LIMIT);
   if (writeLimited) return writeLimited;
-  const group = await findCollectionGroup(env.DB, groupId);
+  // 2026-11-01：组存在性与成员身份相互独立，并行查，少一次 D1 往返
+  const [group, member] = await Promise.all([
+    findCollectionGroup(env.DB, groupId),
+    isMember(env.DB, groupId, accountId),
+  ]);
   if (!group) return failCode(origin, 404, 'GROUP_NOT_FOUND', '小组不存在');
-  if (!(await isMember(env.DB, groupId, accountId))) {
+  if (!member) {
     return failCode(origin, 403, 'NOT_MEMBER', '不是该组成员');
   }
   const body = (await readJsonBody(request)) as Record<string, unknown>;
@@ -501,18 +513,41 @@ const parseDemanderAccountId = (body: Record<string, unknown>): string => {
   return value.trim();
 };
 
+/**
+ * 「组存在 + 我是成员」一次查完（原先是 3 条 SQL：组、配置、成员）。
+ * 返回成员所在组的 owner，失败时区分 404 / 403。
+ */
+async function requireMemberRow(
+  env: Env,
+  origin: string | null,
+  accountId: string,
+  groupId: string,
+): Promise<{ ownerAccountId: string } | Response> {
+  const row = await env.DB.prepare(
+    `SELECT g.owner_account_id AS owner_account_id
+       FROM mother_group_members m
+       JOIN mother_groups g ON g.id = m.group_id
+      WHERE m.group_id = ? AND m.account_id = ?`,
+  )
+    .bind(groupId, accountId)
+    .first<{ owner_account_id: string }>();
+  if (row) return { ownerAccountId: row.owner_account_id };
+  const exists = await env.DB.prepare('SELECT 1 AS found FROM mother_groups WHERE id = ?')
+    .bind(groupId)
+    .first<{ found: number }>();
+  return exists
+    ? failCode(origin, 403, 'NOT_MEMBER', '不是该组成员')
+    : failCode(origin, 404, 'GROUP_NOT_FOUND', '小组不存在');
+}
+
 async function requireMember(
   env: Env,
   origin: string | null,
   accountId: string,
   groupId: string,
 ): Promise<Response | null> {
-  const group = await findCollectionGroup(env.DB, groupId);
-  if (!group) return failCode(origin, 404, 'GROUP_NOT_FOUND', '小组不存在');
-  if (!(await isMember(env.DB, groupId, accountId))) {
-    return failCode(origin, 403, 'NOT_MEMBER', '不是该组成员');
-  }
-  return null;
+  const row = await requireMemberRow(env, origin, accountId, groupId);
+  return row instanceof Response ? row : null;
 }
 
 async function handleDemandsList(
@@ -613,8 +648,8 @@ async function handleDemandAction(
 ): Promise<Response> {
   const writeLimited = await limited(env, origin, `cg-write:${accountId}`, WRITE_LIMIT);
   if (writeLimited) return writeLimited;
-  const denied = await requireMember(env, origin, accountId, groupId);
-  if (denied) return denied;
+  const memberRow = await requireMemberRow(env, origin, accountId, groupId);
+  if (memberRow instanceof Response) return memberRow;
   const body = (await readJsonBody(request)) as Record<string, unknown>;
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     throw new MotherInputError('INVALID_INPUT', '请求体必须是对象');
@@ -650,10 +685,10 @@ async function handleDemandAction(
   if (action === 'release') {
     return okJson(origin, { demand: await releaseCollectionDemand(env.DB, base) });
   }
-  const group = await findCollectionGroup(env.DB, groupId);
+  // 结单要判断是不是组长：owner 已经在成员校验里带出来了，不再多读一次组
   const demand = await completeCollectionDemand(env.DB, {
     ...base,
-    isOwner: group?.ownerAccountId === accountId,
+    isOwner: memberRow.ownerAccountId === accountId,
   });
   return okJson(origin, { demand });
 }

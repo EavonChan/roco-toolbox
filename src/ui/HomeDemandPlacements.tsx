@@ -367,7 +367,11 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
           } · ${petCount} 只精灵`;
 
   return (
-    <section className={`${CARD} space-y-2`} data-testid="home-demand-placements">
+    <section
+      className={`${CARD} space-y-2`}
+      data-testid="home-demand-placements"
+      data-tour="home-placement"
+    >
       <div className="min-w-0">
         <h2 className={TITLE}>接单上窝</h2>
         <p className={`${HINT} mt-0.5`} data-testid="home-demand-summary">

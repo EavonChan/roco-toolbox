@@ -170,18 +170,30 @@ export interface ProductionIndex {
   eggGroupsByGameId: Map<number, number[]>;
   /** 蛋物种 gameId → 能否出公（只对蛋物种本身有意义）。 */
   maleCapableByGameId: Map<number, boolean>;
+  /** 蛋组 id → 能出公的蛋物种（种公需求查表用，避免每次扫全图鉴）。 */
+  eggsByGroup: Map<number, number[]>;
 }
 
 export function buildProductionIndex(species: readonly SpeciesEntry[]): ProductionIndex {
   const eggGroupsByGameId = new Map<number, number[]>();
   const maleCapableByGameId = new Map<number, boolean>();
+  const eggsByGroup = new Map<number, number[]>();
   for (const entry of species) {
-    eggGroupsByGameId.set(entry.gameId, (entry.eggGroups ?? []).filter(isBreedableGroup));
+    const groups = (entry.eggGroups ?? []).filter(isBreedableGroup);
+    eggGroupsByGameId.set(entry.gameId, groups);
     if (entry.eggGameId != null && entry.eggGameId === entry.gameId) {
-      maleCapableByGameId.set(entry.gameId, entry.maleCapable === true);
+      const maleCapable = entry.maleCapable === true;
+      maleCapableByGameId.set(entry.gameId, maleCapable);
+      if (maleCapable) {
+        for (const group of groups) {
+          const list = eggsByGroup.get(group) ?? [];
+          list.push(entry.gameId);
+          eggsByGroup.set(group, list);
+        }
+      }
     }
   }
-  return { eggGroupsByGameId, maleCapableByGameId };
+  return { eggGroupsByGameId, maleCapableByGameId, eggsByGroup };
 }
 
 /**
@@ -215,4 +227,57 @@ export function linesSupplyTarget(
   index: ProductionIndex,
 ): boolean {
   return lines.some((line) => lineSuppliesTarget(line, target, index));
+}
+
+/**
+ * 产线索引：`eggGameId → 档位 → 性格集合`。
+ *
+ * 「我缺的」要按 200 颗蛋 × 成员 × 性格 反复判定，原来每次都线性扫该成员全部产线
+ * （20 个账号 × 1024 条），实机上就是几秒级卡顿（2026-10-31）。先把产线压成索引，
+ * 之后每次判定只是几次 Map / Set 命中。
+ */
+export type ProductionLinesIndex = Map<number, Map<PetGrade, Set<string>>>;
+
+export function buildLinesIndex(lines: readonly ProductionLine[]): ProductionLinesIndex {
+  const byEgg: ProductionLinesIndex = new Map();
+  for (const line of lines) {
+    let byGrade = byEgg.get(line.eggGameId);
+    if (!byGrade) {
+      byGrade = new Map();
+      byEgg.set(line.eggGameId, byGrade);
+    }
+    let natures = byGrade.get(line.grade);
+    if (!natures) {
+      natures = new Set();
+      byGrade.set(line.grade, natures);
+    }
+    for (const nature of line.natures) natures.add(nature);
+  }
+  return byEgg;
+}
+
+/**
+ * 索引版的「这个成员的产线能否满足目标」，语义与 `linesSupplyTarget` 完全一致。
+ * `index` 为空（旧摘要没有产线）时返回 false，调用方自己决定是否退回「有没有这只蛋」。
+ */
+export function linesIndexSuppliesTarget(
+  lines: ProductionLinesIndex | undefined,
+  target: ProductionTarget,
+  productionIndex: ProductionIndex,
+): boolean {
+  if (!lines) return false;
+  const eggs =
+    target.kind === 'mother'
+      ? [target.eggGameId]
+      : (productionIndex.eggsByGroup.get(target.groupId) ?? []);
+  for (const eggGameId of eggs) {
+    const byGrade = lines.get(eggGameId);
+    if (!byGrade) continue;
+    for (const [grade, natures] of byGrade) {
+      if (!gradeMatchesTarget(grade, target)) continue;
+      if (target.nature && !natures.has(target.nature)) continue;
+      return true;
+    }
+  }
+  return false;
 }

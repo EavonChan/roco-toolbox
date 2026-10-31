@@ -469,6 +469,7 @@ export function ImportPanel() {
       <button
         type="button"
         data-testid="import-button"
+        data-tour="profile-import"
         onClick={() => fileInputRef.current?.click()}
         className="flex min-h-[44px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 text-base font-medium text-white"
       >

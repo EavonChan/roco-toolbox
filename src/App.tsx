@@ -4,9 +4,11 @@ import { CHANGELOG, markChangelogSeen, pendingChangelog, readChangelogSeen } fro
 import { refreshApp } from './pwa/hardRefresh';
 import { ChangelogModal } from './ui/ChangelogModal';
 import { GuideModal } from './ui/GuideModal';
+import { TourOverlay } from './ui/TourOverlay';
+import { TOUR_STEPS, markTourSeen, tourPending, type TourStep } from './ui/tour';
 import { guidePending, markGuideSeen } from './ui/guide';
 import { Dashboard } from './ui/Dashboard';
-import { HomeLand } from './ui/Home';
+import { HomeLand, saveHomeView } from './ui/Home';
 import { Collection } from './ui/Collection';
 import { CollectionGroups } from './ui/CollectionGroups';
 import { Profile } from './ui/Profile';
@@ -73,8 +75,9 @@ export default function App() {
   // 首启（还没看过教程）：不自动叠阻断弹窗，只在「我的 · 游戏数据」给一张非阻断入门卡（2026-10-24）
   const firstRun = useState(() => guidePending())[0];
   // 更新内容弹窗：启动时算一次「本机没看过的更新」，点「知道了」后记住已读（2026-10-05 起固定做法）
+  // 新手引导与更新弹窗不叠加：引导待弹时先不讲更新，等下次启动再看（同教程互斥的处理）
   const [changelog, setChangelog] = useState(() =>
-    firstRun ? [] : pendingChangelog(readChangelogSeen()),
+    firstRun || tourPending() ? [] : pendingChangelog(readChangelogSeen()),
   );
   const closeChangelog = () => {
     if (CHANGELOG[0]) markChangelogSeen(CHANGELOG[0].id);
@@ -86,12 +89,34 @@ export default function App() {
     markGuideSeen();
     setGuide(false);
   };
+  // 新手引导（2026-11-01）：首启或版本升级后自动走一次；「教程」里可以随时重放
+  const [tour, setTour] = useState(() => tourPending());
+  const closeTour = () => {
+    markTourSeen();
+    setTour(false);
+  };
+  /** 引导切页面：家园页内分页不在导航合同里，先写偏好再切页签 */
+  const enterTourStep = useCallback(
+    (step: TourStep) => {
+      if (step.homeView) saveHomeView(step.homeView);
+      if (step.collection) {
+        navigate({ type: 'open-collection', location: step.collection });
+      } else if (step.profileSection) {
+        navigate({ type: 'open-profile', section: step.profileSection });
+      } else if (step.page) {
+        navigate({ type: 'tab', page: step.page });
+      }
+    },
+    [navigate],
+  );
   // 匿名使用统计（2026-10-06 自建埋点）：启动报一次、切页签各报一次，页面隐藏前把队列发出去
   useEffect(() => {
     track('app_open', { platform: platform() });
     return installFlushOnHide();
   }, []);
   useEffect(() => {
+    // 引导自己会切好几页，别把这几次跳转算成用户行为
+    if (tour) return;
     // 兼容桥阶段仍上报旧页签名（任务 9 再换新页面名，避免埋点口径提前断档）
     track('tab_view', { tab: activeTab });
     // 记住停留的页签：关后台后重开不会莫名其妙回到「导入数据」。
@@ -99,7 +124,7 @@ export default function App() {
     const legacy = legacyLocation(navigation);
     saveLastTab(legacy.lastTab);
     if (legacy.lastTab === 'swap') saveSwapMainView(legacy.swapView);
-  }, [navigation, activeTab]);
+  }, [navigation, activeTab, tour]);
   // 覆盖度矩阵的展开态放在这里，切页签回来不会收起
   const [expandedGroupId, setExpandedGroupId] = useState<number | null>(null);
   /**
@@ -202,7 +227,18 @@ export default function App() {
       )}
       {changelog.length > 0 ? <ChangelogModal entries={changelog} onClose={closeChangelog} /> : null}
       {/* 完整教程不再首启自动弹：由顶部「教程」或「我的」入门卡明确打开 */}
-      {guide ? <GuideModal onClose={closeGuide} /> : null}
+      {guide ? (
+        <GuideModal
+          onClose={closeGuide}
+          onStartTour={() => {
+            setGuide(false);
+            setTour(true);
+          }}
+        />
+      ) : null}
+      {tour ? (
+        <TourOverlay steps={TOUR_STEPS} onClose={closeTour} onEnter={enterTourStep} />
+      ) : null}
       {leaveConfirmation}
       {importOutcome.local === 'importing' ? (
         <div

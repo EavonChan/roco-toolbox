@@ -149,9 +149,22 @@ const retryAfterOf = (header: string | null): number | null => {
   return Number.isFinite(at) ? Math.max(0, Math.ceil((at - Date.now()) / 1000)) : null;
 };
 
+/** 响应体开头（压成一行、截断）：解析失败时带进文案，方便定位是谁换了响应（2026-11-01） */
+const snippetOf = (text: string): string => {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (!compact) return '空';
+  return compact.length > 60 ? `${compact.slice(0, 60)}…` : compact;
+};
+
 async function request(path: string, init: RequestInit = {}): Promise<unknown> {
   const response = await authFetch(path, init);
-  const data: unknown = await response.json().catch(() => null);
+  const text = await response.text().catch(() => '');
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
   if (!response.ok) {
     const record = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {};
     const code = isMotherApiErrorCode(record.code) ? record.code : 'HTTP_ERROR';
@@ -161,6 +174,16 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
       code,
       message,
       retryAfterOf(response.headers.get('Retry-After')),
+    );
+  }
+  // 2xx 却不是 JSON 对象（HTML 回退页 / 空 body / 数组）时，把「哪条请求、拿到了什么」写进文案
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    const method = (init.method ?? 'GET').toUpperCase();
+    const type = response.headers.get('Content-Type') ?? '未知类型';
+    throw new MotherGroupsApiError(
+      200,
+      'INVALID_RESPONSE',
+      `响应不是接口数据（${method} ${path} → ${response.status} ${type}，开头：${snippetOf(text)}）；请刷新页面重试`,
     );
   }
   return data;

@@ -247,7 +247,11 @@ export function AccountPanel({
     });
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-3" data-testid="account-panel">
+    <section
+      className="rounded-xl border border-slate-200 bg-white p-3"
+      data-testid="account-panel"
+      data-tour="profile-account"
+    >
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium text-slate-700">
           {section === 'identity' ? '工具箱身份' : section === 'sync' ? '私有同步' : '云同步（跨设备）'}

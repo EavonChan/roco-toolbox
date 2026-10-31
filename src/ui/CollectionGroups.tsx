@@ -191,7 +191,7 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
             2026-10-29 用户口径：顶部 4 张卡（收集范围 / 收集小组 + 我的资源 / 成员与邀请 /
             新建加入）合成一张卡；成员与新建加入折叠成一行，点开就地展开。
           */}
-          <div className="rounded-2xl bg-white p-3 shadow-sm" data-testid="group-card">
+          <div className="rounded-2xl bg-white p-3 shadow-sm" data-testid="group-card" data-tour="group-card">
             <GroupSwitcher
               bare
               groups={hook.groups}
@@ -388,9 +388,13 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
       ) : null}
 
       {hook.accountId ? (
-        inGroup ? null : setupNode(true)
+        inGroup ? null : <div data-tour="group-setup">{setupNode(true)}</div>
       ) : (
-        <div className="rounded-2xl bg-white p-3 shadow-sm" data-testid="group-login-hint">
+        <div
+          className="rounded-2xl bg-white p-3 shadow-sm"
+          data-testid="group-login-hint"
+          data-tour="group-setup"
+        >
           <p className="text-xs text-slate-500">
             新建 / 加入小组、共享资源与成员管理都要先登录，才能识别「同一个人」。
           </p>

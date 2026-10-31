@@ -17,8 +17,9 @@ export interface RecommendedNatureEditorProps {
  *
  * - 列表只有可孵蛋的「基础形态」：一颗蛋一行，改性格在蛋粒度；
  * - 没改过的蛋用图鉴的 PVP 推荐，图鉴没收录的按种族值兜底；
- * - 改完立即存本机、随云同步到自己的账号；**小组里由组长在「本组目标」保存后生效**
- *   （2026-10-25 用户拍板：手动更新口径，不自动推送）。
+ * - 改完立即存本机、随云同步到自己的账号；
+ * - 这是**看的人自己的口径**（2026-10-31 用户澄清）：小组「我缺的」按它算组内谁能补我，
+ *   不下发、不影响别人看到的判定。组目标里的 `natureOverrides` 只留作历史展示。
  */
 export function RecommendedNatureEditor({ open, onClose }: RecommendedNatureEditorProps) {
   const overrides = useNatureOverrides();
@@ -75,7 +76,8 @@ export function RecommendedNatureEditor({ open, onClose }: RecommendedNatureEdit
       <div className="space-y-1.5 p-2">
         <p className="text-[11px] leading-snug text-slate-400">
           按蛋设置，最多 {NATURE_OVERRIDE_MAX_NATURES} 个。没改过的蛋用图鉴推荐；图鉴没收录的按种族值兜底。
-          小组按组长这份表判定：改完请在「本组目标」里点一次保存，成员再重新发布。
+          这是<span className="font-medium text-slate-500">你自己的口径</span>：小组里「我缺的」按它算
+          组内谁能补我，不影响其他成员看到的判定。
         </p>
         <SearchField
           label="搜索蛋"

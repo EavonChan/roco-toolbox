@@ -18,7 +18,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
 /** 五入口主导航（2026-10-27）：看板 / 家园 / 收集 / 小组 / 我的。 */
 export function TabNav({ active, onChange }: TabNavProps) {
   return (
-    <nav className="flex border-b border-slate-100 bg-white px-2">
+    <nav className="flex border-b border-slate-100 bg-white px-2" data-tour="tab-nav">
       {TABS.map((tab) => (
         <button
           key={tab.id}

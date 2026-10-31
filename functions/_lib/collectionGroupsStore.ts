@@ -10,9 +10,7 @@
 import {
   MOTHER_GROUP_MAX_MEMBERS,
   MOTHER_RESOURCE_SCHEMA_VERSION,
-  canonicalEggGameIds,
   motherResourceCriteriaIdOf,
-  canonicalProductionLines,
   type MotherCriteriaId,
   type MotherResourceDraft,
   type PublishedMotherResource,
@@ -104,18 +102,9 @@ interface StudAccountRow {
 const asGroupType = (value: unknown): CollectionGroupType =>
   value === 'stud' ? 'stud' : 'mother';
 
-/** 读取单个组的配置；没有行时按旧组默认值返回（不写库）。 */
-export async function readGroupConfig(
-  db: D1Database,
-  groupId: string,
-): Promise<CollectionGroupConfig> {
-  const row = await db
-    .prepare(
-      `SELECT group_id, group_type, target_revision, resource_epoch, target_json, updated_at
-         FROM collection_group_configs WHERE group_id = ?`,
-    )
-    .bind(groupId)
-    .first<ConfigRow>();
+const CONFIG_COLUMNS = 'group_id, group_type, target_revision, resource_epoch, target_json, updated_at';
+
+function configFromRow(row: ConfigRow | null | undefined): CollectionGroupConfig {
   if (!row) {
     return {
       groupType: 'mother',
@@ -132,6 +121,21 @@ export async function readGroupConfig(
     target: parseStoredTarget(row.group_type, row.target_json),
     updatedAt: row.updated_at,
   };
+}
+
+/** 读取单个组的配置；没有行时按旧组默认值返回（不写库）。 */
+export async function readGroupConfig(
+  db: D1Database,
+  groupId: string,
+): Promise<CollectionGroupConfig> {
+  const row = await db
+    .prepare(
+      `SELECT ${CONFIG_COLUMNS}
+         FROM collection_group_configs WHERE group_id = ?`,
+    )
+    .bind(groupId)
+    .first<ConfigRow>();
+  return configFromRow(row);
 }
 
 function parseStoredTarget(rawType: string, raw: string): GroupTargetConfig | null {
@@ -230,12 +234,18 @@ export async function findCollectionGroup(
   db: D1Database,
   groupId: string,
 ): Promise<CollectionGroupInfo | null> {
-  const row = await db
-    .prepare('SELECT id, name, owner_account_id, created_at FROM mother_groups WHERE id = ?')
-    .bind(groupId)
-    .first<GroupRow>();
+  // 2026-11-01：组信息与配置一起批量查，少一次 D1 往返（认领 / 刷新都会走这里）
+  const [groupResult, configResult] = await db.batch([
+    db
+      .prepare('SELECT id, name, owner_account_id, created_at FROM mother_groups WHERE id = ?')
+      .bind(groupId),
+    db
+      .prepare(`SELECT ${CONFIG_COLUMNS} FROM collection_group_configs WHERE group_id = ?`)
+      .bind(groupId),
+  ]);
+  const row = (groupResult.results as GroupRow[])[0];
   if (!row) return null;
-  const config = await readGroupConfig(db, groupId);
+  const config = configFromRow((configResult.results as ConfigRow[])[0]);
   return {
     id: row.id,
     name: row.name,
@@ -479,6 +489,12 @@ export async function readCollectionGroupDetail(
     studModeByMember.set(row.member_account_id, parsed.mode);
   }
 
+  /** 成员 → 种公目标修订：原来在 map 里 `results.find(...)`，成员 × 种公行数退化成平方级。 */
+  const studTargetRevisionByMember = new Map<string, number>();
+  for (const row of studResult.results as StudAccountRow[]) {
+    studTargetRevisionByMember.set(row.member_account_id, row.target_revision);
+  }
+
   const members: CollectionGroupMember[] = (memberResult.results as MemberRow[]).map((row) => {
     const published = row.published_at != null && row.catalog_version != null && row.criteria_id != null;
     const motherResource: PublishedMotherResource | null =
@@ -508,10 +524,7 @@ export async function readCollectionGroupDetail(
           }
         : null;
     if (studResource) {
-      const first = studResult.results.find(
-        (item) => (item as StudAccountRow).member_account_id === row.account_id,
-      ) as StudAccountRow | undefined;
-      studResource.targetRevision = first?.target_revision ?? 0;
+      studResource.targetRevision = studTargetRevisionByMember.get(row.account_id) ?? 0;
     }
     return {
       accountId: row.account_id,
@@ -538,10 +551,14 @@ export async function readCollectionGroupDetail(
   };
 }
 
+/**
+ * 读摘要时不再重做规范化（2026-10-31）：写入时 `motherGroupsValidation` 已经去重 + 排序 + trim，
+ * 这里再排序一次会把每次详情 GET（含轮询）拖成几十万次 localeCompare。
+ */
 function parseStoredIds(raw: string): number[] {
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? canonicalEggGameIds(parsed) : [];
+    return Array.isArray(parsed) ? (parsed as number[]) : [];
   } catch {
     return [];
   }
@@ -552,9 +569,7 @@ function parseStoredLines(raw: string | null): SharedProductionLine[] | undefine
   if (raw == null || raw === '') return undefined;
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? canonicalProductionLines(parsed as SharedProductionLine[])
-      : undefined;
+    return Array.isArray(parsed) ? (parsed as SharedProductionLine[]) : undefined;
   } catch {
     return undefined;
   }
@@ -1100,8 +1115,9 @@ const toTaskRecord = (row: TaskRow): CollectionTaskRecord => ({
 export async function listCollectionTasks(
   db: D1Database,
   groupId: string,
+  preloaded?: CollectionGroupConfig,
 ): Promise<CollectionTasksView> {
-  const config = await readGroupConfig(db, groupId);
+  const config = preloaded ?? (await readGroupConfig(db, groupId));
   const [memberResult, taskResult] = await db.batch([
     db
       .prepare(
@@ -1235,17 +1251,19 @@ export interface ClaimTaskInput {
 async function claimCollectionTaskInner(
   db: D1Database,
   input: ClaimTaskInput,
+  config: CollectionGroupConfig,
 ): Promise<CollectionTaskRecord> {
   const { groupId, accountId, targetKey, expectedVersion } = input;
-  const config = await readGroupConfig(db, groupId);
   if (!taskKeyBelongsToTarget(config, targetKey)) {
     throw new MotherStoreError('TASK_NOT_FOUND', '这个目标不属于本组当前目标');
   }
-  const view = await listCollectionTasks(db, groupId);
+  const [view, covered] = await Promise.all([
+    listCollectionTasks(db, groupId, config),
+    coveredKeysOf(db, groupId, config),
+  ]);
   if (!view.confirmed) {
     throw new MotherStoreError('TASKS_NOT_CONFIRMED', '还有成员未发布或目标不一致，暂时不能认领');
   }
-  const covered = await coveredKeysOf(db, groupId, config);
   if (covered.has(targetKey)) {
     throw new MotherStoreError('TASK_ALREADY_COVERED', '这个目标已经被组内已发布资源补上了');
   }
@@ -1279,9 +1297,14 @@ async function claimCollectionTaskInner(
       }
       throw new MotherStoreError('TASK_TAKEN', '任务状态已更新，请刷新后再试');
     }
-    const latest = await findActiveTask(db, groupId, row.target_revision, targetKey);
-    if (!latest) throw new MotherStoreError('TASK_NOT_FOUND', '任务不存在');
-    return toTaskRecord(latest);
+    // 本地拼出结果，省掉认领后再 SELECT 一次（2026-11-01 优化：这条路原来有 12 次 D1 往返）
+    return {
+      ...toTaskRecord(row),
+      status: 'claimed',
+      ownerAccountId: accountId,
+      version: row.version + 1,
+      updatedAt: now,
+    };
   };
 
   const active = await findActiveTask(db, groupId, config.targetRevision, targetKey);
@@ -1338,8 +1361,8 @@ export async function claimCollectionTask(
   db: D1Database,
   input: ClaimTaskInput,
 ): Promise<CollectionTaskRecord> {
-  const record = await claimCollectionTaskInner(db, input);
-  const config = await readGroupConfig(db, record.groupId);
+  const config = await readGroupConfig(db, input.groupId);
+  const record = await claimCollectionTaskInner(db, input, config);
   const covered = await coveredKeysOf(db, record.groupId, config);
   if (!covered.has(record.targetKey)) return record;
   const now = Date.now();
@@ -1595,6 +1618,60 @@ export async function listCollectionDemands(
   );
 }
 
+export interface CollectionGroupVersionRow {
+  detail: string;
+  demands: string;
+  tasks: string;
+}
+
+/**
+ * 轻量版本号（2026-10-31）：轮询先拿这一小段，没变就不拉整包详情 / 需求 / 任务。
+ *
+ * 一条 SQL 里用主键前缀的子查询拼出三段指纹：成员数 + 资源修订、目标修订（详情）、
+ * 需求条数与更新时间、任务条数与更新时间。比整包（几百 KB）便宜得多。
+ */
+export async function readCollectionGroupVersion(
+  db: D1Database,
+  groupId: string,
+): Promise<CollectionGroupVersionRow> {
+  const row = await db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM mother_group_members WHERE group_id = ?) AS member_count,
+         (SELECT COALESCE(MAX(resource_revision), 0) FROM mother_group_members
+           WHERE group_id = ?) AS resource_revision,
+         (SELECT COALESCE(target_revision, 0) FROM collection_group_configs
+           WHERE group_id = ?) AS target_revision,
+         (SELECT COUNT(*) FROM mother_group_members WHERE group_id = ? AND published_at IS NOT NULL)
+           AS published_count,
+         (SELECT COUNT(*) FROM collection_group_demands WHERE group_id = ?) AS demand_count,
+         (SELECT COALESCE(MAX(updated_at), 0) FROM collection_group_demands
+           WHERE group_id = ?) AS demand_updated_at,
+         (SELECT COUNT(*) FROM collection_group_demand_completions WHERE group_id = ?)
+           AS demand_done_count,
+         (SELECT COUNT(*) FROM collection_group_tasks WHERE group_id = ?) AS task_count,
+         (SELECT COALESCE(MAX(updated_at), 0) FROM collection_group_tasks
+           WHERE group_id = ?) AS task_updated_at`,
+    )
+    .bind(groupId, groupId, groupId, groupId, groupId, groupId, groupId, groupId, groupId)
+    .first<{
+      member_count: number;
+      resource_revision: number;
+      target_revision: number;
+      published_count: number;
+      demand_count: number;
+      demand_updated_at: number;
+      demand_done_count: number;
+      task_count: number;
+      task_updated_at: number;
+    }>();
+  return {
+    detail: `${row?.member_count ?? 0}:${row?.resource_revision ?? 0}:${row?.target_revision ?? 0}:${row?.published_count ?? 0}`,
+    demands: `${row?.demand_count ?? 0}:${row?.demand_updated_at ?? 0}:${row?.demand_done_count ?? 0}`,
+    tasks: `${row?.task_count ?? 0}:${row?.task_updated_at ?? 0}`,
+  };
+}
+
 export interface DemandCriteriaInput {
   demanderAccountId: string;
   eggGameId: number;
@@ -1701,40 +1778,37 @@ export async function publishCollectionDemand(
   const { groupId, accountId, eggGameId, gender, body, voice } = input;
   await assertMotherGroup(db, groupId);
   const natures = input.natures.length > 0 ? [...new Set(input.natures)] : [''];
-  const criteriaOf = (nature: string): DemandCriteriaInput => ({
-    demanderAccountId: accountId,
-    eggGameId,
-    nature,
-    gender,
-    body,
-    voice,
-  });
 
-  const existing = await Promise.all(
-    natures.map((nature) => findDemand(db, groupId, criteriaOf(nature))),
-  );
-  const newRows = existing.filter((row) => row === null).length;
+  const existing = await db
+    .prepare(
+      `SELECT nature FROM collection_group_demands
+        WHERE group_id = ? AND demander_account_id = ? AND egg_game_id = ?
+          AND gender = ? AND body = ? AND voice = ?
+          AND nature IN (${natures.map(() => '?').join(', ')})`,
+    )
+    .bind(groupId, accountId, eggGameId, gender, body, voice, ...natures)
+    .all<{ nature: string }>();
+  const existingNatures = new Set((existing.results ?? []).map((row) => row.nature));
+  const newRows = natures.filter((nature) => !existingNatures.has(nature)).length;
   if (newRows > 0) {
-    const accountCount = await sharedAccountCount(db, groupId, accountId);
-    const groupRow = await db
-      .prepare(
-        `SELECT COUNT(*) AS total FROM collection_group_demands
-          WHERE group_id = ? AND status <> 'done'`,
-      )
-      .bind(groupId)
-      .first<{ total: number }>();
-    if ((groupRow?.total ?? 0) + newRows > DEMAND_LIMIT_PER_GROUP) {
+    // 额度判断两条查询并发跑：原来串行 3 条 COUNT（2026-10-31）
+    const [accountCount, countRow] = await Promise.all([
+      sharedAccountCount(db, groupId, accountId),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS total_open,
+                  SUM(CASE WHEN demander_account_id = ? THEN 1 ELSE 0 END) AS mine_open
+             FROM collection_group_demands
+            WHERE group_id = ? AND status <> 'done'`,
+        )
+        .bind(accountId, groupId)
+        .first<{ total_open: number; mine_open: number | null }>(),
+    ]);
+    if ((countRow?.total_open ?? 0) + newRows > DEMAND_LIMIT_PER_GROUP) {
       throw new MotherStoreError('DEMAND_LIMIT', '本组需求已满，等有人完成或撤回后再发');
     }
-    const mineRow = await db
-      .prepare(
-        `SELECT COUNT(*) AS total FROM collection_group_demands
-          WHERE group_id = ? AND demander_account_id = ? AND status <> 'done'`,
-      )
-      .bind(groupId, accountId)
-      .first<{ total: number }>();
     const limit = demandLimitPerMember(accountCount);
-    if ((mineRow?.total ?? 0) + newRows > limit) {
+    if ((countRow?.mine_open ?? 0) + newRows > limit) {
       throw new MotherStoreError(
         'DEMAND_LIMIT',
         `你的需求额度是 ${limit} 条（一个性格算一条），这次要多发 ${newRows} 条`,
@@ -1758,10 +1832,21 @@ export async function publishCollectionDemand(
     ),
   );
 
-  const saved = await Promise.all(
-    natures.map((nature) => findDemand(db, groupId, criteriaOf(nature))),
-  );
-  return saved.filter((row): row is DemandRow => row !== null).map(toDemand);
+  // 一次取回这几条（原来是按性格各查一次，N 个性格 = N 条 SQL）
+  const savedRows = await db
+    .prepare(
+      `SELECT ${DEMAND_COLUMNS} FROM collection_group_demands
+        WHERE group_id = ? AND demander_account_id = ? AND egg_game_id = ?
+          AND gender = ? AND body = ? AND voice = ?
+          AND nature IN (${natures.map(() => '?').join(', ')})`,
+    )
+    .bind(groupId, accountId, eggGameId, gender, body, voice, ...natures)
+    .all<DemandRow>();
+  const byNature = new Map((savedRows.results ?? []).map((row) => [row.nature, row]));
+  return natures
+    .map((nature) => byNature.get(nature))
+    .filter((row): row is DemandRow => row != null)
+    .map(toDemand);
 }
 
 /** 撤回自己的某一条需求（按蛋 + 性格 + 性别 / 体型 / 声音单独撤回）。 */

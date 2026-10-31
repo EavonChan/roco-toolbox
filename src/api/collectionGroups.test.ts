@@ -82,6 +82,23 @@ describe('收集组详情解析', () => {
   });
 });
 
+describe('成功状态却不是 JSON 对象', () => {
+  test('文案带上方法 / 路径 / 状态 / Content-Type 与响应开头', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('<!doctype html><html><body>proxy</body></html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }),
+    );
+
+    const error = await getCollectionGroup('g1').catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: 'INVALID_RESPONSE' });
+    expect((error as Error).message).toContain('GET /api/collection-groups/g1');
+    expect((error as Error).message).toContain('text/html');
+    expect((error as Error).message).toContain('<!doctype html>');
+  });
+});
+
 describe('需求契约（归档行 / 旧口径 / 错误码）', () => {
   const doneDemand = {
     groupId: 'g1',

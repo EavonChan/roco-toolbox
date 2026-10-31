@@ -32,6 +32,8 @@ const MAX_NAME_LENGTH = 40;
 const MAX_PROPS_LENGTH = 2000;
 /** 单个 deviceId 每天最多上报多少批（50 条/批 → 1 万条/天），防灌库 */
 const MAX_BATCHES_PER_DAY = 200;
+/** /api/stats 的 exclude 最多接受多少个账号（防超长 URL / 超多绑定参数） */
+const MAX_EXCLUDE_ACCOUNTS = 50;
 
 export async function handleEvent(request: Request, env: Env, origin: string | null): Promise<Response> {
   const body = (await readJson<EventBody>(request)) ?? {};
@@ -90,7 +92,15 @@ export async function handleEvent(request: Request, env: Env, origin: string | n
   return json({ ok: true, stored: rows.length }, 200, origin);
 }
 
-/** 看统计：GET /api/stats?days=7（只读；令牌走 `Authorization: Bearer <token>`，配在 Pages secret 里） */
+/**
+ * 看统计：GET /api/stats?days=7&exclude=<accountId>,<accountId>
+ * （只读；令牌走 `Authorization: Bearer <token>`，配在 Pages secret 里）
+ *
+ * 口径以「账号」为主：`accounts` 才接近人数，`devices` 只是安装/曝光量——
+ * 每个预览部署 URL（不同 origin）、清缓存、换浏览器都会生成新的 deviceId，设备数会远高于真实用户。
+ * `exclude` 用来剔掉自己的测试号；这些账号绑定过的设备也一并剔掉，
+ * 否则它们登录前产生的匿名事件还会留在统计里。
+ */
 export async function handleStats(request: Request, env: Env): Promise<Response> {
   const origin = resolveOrigin(request, env);
   const url = new URL(request.url);
@@ -109,47 +119,84 @@ export async function handleStats(request: Request, env: Env): Promise<Response>
   const days = Number.isFinite(rawDays) ? Math.min(Math.max(Math.trunc(rawDays), 1), 90) : 7;
   const since = Date.now() - days * 86_400_000;
 
+  // ?exclude=<accountId>,<accountId>：剔掉自己的测试号（去重、最多 50 个）
+  const exclude = Array.from(
+    new Set(
+      (url.searchParams.get('exclude') ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0 && id.length <= 64),
+    ),
+  ).slice(0, MAX_EXCLUDE_ACCOUNTS);
+  const marks = exclude.map(() => '?').join(', ');
+  // 未登录事件 account_id 是 NULL，`NOT IN` 对 NULL 结果是 NULL（会被丢掉）→ 必须显式放行
+  const accountFilter = exclude.length > 0 ? `(account_id IS NULL OR account_id NOT IN (${marks}))` : '1 = 1';
+  // 被排除账号绑定过的设备也剔掉：它们登录前产生的匿名事件 account_id 是 NULL
+  const deviceFilter =
+    exclude.length > 0
+      ? `device_id NOT IN (SELECT device_id FROM devices WHERE account_id IN (${marks}))`
+      : '1 = 1';
+  /** 两个过滤片段各要一份绑定值 */
+  const filterParams = [...exclude, ...exclude];
+
   const daily = await env.DB.prepare(
     `SELECT date(server_ts / 1000, 'unixepoch') AS day,
-            COUNT(DISTINCT device_id) AS devices,
             COUNT(DISTINCT account_id) AS accounts,
+            COUNT(DISTINCT device_id) AS devices,
             COUNT(*) AS events
-       FROM events WHERE server_ts >= ?
+       FROM events WHERE server_ts >= ? AND ${accountFilter} AND ${deviceFilter}
       GROUP BY day ORDER BY day`,
   )
-    .bind(since)
+    .bind(since, ...filterParams)
     .all();
 
   const topEvents = await env.DB.prepare(
-    `SELECT name, COUNT(*) AS count, COUNT(DISTINCT device_id) AS devices
-       FROM events WHERE server_ts >= ?
+    `SELECT name, COUNT(*) AS count,
+            COUNT(DISTINCT account_id) AS accounts,
+            COUNT(DISTINCT device_id) AS devices
+       FROM events WHERE server_ts >= ? AND ${accountFilter} AND ${deviceFilter}
       GROUP BY name ORDER BY count DESC LIMIT 30`,
   )
-    .bind(since)
+    .bind(since, ...filterParams)
     .all();
 
-  // 次日留存：以「首次出现」为基准（推广期看这个最直观）
+  // 次日留存：以账号「首次出现」为基准（账号口径才算人；设备口径会被预览部署撑大）
   const retention = await env.DB.prepare(
-    `WITH first_seen AS (SELECT device_id, MIN(date(server_ts / 1000, 'unixepoch')) AS day FROM events GROUP BY device_id)
-     SELECT f.day AS cohort, COUNT(DISTINCT f.device_id) AS devices,
-            COUNT(DISTINCT CASE WHEN e.day = date(f.day, '+1 day') THEN f.device_id END) AS returned
+    `WITH first_seen AS (
+       SELECT account_id, MIN(date(server_ts / 1000, 'unixepoch')) AS day
+         FROM events WHERE account_id IS NOT NULL AND ${accountFilter} AND ${deviceFilter}
+        GROUP BY account_id)
+     SELECT f.day AS cohort, COUNT(DISTINCT f.account_id) AS accounts,
+            COUNT(DISTINCT CASE WHEN e.day = date(f.day, '+1 day') THEN f.account_id END) AS returned
        FROM first_seen f
-       JOIN (SELECT DISTINCT device_id, date(server_ts / 1000, 'unixepoch') AS day FROM events) e
-         ON e.device_id = f.device_id
+       JOIN (SELECT DISTINCT account_id, date(server_ts / 1000, 'unixepoch') AS day
+               FROM events WHERE account_id IS NOT NULL AND ${accountFilter} AND ${deviceFilter}) e
+         ON e.account_id = f.account_id
       WHERE f.day >= date('now', ?)
       GROUP BY cohort ORDER BY cohort`,
   )
-    .bind(`-${days} days`)
+    .bind(...filterParams, ...filterParams, `-${days} days`)
     .all();
 
   const totals = await env.DB.prepare(
-    'SELECT COUNT(DISTINCT device_id) AS devices, COUNT(*) AS events FROM events WHERE server_ts >= ?',
+    `SELECT COUNT(DISTINCT account_id) AS accounts,
+            COUNT(DISTINCT device_id) AS devices,
+            COUNT(*) AS events
+       FROM events WHERE server_ts >= ? AND ${accountFilter} AND ${deviceFilter}`,
   )
-    .bind(since)
-    .first<{ devices: number; events: number }>();
+    .bind(since, ...filterParams)
+    .first<{ accounts: number; devices: number; events: number }>();
 
   return json(
-    { ok: true, days, daily: daily.results, topEvents: topEvents.results, retention: retention.results, totals },
+    {
+      ok: true,
+      days,
+      exclude,
+      daily: daily.results,
+      topEvents: topEvents.results,
+      retention: retention.results,
+      totals,
+    },
     200,
     origin,
   );

@@ -1,7 +1,19 @@
 import { expect, test } from '@playwright/test';
+import { TOUR_VERSION } from '../src/ui/tour';
 
-// 覆盖 config 里「更新内容/教程已读」的预置，才能看到首启弹窗
-test.use({ storageState: { cookies: [], origins: [] } });
+// 覆盖 config 里「更新内容/教程已读」的预置，才能看到首启入门卡。
+// 新手引导（roco.tourSeen）仍预置为已读：本文件只验证文字教程，引导由 tour.spec.ts 单独验证。
+test.use({
+  storageState: {
+    cookies: [],
+    origins: [
+      {
+        origin: 'http://localhost:4173',
+        localStorage: [{ name: 'roco.tourSeen', value: TOUR_VERSION }],
+      },
+    ],
+  },
+});
 
 test('首次打开不阻断：入门卡可直达教程，可跳过且不再打扰', async ({ page }) => {
   await page.goto('/');

@@ -21,11 +21,17 @@ import { createModuleStore } from './createModuleStore';
  * 2026-10-04 重构：样板（listeners/commit/useXxx）提取到 createModuleStore。
  */
 
-/** 按八大池的顺序排一下，保证矩阵里性格的排列不随点击顺序变化；池外性格排后面。 */
-const POOL_ORDER = new Map<string, number>([
-  ...targetNaturePool.map((entry, index) => [entry.name, index] as const),
-  ...allNatureNames.map((name, index) => [name, 100 + index] as const),
-]);
+/**
+ * 按八大池的顺序排一下，保证矩阵里性格的排列不随点击顺序变化；池外性格排后面。
+ *
+ * 池内性格先占位、`allNatureNames` 只补池外的，不能反过来展开成同一个 Map：
+ * 两者键都是性格名，后展开的会覆盖先展开的，池序就被图鉴序顶掉了。
+ */
+const POOL_ORDER = new Map<string, number>();
+targetNaturePool.forEach((entry, index) => POOL_ORDER.set(entry.name, index));
+allNatureNames.forEach((name, index) => {
+  if (!POOL_ORDER.has(name)) POOL_ORDER.set(name, 100 + index);
+});
 const sortNatures = (names: string[]): string[] =>
   [...names].sort((a, b) => (POOL_ORDER.get(a) ?? 999) - (POOL_ORDER.get(b) ?? 999));
 

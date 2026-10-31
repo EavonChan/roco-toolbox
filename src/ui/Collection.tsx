@@ -59,7 +59,7 @@ export function Collection({
   return (
     <>
       <nav className="mx-auto max-w-md px-3 pt-2" aria-label="收集视图">
-        <div className="grid grid-cols-3 gap-1.5" data-testid="collection-kinds">
+        <div className="grid grid-cols-3 gap-1.5" data-testid="collection-kinds" data-tour="collection-kinds">
           {KINDS.map((item) => {
             const active = item.value === kind;
             return (

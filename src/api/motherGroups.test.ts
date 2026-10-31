@@ -72,6 +72,16 @@ describe('多人母本共享 API 客户端', () => {
     await expect(getMotherGroup('g1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 
+  test('成功状态却是空响应时，文案带上请求与「空」', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } }),
+    );
+    const error = await listMotherGroups().catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: 'INVALID_RESPONSE' });
+    expect((error as Error).message).toContain('GET /api/mother-groups');
+    expect((error as Error).message).toContain('空');
+  });
+
   test('409 保留业务错误码；429 读取 Retry-After（秒与日期）', async () => {
     fetchMock.mockResolvedValueOnce(
       response({ ok: false, code: 'REVISION_CONFLICT', error: '版本冲突' }, 409),

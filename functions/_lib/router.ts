@@ -7,7 +7,7 @@
  * 路由：
  *   GET  /api/health
  *   POST /api/event                     埋点（匿名 deviceId 即可）
- *   GET  /api/stats?days=7              看板数据（只读，令牌走 Authorization 头，配在 Pages secret 里）
+ *   GET  /api/stats?days=7&exclude=id  看板数据（账号口径；exclude 剔掉测试号；令牌走 Authorization 头）
  *   POST /api/auth/register             开号（返回一次性恢复码 + 令牌）
  *   POST /api/auth/recover              用恢复码换令牌（换手机）
  *   POST /api/auth/rotate               重新生成恢复码（需登录）

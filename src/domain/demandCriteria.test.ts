@@ -8,7 +8,9 @@ import {
   hasStockForStudDemand,
   findStudBreedableSupply,
   memberFreshness,
+  pairOptionsForEgg,
   petMatchesDemand,
+  studHatchOptions,
 } from './demandCriteria';
 import type { SpeciesEntry } from './types';
 import type { DemandCriteria } from '../shared/collectionGroups';
@@ -391,6 +393,77 @@ describe('种公需求（负数蛋组 id）', () => {
         speciesWithMale201,
       ),
     ).toBe(false);
+  });
+});
+
+describe('配对按概率排序（2026-10-30 石岚号漏选 60% 的回归）', () => {
+  /** 同一个蛋组的三组蛋：图鉴顺序 801 → 802，但 802 才带目标性格。 */
+  const eggLow: SpeciesEntry = {
+    key: 'egg-low',
+    gameId: 801,
+    name: '低概率蛋',
+    number: '801',
+    eggGameId: 801,
+    eggGroups: [3],
+    stage: 1,
+    maleCapable: true,
+  };
+  const eggHigh: SpeciesEntry = {
+    key: 'egg-high',
+    gameId: 802,
+    name: '高概率蛋',
+    number: '802',
+    eggGameId: 802,
+    eggGroups: [3],
+    stage: 1,
+    maleCapable: true,
+  };
+  const twoEggSpecies: SpeciesEntry[] = [...catalog, male3, eggLow, eggHigh];
+
+  test('种公需求按概率挑蛋：双亲同性格的 60% 优先于图鉴靠前的 30%', () => {
+    const snapshots = [
+      snapshot(1001, '甲', [
+        // 图鉴靠前的 801：母本不带目标性格，只能靠种公 → 30%
+        mother(801, { nature: '开朗' }),
+        // 图鉴靠后的 802：双亲都带「固执」→ 60%
+        mother(802, { nature: '固执' }),
+        mother(701, { gender: '公', nature: '固执' }),
+      ]),
+    ];
+    const demand = { eggGameId: -3, nature: '固执', gender: '公', body: '大块头', voice: '+100' };
+    const options = studHatchOptions(snapshots, demand, twoEggSpecies);
+    expect(options.map((item) => item.eggGameId)).toEqual([802, 801]);
+    // 主数字按家园口径：性格 60% × 性别 50% = 30%；801 只有 30% × 50% = 15%
+    expect(options[0].chance).toBeCloseTo(0.3);
+    expect(options[1].chance).toBeCloseTo(0.15);
+    // 布尔判断（能不能接）只找第一颗能孵的蛋就停，不参与概率排序
+    expect(findStudBreedableSupply(snapshots, demand, twoEggSpecies).kind).toBe('breedable');
+  });
+
+  test('多账号时取概率最高的那一对（原来按账号顺序会拿到 30%）', () => {
+    const snapshots = [
+      // 先导入的号：种公不带目标性格 → 30%
+      snapshot(1001, '甲', [
+        mother(201, { nature: '固执' }),
+        mother(701, { gender: '公', nature: '开朗' }),
+      ]),
+      // 后导入的号：双亲都带 → 60%
+      snapshot(1002, '乙', [
+        mother(201, { nature: '固执' }),
+        mother(701, { gender: '公', nature: '固执' }),
+      ]),
+    ];
+    const criteria: DemandCriteria = {
+      eggGameId: 201,
+      nature: '固执',
+      gender: '母',
+      body: '大块头',
+      voice: '+100',
+    };
+    const options = pairOptionsForEgg(snapshots, criteria, speciesWithMale201);
+    expect(options[0].natureChance).toBe(0.6);
+    expect(options[0].malePet.snapshot.accountName).toBe('乙');
+    expect(findBreedableSupply(snapshots, criteria, speciesWithMale201).kind).toBe('breedable');
   });
 });
 

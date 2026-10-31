@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
+  buildLinesIndex,
   buildProductionIndex,
   buildProductionLines,
   lineSuppliesTarget,
+  linesIndexSuppliesTarget,
   linesSupplyTarget,
   type ProductionTarget,
 } from './productionLines';
@@ -162,5 +164,32 @@ describe('lineSuppliesTarget', () => {
     const other = build([mother(201, { nature: '胆小' })]);
     expect(linesSupplyTarget([...other.lines, ...account.lines], target({ kind: 'mother', nature: '固执' }), index)).toBe(true);
     expect(linesSupplyTarget(other.lines, target({ kind: 'mother', nature: '固执' }), index)).toBe(false);
+  });
+
+  test('索引版与线性版结论一致（母本 / 种公 / 性格 / 档位）', () => {
+    const lines = build([
+      mother(201, { nature: '固执' }),
+      mother(201, { nature: '胆小', gender: '公' }),
+      mother(701, { gender: '公', nature: '开朗' }),
+      mother(301, { nature: '固执' }),
+    ]).lines;
+    const linesIndex = buildLinesIndex(lines);
+    const targets: ProductionTarget[] = [
+      target({ kind: 'mother', eggGameId: 201, nature: '固执' }),
+      target({ kind: 'mother', eggGameId: 201, nature: '开朗' }),
+      target({ kind: 'mother', eggGameId: 301, nature: '固执' }),
+      target({ kind: 'mother', eggGameId: 301, nature: '开朗' }),
+      target({ kind: 'mother', eggGameId: 201, nature: '', body: '小不点' }),
+      target({ kind: 'mother', eggGameId: 201, nature: '' }),
+      target({ kind: 'stud', groupId: 3, nature: '固执' }),
+      target({ kind: 'stud', groupId: 3, nature: '开朗' }),
+      target({ kind: 'stud', groupId: 4, nature: '固执' }),
+      target({ kind: 'stud', groupId: 2, nature: '固执' }),
+    ];
+    for (const item of targets) {
+      expect(linesIndexSuppliesTarget(linesIndex, item, index)).toBe(
+        linesSupplyTarget(lines, item, index),
+      );
+    }
   });
 });

@@ -77,18 +77,24 @@ export function normalizeRecoveryCode(input: string): string {
   return input.toUpperCase().replace(/[^0-9A-Z]/g, '');
 }
 
+/** 令牌最后使用时间最多 5 分钟写一次：每条请求都写会把每次读都变成一次 D1 写往返。 */
+const TOKEN_TOUCH_INTERVAL_MS = 5 * 60_000;
+
 export async function authenticate(request: Request, env: Env): Promise<string | null> {
   const header = request.headers.get('Authorization') ?? '';
   const token = header.replace(/^Bearer\s+/i, '').trim();
   if (!token) return null;
   const hash = await sha256Hex(token);
-  const row = await env.DB.prepare('SELECT account_id FROM tokens WHERE token_hash = ?')
+  const row = await env.DB.prepare('SELECT account_id, last_used_at FROM tokens WHERE token_hash = ?')
     .bind(hash)
-    .first<{ account_id: string }>();
+    .first<{ account_id: string; last_used_at: number | null }>();
   if (!row) return null;
-  await env.DB.prepare('UPDATE tokens SET last_used_at = ? WHERE token_hash = ?')
-    .bind(Date.now(), hash)
-    .run();
+  const now = Date.now();
+  if (row.last_used_at == null || now - row.last_used_at > TOKEN_TOUCH_INTERVAL_MS) {
+    await env.DB.prepare('UPDATE tokens SET last_used_at = ? WHERE token_hash = ?')
+      .bind(now, hash)
+      .run();
+  }
   return row.account_id;
 }
 

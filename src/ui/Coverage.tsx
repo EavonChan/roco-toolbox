@@ -92,7 +92,7 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
   }, []);
 
   return (
-    <main className="mx-auto max-w-md space-y-3 p-4">
+    <main className="mx-auto max-w-md space-y-3 p-4" data-tour="collection-studs">
       <AccountFilterBar accounts={accounts} />
       {!loaded ? (
         <p className="text-sm text-slate-400">正在读取本地数据…</p>

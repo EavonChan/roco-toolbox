@@ -270,6 +270,12 @@ const readHomeView = (): HomeView => {
   return window.localStorage.getItem(HOME_VIEW_KEY) === 'demands' ? 'demands' : 'nests';
 };
 
+/** 新手引导要直接把家园切到某一页（导航合同不管页内分页）。 */
+export function saveHomeView(view: HomeView): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(HOME_VIEW_KEY, view);
+}
+
 /**
  * 家园页（2026-10-30 加分页）：
  * - 家园现状：抓包里的住户、实际配对、地上的蛋；
@@ -287,21 +293,23 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
   const changeView = (next: string) => {
     const target: HomeView = next === 'demands' ? 'demands' : 'nests';
     setView(target);
-    if (typeof window !== 'undefined') window.localStorage.setItem(HOME_VIEW_KEY, target);
+    saveHomeView(target);
   };
 
   return (
     <div className={PAGE}>
-      <SegmentedControl
-        label="家园视图"
-        value={view}
-        options={[
-          { value: 'nests', label: '家园现状' },
-          { value: 'demands', label: '接单上窝' },
-        ]}
-        onValueChange={changeView}
-        optionTestId={(value) => `home-view-${value}`}
-      />
+      <div data-tour="home-tabs">
+        <SegmentedControl
+          label="家园视图"
+          value={view}
+          options={[
+            { value: 'nests', label: '家园现状' },
+            { value: 'demands', label: '接单上窝' },
+          ]}
+          onValueChange={changeView}
+          optionTestId={(value) => `home-view-${value}`}
+        />
+      </div>
       {snapshots.length > 0 ? <AccountFilterBar accounts={accounts} /> : null}
       {!loaded ? (
         <p className={`${HINT}`}>正在读取本地数据…</p>

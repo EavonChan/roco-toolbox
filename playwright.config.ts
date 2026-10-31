@@ -19,6 +19,17 @@ const guideVersion: string = (() => {
   return matched[1];
 })();
 
+/**
+ * 新手引导版本号：同样从源码解析。引导是首启盖一层的浮层，不预置会把所有 e2e 挡死；
+ * 引导本身由 e2e/tour.spec.ts 用空 storageState 单独验证。
+ */
+const tourVersion: string = (() => {
+  const source = readFileSync(join(process.cwd(), 'src', 'ui', 'tour.ts'), 'utf8');
+  const matched = source.match(/TOUR_VERSION\s*=\s*'([^']+)'/);
+  if (!matched) throw new Error('没法从 src/ui/tour.ts 解析出 TOUR_VERSION（写法变了？）');
+  return matched[1];
+})();
+
 export default defineConfig({
   testDir: './e2e',
   // 真实本地 Functions + D1 的联调用例由 playwright.mother-groups.config.ts 单独跑，
@@ -41,6 +52,7 @@ export default defineConfig({
             // 首启「使用教程」引导也是盖一层的模态，同样预置为已读（值从 src/ui/guide.ts 读出来，
             // 不再手抄；教程本身由 e2e/guide.spec.ts 用空 storageState 单独验证）。
             { name: 'roco.guideSeen', value: guideVersion },
+            { name: 'roco.tourSeen', value: tourVersion },
           ],
         },
       ],

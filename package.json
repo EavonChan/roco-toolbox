@@ -17,7 +17,10 @@
     "e2e": "playwright test",
     "test:mother-groups:api": "node tools/test/run-mother-groups-local.mjs",
     "test:mother-groups:live": "node tools/test/run-mother-groups-local.mjs --live",
-    "trim:catalog": "node tools/data-pipeline/trim-catalog.mjs"
+    "trim:catalog": "node tools/data-pipeline/trim-catalog.mjs",
+    "verify": "tsc -b && vitest run",
+    "deploy:test": "npm run verify && npm run build && wrangler pages deploy dist --project-name roco-toolbox --branch=test --commit-dirty=true",
+    "deploy:prod": "npm run verify && npm run build && wrangler pages deploy dist --project-name roco-toolbox --branch=main --commit-dirty=true"
   },
   "dependencies": {
     "crypto-js": "^4.2.0",

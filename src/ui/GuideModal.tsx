@@ -68,7 +68,16 @@ export const GUIDE_STEPS: GuideStep[] = [
   },
 ];
 
-export function GuideModal({ onClose, startAt = 0 }: { onClose: () => void; startAt?: number }) {
+export function GuideModal({
+  onClose,
+  startAt = 0,
+  onStartTour,
+}: {
+  onClose: () => void;
+  startAt?: number;
+  /** 打开带方框提示的分步引导（新手引导）；不传则不显示入口 */
+  onStartTour?: () => void;
+}) {
   const [step, setStep] = useState(Math.min(Math.max(startAt, 0), GUIDE_STEPS.length - 1));
   const current = GUIDE_STEPS[step];
   const last = step === GUIDE_STEPS.length - 1;
@@ -111,7 +120,19 @@ export function GuideModal({ onClose, startAt = 0 }: { onClose: () => void; star
       }
     >
       <div className="px-4 py-4" data-testid="guide-body">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          {onStartTour ? (
+            <button
+              type="button"
+              onClick={onStartTour}
+              data-testid="guide-tour"
+              className="min-h-[26px] text-xs font-medium text-emerald-700"
+            >
+              看分步引导 ›
+            </button>
+          ) : (
+            <span />
+          )}
           <span className="text-xs text-slate-400" data-testid="guide-progress">
             {step + 1} / {GUIDE_STEPS.length}
           </span>

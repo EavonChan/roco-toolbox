@@ -123,23 +123,37 @@ const eggInfoOf = (species: readonly SpeciesEntry[]): Map<number, EggGroupInfo> 
   return map;
 };
 
+export interface DemandPairOption {
+  motherPet: PetMatch;
+  malePet: PetMatch;
+  /** 目标性格的遗传概率：不挑 1 / 双亲同性格 0.6 / 单方 0.3。 */
+  natureChance: number;
+}
+
+/** 性格遗传概率 → 档位描述（界面写概率分解用）。 */
+export const NATURE_CHANCE_LABELS: Record<number, string> = {
+  1: '性格不挑',
+  0.6: '双亲同性格 60%',
+  0.3: '单方带性格 30%',
+};
+
 /**
- * 本机同账号能否孵出这条需求。
+ * 本机能用来孵这颗蛋的所有配对（2026-10-30 用户口径：**必须按概率排序**）。
  *
- * - **只认配对孵蛋**：必须找**同账号**的「该蛋母本 + 同蛋组公」，且父母双方都满足体型 / 声音；
- *   自己已有一只、但配不出另一只时不算能接（2026-10-28 用户口径：不交割精灵）；
- * - 性格指定时，父母至少一方带目标性格（学院小窝 100% 遗传）；
- * - 需求为公时，该蛋物种必须能出公（`maleCapable`）。
+ * 之前是「第一个能配的账号 / 第一个能配的公就返回」，多账号时会把 30% 那对
+ * 当成推荐，而放过另一个号上的 60%（石岚号克莱因龙 + 莫比乌乌那次就是这个原因）。
  *
- * 不能跨账号拼父母；公也不能只按蛋组筛——非大婉公 + 大婉母孵不出大婉蛋。
+ * 规则与 `findBreedableSupply` 完全一致：只认同账号配对、父母双方体型 / 声音都达标、
+ * 性格指定时至少一方带。区别只在于这里把所有可用组合都算出来并按性格概率降序，
+ * 交给界面挑最优的那对。
  */
-export function findBreedableSupply(
+export function pairOptionsForEgg(
   snapshots: readonly AccountSnapshot[],
   criteria: DemandCriteria,
   species: readonly SpeciesEntry[],
-): DemandSupply {
+  limit = 3,
+): DemandPairOption[] {
   const eggOfGameId = eggMapOf(species);
-
   const infoByGameId = eggInfoOf(species);
   /** 所有形态的蛋组：公本只要是同蛋组即可，不要求是蛋物种本体（进化形态也能配）。 */
   const groupsByGameId = new Map<number, number[]>();
@@ -147,9 +161,10 @@ export function findBreedableSupply(
     groupsByGameId.set(entry.gameId, (entry.eggGroups ?? []).filter(isBreedableGroup));
   }
   const info = infoByGameId.get(criteria.eggGameId);
-  if (!info || info.groups.length === 0) return { kind: 'none' };
-  if (criteria.gender === '公' && !info.maleCapable) return { kind: 'none' };
+  if (!info || info.groups.length === 0) return [];
+  if (criteria.gender === '公' && !info.maleCapable) return [];
 
+  const options: DemandPairOption[] = [];
   for (const snapshot of snapshots) {
     const females = snapshot.pets.filter(
       (pet) =>
@@ -168,26 +183,51 @@ export function findBreedableSupply(
     );
     if (males.length === 0) continue;
 
-    const female = females.find(
-      (pet) => !criteria.nature || pet.nature === criteria.nature,
-    ) ?? females[0];
-    const male = males.find(
-      (pet) => !criteria.nature || pet.nature === criteria.nature,
-    ) ?? males[0];
-    // 性格指定时至少一方带目标性格；都没带就不算可孵
-    if (criteria.nature && female.nature !== criteria.nature && male.nature !== criteria.nature) {
-      continue;
+    for (const female of females) {
+      for (const male of males) {
+        const motherHit = Boolean(criteria.nature) && female.nature === criteria.nature;
+        const maleHit = Boolean(criteria.nature) && male.nature === criteria.nature;
+        // 性格指定时至少一方带目标性格；都没带这一对就不算能孵
+        if (criteria.nature && !motherHit && !maleHit) continue;
+        options.push({
+          motherPet: { snapshot, pet: female },
+          malePet: { snapshot, pet: male },
+          natureChance: !criteria.nature ? 1 : motherHit && maleHit ? 0.6 : 0.3,
+        });
+      }
     }
-    return {
-      kind: 'breedable',
-      accountKey: accountKeyOfSnapshot(snapshot),
-      motherGameId: female.gameId,
-      maleGameId: male.gameId,
-      motherPet: { snapshot, pet: female },
-      malePet: { snapshot, pet: male },
-    };
   }
-  return { kind: 'none' };
+  // sort 是稳定的：同概率时保留「先导入的账号 → 先出现的个体」顺序
+  options.sort((a, b) => b.natureChance - a.natureChance);
+  return options.slice(0, Math.max(1, limit));
+}
+
+/**
+ * 本机同账号能否孵出这条需求。
+ *
+ * - **只认配对孵蛋**：必须找**同账号**的「该蛋母本 + 同蛋组公」，且父母双方都满足体型 / 声音；
+ *   自己已有一只、但配不出另一只时不算能接（2026-10-28 用户口径：不交割精灵）；
+ * - 性格指定时，父母至少一方带目标性格（学院小窝 100% 遗传）；
+ * - 需求为公时，该蛋物种必须能出公（`maleCapable`）。
+ *
+ * 不能跨账号拼父母；公也不能只按蛋组筛——非大婉公 + 大婉母孵不出大婉蛋。
+ * 取的是**概率最高**的那一对（2026-10-30 修：原来取第一个能配的账号）。
+ */
+export function findBreedableSupply(
+  snapshots: readonly AccountSnapshot[],
+  criteria: DemandCriteria,
+  species: readonly SpeciesEntry[],
+): DemandSupply {
+  const [best] = pairOptionsForEgg(snapshots, criteria, species, 1);
+  if (!best) return { kind: 'none' };
+  return {
+    kind: 'breedable',
+    accountKey: accountKeyOfSnapshot(best.motherPet.snapshot),
+    motherGameId: best.motherPet.pet.gameId,
+    maleGameId: best.malePet.pet.gameId,
+    motherPet: best.motherPet,
+    malePet: best.malePet,
+  };
 }
 
 /**
@@ -203,22 +243,41 @@ export interface StudDemandSupply extends DemandSupply {
   eggGameId?: number;
 }
 
-/** 组内任意一只蛋里，是否能凑出同账号、双方同档位的一对。 */
-export function findStudBreedableSupply(
+/** 种公需求里「我能用哪颗蛋接」的一个选项（2026-10-30 用户口径）。 */
+export interface StudHatchOption extends DemandPairOption {
+  eggGameId: number;
+  name: string;
+  /** 这颗蛋的可配蛋组 id（双蛋组时有两个）。 */
+  groupIds: number[];
+  /** 命中需求的整体概率 = 性格概率 × 性别概率（挑性别 50%）。 */
+  chance: number;
+}
+
+/**
+ * 种公需求在**本机**能用的蛋，按「真能孵出需求」的概率降序（2026-10-30 用户口径）。
+ *
+ * 种公需求只认「蛋组 + 性格 + 性别 + 体型 + 声音」，蛋组里任何一颗蛋都可能满足，
+ * 所以必须把所有蛋各算一遍再比概率；原来按图鉴顺序取第一个能孵的蛋，
+ * 会把 30% 的小翼龙当成推荐，漏掉 60% 的莫比乌乌（用户实测）。
+ */
+export function studHatchOptions(
   snapshots: readonly AccountSnapshot[],
-  demand: { eggGameId: number; nature: string; body: string; voice: string },
+  demand: { eggGameId: number; nature: string; gender: string; body: string; voice: string },
   species: readonly SpeciesEntry[],
-): StudDemandSupply {
-  if (!isStudDemandKey(demand.eggGameId)) return { kind: 'none' };
+): StudHatchOption[] {
+  if (!isStudDemandKey(demand.eggGameId)) return [];
   const groupId = eggGroupIdOfDemand(demand.eggGameId);
   const eggs = species.filter(
     (entry) =>
       entry.eggGameId != null &&
       entry.eggGameId === entry.gameId &&
+      entry.maleCapable === true &&
       (entry.eggGroups ?? []).some((group) => group === groupId && isBreedableGroup(group)),
   );
+  const genderFactor = demand.gender ? 0.5 : 1;
+  const options: StudHatchOption[] = [];
   for (const egg of eggs) {
-    const supply = findBreedableSupply(
+    const [best] = pairOptionsForEgg(
       snapshots,
       {
         eggGameId: egg.gameId,
@@ -228,10 +287,71 @@ export function findStudBreedableSupply(
         voice: demand.voice as DemandVoice,
       },
       species,
+      1,
     );
-    if (supply.kind === 'none') continue;
-    // 母本 / 种公直接用 findBreedableSupply 挑中的个体，不再按图鉴号二次挑选（B1-H01）。
-    return { ...supply, eggGameId: egg.gameId };
+    if (!best) continue;
+    options.push({
+      eggGameId: egg.gameId,
+      name: egg.name,
+      groupIds: (egg.eggGroups ?? []).filter(isBreedableGroup),
+      motherPet: best.motherPet,
+      malePet: best.malePet,
+      natureChance: best.natureChance,
+      chance: best.natureChance * genderFactor,
+    });
+  }
+  // 概率优先；同概率时双蛋组优先（可配的蛋更多），再按图鉴号稳定排序
+  options.sort(
+    (a, b) =>
+      b.chance - a.chance ||
+      Number(b.groupIds.length >= 2) - Number(a.groupIds.length >= 2) ||
+      a.eggGameId - b.eggGameId,
+  );
+  return options;
+}
+
+/**
+ * 组内任意一只蛋里，是否能凑出同账号、双方同档位的一对（**只判能不能**，找到就停）。
+ * 要按概率挑蛋请用 `studHatchOptions`；这里给「能不能接」这种布尔判断用，避免白算全部候选。
+ */
+export function findStudBreedableSupply(
+  snapshots: readonly AccountSnapshot[],
+  demand: { eggGameId: number; nature: string; body: string; voice: string },
+  species: readonly SpeciesEntry[],
+): StudDemandSupply {
+  if (!isStudDemandKey(demand.eggGameId)) return { kind: 'none' };
+  const groupId = eggGroupIdOfDemand(demand.eggGameId);
+  for (const egg of species) {
+    if (
+      egg.eggGameId == null ||
+      egg.eggGameId !== egg.gameId ||
+      egg.maleCapable !== true ||
+      !(egg.eggGroups ?? []).some((group) => group === groupId && isBreedableGroup(group))
+    ) {
+      continue;
+    }
+    const [best] = pairOptionsForEgg(
+      snapshots,
+      {
+        eggGameId: egg.gameId,
+        nature: demand.nature,
+        gender: '公',
+        body: demand.body as DemandBody,
+        voice: demand.voice as DemandVoice,
+      },
+      species,
+      1,
+    );
+    if (!best) continue;
+    return {
+      kind: 'breedable',
+      accountKey: accountKeyOfSnapshot(best.motherPet.snapshot),
+      motherGameId: best.motherPet.pet.gameId,
+      maleGameId: best.malePet.pet.gameId,
+      motherPet: best.motherPet,
+      malePet: best.malePet,
+      eggGameId: egg.gameId,
+    };
   }
   return { kind: 'none' };
 }

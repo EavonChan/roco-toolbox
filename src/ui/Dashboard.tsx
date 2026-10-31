@@ -98,7 +98,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         </p>
       ) : null}
 
-      <section className="rounded-2xl bg-white p-3 shadow-sm" data-testid="target-mode">
+      <section
+        className="rounded-2xl bg-white p-3 shadow-sm"
+        data-testid="target-mode"
+        data-tour="dashboard-target"
+      >
         <ScopeSummary
           scope="个人种公目标"
           criteria={`${TARGET_MODE_LABELS[mode]} · ${gradeText}`}
@@ -165,7 +169,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       <ImportAdditionCard />
 
       {/* 母本行动：只列个人缺口，最多 3 条 + 完整入口 */}
-      <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="mother-actions">
+      <section
+        className="rounded-2xl bg-white p-4 shadow-sm"
+        data-testid="mother-actions"
+        data-tour="dashboard-actions"
+      >
         <h2 className="text-sm font-medium text-slate-500">母本缺口</h2>
         {motherMissingPreview.length === 0 ? (
           <p className="mt-1 text-sm text-emerald-700">个人母本目标已全部收集。</p>
@@ -208,7 +216,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       {/* 配窝建议是产品亮点（2026-10-25 用户要求放回看板）：直接展示完整摆位与配对，
           不再只给一个「去配窝」入口；收集页的完整视图仍然保留。 */}
       {owned.length > 0 ? (
-        <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="nest-summary">
+        <section
+          className="rounded-2xl bg-white p-4 shadow-sm"
+          data-testid="nest-summary"
+          data-tour="dashboard-nest"
+        >
           <h2 className="text-sm font-medium text-slate-500">配窝建议</h2>
           <p className="mt-1 text-sm text-slate-600" data-testid="nest-summary-line">
             {stud.groupCount === 0 ? (

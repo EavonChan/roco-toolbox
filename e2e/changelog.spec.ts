@@ -1,5 +1,6 @@
 ﻿import { expect, test } from '@playwright/test';
 import { GUIDE_VERSION } from '../src/ui/guide';
+import { TOUR_VERSION } from '../src/ui/tour';
 
 // 覆盖 config 里「已读」的预置，才能看到首启弹窗。
 // 但教程引导（roco.guideSeen）仍预置为已读：本文件只验证更新弹窗，
@@ -11,7 +12,11 @@ test.use({
     origins: [
       {
         origin: 'http://localhost:4173',
-        localStorage: [{ name: 'roco.guideSeen', value: GUIDE_VERSION }],
+        localStorage: [
+          { name: 'roco.guideSeen', value: GUIDE_VERSION },
+          // 新手引导也是首启浮层，预置已读，本文件只验证更新弹窗
+          { name: 'roco.tourSeen', value: TOUR_VERSION },
+        ],
       },
     ],
   },
