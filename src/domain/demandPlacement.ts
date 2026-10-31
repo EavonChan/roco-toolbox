@@ -63,8 +63,6 @@ export interface DemandPlacementOption {
   newNests: number;
   /** 学院方案时：哪一方要放进学院小窝（另一只放普通窝）。 */
   academyResident: 'mother' | 'father' | null;
-  /** 被复用的亲本（1:2 时非空），值是父母各自的个体键。 */
-  sharedKeys: string[];
 }
 
 export interface DemandPlacement extends DemandPlacementOption {
@@ -161,7 +159,6 @@ interface PairPick {
   natureChance: number;
   newNests: number;
   academyResident: 'mother' | 'father' | null;
-  sharedKeys: string[];
 }
 
 interface PairPickResult {
@@ -288,10 +285,6 @@ function pickPair(
         (state.used.has(mother.key) ? 0 : 1) + (state.used.has(father.key) ? 0 : 1);
       if (state.used.size + newNests > nestCount) continue;
 
-      const sharedKeys: string[] = [];
-      if (motherUsage > 0) sharedKeys.push(mother.key);
-      if (fatherUsage > 0) sharedKeys.push(father.key);
-
       const bothNature =
         (demand.nature && mother.pet.nature === demand.nature ? 1 : 0) +
         (demand.nature && father.pet.nature === demand.nature ? 1 : 0);
@@ -305,7 +298,6 @@ function pickPair(
         natureChance,
         newNests,
         academyResident,
-        sharedKeys,
         bothNature,
       });
     }
@@ -328,7 +320,6 @@ function pickPair(
     natureChance: pick.natureChance,
     newNests: pick.newNests,
     academyResident: pick.academyResident,
-    sharedKeys: pick.sharedKeys,
   }));
   return { best, options };
 }
@@ -447,7 +438,6 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
       natureChance: pick.natureChance,
       newNests: pick.newNests,
       academyResident: pick.academyResident,
-      sharedKeys: pick.sharedKeys,
       options: result.options.map((option) => ({
         mother: { accountKey: state.accountKey, pet: option.mother.pet },
         father: { accountKey: state.accountKey, pet: option.father.pet },
@@ -455,7 +445,6 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
         natureChance: option.natureChance,
         newNests: option.newNests,
         academyResident: option.academyResident,
-        sharedKeys: option.sharedKeys,
       })),
     });
   };

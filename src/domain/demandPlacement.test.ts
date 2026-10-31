@@ -103,7 +103,6 @@ describe('buildDemandPlacements', () => {
     expect(placement.natureChance).toBe(1);
     expect(placement.academyResident).toBe('mother');
     expect(placement.newNests).toBe(2);
-    expect(placement.sharedKeys).toEqual([]);
     expect(result.accounts[0].nestsUsed).toBe(2);
   });
 
@@ -161,7 +160,6 @@ describe('buildDemandPlacements', () => {
     expect(placements[1].mother.pet).toBe(motherA);
     expect(placements[1].academyResident).toBe('mother');
     expect(placements[1].newNests).toBe(0);
-    expect(placements[1].sharedKeys).toHaveLength(2);
   });
 
   test('学院那只最多带两条单，第三条排不上', () => {
@@ -200,7 +198,6 @@ describe('buildDemandPlacements', () => {
     expect(placements[1].father.pet).toBe(father);
     expect(placements[1].tier).toBe('normal30');
     expect(placements[1].newNests).toBe(1);
-    expect(placements[1].sharedKeys).toHaveLength(1);
   });
 
   test('窝不够时排不上，原因写 no-room', () => {
