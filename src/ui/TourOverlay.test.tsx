@@ -34,7 +34,7 @@ describe('新手引导', () => {
     expect(TOUR_STEPS.length).toBeLessThanOrEqual(15);
   });
 
-  test('下一步 / 上一步 / 跳过 / 最后一步收尾', () => {
+  test('下一步 / 上一步 / 最后一步收尾', () => {
     const onClose = vi.fn();
     render(<TourOverlay steps={TOUR_STEPS} onClose={onClose} />);
 
@@ -49,10 +49,14 @@ describe('新手引导', () => {
     }
     fireEvent.click(screen.getByTestId('tour-done'));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
 
+  test('任意一步点「跳过」都直接关闭', () => {
+    const onClose = vi.fn();
     render(<TourOverlay steps={TOUR_STEPS} onClose={onClose} />);
-    fireEvent.click(screen.getAllByTestId('tour-skip')[0]);
-    expect(onClose).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByTestId('tour-skip'));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   test('找到锚点时画聚光方框；找不到时退化成居中说明卡', async () => {
