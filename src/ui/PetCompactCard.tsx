@@ -62,6 +62,13 @@ const at = (key: keyof typeof L): CSSProperties => ({
   transformOrigin: 'top left',
 });
 
+/**
+ * 昵称最大宽度（未缩放坐标，2026-11-01 R2-5-M01 方案 A）：
+ * 图鉴唯一 6 字基础名「睡铃雪影娃娃」不截断时右缘会到 127px，压住 left=125 的性格徽标。
+ * 78px × scale 0.75 = 58.5px，右缘 64 + 58.5 = 122.5px，离徽标仍有 2.5px；5 字名照常完整显示。
+ */
+const NAME_MAX_WIDTH = 78;
+
 const groupTag = (groupId: number): string =>
   (eggGroupNames[groupId] ?? '').replace(/组$/, '').slice(0, 2);
 
@@ -134,8 +141,8 @@ export function PetCompactCard({
       </div>
 
       <div
-        className="absolute whitespace-nowrap text-sm font-bold leading-[1.1] text-slate-900"
-        style={at('name')}
+        className="absolute truncate text-sm font-bold leading-[1.1] text-slate-900"
+        style={{ ...at('name'), maxWidth: NAME_MAX_WIDTH }}
         title={name}
       >
         {displayName}
