@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { species as catalog } from '../data/catalog';
 import type { AccountSnapshot } from '../domain/parseBackup';
 import type { OwnedPet } from '../domain/types';
+import { demandPickKey } from './demandPickStore';
 import { HomeDemandPlacements } from './HomeDemandPlacements';
 
 const h = vi.hoisted(() => ({
@@ -234,6 +235,49 @@ describe('家园 · 接单上窝', () => {
     renderPanel(pets);
     expect(screen.getByTestId('home-demand-row')).toHaveTextContent('种公乙');
     expect(screen.queryByTestId('home-demand-pref-fallback')).toBeNull();
+  });
+
+  test('小组页选的蛋会带过来，本机排不上时给出提示（R2-3-M02）', () => {
+    const eggB = catalog.find(
+      (entry) =>
+        entry.eggGameId === entry.gameId &&
+        entry.maleCapable === true &&
+        entry.gameId !== egg.gameId &&
+        (entry.eggGroups ?? []).includes(groupId),
+    );
+    expect(eggB).toBeTruthy();
+    h.state.items = [demandItem({ eggGameId: -groupId, gender: '公', nature: '固执' })];
+    const pets = [
+      pet({ gameId: egg.gameId, gender: '母', name: '母甲', nature: '固执', captureId: 'cap_academy' }),
+      pet({ gameId: eggB!.gameId, gender: '母', name: '母乙', nature: '开朗', captureId: 'cap_m2' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', name: '公甲', nature: '开朗', captureId: 'cap_f1' }),
+      pet({ gameId: egg.gameId, gender: '公', name: '公乙', nature: '固执', captureId: 'cap_f2' }),
+    ];
+
+    // 先看默认用哪一颗当母本，再选另一颗，保证用「不带选蛋」的默认结果做对照
+    const first = renderPanel(pets);
+    const defaultMother = screen.getAllByTestId('home-demand-parent')[0].textContent ?? '';
+    first.unmount();
+    const picked = defaultMother.includes('母甲') ? eggB! : egg;
+
+    window.localStorage.setItem(
+      'roco.demandPick',
+      JSON.stringify({
+        [demandPickKey('g1', {
+          demanderAccountId: 'm1',
+          eggGameId: -groupId,
+          nature: '固执',
+          gender: '公',
+          body: '大块头',
+          voice: '+100',
+        })]: picked.gameId,
+      }),
+    );
+    renderPanel(pets);
+    expect(screen.getAllByTestId('home-demand-parent')[0]).toHaveTextContent(
+      picked === egg ? '母甲' : '母乙',
+    );
+    expect(screen.queryByTestId('home-demand-pick-fallback')).toBeNull();
   });
 
   test('已在家园的绿描边单独画在卡片上层，不会被卡片边框和阴影压住', () => {

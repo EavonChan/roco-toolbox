@@ -21,6 +21,7 @@ import {
   type PlacementChoices,
   type PlacementMarks,
 } from './demandPlacementStore';
+import { demandPickKey, readDemandPicks } from './demandPickStore';
 import { PetAvatar } from './PetAvatar';
 import { PetCompactCard } from './PetCompactCard';
 import { CARD, HINT, TITLE } from './primitives/styles';
@@ -170,7 +171,11 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
     return map;
   }, [snapshots]);
 
-  const demands = useMemo(
+  /** 小组页里选的「用哪颗蛋接单」：键与小组页一致（R2-3-M02）。 */
+  const picks = useMemo(() => readDemandPicks(), [items]);
+
+  /** 先按默认配对构建一次，用来找到所选那颗蛋在候选里的位置。 */
+  const baseDemands = useMemo(
     () =>
       items.map((item) => ({
         groupId: item.groupId,
@@ -183,9 +188,56 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
         voice: item.voice,
         claimedAt: item.updatedAt,
         version: item.version,
-        preferredPair: preferredPairs[rowKeyOfDemand({ ...item, claimedAt: item.updatedAt })] ?? null,
       })),
-    [items, preferredPairs],
+    [items],
+  );
+  const baseResult = useMemo(
+    () => buildDemandPlacements({ demands: baseDemands, snapshots, species }),
+    [baseDemands, snapshots],
+  );
+
+  /** 把小组页选的蛋映射成「母本 + 种公」偏好对；本机排不上时记一笔用于提示。 */
+  const pickPreferences = useMemo(() => {
+    const pairs: PlacementChoices = {};
+    const fallback: Record<string, true> = {};
+    for (const account of baseResult.accounts) {
+      for (const placement of account.placements) {
+        const key = rowKeyOfDemand(placement.demand);
+        const pick = picks[demandPickKey(placement.demand.groupId, placement.demand)];
+        if (pick == null) continue;
+        const option = placement.options.find((item) => item.mother.pet.gameId === pick);
+        const motherCaptureId = option?.mother.pet.captureId;
+        const fatherCaptureId = option?.father.pet.captureId;
+        if (!motherCaptureId || !fatherCaptureId) {
+          fallback[key] = true;
+          continue;
+        }
+        pairs[key] = { motherCaptureId, fatherCaptureId };
+      }
+    }
+    return { pairs, fallback };
+  }, [baseResult, picks]);
+
+  const demands = useMemo(
+    () =>
+      items.map((item) => {
+        const key = rowKeyOfDemand({ ...item, claimedAt: item.updatedAt });
+        return {
+          groupId: item.groupId,
+          groupName: item.groupName,
+          demanderAccountId: item.demanderAccountId,
+          eggGameId: item.eggGameId,
+          nature: item.nature,
+          gender: item.gender,
+          body: item.body,
+          voice: item.voice,
+          claimedAt: item.updatedAt,
+          version: item.version,
+          // 家园页手动挑的优先；没挑过就沿用小组页选的那颗蛋
+          preferredPair: preferredPairs[key] ?? pickPreferences.pairs[key] ?? null,
+        };
+      }),
+    [items, preferredPairs, pickPreferences],
   );
 
   const result = useMemo(
@@ -337,6 +389,11 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
         {preferred && !prefHonored ? (
           <p className="mt-1 text-[10px] text-amber-700" data-testid="home-demand-pref-fallback">
             你选的这组这轮排不上（窝位或占用变了），已按第一组上窝。
+          </p>
+        ) : null}
+        {!preferred && pickPreferences.fallback[rowKey] ? (
+          <p className="mt-1 text-[10px] text-amber-700" data-testid="home-demand-pick-fallback">
+            你在小组页选的那颗蛋本机排不上（窝位或占用变了），已按默认配对。
           </p>
         ) : null}
 
