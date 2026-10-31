@@ -325,7 +325,15 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
       {!loaded ? (
         <p className={`${HINT}`}>正在读取本地数据…</p>
       ) : view === 'demands' ? (
-        <HomeDemandPlacements snapshots={visible} labelOf={labelOf} loaded={loaded} />
+        snapshots.length === 0 ? (
+          <EmptyState onGoImport={onGoImport} />
+        ) : visible.length === 0 ? (
+          <p className={`${HINT} rounded-xl bg-slate-50 p-3`} data-testid="home-demand-no-account">
+            未选择游戏账号：上面点「全选」可恢复。
+          </p>
+        ) : (
+          <HomeDemandPlacements snapshots={visible} labelOf={labelOf} loaded={loaded} />
+        )
       ) : snapshots.length === 0 ? (
         <EmptyState onGoImport={onGoImport} />
       ) : visible.length === 0 ? (

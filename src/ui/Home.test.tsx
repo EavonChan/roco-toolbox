@@ -265,6 +265,24 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-residents')).toBeTruthy();
   });
 
+  test('没导入数据时接单上窝给导入引导，不显示「都排不上」', () => {
+    render(<HomeLand />);
+    fireEvent.click(screen.getByTestId('home-view-demands'));
+
+    expect(screen.getByTestId('empty-state')).toBeTruthy();
+    expect(screen.queryByTestId('home-demand-placements')).toBeNull();
+  });
+
+  test('账号全不选时接单上窝提示怎么恢复，不落「窝位不够」', () => {
+    h.snapshots = [snapshotWithHome()];
+    toggleAccount('测试甲');
+    render(<HomeLand />);
+    fireEvent.click(screen.getByTestId('home-view-demands'));
+
+    expect(screen.getByTestId('home-demand-no-account')).toHaveTextContent('未选择游戏账号');
+    expect(screen.queryByTestId('home-demand-placements')).toBeNull();
+  });
+
   test('外部切分页（新手引导）时，已挂载的家园页跟着切，不用重新挂载', () => {
     h.snapshots = [snapshotWithHome()];
     render(<HomeLand />);
