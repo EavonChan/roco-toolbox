@@ -13,9 +13,12 @@ import { speciesDisplayName } from '../domain/speciesName';
 import {
   placementRowKey,
   readCollapsedAccounts,
+  readPlacementChoices,
   readPlacementMarks,
   togglePlacementMark,
   writeCollapsedAccounts,
+  writePlacementChoice,
+  type PlacementChoices,
   type PlacementMarks,
 } from './demandPlacementStore';
 import { PetAvatar } from './PetAvatar';
@@ -36,12 +39,6 @@ export interface HomeDemandPlacementsProps {
 }
 
 const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
-
-/** 用户在本机挑的候选配对：记个体号而不是序号，方案重算后仍能认出是哪一对。 */
-interface PreferredPair {
-  motherCaptureId: string;
-  fatherCaptureId: string;
-}
 
 /** 行键的唯一入口：接单单与「排不上」共用，避免两处拼出不同的键。 */
 const rowKeyOfDemand = (
@@ -143,12 +140,15 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
   const { accountId, items, loading, error, reload } = useClaimedDemands();
   const [collapsedAccounts, setCollapsedAccounts] = useState<string[]>(() => readCollapsedAccounts());
   /** 手动挑的候选配对（按行键）。切换即重算整份方案，页头的窝数随之变化。 */
-  const [preferredPairs, setPreferredPairs] = useState<Record<string, PreferredPair>>({});
+  const [preferredPairs, setPreferredPairs] = useState<PlacementChoices>(() =>
+    readPlacementChoices(accountId),
+  );
   const [marks, setMarks] = useState<PlacementMarks>(() => readPlacementMarks(accountId));
   const [openOptions, setOpenOptions] = useState<string[]>([]);
 
   useEffect(() => {
     setMarks(readPlacementMarks(accountId));
+    setPreferredPairs(readPlacementChoices(accountId));
   }, [accountId]);
 
   const labelByAccountKey = useMemo(() => {
@@ -354,6 +354,12 @@ export function HomeDemandPlacements({ snapshots, labelOf, loaded }: HomeDemandP
                       ...currentPicks,
                       [rowKey]: { motherCaptureId: motherId, fatherCaptureId: fatherId },
                     }));
+                    if (accountId) {
+                      writePlacementChoice(accountId, rowKey, {
+                        motherCaptureId: motherId,
+                        fatherCaptureId: fatherId,
+                      });
+                    }
                     setOpenOptions((currentOpen) => currentOpen.filter((key) => key !== rowKey));
                   }}
                   className={`block w-full rounded px-1 py-0.5 text-left ${

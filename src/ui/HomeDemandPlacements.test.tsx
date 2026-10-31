@@ -185,6 +185,49 @@ describe('家园 · 接单上窝', () => {
     expect(screen.queryByTestId('home-demand-options')).toBeNull();
   });
 
+  test('换候选按新配对重算：概率跟着这一对变，不是只换显示', () => {
+    h.state.items = [
+      demandItem({ nature: '固执', updatedAt: 1 }),
+      demandItem({ nature: '开朗', updatedAt: 2, demanderAccountId: 'm2' }),
+    ];
+    renderPanel([
+      pet({ gameId: egg.gameId, gender: '母', nature: '固执', captureId: 'cap_m1' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', nature: '固执', captureId: 'cap_f0' }),
+      pet({ gameId: egg.gameId, gender: '母', nature: '开朗', captureId: 'cap_m2' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', nature: '开朗', captureId: 'cap_f1' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', nature: '固执', captureId: 'cap_f2' }),
+    ]);
+
+    // 第二条单默认是「双亲同性格」的 30%（60% × 性别 50%）
+    expect(screen.getAllByTestId('home-demand-chance')[1]).toHaveTextContent('约 30%');
+
+    fireEvent.click(screen.getAllByTestId('home-demand-badge')[1]);
+    fireEvent.click(screen.getByTestId('home-demand-option-1'));
+
+    // 换成「只有母本带性格」的那一对后，整份方案按它重算 → 概率跌到 15%
+    expect(screen.getAllByTestId('home-demand-chance')[1]).toHaveTextContent('约 15%');
+    expect(screen.getAllByTestId('home-demand-chance')[1].className).toContain('text-rose-600');
+  });
+
+  test('挑过的候选写进本机，重进仍按那一对显示', () => {
+    h.state.items = [demandItem()];
+    const pets = [
+      pet({ gameId: egg.gameId, gender: '母', captureId: 'cap_academy' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', name: '种公甲', captureId: 'cap_f1' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', name: '种公乙', captureId: 'cap_f2' }),
+    ];
+    const view = renderPanel(pets);
+    fireEvent.click(screen.getByTestId('home-demand-badge'));
+    fireEvent.click(screen.getByTestId('home-demand-option-1'));
+    expect(screen.getByTestId('home-demand-row')).toHaveTextContent('种公乙');
+    expect(window.localStorage.getItem('roco.demandPlacementChoice:me')).toContain('cap_f2');
+
+    view.unmount();
+    renderPanel(pets);
+    expect(screen.getByTestId('home-demand-row')).toHaveTextContent('种公乙');
+    expect(screen.queryByTestId('home-demand-pref-fallback')).toBeNull();
+  });
+
   test('已在家园的绿描边单独画在卡片上层，不会被卡片边框和阴影压住', () => {
     h.state.items = [demandItem()];
     renderPanel([

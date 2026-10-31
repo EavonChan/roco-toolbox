@@ -21,7 +21,16 @@ export interface PlacementRow {
 
 export type PlacementMarks = Record<string, boolean>;
 
+/** 手动挑的候选配对：记个体号，方案重算后仍认得出是哪一对（2026-11-01）。 */
+export interface PlacementChoice {
+  motherCaptureId: string;
+  fatherCaptureId: string;
+}
+
+export type PlacementChoices = Record<string, PlacementChoice>;
+
 const KEY_PREFIX = 'roco.demandPlacements:';
+const CHOICE_KEY_PREFIX = 'roco.demandPlacementChoice:';
 const COLLAPSED_KEY = 'roco.demandCollapsedAccounts';
 
 export function placementRowKey(row: PlacementRow): string {
@@ -62,6 +71,47 @@ export function togglePlacementMark(
     }
   }
   return { ...marks };
+}
+
+const isPlacementChoice = (value: unknown): value is PlacementChoice => {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.motherCaptureId === 'string' && typeof record.fatherCaptureId === 'string';
+};
+
+/** 手动挑的候选配对（按行键）：重进页面时还按它显示；旧值一律当没挑过。 */
+export function readPlacementChoices(accountId: string | null): PlacementChoices {
+  if (!accountId || typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(CHOICE_KEY_PREFIX + accountId);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const choices: PlacementChoices = {};
+    for (const [rowKey, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (isPlacementChoice(value)) choices[rowKey] = value;
+    }
+    return choices;
+  } catch {
+    return {};
+  }
+}
+
+export function writePlacementChoice(
+  accountId: string,
+  rowKey: string,
+  choice: PlacementChoice | null,
+): PlacementChoices {
+  const choices = readPlacementChoices(accountId);
+  if (choice) choices[rowKey] = choice;
+  else delete choices[rowKey];
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(CHOICE_KEY_PREFIX + accountId, JSON.stringify(choices));
+    } catch {
+      // 存不下只是下次打开回到第一组（同 demandPickStore.ts）
+    }
+  }
+  return { ...choices };
 }
 
 /** 接单上窝页里手动收起的账号（accountKey），下次打开仍然收起。 */
