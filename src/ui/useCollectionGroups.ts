@@ -446,7 +446,10 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
       const groupId = groupRef.current;
       const account = accountRef.current;
       if (!groupId) throw new Error('还没有打开小组');
+      const active = scope(true);
       await withdrawDemandApi(groupId, eggGameId, criteria);
+      // 切组 / 换身份后旧响应不再写回：否则新组列表会被旧组结果覆盖，旧组缓存也会被写脏
+      if (!active()) return;
       applyDemands(
         demandsRef.current.filter(
           (item) =>
@@ -463,7 +466,7 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
         groupId,
       );
     },
-    [applyDemands],
+    [applyDemands, scope],
   );
 
   const demandAction = useCallback(

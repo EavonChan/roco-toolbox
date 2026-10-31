@@ -174,6 +174,37 @@ describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
     expect(result.current.groups.map((group) => group.id)).toEqual(['gB']);
   });
 
+  test('撤回请求在途时切组，旧响应不写回新组列表', async () => {
+    const pending = deferred<void>();
+    vi.mocked(api.withdrawCollectionDemand).mockReturnValueOnce(pending.promise);
+    vi.mocked(api.getCollectionDemands)
+      .mockResolvedValueOnce([demandOf()])
+      // 新组恰好有一条同内容需求：旧响应若写回，会把它误删
+      .mockResolvedValueOnce([demandOf({ groupId: 'g2' })]);
+
+    const { result } = renderHook(() => useCollectionGroups(input));
+    await flush();
+    expect(result.current.demands).toHaveLength(1);
+
+    act(() => {
+      void result.current.withdrawDemand(3466, {
+        nature: '',
+        gender: '母',
+        body: '大块头',
+        voice: '+100',
+      });
+    });
+    act(() => result.current.selectGroup('g2'));
+    await flush();
+    expect(result.current.demands.map((demand) => demand.groupId)).toEqual(['g2']);
+
+    await act(async () => {
+      pending.resolve();
+    });
+    await flush();
+    expect(result.current.demands.map((demand) => demand.groupId)).toEqual(['g2']);
+  });
+
   test('撤回成功后本地立即移除该条，已完成的单保留', async () => {
     const open = demandOf();
     const done = demandOf({ eggGameId: 3467, status: 'done', claimerAccountId: 'B' });
