@@ -117,6 +117,10 @@ export const studTargetKey = (slot: Pick<StudTargetSlot, 'groupId' | 'natureId' 
 
 export interface MotherTargetConfig {
   kind: 'mother';
+  /**
+   * 组目标口径（旧命名空间 `female-huge-voice100-v2` / `mother-v2-<hash>`）。
+   * 与资源摘要的 `all-mothers-v3-*` **不是同一命名空间**，不要拿它当资源 `criteriaId` 用。
+   */
   criteriaId: string;
   mode: CollectionTargetMode;
   bodies: string[];
@@ -318,7 +322,12 @@ export function demandLimitPerMember(accountCount: number): number {
  */
 export const DEMAND_GENDERS = ['母', '公', ''] as const;
 export type DemandGender = (typeof DEMAND_GENDERS)[number];
-export const DEMAND_BODIES = ['大块头', '小不点', ''] as const;
+/**
+ * 体型档位（2026-11-01 新增极端档）：
+ * - 大块头 / 小不点：奖牌档（体重 98% / 2%）；
+ * - 满体重 / 零体重：极端档，体重正好 100% / 0%，卡片上换蛋神的 MAX / MIN 奖牌图。
+ */
+export const DEMAND_BODIES = ['大块头', '小不点', '满体重', '零体重', ''] as const;
 export type DemandBody = (typeof DEMAND_BODIES)[number];
 export const DEMAND_VOICES = ['+100', '-100', '婉转声', '粗嗓门', ''] as const;
 export type DemandVoice = (typeof DEMAND_VOICES)[number];

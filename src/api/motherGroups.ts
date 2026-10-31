@@ -6,6 +6,7 @@
  */
 import {
   isMotherApiErrorCode,
+  isProductionLineGrade,
   type MotherApiErrorCode,
   type MotherGroupDetail,
   type MotherGroupInfo,
@@ -61,9 +62,11 @@ const parseProductionLine = (value: unknown, field: string): SharedProductionLin
         asString(nature, `${field}.natures[${index}]`),
       )
     : bad(`${field}.natures 不是数组`);
+  const grade = asString(record.grade, `${field}.grade`);
+  if (!isProductionLineGrade(grade)) bad(`${field}.grade 不受支持`);
   return {
     eggGameId: asNumber(record.eggGameId, `${field}.eggGameId`),
-    grade: asString(record.grade, `${field}.grade`) as SharedProductionLine['grade'],
+    grade,
     natures,
   };
 };

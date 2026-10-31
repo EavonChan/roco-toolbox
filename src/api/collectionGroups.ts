@@ -5,8 +5,8 @@
  * 不把非法响应 `as` 成组数据；失败抛 `MotherGroupsApiError`（带 status/code/retryAfter）。
  */
 import {
-  MOTHER_CRITERIA_ID,
   isMotherApiErrorCode,
+  isProductionLineGrade,
   type MotherResourceDraft,
   type PublishedMotherResource,
   type SharedMotherAccount,
@@ -23,6 +23,7 @@ import {
   isDemandVoice,
   isTargetGrade,
   isTargetMode,
+  motherCriteriaIdOf,
   type CollectionDemand,
   type CollectionDemandStatus,
   type CollectionGroupDetail,
@@ -68,9 +69,11 @@ const asArray = (value: unknown, field: string): unknown[] =>
 
 const parseProductionLine = (value: unknown, field: string): SharedProductionLine => {
   const record = asRecord(value, field);
+  const grade = asString(record.grade, `${field}.grade`);
+  if (!isProductionLineGrade(grade)) bad(`${field}.grade 不受支持`);
   return {
     eggGameId: asNumber(record.eggGameId, `${field}.eggGameId`),
-    grade: asString(record.grade, `${field}.grade`) as SharedProductionLine['grade'],
+    grade: grade as SharedProductionLine['grade'],
     natures: asArray(record.natures, `${field}.natures`).map((nature, index) =>
       asString(nature, `${field}.natures[${index}]`),
     ),
@@ -153,19 +156,26 @@ function parseTarget(value: unknown): GroupTargetConfig | null {
     const voices = asArray(record.voices, 'target.voices').map((item, index) =>
       asString(item, `target.voices[${index}]`),
     );
+    const requireRecommendedNatures = record.requireRecommendedNatures === true;
+    const natureOverrides =
+      record.natureOverrides &&
+      typeof record.natureOverrides === 'object' &&
+      !Array.isArray(record.natureOverrides)
+        ? (record.natureOverrides as Record<string, string[]>)
+        : undefined;
     const target: MotherTargetConfig = {
       kind: 'mother',
-      criteriaId: typeof record.criteriaId === 'string' ? record.criteriaId : MOTHER_CRITERIA_ID,
+      // 兜底也不能拿资源口径常量：组目标是旧命名空间，与 all-mothers-v3-* 不是一回事（R2-7-L07）
+      criteriaId:
+        typeof record.criteriaId === 'string'
+          ? record.criteriaId
+          : motherCriteriaIdOf({ mode, bodies, voices, requireRecommendedNatures, natureOverrides }),
       mode,
       bodies: bodies.filter((body) => (MOTHER_TARGET_BODIES as readonly string[]).includes(body)),
       voices,
       catalogVersion,
-      ...(record.requireRecommendedNatures === true ? { requireRecommendedNatures: true } : {}),
-      ...(record.natureOverrides &&
-      typeof record.natureOverrides === 'object' &&
-      !Array.isArray(record.natureOverrides)
-        ? { natureOverrides: record.natureOverrides as Record<string, string[]> }
-        : {}),
+      ...(requireRecommendedNatures ? { requireRecommendedNatures: true } : {}),
+      ...(natureOverrides ? { natureOverrides } : {}),
     };
     return target;
   }
