@@ -45,3 +45,50 @@ test('顶部「教程」里可以重播分步引导', async ({ page }) => {
   await expect(page.getByTestId('tour-root')).toBeVisible();
   await expect(page.getByTestId('tour-title')).toHaveText('五个入口');
 });
+
+// 只在这些步骤上断言「一定框得到」：不依赖是否导入数据、是否登录 / 入组
+const ALWAYS_SPOTLIGHT = new Set([
+  'nav',
+  'dashboard-target',
+  'dashboard-actions',
+  'collection-kinds',
+  'collection-studs',
+  'collection-mothers',
+  'home-tabs',
+  'home-placement',
+  'profile-import',
+  'profile-account',
+]);
+
+test('走完 15 步：有锚点的步骤都框到真实控件，接单上窝会切分页', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('tour-root')).toBeVisible();
+
+  for (let index = 0; index < TOUR_STEPS.length; index += 1) {
+    const step = TOUR_STEPS[index];
+    await expect(page.getByTestId('tour-progress')).toHaveText(`第 ${index + 1} / ${TOUR_STEPS.length} 步`);
+    await expect(page.getByTestId('tour-title')).toHaveText(step.title);
+    if (ALWAYS_SPOTLIGHT.has(step.id)) {
+      await expect(page.getByTestId('tour-spotlight')).toBeVisible();
+    }
+    if (step.id === 'home-placement') {
+      // 家园页要真的切到「接单上窝」，否则这一步讲的控件根本不在屏幕上
+      await expect(page.getByTestId('home-view-demands')).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByTestId('home-demand-placements')).toBeVisible();
+    }
+    if (index < TOUR_STEPS.length - 1) await page.getByTestId('tour-next').click();
+  }
+
+  await page.getByTestId('tour-done').click();
+  await expect(page.getByTestId('tour-root')).toHaveCount(0);
+});
+
+test('引导进行中点「教程」：先结束引导，不会叠出两层浮层', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('tour-root')).toBeVisible();
+
+  await page.getByTestId('guide-open').click();
+  await expect(page.getByTestId('tour-root')).toHaveCount(0);
+  await expect(page.getByTestId('guide-modal')).toBeVisible();
+});
+
