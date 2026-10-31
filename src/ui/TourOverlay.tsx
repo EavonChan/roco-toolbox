@@ -43,11 +43,25 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
     targetRef.current = null;
     setRect(null);
 
-    const locate = () => {
-      if (cancelled) return;
-      const element = step.anchor
+    const findAnchor = () =>
+      step.anchor
         ? (document.querySelector(`[${TOUR_ANCHOR_ATTR}="${step.anchor}"]`) as HTMLElement | null)
         : null;
+
+    const measure = (element: HTMLElement) => {
+      targetRef.current = element;
+      frame = requestAnimationFrame(() => {
+        if (cancelled) return;
+        // 量之前目标被卸载：清掉高亮，不画到错误位置
+        setRect(element.isConnected ? element.getBoundingClientRect() : null);
+      });
+    };
+
+    const locate = () => {
+      if (cancelled) return;
+      cancelAnimationFrame(frame);
+      setRect(null);
+      const element = findAnchor();
       if (!element) {
         if (step.anchor && tries < MAX_WAIT_FRAMES) {
           tries += 1;
@@ -55,17 +69,36 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
         }
         return;
       }
-      targetRef.current = element;
+      tries = 0;
       element.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-      frame = requestAnimationFrame(() => {
-        if (!cancelled) setRect(element.getBoundingClientRect());
-      });
+      measure(element);
     };
 
     locate();
+
+    // 目标中途被卸载（用户点了别的页签）或晚挂载（数据还没回来）：每 0.6 秒补找一次
+    const watchdog = step.anchor
+      ? window.setInterval(() => {
+          if (cancelled) return;
+          const current = targetRef.current;
+          if (current?.isConnected) return;
+          const element = findAnchor();
+          if (element) {
+            tries = 0;
+            element.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+            measure(element);
+          } else if (current) {
+            // 原来有目标、现在整个没了：退回居中说明卡，不指着空位置
+            targetRef.current = null;
+            setRect(null);
+          }
+        }, 600)
+      : null;
+
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
+      if (watchdog !== null) window.clearInterval(watchdog);
     };
     // step 由 index 决定，无需单独列进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,7 +108,9 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
   useEffect(() => {
     const update = () => {
       const element = targetRef.current;
-      if (element) setRect(element.getBoundingClientRect());
+      // 目标已不在页面上：交给上面每步的补找逻辑，别把高亮量成 0×0
+      if (!element?.isConnected) return;
+      setRect(element.getBoundingClientRect());
     };
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);

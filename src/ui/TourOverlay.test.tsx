@@ -75,6 +75,21 @@ describe('新手引导', () => {
     expect(screen.getByTestId('tour-card')).toBeTruthy();
   });
 
+  test('目标中途被移除后退回居中卡，不再画到空位置', async () => {
+    const anchor = document.createElement('div');
+    anchor.setAttribute('data-tour', 'vanish-anchor');
+    document.body.appendChild(anchor);
+
+    render(
+      <TourOverlay steps={[{ id: 'a', title: '有锚点', body: '高亮真实控件', anchor: 'vanish-anchor' }]} onClose={() => {}} />,
+    );
+    await waitFor(() => expect(screen.getByTestId('tour-spotlight')).toBeTruthy());
+
+    anchor.remove();
+    await waitFor(() => expect(screen.queryByTestId('tour-spotlight')).toBeNull(), { timeout: 2000 });
+    expect(screen.getByTestId('tour-card')).toBeTruthy();
+  });
+
   test('进入每一步都会通知 App 切页面', () => {
     const onEnter = vi.fn();
     render(<TourOverlay steps={TOUR_STEPS} onClose={() => {}} onEnter={onEnter} />);
