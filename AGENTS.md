@@ -4,6 +4,8 @@
 再动手；流程技能优先于实现技能。
 
 - 要做新功能 / "帮我做 X" → 先用 `brainstorming`，再 `writing-plans`，然后实施
+- 要「整体审代码 / 全量 review / 按流程审一遍」→ 直接按 `docs/code-review/REVIEW-PLAYBOOK.md` 执行，
+  不要重新讨论流程（基线固化 → 分批发包 → 只读审查 → 分批修复 → 收尾验收）；中途来了新提交按该文 §11 走增量审查
 - 遇到 bug、测试失败、行为异常 → 先用 `systematic-debugging`
 - 写实现代码前 → `test-driven-development`（红-绿-重构，先写失败测试）
 - 声称"完成/修好了"之前 → `verification-before-completion`（必须给出命令与真实输出）
