@@ -379,4 +379,16 @@ describe('buildDemandPlacements', () => {
     expect(placement.options).toHaveLength(2);
     expect(placement.options.every((option) => option.tier === 'academy')).toBe(true);
   });
+
+  test('没导入账号数据时写 no-data，不误报窝位不够', () => {
+    const result = buildDemandPlacements({
+      demands: [demand()],
+      snapshots: [],
+      species,
+    });
+
+    expect(result.accounts).toHaveLength(0);
+    expect(result.unassigned[0].reason).toBe('no-data');
+    expect(result.unassigned[0].message).toContain('导入游戏数据');
+  });
 });

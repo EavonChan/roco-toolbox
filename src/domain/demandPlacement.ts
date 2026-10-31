@@ -77,7 +77,8 @@ export type DemandPlacementReason =
   | 'no-mother'
   | 'no-father'
   | 'nature'
-  | 'no-room';
+  | 'no-room'
+  | 'no-data';
 
 export interface DemandPlacementSkip {
   demand: DemandPlacementDemand;
@@ -358,6 +359,7 @@ const REASON_MESSAGES: Record<DemandPlacementReason, string> = {
   'no-father': '本机没有满足条件的种公',
   nature: '没有带目标性格的亲本',
   'no-room': '窝位不够，或可用的精灵已经被别的单占用',
+  'no-data': '本机还没有账号数据：先导入游戏数据，或把账号勾回来',
 };
 
 const REASON_RANK: Record<DemandPlacementReason, number> = {
@@ -366,6 +368,7 @@ const REASON_RANK: Record<DemandPlacementReason, number> = {
   'no-father': 2,
   nature: 3,
   'no-room': 4,
+  'no-data': 5,
 };
 
 export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacementResult {
@@ -510,7 +513,8 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
     if (placed) continue;
 
     // 都排不上：取最有信息量的原因，挂到「排不上」组。
-    let reason: DemandPlacementReason = 'no-room';
+    // 一个账号都没有（本机没导入 / 账号全被筛掉）时不能报「窝位不够」，那是误导。
+    let reason: DemandPlacementReason = states.length === 0 ? 'no-data' : 'no-room';
     let best = Number.POSITIVE_INFINITY;
     for (const state of states) {
       const candidate = diagnose(target, demand, state);
