@@ -394,6 +394,44 @@ describe('buildDemandPlacements', () => {
     expect(placement.options.every((option) => option.tier === 'academy')).toBe(true);
   });
 
+  test('种公需求（负蛋组号）按组内能出公的蛋挑母本', () => {
+    const mother = pet({ gameId: 200, gender: '母' });
+    const father = pet({ gameId: 100, gender: '公' });
+    const result = buildDemandPlacements({
+      demands: [demand({ eggGameId: -2, gender: '公' })],
+      snapshots: [snap('账号A', 11, [mother, father])],
+      species,
+    });
+
+    const [placement] = result.accounts[0].placements;
+    expect(placement.mother.pet).toBe(mother);
+    expect(placement.father.pet).toBe(father);
+  });
+
+  test('种公需求里出不了公的蛋不能当母本', () => {
+    const motherOnly = pet({ gameId: 400, gender: '母' });
+    const father = pet({ gameId: 200, gender: '公' });
+    const result = buildDemandPlacements({
+      demands: [demand({ eggGameId: -2, gender: '公' })],
+      snapshots: [snap('账号A', 11, [motherOnly, father])],
+      species,
+    });
+
+    expect(result.accounts[0].placements).toHaveLength(0);
+    expect(result.unassigned[0].reason).toBe('no-mother');
+  });
+
+  test('蛋组号非法时写 impossible', () => {
+    const mother = pet({ gameId: 100, gender: '母' });
+    const result = buildDemandPlacements({
+      demands: [demand({ eggGameId: 0 })],
+      snapshots: [snap('账号A', 11, [mother])],
+      species,
+    });
+
+    expect(result.unassigned[0].reason).toBe('impossible');
+  });
+
   test('没导入账号数据时写 no-data，不误报窝位不够', () => {
     const result = buildDemandPlacements({
       demands: [demand()],
