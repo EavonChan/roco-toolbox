@@ -335,6 +335,20 @@ describe('buildDemandPlacements', () => {
     expect(result.accounts.find((account) => account.accountKey === 'uid:11')?.placements).toHaveLength(0);
   });
 
+  test('账号身份按 gameId 现算，不直接信快照里的 accountKey', () => {
+    const mother = pet({ gameId: 100, gender: '母' });
+    const father = pet({ gameId: 200, gender: '公' });
+    const stale = { ...snap('账号A', 11, [mother, father]), accountKey: 'uid:999' };
+    const result = buildDemandPlacements({
+      demands: [demand()],
+      snapshots: [stale],
+      species,
+    });
+
+    expect(result.accounts[0].accountKey).toBe('uid:11');
+    expect(result.accounts[0].placements[0].mother.accountKey).toBe('uid:11');
+  });
+
   test('多个账号都能配时取概率最高的那一对，不按账号顺序', () => {
     // 账号 A 的学院窝先被「开朗」单占住，第二条「固执」单在 A 只能给 30%；
     // 账号 B 能给学院 100%，应该落在 B（changelog 2026-10-30d）。

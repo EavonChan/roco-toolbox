@@ -2,7 +2,7 @@ import { bodyGradeOf } from '../shared/bodySize.js';
 import type { DemandCriteria } from '../shared/collectionGroups';
 import { isBreedableGroup } from './eggs';
 import { matchesVoiceOption } from './petFilters';
-import type { AccountSnapshot } from './parseBackup';
+import { accountKeyOf, type AccountSnapshot } from './parseBackup';
 import type { OwnedPet, SpeciesEntry } from './types';
 
 /**
@@ -120,9 +120,6 @@ interface EggInfo {
   groups: number[];
   maleCapable: boolean;
 }
-
-const accountKeyOfSnapshot = (snapshot: AccountSnapshot): string =>
-  snapshot.accountKey ?? (snapshot.gameId > 0 ? `uid:${snapshot.gameId}` : `name:${snapshot.accountName}`);
 
 const groupsOf = (entry: SpeciesEntry | undefined): number[] =>
   (entry?.eggGroups ?? []).filter(isBreedableGroup);
@@ -390,7 +387,7 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
   }
 
   const states: AccountState[] = input.snapshots.map((snapshot) => {
-    const accountKey = accountKeyOfSnapshot(snapshot);
+    const accountKey = accountKeyOf(snapshot);
     const chips = snapshot.pets.map((pet, index) => ({ pet, key: `${accountKey}#${index}` }));
     return {
       accountKey,
