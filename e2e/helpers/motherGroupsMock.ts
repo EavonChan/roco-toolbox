@@ -101,6 +101,8 @@ const fulfill = (route: Route, body: unknown, status = 200) =>
 export interface MockOptions {
   /** 发布接口返回 409（模拟另一台设备刚改过） */
   publishConflict?: boolean;
+  /** 认领 / 释放返回 409 TASK_TAKEN（模拟两个人同时抢同一条单） */
+  taskConflict?: boolean;
   /** 需求中心用的需求列表；不传 = 空。 */
   demands?: Array<Record<string, unknown>>;
 }
@@ -144,8 +146,20 @@ export async function mockMotherGroups(page: Page, options: MockOptions = {}): P
       return fulfill(route, { ok: true, demands: options.demands ?? [] });
     }
     if (method === 'POST' && path === `/api/collection-groups/${GROUP_ID}/tasks/claim`) {
-      const body = request.postDataJSON() as { targetKey: string };
+      const body = request.postDataJSON() as { targetKey: string; version?: number };
       const existing = tasks.find((task) => task.targetKey === body.targetKey);
+      // 真实服务端按 version 做条件更新：版本对不上就是「别人先改了」，返回 409
+      const stale =
+        existing !== undefined &&
+        typeof body.version === 'number' &&
+        body.version !== existing.version;
+      if (options.taskConflict || stale) {
+        return fulfill(
+          route,
+          { ok: false, code: 'TASK_TAKEN', error: '任务状态已更新，请刷新后再试' },
+          409,
+        );
+      }
       const task = {
         groupId: GROUP_ID,
         targetRevision: 0,
@@ -162,10 +176,20 @@ export async function mockMotherGroups(page: Page, options: MockOptions = {}): P
       return fulfill(route, { ok: true, task });
     }
     if (method === 'POST' && path === `/api/collection-groups/${GROUP_ID}/tasks/release`) {
-      const body = request.postDataJSON() as { targetKey: string };
+      const body = request.postDataJSON() as { targetKey: string; version?: number };
       const existing = tasks.find((task) => task.targetKey === body.targetKey);
       if (!existing) {
         return fulfill(route, { ok: false, code: 'TASK_NOT_FOUND', error: '没有进行中的认领' }, 404);
+      }
+      if (
+        options.taskConflict ||
+        (typeof body.version === 'number' && body.version !== existing.version)
+      ) {
+        return fulfill(
+          route,
+          { ok: false, code: 'TASK_TAKEN', error: '任务状态已更新，请刷新后再试' },
+          409,
+        );
       }
       existing.status = 'open';
       existing.ownerAccountId = null;

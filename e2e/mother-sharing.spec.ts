@@ -93,6 +93,24 @@ test('共同寻找：确认后可以认领与释放，状态来自服务器', as
   await expect(page.getByTestId('mother-task-claim').first()).toBeVisible();
 });
 
+test('抢单冲突：别的设备先改了，认领失败要提示并立即重拉', async ({ page }) => {
+  await loginAs(page);
+  await enterGroup(page);
+  await mockMotherGroups(page, { taskConflict: true });
+  await page.goto('/');
+  await openGroups(page);
+
+  await page.getByTestId('mother-view-seeking').click();
+  const claim = page.getByTestId('mother-task-claim').first();
+  await expect(claim).toBeVisible();
+  await claim.click();
+
+  // 服务端是唯一裁决方：失败要让用户看到原因，且不能先显示「我认领了」
+  await expect(page.getByText('任务状态已更新，请刷新后再试').first()).toBeVisible();
+  await expect(page.getByTestId('mother-task-release')).toHaveCount(0);
+  await expect(claim).toBeVisible();
+});
+
 test('组列表接口失败时不说「还没有加入任何小组」，并给出重试', async ({ page }) => {
   await loginAs(page);
   await enterGroup(page);

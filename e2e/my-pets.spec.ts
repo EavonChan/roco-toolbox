@@ -212,14 +212,17 @@ test('分页：每页 20 只，不再整页渲染', async ({ page }) => {
   await expect(page.getByTestId('page-indicator')).toHaveText('共 500 只 · 第 1 / 5 页（每页 100 只）');
 });
 
-test('搜索按进化链全员命中：搜同链的其它形态名也能搜到（火花 ← 焰火/火神）', async ({ page }) => {
+test('精灵背包搜索：按进化链全员命中，搜不到给空态', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-inventory').click();
+  await expect(page.getByTestId('collection-kind-inventory')).toHaveAttribute('aria-pressed', 'true');
 
+  // 种公名单连同它的搜索框一起下线；搜索能力仍在精灵背包（R2-6-L05：两条用例合并成一条）
   const search = page.getByTestId('pet-name-search');
+  await expect(search).toBeVisible();
   // fixture 里只有 stage1 的火花（3003），搜它同链的进化形态名也要命中
   await search.fill('火神');
   await expect(page.getByText('火花')).toBeVisible();
@@ -235,23 +238,8 @@ test('搜索按进化链全员命中：搜同链的其它形态名也能搜到�
   // 清空恢复全部
   await search.fill('');
   await expect(page.getByText('机械方方')).toBeVisible();
-});
 
-test('搜索按进化链命中并给空态提示（原「合格种公」搜索入口 2026-10-29 已删）', async ({ page }) => {
-  await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  await expect(page.getByText('还没有数据')).toHaveCount(0);
-  await page.getByRole('button', { name: '收集', exact: true }).click();
-
-  // 种公名单连同它的搜索框一起下线；搜索能力仍在精灵背包，这里守「搜得到 + 搜不到有提示」
-  await page.getByTestId('collection-kind-inventory').click();
-  await expect(page.getByTestId('collection-kind-inventory')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('pet-name-search')).toBeVisible();
-
-  const search = page.getByTestId('pet-name-search');
-  await search.fill('火神');
-  await expect(page.getByText('火花')).toBeVisible();
-
+  // 搜不到：给空态文案，而不是留一片空白
   await search.fill('不存在的名字XYZ');
   await expect(page.getByText('没有符合条件的精灵，试试取消部分标签。')).toBeVisible();
   await expect(page.getByText('火花')).toHaveCount(0);

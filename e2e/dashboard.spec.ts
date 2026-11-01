@@ -409,7 +409,7 @@ test('账号筛选：三页共用一份，取消账号后看板进度跟着变',
   expect((await progressOf(page, 'progress-card-action-stud')).numerator).toBe(0);
 });
 
-test('种公全收集卡可点：跳「我的精灵 · 种公视角」', async ({ page }) => {
+test('种公全收集卡可点：跳收集 · 种公阵列', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
   await expect(page.getByText('还没有数据')).toHaveCount(0);
@@ -417,10 +417,10 @@ test('种公全收集卡可点：跳「我的精灵 · 种公视角」', async (
   await openTab(page, '看板');
 
   await page.getByTestId('progress-card-action-stud').click();
-  await expect(page.getByRole('button', { name: '种公', exact: true })).toBeVisible();
-  // 种公视角下只剩合格种公（fixture 里是火花）
-  await expect(page.getByText('火花')).toBeVisible();
-  await expect(page.getByText('机械方方')).toHaveCount(0);
+  // 只有「收集 · 种公阵列」这个落点才成立的强断言（旧「我的精灵 · 种公视角」已删除）
+  await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('stud-matrix')).toBeVisible();
+  await expect(page.getByTestId('stud-view-hint')).toHaveCount(0);
 });
 
 test('跳转后落在目标页顶部：切页签会重置滚动位置', async ({ page }) => {
