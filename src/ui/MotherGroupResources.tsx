@@ -167,6 +167,13 @@ export interface MotherGroupResourcesProps {
   onTransferTask?: (targetKey: string, toAccountId: string) => Promise<void>;
   /** 组内需求（2026-10-26）：我缺的用来发需求，需求中心用来承接与督促。 */
   demands?: CollectionDemand[];
+  /**
+   * 服务端聚合的已结单数（2026-11-01）：需求列表不再下发已完成行，
+   * 优先用它；不传时退回按 demands 本地统计（兼容旧服务端 / 旧调用方）。
+   */
+  completedCounts?: Record<string, number>;
+  /** 我承接的最近 N 条已完成（服务端给），供完成回执；不传时退回 demands 里的 done 行。 */
+  myRecentCompleted?: CollectionDemand[];
   onPublishDemand?: (
     eggGameId: number,
     natures: string[],
@@ -210,6 +217,8 @@ export function MotherGroupResources({
   onReleaseTask,
   onTransferTask,
   demands = [],
+  completedCounts: serverCompletedCounts,
+  myRecentCompleted = [],
   onPublishDemand,
   onWithdrawDemand,
   onClaimDemand,
@@ -948,7 +957,12 @@ export function MotherGroupResources({
   }, [demands, viewerAccountId]);
 
   /** 已结单：按承接人累计（全时段）。成员区与需求中心共用同一口径。 */
-  const completedCounts = useMemo(() => completedDemandCounts(demands), [demands]);
+  const completedCounts = useMemo(() => {
+    if (serverCompletedCounts && Object.keys(serverCompletedCounts).length > 0) {
+      return new Map(Object.entries(serverCompletedCounts));
+    }
+    return completedDemandCounts(demands);
+  }, [serverCompletedCounts, demands]);
 
   /**
    * 需求方结单后给承接人的回执（2026-10-30）：
@@ -961,7 +975,12 @@ export function MotherGroupResources({
   }, [viewerAccountId, group.group.id]);
   const completionThanks = (() => {
     if (!viewerAccountId) return null;
-    const unread = demands.filter(
+    // 已完成不再随列表下发（2026-11-01）：优先用服务端给的「我承接的最近完成」
+    const completed =
+      myRecentCompleted.length > 0
+        ? myRecentCompleted
+        : demands.filter((demand) => demand.status === 'done');
+    const unread = completed.filter(
       (demand) =>
         demand.status === 'done' &&
         demand.claimerAccountId === viewerAccountId &&
@@ -2962,9 +2981,6 @@ export function MotherGroupResources({
                       : '',
                     myDemands.some((demand) => demand.status === 'claimed')
                       ? `${myDemands.filter((demand) => demand.status === 'claimed').length} 条已接`
-                      : '',
-                    myDemands.some((demand) => demand.status === 'done')
-                      ? `${myDemands.filter((demand) => demand.status === 'done').length} 条已完成`
                       : '',
                   ]
                     .filter(Boolean)

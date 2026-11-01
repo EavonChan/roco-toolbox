@@ -25,6 +25,11 @@ export interface MotherGroupMembersProps {
   embedded?: boolean;
   /** 组内需求：用于统计每人「已结单」数（全时段，按承接人）。 */
   demands?: CollectionDemand[];
+  /**
+   * 服务端聚合的已结单数（2026-11-01）：需求列表不再下发已完成行，
+   * 优先用它；不传时退回按 demands 本地统计（兼容旧调用方）。
+   */
+  completedCounts?: Record<string, number>;
   onRename: (displayName: string) => Promise<void>;
   onResetInvite: () => Promise<string>;
   /** 组长移除组员；不传时整块不出现。 */
@@ -46,6 +51,7 @@ export function MotherGroupMembers({
   inviteCode,
   embedded = false,
   demands = [],
+  completedCounts: serverCompletedCounts,
   onRename,
   onResetInvite,
   onRemove,
@@ -121,8 +127,13 @@ export function MotherGroupMembers({
     }
   };
 
-  /** 已结单：全时段、按承接人统计（与需求中心同一口径）。 */
-  const completedCounts = useMemo(() => completedDemandCounts(demands), [demands]);
+  /** 已结单：全时段、按承接人统计（优先服务端聚合，旧服务端退回本地统计）。 */
+  const completedCounts = useMemo(() => {
+    if (serverCompletedCounts && Object.keys(serverCompletedCounts).length > 0) {
+      return new Map(Object.entries(serverCompletedCounts));
+    }
+    return completedDemandCounts(demands);
+  }, [serverCompletedCounts, demands]);
 
   /** 超过 7 天没更新就在成员行标红，方便组长判断谁该移除（按导出时间，不按发布时间）。 */
   const staleDaysOf = (member: MotherGroupMember): number | null =>
