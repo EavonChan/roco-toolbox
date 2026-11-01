@@ -1,0 +1,482 @@
+{
+  "ok": true,
+  "gameId": "0",
+  "roomLevel": 5,
+  "homeLevel": 25,
+  "capturedAt": "2026-11-01T00:00:00.000Z",
+  "residents": [
+    {
+      "instanceId": "61588",
+      "baseId": "3106",
+      "confId": 3106001,
+      "furnitureGuid": "4380688388041150697",
+      "actorId": "9511622085510694754",
+      "resident": true,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "name": "石肤蜥",
+      "nest": {
+        "furnitureGuid": "4380688388041150697",
+        "configId": 1001072,
+        "nestType": "academy",
+        "nestName": "学院小窝",
+        "position": null,
+        "positionRaw": null,
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "63762",
+      "baseId": "3344",
+      "confId": 3344001,
+      "furnitureGuid": "991298556807518755",
+      "actorId": "9511622085510694755",
+      "resident": true,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "name": "乖乖鹄",
+      "nest": {
+        "furnitureGuid": "991298556807518755",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": null,
+        "positionRaw": null,
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "56754",
+      "baseId": "3010",
+      "confId": 3010001,
+      "furnitureGuid": "1511388696574595878",
+      "actorId": "9511622085510694783",
+      "resident": true,
+      "position": {
+        "x": 318,
+        "y": 605,
+        "z": 61
+      },
+      "coordinateSystem": "game-world",
+      "name": "恶魔叮",
+      "nest": {
+        "furnitureGuid": "1511388696574595878",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": {
+          "x": 318,
+          "y": 605,
+          "z": 1
+        },
+        "positionRaw": {
+          "x": 31800,
+          "y": 60500,
+          "z": 100
+        },
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "62842",
+      "baseId": "3178",
+      "confId": 3178001,
+      "furnitureGuid": "511919471441387627",
+      "actorId": "9511622085510694784",
+      "resident": true,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "name": "矮脚爬爬",
+      "nest": {
+        "furnitureGuid": "511919471441387627",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": null,
+        "positionRaw": null,
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "61835",
+      "baseId": "3747",
+      "confId": 3747001,
+      "furnitureGuid": "991657899541305891",
+      "actorId": "9511622085510694785",
+      "resident": true,
+      "position": {
+        "x": 318,
+        "y": 765,
+        "z": 61
+      },
+      "coordinateSystem": "game-world",
+      "name": "莫比乌乌",
+      "nest": {
+        "furnitureGuid": "991657899541305891",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": {
+          "x": 318,
+          "y": 765,
+          "z": 1
+        },
+        "positionRaw": {
+          "x": 31800,
+          "y": 76500,
+          "z": 100
+        },
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "63729",
+      "baseId": "3754",
+      "confId": 3754001,
+      "furnitureGuid": "991530862998624803",
+      "actorId": "9511622085510694786",
+      "resident": true,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "name": "火豆丁",
+      "nest": {
+        "furnitureGuid": "991530862998624803",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": null,
+        "positionRaw": null,
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "63940",
+      "baseId": "3492",
+      "confId": 3492001,
+      "furnitureGuid": "5170040064933011247",
+      "actorId": "9511622085510694787",
+      "resident": true,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "name": "兽花蕾",
+      "nest": {
+        "furnitureGuid": "5170040064933011247",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": null,
+        "positionRaw": null,
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "61580",
+      "baseId": "3759",
+      "confId": 3759001,
+      "furnitureGuid": "4013780086541984924",
+      "actorId": "9511622085510694789",
+      "resident": true,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "name": "苞米仔",
+      "nest": {
+        "furnitureGuid": "4013780086541984924",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": null,
+        "positionRaw": null,
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "64005",
+      "baseId": "3151",
+      "confId": 3151001,
+      "furnitureGuid": "5170452278714212143",
+      "actorId": "9511622085510694795",
+      "resident": true,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "name": "多多",
+      "nest": {
+        "furnitureGuid": "5170452278714212143",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": null,
+        "positionRaw": null,
+        "roomId": 1,
+        "roomName": ""
+      }
+    },
+    {
+      "instanceId": "63750",
+      "baseId": "3756",
+      "confId": 3754001,
+      "furnitureGuid": "453835583565763747",
+      "actorId": "9511622085510694796",
+      "resident": true,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "name": "火巨人",
+      "nest": {
+        "furnitureGuid": "453835583565763747",
+        "configId": 1001071,
+        "nestType": "ordinary",
+        "nestName": "普通小窝",
+        "position": null,
+        "positionRaw": null,
+        "roomId": 1,
+        "roomName": ""
+      }
+    }
+  ],
+  "layEggCouples": [
+    {
+      "femaleActorId": "9511622085510694787",
+      "maleActorIds": [
+        "9511622085510694789"
+      ]
+    },
+    {
+      "femaleActorId": "9511622085510694783",
+      "maleActorIds": [
+        "9511622085510694785"
+      ]
+    },
+    {
+      "femaleActorId": "9511622085510694795",
+      "maleActorIds": [
+        "9511622085510694796"
+      ]
+    },
+    {
+      "femaleActorId": "9511622085510694755",
+      "maleActorIds": [
+        "9511622085510694754"
+      ]
+    },
+    {
+      "femaleActorId": "9511622085510694786",
+      "maleActorIds": [
+        "9511622085510694784"
+      ]
+    }
+  ],
+  "couplesStale": false,
+  "snapshotKind": "full",
+  "sceneEggs": [],
+  "nests": [
+    {
+      "furnitureGuid": "5170452278714212143",
+      "parentFurnitureGuid": "0",
+      "itemGid": "887",
+      "configId": 1001071,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "64005"
+      ]
+    },
+    {
+      "furnitureGuid": "511919471441387627",
+      "parentFurnitureGuid": "0",
+      "itemGid": "940",
+      "configId": 1001071,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "62842"
+      ]
+    },
+    {
+      "furnitureGuid": "4380688388041150697",
+      "parentFurnitureGuid": "0",
+      "itemGid": "3180",
+      "configId": 1001072,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "academy",
+      "nestName": "学院小窝",
+      "residentIds": [
+        "61588"
+      ]
+    },
+    {
+      "furnitureGuid": "5170040064933011247",
+      "parentFurnitureGuid": "0",
+      "itemGid": "887",
+      "configId": 1001071,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "63940"
+      ]
+    },
+    {
+      "furnitureGuid": "1511388696574595878",
+      "parentFurnitureGuid": "0",
+      "itemGid": "412",
+      "configId": 1001071,
+      "positionRaw": {
+        "x": 31800,
+        "y": 60500,
+        "z": 100
+      },
+      "position": {
+        "x": 318,
+        "y": 605,
+        "z": 1
+      },
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "56754"
+      ]
+    },
+    {
+      "furnitureGuid": "991657899541305891",
+      "parentFurnitureGuid": "0",
+      "itemGid": "696",
+      "configId": 1001071,
+      "positionRaw": {
+        "x": 31800,
+        "y": 76500,
+        "z": 100
+      },
+      "position": {
+        "x": 318,
+        "y": 765,
+        "z": 1
+      },
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "61835"
+      ]
+    },
+    {
+      "furnitureGuid": "453835583565763747",
+      "parentFurnitureGuid": "0",
+      "itemGid": "546",
+      "configId": 1001071,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "63750"
+      ]
+    },
+    {
+      "furnitureGuid": "991298556807518755",
+      "parentFurnitureGuid": "0",
+      "itemGid": "696",
+      "configId": 1001071,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "63762"
+      ]
+    },
+    {
+      "furnitureGuid": "991530862998624803",
+      "parentFurnitureGuid": "0",
+      "itemGid": "696",
+      "configId": 1001071,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "63729"
+      ]
+    },
+    {
+      "furnitureGuid": "990845076980537891",
+      "parentFurnitureGuid": "0",
+      "itemGid": "696",
+      "configId": 1001071,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": []
+    },
+    {
+      "furnitureGuid": "4013780086541984924",
+      "parentFurnitureGuid": "0",
+      "itemGid": "3689",
+      "configId": 1001071,
+      "positionRaw": null,
+      "position": null,
+      "coordinateSystem": "game-world",
+      "roomId": 1,
+      "roomName": "",
+      "planeGuid": "",
+      "nestType": "ordinary",
+      "nestName": "普通小窝",
+      "residentIds": [
+        "61580"
+      ]
+    }
+  ],
+  "schemaVersion": 1
+}
