@@ -63,6 +63,17 @@ const MIGRATIONS = [
     end: '-- <<< collection-demand-completions (2026-10-29)',
     tables: ['collection_group_demand_completions'],
   },
+  {
+    // 需求新增「是否要求绿窝」；两条 ADD COLUMN 不支持 IF NOT EXISTS，只执行一次。
+    //
+    // 基线说明（R2-8 §3.3）：schema.sql 里这两张表的区块会先被剥掉，再按清单重放各自的建表迁移，
+    // 而 `2026-10-26` / `2026-10-29` 的建表语句里**没有** require_green_nest——所以重放出来的旧库
+    // 天然就是「加列前」的基线，不需要额外处理。刻意不取 `HEAD~1` 的 schema：那样脚本依赖 git 历史，
+    // 提交前进后基线含义还会漂移。
+    label: 'collection-demand-green-nest',
+    file: path.join(root, 'functions/migrations/2026-11-01-collection-demand-green-nest.sql'),
+    repeat: 1,
+  },
 ];
 const NEW_TABLES = MIGRATIONS.flatMap((item) => item.tables ?? []);
 
@@ -136,10 +147,18 @@ MIGRATIONS.forEach((item, index) => {
   for (let run = 0; run < times; run += 1) migrated.exec(sql);
 });
 
+/**
+ * 按列名比的列定义：`ADD COLUMN` 只能把新列追加到表尾，因此「迁移后的列顺序」
+ * 与 schema.sql 里的书写顺序必然不同，而列顺序在 SQLite 里没有语义。
+ * 其余字段（类型 / NOT NULL / 默认值 / 主键序号）仍逐项比对。
+ */
+const columnsByName = (db, table) =>
+  Object.fromEntries(columnsOf(db, table).map(([name, ...rest]) => [name, rest]));
+
 for (const table of NEW_TABLES) {
   assert.deepEqual(
-    columnsOf(migrated, table),
-    columnsOf(full, table),
+    columnsByName(migrated, table),
+    columnsByName(full, table),
     `${table} 在 schema.sql 与增量迁移里的定义必须一致`,
   );
 }
