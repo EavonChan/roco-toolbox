@@ -293,9 +293,9 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
                         className="mt-1.5 min-h-[28px] rounded-md border border-slate-200 px-2 text-xs text-slate-600"
                         data-testid="custom-nature-select-all"
                       >
-                        {filter.customNatures.length === targetNaturePool.length
+                        {targetNaturePool.every((entry) => filter.customNatures.includes(entry.name))
                           ? '全部取消'
-                          : '全选'}
+                          : '全选八大'}
                       </button>
                     </div>
                   ) : null}

@@ -190,7 +190,9 @@ export function CollectionTargetEditor({ open, section, onClose }: CollectionTar
                     onClick={toggleAllCustomNatures}
                     className="mt-1 min-h-[28px] text-xs text-slate-500"
                   >
-                    {filter.customNatures.length === targetNaturePool.length ? '全部取消' : '全选'}
+                    {targetNaturePool.every((entry) => filter.customNatures.includes(entry.name))
+                      ? '全部取消'
+                      : '全选八大'}
                   </button>
                 </div>
               ) : (

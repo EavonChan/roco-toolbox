@@ -101,14 +101,14 @@ describe('覆盖度页（筛选项收进种公阵列右上角）', () => {
     expect(screen.getByTestId('custom-nature-固执')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('全选 / 全部取消：作用在八大性格上，按钮文案随之切换', () => {
+  test('全选八大 / 全部取消：只作用八大性格，按钮文案随之切换', () => {
     render(<Coverage />);
     openFilter();
     fireEvent.click(screen.getByTestId('nature-mode-custom'));
     fireEvent.click(screen.getByTestId('custom-nature-固执'));
 
     const selectAll = () => screen.getByTestId('custom-nature-select-all');
-    expect(selectAll()).toHaveTextContent('全选');
+    expect(selectAll()).toHaveTextContent('全选八大');
     fireEvent.click(selectAll());
     for (const name of targetNatureNames) {
       expect(screen.getByTestId(`custom-nature-${name}`)).toHaveAttribute('aria-pressed', 'true');

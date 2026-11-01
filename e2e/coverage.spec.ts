@@ -163,8 +163,8 @@ test('覆盖度页：自选性格模式（筛选收在种公阵列右上角）',
     page.getByTestId('coverage-nature-cell').filter({ hasText: '固执' }).first(),
   ).toBeVisible();
 
-  // 全选/全部取消：勾了 1 个时按钮是「全选」；全选后变「全部取消」
-  await expect(page.getByTestId('custom-nature-select-all')).toHaveText('全选');
+  // 全选八大 / 全部取消：勾了 1 个时按钮是「全选八大」；全选后变「全部取消」（R2-4-M01）
+  await expect(page.getByTestId('custom-nature-select-all')).toHaveText('全选八大');
   await page.getByTestId('custom-nature-select-all').click();
   await expect(page.getByTestId('custom-nature-固执')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('custom-nature-select-all')).toHaveText('全部取消');

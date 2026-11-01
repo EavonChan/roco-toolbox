@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import { buildCoverageSlots, type CoverageFilter } from '../domain/coverageTargets';
-import { targetNaturePool } from '../data/catalog';
+import { allNatureNames, targetNaturePool } from '../data/catalog';
 import {
   getCoverageFilter,
   resetCoverageFilter,
+  toggleAllCustomNatures,
+  toggleCustomNature,
   toggleFilterGrade,
   toggleFilterGroup,
   toggleGroupNature,
+  setNatureMode,
 } from './coverageFilterStore';
 
 const slotCount = (filter: CoverageFilter): number =>
@@ -59,5 +62,24 @@ describe('覆盖筛选 store', () => {
     const ordered = targetNaturePool.map((entry) => entry.name);
     const names = naturesOf(2);
     expect(names).toEqual([...names].sort((a, b) => ordered.indexOf(a) - ordered.indexOf(b)));
+  });
+
+  // R2-4-M01（2026-11-01 用户拍板 B）：全选 / 全部取消只作用于八大，不静默清掉已勾的池外性格
+  test('全选八大只补八大，池外已勾的性格保留；再点只取消八大', () => {
+    const outside = allNatureNames.find(
+      (name) => !targetNaturePool.some((entry) => entry.name === name),
+    )!;
+    setNatureMode('custom');
+    toggleCustomNature(outside);
+
+    toggleAllCustomNatures();
+    const filled = getCoverageFilter().customNatures;
+    for (const entry of targetNaturePool) expect(filled).toContain(entry.name);
+    expect(filled).toContain(outside);
+
+    toggleAllCustomNatures();
+    const cleared = getCoverageFilter().customNatures;
+    for (const entry of targetNaturePool) expect(cleared).not.toContain(entry.name);
+    expect(cleared).toContain(outside);
   });
 });

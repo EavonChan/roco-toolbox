@@ -135,11 +135,17 @@ export function toggleCustomNature(natureName: string): void {
   store.set({ ...filter, customNatures: next });
 }
 
-/** 自选模式下全部勾选 / 清空（八大性格池）。 */
+/**
+ * 自选模式下「全选 / 全部取消」：**只作用八大性格池**，不动已经勾上的池外性格
+ * （2026-11-01 用户拍板 R2-4-M01：以前会把池外已勾项静默清掉）。
+ */
 export function toggleAllCustomNatures(): void {
   const filter = store.get();
   const all = targetNaturePool.map((entry) => entry.name);
-  const next = filter.customNatures.length === all.length ? [] : all;
+  const hasAll = all.every((name) => filter.customNatures.includes(name));
+  const next = hasAll
+    ? filter.customNatures.filter((name) => !all.includes(name))
+    : sortNatures([...new Set([...filter.customNatures, ...all])]);
   store.set({ ...filter, customNatures: next });
 }
 
