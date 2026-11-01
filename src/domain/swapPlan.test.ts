@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatSwapWish, formatSwapWishes, rankSwapWishes } from './swapPlan';
+import { rankSwapWishes } from './swapPlan';
 import { chainTopNaturesByGameId, species, targetNaturePool } from '../data/catalog';
 import type { CoverageCell, CoverageState, StudCoverageResult } from './studCoverage';
 import type { OwnedPet, SpeciesEntry } from './types';
@@ -261,19 +261,6 @@ describe('rankSwapWishes 换蛋目标', () => {
 
     expect(wishes.map((wish) => wish.score)).toEqual([2, 1]);
   });
-
-  test('单条复制文本：窝前缀 + 档位 + 性格 + 显示名', () => {
-    const wishes = rankSwapWishes({
-      ...base,
-      species: [entry({ gameId: 1, name: '白发懒人' })],
-      coverage: mkCoverage([cell(2, '平和', 'empty')]),
-      maleCapableGameIds: new Set([1]),
-    });
-
-    expect(formatSwapWish(wishes[0], 'perfect')).toBe('满分大婉平和白发懒人');
-    expect(formatSwapWish(wishes[0], 'perfect', 'green')).toBe('绿窝满分大婉平和白发懒人');
-    expect(formatSwapWish(wishes[0], 'medal', 'plain')).toBe('普通窝大婉平和白发懒人');
-  });
 });
 
 describe('真实数据：候选只能补「它进化链最高形态能孵出的性格」', () => {
@@ -352,45 +339,5 @@ describe('真实数据：候选只能补「它进化链最高形态能孵出的�
     // 两个性格各一条，各自换上就补上自己那格（性格不对的那格不受影响）
     expect(wishes).toHaveLength(2);
     expect(wishes.every((wish) => wish.unlockedCells === 1)).toBe(true);
-  });
-});
-
-describe('formatSwapWishes 整段复制：按档位分块、块间空行', () => {
-  const wish = (natureName: string, displayName: string, grade = '大婉') => ({
-    fillGroups: [2],
-    groupLabels: ['巨灵组'],
-    natureName,
-    grade: grade as never,
-    score: 1,
-    suggested: { gameId: 1, name: displayName, displayName, number: '001', owned: false },
-    optionCount: 1,
-    unownedOptionCount: 1,
-    unlockedCells: 0,
-    unlockedCellKeys: [],
-  });
-
-  test('每块首行是「窝前缀 + 档位」，随后每行「性格 + 显示名」', () => {
-    const text = formatSwapWishes(
-      [wish('平和', '白发懒人'), wish('固执', '雪绒鸟_夏天的样子')],
-      'perfect',
-      'green',
-    );
-    expect(text).toBe('绿窝满分大婉\n平和白发懒人\n固执雪绒鸟_夏天的样子');
-  });
-
-  test('不同档位分块，块与块之间空一行', () => {
-    const text = formatSwapWishes(
-      [wish('平和', '白发懒人'), wish('固执', '雪绒鸟_夏天的样子', '小婉')],
-      'perfect',
-      'plain',
-    );
-    expect(text).toBe(
-      '普通窝满分大婉\n平和白发懒人\n\n普通窝满分小婉\n固执雪绒鸟_夏天的样子',
-    );
-  });
-
-  test('不传窝就没有前缀；追双牌下档位不带「满分」', () => {
-    const text = formatSwapWishes([wish('平和', '白发懒人')], 'medal');
-    expect(text).toBe('大婉\n平和白发懒人');
   });
 });

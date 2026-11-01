@@ -1,4 +1,4 @@
-import { GRADE_BODY, classifyGrade, gradeLabel, type PetGrade, type TargetMode } from './petFilters';
+import { GRADE_BODY, classifyGrade, type PetGrade, type TargetMode } from './petFilters';
 import { isBreedableGroup } from './eggs';
 import { swappableNaturesForSpecies } from './studRecommendations';
 import { speciesDisplayName } from './speciesName';
@@ -286,46 +286,4 @@ export function rankSwapWishes(input: RankSwapWishesInput): SwapWish[] {
     }
   }
   return sorted.filter((wish) => !covered.has(wish));
-}
-
-/** 换蛋时对方从哪个窝里产这颗蛋：绿窝（学院小窝）性格 100% 遗传；普通窝每只亲本 30% 遗传自己性格（2026-10-04 确认）。 */
-export type NestKind = 'green' | 'plain';
-
-export const NEST_PREFIX: Record<NestKind, string> = {
-  green: '绿窝',
-  plain: '普通窝',
-};
-
-/** 单条：窝 + 档位 + 性格 + 精灵名，如「绿窝满分大婉平和白发懒人」。 */
-export function formatSwapWish(wish: SwapWish, mode: TargetMode, nest?: NestKind): string {
-  const prefix = nest ? NEST_PREFIX[nest] : '';
-  return `${prefix}${gradeLabel(wish.grade, mode)}${wish.natureName}${wish.suggested.displayName}`;
-}
-
-/**
- * 整段复制的文本（用户 2026-10-03 拍的格式）：
- *
- * ```
- * 绿窝满分大婉
- * 平和白发懒人
- * 固执雪绒鸟_夏天的样子
- * ```
- *
- * 第一行是「窝 + 档位」（两种窝都写前缀），随后每行一只「性格 + 精灵名」；
- * 不同档位之间空一行。
- */
-export function formatSwapWishes(wishes: SwapWish[], mode: TargetMode, nest?: NestKind): string {
-  const groups = new Map<PetGrade, string[]>();
-  for (const wish of wishes) {
-    const lines = groups.get(wish.grade) ?? [];
-    lines.push(`${wish.natureName}${wish.suggested.displayName}`);
-    groups.set(wish.grade, lines);
-  }
-
-  const prefix = nest ? NEST_PREFIX[nest] : '';
-  const blocks: string[] = [];
-  for (const [grade, lines] of groups) {
-    blocks.push([`${prefix}${gradeLabel(grade, mode)}`, ...lines].join('\n'));
-  }
-  return blocks.join('\n\n');
 }
