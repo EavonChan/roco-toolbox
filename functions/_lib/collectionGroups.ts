@@ -24,7 +24,6 @@ import {
   findCollectionGroup,
   joinCollectionGroup,
   leaveCollectionGroup,
-  listCollectionDemands,
   listCollectionGroups,
   listCollectionTasks,
   previewInviteGroup,
@@ -33,6 +32,7 @@ import {
   publishStudResource,
   readCollectionGroupDetail,
   readCollectionGroupVersion,
+  readDemandFeed,
   releaseCollectionDemand,
   releaseCollectionTask,
   removeCollectionGroupMember,
@@ -507,7 +507,9 @@ async function handleDemandsList(
   if (readLimited) return readLimited;
   const denied = await requireMember(env, origin, accountId, groupId);
   if (denied) return denied;
-  return okJson(origin, { demands: await listCollectionDemands(env.DB, groupId) });
+  // 未完成列表 + 已结单聚合 + 我的最近完成（2026-11-01，不再下发全量历史）
+  const feed = await readDemandFeed(env.DB, groupId, accountId);
+  return okJson(origin, { ...feed });
 }
 
 async function handleDemandPublish(

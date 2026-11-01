@@ -534,17 +534,24 @@ test('已完成需求不能撤回；组长移除组员会释放承接、取消�
   const listed = await call(A.token, 'GET', `${base}/demands`);
   assert.equal(listed.status, 200, JSON.stringify(listed.body));
   const byEgg = new Map(listed.body.demands.map((item) => [item.eggGameId, item]));
-  // 已完成保留（承接人的已结单计数不会倒退）
-  assert.equal(byEgg.get(3466).status, 'done');
-  assert.equal(byEgg.get(3466).claimerAccountId, B.accountId);
+  // 已完成的不再出现在列表里（2026-11-01：只回未完成，历史改走聚合）
+  assert.equal(byEgg.has(3466), false);
+  assert.equal(byEgg.has(3469), false);
   // C 接住的那条被释放回待承接
   assert.equal(byEgg.get(3467).status, 'open');
   assert.equal(byEgg.get(3467).claimerAccountId, null);
   // C 自己发的未完成需求被取消
   assert.equal(byEgg.has(3468), false);
-  // 被移除者「已完成」的需求也必须保留，承接人 B 的已结单数不会倒退
-  assert.equal(byEgg.get(3469).status, 'done');
-  assert.equal(byEgg.get(3469).claimerAccountId, B.accountId);
+  // 被移除者「已完成」的需求仍计入承接人的已结单累计（数字不会倒退）
+  assert.equal(listed.body.completedCounts[B.accountId], 2);
+  // A 是需求方、不是承接人：自己的完成回执为空
+  assert.deepEqual(listed.body.myRecentCompleted, []);
+  // 承接人 B 能看到自己最近完成的两条（含被移除者的那条）
+  const listedByB = await call(B.token, 'GET', `${base}/demands`);
+  assert.deepEqual(
+    listedByB.body.myRecentCompleted.map((item) => item.eggGameId).sort((a, b) => a - b),
+    [3466, 3469],
+  );
 
   const detail = await call(A.token, 'GET', base);
   assert.equal(detail.status, 200, JSON.stringify(detail.body));
@@ -562,8 +569,10 @@ test('已完成需求不能撤回；组长移除组员会释放承接、取消�
   assert.equal(republished.body.demands[0].status, 'open');
   const listedAgain = await call(A.token, 'GET', `${base}/demands`);
   const rows3466 = listedAgain.body.demands.filter((item) => item.eggGameId === 3466);
-  assert.equal(rows3466.filter((item) => item.status === 'done').length, 1);
-  assert.equal(rows3466.filter((item) => item.status === 'open').length, 1);
+  // 归档行不再随列表下发：重新发布后列表里只剩这一条新的 open
+  assert.equal(rows3466.length, 1);
+  assert.equal(rows3466[0].status, 'open');
+  assert.equal(listedAgain.body.completedCounts[B.accountId], 2);
 });
 
 test('收集组接口：产线随母本摘要发布并可读回（发布预览不再反复提示变化）', async () => {

@@ -1605,29 +1605,82 @@ const toCompletedDemand = (row: CompletionRow): CollectionDemand => ({
 });
 
 /**
- * 组内全部需求：未完成的行 + 已完成的归档行，按更新时间倒序。
+ * 组内未完成需求（open / claimed），按更新时间倒序。
  *
- * 已完成的单搬进归档表后与成员行解耦，成员退出 / 被移除 / 注销都不再删除「已结单」凭据。
+ * 已完成的单不再随列表下发（2026-11-01）：历史归档行只增不减，全量返回会让长期小组的
+ * 响应随历史线性增长。已结单改为聚合计数 + 「我承接的最近 N 条」两份小数据，见 `readDemandFeed`。
  */
 export async function listCollectionDemands(
   db: D1Database,
   groupId: string,
 ): Promise<CollectionDemand[]> {
-  const [active, completed] = await db.batch([
-    db
-      .prepare(`SELECT ${DEMAND_COLUMNS} FROM collection_group_demands WHERE group_id = ?`)
-      .bind(groupId),
+  const [active] = await db.batch([
     db
       .prepare(
-        `SELECT ${COMPLETION_COLUMNS} FROM collection_group_demand_completions WHERE group_id = ?`,
+        `SELECT ${DEMAND_COLUMNS} FROM collection_group_demands
+          WHERE group_id = ? AND status <> 'done'`,
       )
       .bind(groupId),
   ]);
   const activeRows = (active.results ?? []) as unknown as DemandRow[];
-  const completedRows = (completed.results ?? []) as unknown as CompletionRow[];
-  return [...activeRows.map(toDemand), ...completedRows.map(toCompletedDemand)].sort(
-    (a, b) => b.updatedAt - a.updatedAt,
-  );
+  return activeRows.map(toDemand).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** 「你承接的需求已完成」回执只需要最近这些条，不做全量历史。 */
+export const DEMAND_RECENT_COMPLETED_LIMIT = 20;
+
+export interface CollectionDemandFeed {
+  /** 未完成的需求（open / claimed）。 */
+  demands: CollectionDemand[];
+  /** 按承接人累计的已结单数（全时段，只算有承接人的归档行）。 */
+  completedCounts: Record<string, number>;
+  /** 当前身份承接的最近 N 条已完成，供完成回执计算水位与需求方名字。 */
+  myRecentCompleted: CollectionDemand[];
+}
+
+/**
+ * 需求中心的完整数据：未完成列表 + 已结单聚合 + 我的最近完成回执（2026-11-01）。
+ *
+ * 服务端一次给全，前端不再本地统计历史：成员区「已结单 N」用 `completedCounts`，
+ * 回执条用 `myRecentCompleted`。
+ */
+export async function readDemandFeed(
+  db: D1Database,
+  groupId: string,
+  viewerAccountId: string,
+): Promise<CollectionDemandFeed> {
+  const [demands, counts, recent] = await Promise.all([
+    listCollectionDemands(db, groupId),
+    db
+      .prepare(
+        `SELECT claimer_account_id AS claimer, COUNT(*) AS total
+           FROM collection_group_demand_completions
+          WHERE group_id = ? AND claimer_account_id IS NOT NULL
+          GROUP BY claimer_account_id`,
+      )
+      .bind(groupId)
+      .all<{ claimer: string; total: number }>(),
+    db
+      .prepare(
+        `SELECT ${COMPLETION_COLUMNS} FROM collection_group_demand_completions
+          WHERE group_id = ? AND claimer_account_id = ?
+          ORDER BY completed_at DESC
+          LIMIT ?`,
+      )
+      .bind(groupId, viewerAccountId, DEMAND_RECENT_COMPLETED_LIMIT)
+      .all<CompletionRow>(),
+  ]);
+  const completedCounts: Record<string, number> = {};
+  for (const row of (counts.results ?? []) as unknown as { claimer: string; total: number }[]) {
+    completedCounts[row.claimer] = row.total;
+  }
+  return {
+    demands,
+    completedCounts,
+    myRecentCompleted: ((recent.results ?? []) as unknown as CompletionRow[]).map(
+      toCompletedDemand,
+    ),
+  };
 }
 
 export interface CollectionGroupVersionRow {
