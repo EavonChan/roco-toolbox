@@ -4,16 +4,19 @@ import * as api from '../api/collectionGroups';
 import { markSynced } from '../api/session';
 import type {
   CollectionDemand,
+  CollectionDemandFeed,
   CollectionGroupDetail,
   CollectionGroupSummary,
 } from '../shared/collectionGroups';
 import { useCollectionGroups } from './useCollectionGroups';
 
 /**
- * 只钉住三条关键路径（2026-10-29 审查 B6-M05 / R2-7-M06），不追求覆盖率：
+ * 只钉住几条关键路径（2026-10-29 审查 B6-M05 / R2-7-M06），不追求覆盖率：
  * ① 切组后旧组的需求响应晚到不能写进新组；
  * ② 切号后旧身份的组列表响应不能写回；
- * ③ 撤回成功后本地立即移除该条，已完成行保留。
+ * ③ 撤回成功后本地立即移除该条，已结单计数与完成回执不受影响；
+ * ④ 接单失败立刻重拉；
+ * ⑤ 自动切组后即使两组版本号相同也要拉一次详情。
  */
 
 vi.mock('../api/collectionGroups', async (importOriginal) => {
@@ -24,7 +27,7 @@ vi.mock('../api/collectionGroups', async (importOriginal) => {
     getCollectionGroup: vi.fn(),
     getCollectionGroupVersion: vi.fn(),
     getCollectionTasks: vi.fn(),
-    getCollectionDemands: vi.fn(),
+    getCollectionDemandFeed: vi.fn(),
     claimCollectionDemand: vi.fn(),
     withdrawCollectionDemand: vi.fn(),
   };
@@ -79,6 +82,13 @@ const demandOf = (overrides: Partial<CollectionDemand> = {}): CollectionDemand =
   ...overrides,
 });
 
+/** 需求中心一次拉全的三份数据（2026-11-01：列表只含未完成）。 */
+const feedOf = (
+  demands: CollectionDemand[] = [],
+  completedCounts: Record<string, number> = {},
+  myRecentCompleted: CollectionDemand[] = [],
+): CollectionDemandFeed => ({ demands, completedCounts, myRecentCompleted });
+
 const EMPTY_TASKS = {
   targetRevision: 1,
   confirmed: false,
@@ -115,7 +125,7 @@ beforeEach(() => {
   vi.mocked(api.listCollectionGroups).mockResolvedValue([summaryOf('g1')]);
   vi.mocked(api.getCollectionGroup).mockImplementation(async (id: string) => detailOf(id));
   vi.mocked(api.getCollectionTasks).mockResolvedValue(EMPTY_TASKS);
-  vi.mocked(api.getCollectionDemands).mockResolvedValue([]);
+  vi.mocked(api.getCollectionDemandFeed).mockResolvedValue(feedOf());
   vi.mocked(api.withdrawCollectionDemand).mockResolvedValue(undefined);
 });
 
@@ -125,10 +135,10 @@ afterEach(() => {
 
 describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
   test('切组后旧组的需求响应晚到，不会覆盖新组列表', async () => {
-    const oldDemands = deferred<CollectionDemand[]>();
-    vi.mocked(api.getCollectionDemands)
-      .mockReturnValueOnce(oldDemands.promise)
-      .mockResolvedValue([demandOf({ groupId: 'g2', eggGameId: 4001 })]);
+    const oldFeed = deferred<CollectionDemandFeed>();
+    vi.mocked(api.getCollectionDemandFeed)
+      .mockReturnValueOnce(oldFeed.promise)
+      .mockResolvedValue(feedOf([demandOf({ groupId: 'g2', eggGameId: 4001 })]));
 
     const { result } = renderHook(() => useCollectionGroups(input));
     await flush();
@@ -140,7 +150,7 @@ describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
     expect(result.current.demands.map((demand) => demand.eggGameId)).toEqual([4001]);
 
     await act(async () => {
-      oldDemands.resolve([demandOf({ groupId: 'g1', eggGameId: 4002 })]);
+      oldFeed.resolve(feedOf([demandOf({ groupId: 'g1', eggGameId: 4002 })]));
     });
     await flush();
     expect(result.current.demands.map((demand) => demand.eggGameId)).toEqual([4001]);
@@ -178,10 +188,10 @@ describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
   test('撤回请求在途时切组，旧响应不写回新组列表', async () => {
     const pending = deferred<void>();
     vi.mocked(api.withdrawCollectionDemand).mockReturnValueOnce(pending.promise);
-    vi.mocked(api.getCollectionDemands)
-      .mockResolvedValueOnce([demandOf()])
+    vi.mocked(api.getCollectionDemandFeed)
+      .mockResolvedValueOnce(feedOf([demandOf()]))
       // 新组恰好有一条同内容需求：旧响应若写回，会把它误删
-      .mockResolvedValueOnce([demandOf({ groupId: 'g2' })]);
+      .mockResolvedValueOnce(feedOf([demandOf({ groupId: 'g2' })]));
 
     const { result } = renderHook(() => useCollectionGroups(input));
     await flush();
@@ -206,14 +216,16 @@ describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
     expect(result.current.demands.map((demand) => demand.groupId)).toEqual(['g2']);
   });
 
-  test('撤回成功后本地立即移除该条，已完成的单保留', async () => {
+  test('撤回成功后本地立即移除该条，已结单计数与完成回执不受影响', async () => {
     const open = demandOf();
     const done = demandOf({ eggGameId: 3467, status: 'done', claimerAccountId: 'B' });
-    vi.mocked(api.getCollectionDemands).mockResolvedValue([open, done]);
+    vi.mocked(api.getCollectionDemandFeed).mockResolvedValue(
+      feedOf([open], { B: 1 }, [done]),
+    );
 
     const { result } = renderHook(() => useCollectionGroups(input));
     await flush();
-    expect(result.current.demands).toHaveLength(2);
+    expect(result.current.demands).toHaveLength(1);
 
     await act(async () => {
       await result.current.withdrawDemand(3466, {
@@ -224,26 +236,29 @@ describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
       });
     });
 
-    expect(api.withdrawCollectionDemand).toHaveBeenCalledWith(
-      'g1',
-      3466,
-      { nature: '', gender: '母', body: '大块头', voice: '+100' },
-    );
-    expect(result.current.demands.map((demand) => demand.status)).toEqual(['done']);
-    expect(result.current.demands[0].eggGameId).toBe(3467);
+    expect(api.withdrawCollectionDemand).toHaveBeenCalledWith('g1', 3466, {
+      nature: '',
+      gender: '母',
+      body: '大块头',
+      voice: '+100',
+    });
+    expect(result.current.demands).toEqual([]);
+    // 已完成的单不在列表里，但仍计入承接人的已结单与完成回执
+    expect(result.current.completedCounts).toEqual({ B: 1 });
+    expect(result.current.myRecentCompleted.map((demand) => demand.eggGameId)).toEqual([3467]);
   });
 
   test('接单失败后立即重拉需求列表，不用等轮询（R2-3-M04）', async () => {
     vi.mocked(api.claimCollectionDemand).mockRejectedValueOnce(new Error('已被人接单'));
     const { result } = renderHook(() => useCollectionGroups(input));
     await flush();
-    const before = vi.mocked(api.getCollectionDemands).mock.calls.length;
+    const before = vi.mocked(api.getCollectionDemandFeed).mock.calls.length;
 
     await act(async () => {
       await expect(result.current.claimDemand(demandOf())).rejects.toThrow('已被人接单');
     });
     await flush();
-    expect(vi.mocked(api.getCollectionDemands).mock.calls.length).toBeGreaterThan(before);
+    expect(vi.mocked(api.getCollectionDemandFeed).mock.calls.length).toBeGreaterThan(before);
   });
 
   test('自动切组后即使两组版本号相同，也会完整拉一次详情（R2-3-M03）', async () => {

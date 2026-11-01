@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   claimCollectionDemand,
+  getCollectionDemandFeed,
   getCollectionDemands,
   getCollectionGroup,
   publishCollectionDemand,
@@ -100,6 +101,20 @@ describe('成功状态却不是 JSON 对象', () => {
 });
 
 describe('需求契约（归档行 / 旧口径 / 错误码）', () => {
+  const openDemand = {
+    groupId: 'g1',
+    demanderAccountId: 'A',
+    eggGameId: 101,
+    nature: '',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
+    status: 'open',
+    claimerAccountId: null,
+    version: 1,
+    createdAt: 1,
+    updatedAt: 1,
+  };
   const doneDemand = {
     groupId: 'g1',
     demanderAccountId: 'A',
@@ -153,6 +168,31 @@ describe('需求契约（归档行 / 旧口径 / 错误码）', () => {
       createdAt: 1,
       updatedAt: 2,
     });
+  });
+
+  test('需求中心三份数据一起解析：未完成列表 + 已结单聚合 + 我的完成回执', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response({
+        ok: true,
+        demands: [openDemand],
+        completedCounts: { B: 3, C: 1 },
+        myRecentCompleted: [doneDemand],
+      }),
+    );
+
+    const feed = await getCollectionDemandFeed('g1');
+    expect(feed.demands.map((demand) => demand.status)).toEqual(['open']);
+    expect(feed.completedCounts).toEqual({ B: 3, C: 1 });
+    expect(feed.myRecentCompleted[0]).toMatchObject({ status: 'done', claimerAccountId: 'B' });
+  });
+
+  test('旧服务端没有聚合字段时按空处理，不抛错', async () => {
+    fetchMock.mockResolvedValueOnce(response({ ok: true, demands: [openDemand] }));
+
+    const feed = await getCollectionDemandFeed('g1');
+    expect(feed.demands).toHaveLength(1);
+    expect(feed.completedCounts).toEqual({});
+    expect(feed.myRecentCompleted).toEqual([]);
   });
 
   test('需求的业务错误码不会被归成 HTTP_ERROR', async () => {

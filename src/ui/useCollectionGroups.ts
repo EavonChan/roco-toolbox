@@ -9,7 +9,7 @@ import {
   completeCollectionDemand as completeDemandApi,
   createCollectionGroup as createCollectionGroupApi,
   dissolveCollectionGroup,
-  getCollectionDemands,
+  getCollectionDemandFeed,
   getCollectionGroup,
   getCollectionGroupVersion,
   getCollectionTasks,
@@ -41,9 +41,12 @@ import {
   type MotherResourceDraft,
 } from '../shared/motherGroups';
 import {
+  DEMAND_RECENT_COMPLETED_LIMIT,
+  demandKeyOf,
   isTargetReady,
   studSlotSetIdOf,
   type CollectionDemand,
+  type CollectionDemandFeed,
   type CollectionGroupDetail,
   type CollectionGroupMember,
   type CollectionGroupSummary,
@@ -141,6 +144,10 @@ export interface CollectionGroupsHook {
   transferTask: (targetKey: string, toAccountId: string) => Promise<void>;
   /** 需求承接（2026-10-26）：组内需求与我的操作。 */
   demands: CollectionDemand[];
+  /** 已结单：按承接人累计（服务端聚合，2026-11-01）。 */
+  completedCounts: Record<string, number>;
+  /** 我承接的最近 N 条已完成，供完成回执。 */
+  myRecentCompleted: CollectionDemand[];
   demandsLoading: boolean;
   demandsError: string;
   refreshDemands: () => Promise<void>;
@@ -286,6 +293,12 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
   const [demandsLoading, setDemandsLoading] = useState(false);
   const [demandsError, setDemandsError] = useState('');
   const demandsRef = useRef<CollectionDemand[]>(boot.demands);
+  /** 已结单：按承接人累计（服务端聚合，2026-11-01）。 */
+  const [completedCounts, setCompletedCounts] = useState<Record<string, number>>({});
+  /** 我承接的最近 N 条已完成，供完成回执。 */
+  const [myRecentCompleted, setMyRecentCompleted] = useState<CollectionDemand[]>([]);
+  const completedCountsRef = useRef<Record<string, number>>({});
+  const myRecentCompletedRef = useRef<CollectionDemand[]>([]);
 
   const accountRef = useRef(accountId);
   const modeRef = useRef(pageMode);
@@ -315,6 +328,26 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
     setDemands(list);
     saveCollectionGroupCacheDemands(accountRef.current, groupId ?? groupRef.current, list);
   }, []);
+
+  /** 已结单统计不进缓存：切组先用缓存出列表，计数等接口回来再补。 */
+  const resetDemandStats = useCallback(() => {
+    completedCountsRef.current = {};
+    setCompletedCounts({});
+    myRecentCompletedRef.current = [];
+    setMyRecentCompleted([]);
+  }, []);
+
+  /** 需求中心一次拉全的三份数据（列表 + 已结单聚合 + 我的完成回执）。 */
+  const applyDemandFeed = useCallback(
+    (feed: CollectionDemandFeed, groupId?: string | null) => {
+      applyDemands(feed.demands, groupId);
+      completedCountsRef.current = feed.completedCounts;
+      setCompletedCounts(feed.completedCounts);
+      myRecentCompletedRef.current = feed.myRecentCompleted;
+      setMyRecentCompleted(feed.myRecentCompleted);
+    },
+    [applyDemands],
+  );
 
   const scope = useCallback((includeGroup = false) => {
     const generation = generationRef.current;
@@ -372,7 +405,8 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
     setDemands([]);
     setDemandsError('');
     setDemandsLoading(false);
-  }, []);
+    resetDemandStats();
+  }, [resetDemandStats]);
 
   /* ---------- 需求承接（2026-10-26） ---------- */
 
@@ -382,9 +416,9 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
       const request = ++demandsRequestRef.current;
       setDemandsLoading(true);
       try {
-        const list = await getCollectionDemands(groupId);
+        const feed = await getCollectionDemandFeed(groupId);
         if (!active() || request !== demandsRequestRef.current) return;
-        applyDemands(list, groupId);
+        applyDemandFeed(feed, groupId);
         setDemandsError('');
       } catch (failure) {
         if (!active() || request !== demandsRequestRef.current) return;
@@ -393,7 +427,7 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
         if (active() && request === demandsRequestRef.current) setDemandsLoading(false);
       }
     },
-    [scope, applyDemands],
+    [scope, applyDemandFeed],
   );
 
   const refreshDemands = useCallback(async () => {
@@ -406,21 +440,36 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
   const mergeDemand = useCallback((next: CollectionDemand) => {
     // 慢网下切组后旧组的响应不能写进新组列表
     if (next.groupId !== groupRef.current) return;
-    applyDemands([
-      next,
-      ...demandsRef.current.filter(
-        (item) =>
-          item.status === 'done' ||
-          !(
-            item.demanderAccountId === next.demanderAccountId &&
-            item.eggGameId === next.eggGameId &&
-            item.nature === next.nature &&
-            item.gender === next.gender &&
-            item.body === next.body &&
-            item.voice === next.voice
-          ),
-      ),
-    ], next.groupId);
+    const sameRow = (item: CollectionDemand) =>
+      item.demanderAccountId === next.demanderAccountId &&
+      demandKeyOf(item) === demandKeyOf(next);
+    if (next.status === 'done') {
+      // 已完成不再进列表（2026-11-01）：移掉这一条，把承接人的已结单 +1；
+      // 若承接人就是自己，同时补进完成回执，不必等下一轮轮询。
+      applyDemands(
+        demandsRef.current.filter((item) => !sameRow(item)),
+        next.groupId,
+      );
+      const claimer = next.claimerAccountId;
+      if (claimer) {
+        const counts = {
+          ...completedCountsRef.current,
+          [claimer]: (completedCountsRef.current[claimer] ?? 0) + 1,
+        };
+        completedCountsRef.current = counts;
+        setCompletedCounts(counts);
+      }
+      if (claimer && claimer === accountRef.current) {
+        const recent = [
+          next,
+          ...myRecentCompletedRef.current.filter((item) => !sameRow(item)),
+        ].slice(0, DEMAND_RECENT_COMPLETED_LIMIT);
+        myRecentCompletedRef.current = recent;
+        setMyRecentCompleted(recent);
+      }
+      return;
+    }
+    applyDemands([next, ...demandsRef.current.filter((item) => !sameRow(item))], next.groupId);
   }, [applyDemands]);
 
   const addDemand = useCallback(
@@ -1247,6 +1296,8 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
     releaseTask,
     transferTask,
     demands,
+    completedCounts,
+    myRecentCompleted,
     demandsLoading,
     demandsError,
     refreshDemands,

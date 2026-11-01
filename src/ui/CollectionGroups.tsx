@@ -64,8 +64,14 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
       return;
     }
     const seenAt = readDemandCompletionSeenAt(accountId, group.group.id);
+    // 已完成不再随列表下发（2026-11-01）：优先用服务端给的「我承接的最近完成」；
+    // 旧服务端仍会把 done 行混在列表里，退回本地过滤。
+    const completed =
+      hook.myRecentCompleted.length > 0
+        ? hook.myRecentCompleted
+        : hook.demands.filter((demand) => demand.status === 'done');
     const decision = resolveDemandCompletionNotice(
-      hook.demands,
+      completed,
       accountId,
       seenAt,
       (id) => group.members.find((member) => member.accountId === id)?.displayName ?? null,
@@ -75,7 +81,7 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
       saveDemandCompletionSeenAt(accountId, group.group.id, decision.markSeenAt);
     }
     setCompletionNotice(decision.notice);
-  }, [hook.accountId, hook.currentGroup, hook.demands]);
+  }, [hook.accountId, hook.currentGroup, hook.demands, hook.myRecentCompleted]);
 
   const dismissCompletionNotice = () => {
     if (completionNotice && hook.accountId && completionGroupId) {
@@ -262,6 +268,7 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
                   hook.accountId ? readCollectionInviteCode(hook.accountId, hook.currentGroup.group.id) : null
                 }
                 demands={hook.demands}
+                completedCounts={hook.completedCounts}
                 onRename={hook.updateProfile}
                 onResetInvite={hook.resetInvite}
                 onRemove={hook.removeMember}
@@ -355,6 +362,8 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
             onReleaseTask={hook.releaseTask}
             onTransferTask={hook.transferTask}
             demands={hook.demands}
+            completedCounts={hook.completedCounts}
+            myRecentCompleted={hook.myRecentCompleted}
             onPublishDemand={hook.addDemand}
             onWithdrawDemand={hook.withdrawDemand}
             onClaimDemand={hook.claimDemand}
