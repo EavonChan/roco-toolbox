@@ -39,4 +39,21 @@ describe('重置导入数据', () => {
     expect(suggestion.doneAt ?? {}).toEqual({});
     expect(getTargetMode()).toBe('medal');
   });
+
+  test('按云身份清掉「已上窝」「完成回执已读」「账号折叠」（R2-2-M07）', async () => {
+    await saveSnapshot(snapshot(1001, '甲', [mother(101)]));
+    window.localStorage.setItem('roco.accountId', 'acc-me');
+    window.localStorage.setItem('roco.demandPlacements:acc-me', JSON.stringify({ 'g1|m1|k|1': true }));
+    window.localStorage.setItem('roco.demandCompletionRead:acc-me', JSON.stringify({ 'g1|m1|k|1': true }));
+    window.localStorage.setItem('roco.demandCollapsedAccounts:acc-me', JSON.stringify(['uid:11']));
+    // 别人的身份不受影响
+    window.localStorage.setItem('roco.demandPlacements:acc-other', JSON.stringify({ x: true }));
+
+    await resetImportedData();
+
+    expect(window.localStorage.getItem('roco.demandPlacements:acc-me')).toBeNull();
+    expect(window.localStorage.getItem('roco.demandCompletionRead:acc-me')).toBeNull();
+    expect(window.localStorage.getItem('roco.demandCollapsedAccounts:acc-me')).toBeNull();
+    expect(window.localStorage.getItem('roco.demandPlacements:acc-other')).not.toBeNull();
+  });
 });

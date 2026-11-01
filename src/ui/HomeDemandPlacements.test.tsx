@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { species as catalog } from '../data/catalog';
+import { eggGroupNames, species as catalog } from '../data/catalog';
 import type { AccountSnapshot } from '../domain/parseBackup';
 import type { OwnedPet } from '../domain/types';
 import { demandPickKey } from './demandPickStore';
@@ -278,6 +278,24 @@ describe('家园 · 接单上窝', () => {
       picked === egg ? '母甲' : '母乙',
     );
     expect(screen.queryByTestId('home-demand-pick-fallback')).toBeNull();
+  });
+
+  test('种公需求（负数蛋组号）改用蛋组首字徽标，不再是一个字灰块（R2-2-L08）', () => {
+    h.state.items = [demandItem({ eggGameId: -groupId, gender: '公', nature: '固执' })];
+    renderPanel([
+      pet({ gameId: egg.gameId, gender: '母', captureId: 'cap_academy' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公' }),
+    ]);
+
+    const badge = screen.getByTestId('home-demand-group-badge');
+    expect(badge.textContent).toBe((eggGroupNames[groupId] ?? '').slice(0, 1));
+  });
+
+  test('页头写明「按已选账号计算」，说明账号筛选会少算上窝名单（R2-2-U01）', () => {
+    h.state.items = [];
+    renderPanel([]);
+
+    expect(screen.getByTestId('home-demand-scope')).toHaveTextContent('按已选的 1 个账号计算');
   });
 
   test('已在家园的绿描边单独画在卡片上层，不会被卡片边框和阴影压住', () => {

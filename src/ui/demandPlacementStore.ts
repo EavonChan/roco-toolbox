@@ -158,3 +158,24 @@ export function writeCollapsedAccounts(accountId: string, accountKeys: readonly 
     // 存不下只是下次打开不再收起
   }
 }
+
+/** 重置本机数据时清掉当前云身份的「已上窝」勾选（R2-2-M07）。 */
+export function clearPlacementMarks(accountId: string | null): void {
+  if (!accountId || typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(KEY_PREFIX + accountId);
+  } catch {
+    // 清不掉只是那份勾选还留着
+  }
+}
+
+/** 同上：清掉当前云身份的账号折叠状态（含旧版本那个全局键）。 */
+export function clearCollapsedAccounts(accountId: string | null): void {
+  if (!accountId || typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(COLLAPSED_KEY + ':' + accountId);
+    window.localStorage.removeItem(COLLAPSED_KEY);
+  } catch {
+    // 清不掉只是下次打开还收着
+  }
+}

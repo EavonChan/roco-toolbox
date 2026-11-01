@@ -9,6 +9,7 @@ import {
   type DemandPlacementSkip,
 } from '../domain/demandPlacement';
 import { accountKeyOf, type AccountSnapshot } from '../domain/parseBackup';
+import { GREEN_NEST_ICON } from '../domain/petIcons';
 import { speciesDisplayName } from '../domain/speciesName';
 import {
   placementRowKey,
@@ -92,7 +93,8 @@ function ParentCard({
   return (
     <div className="relative shrink-0" style={{ width: 153, height: 115 }}>
       {academyNest ? (
-        <span className="absolute -top-2 left-1 z-20 rounded-full bg-emerald-600 px-1 text-[9px] font-bold text-white">
+        <span className="absolute -top-2 left-1 z-20 inline-flex items-center gap-[2px] rounded-full bg-emerald-600 px-1 text-[9px] font-bold text-white">
+          <img src={GREEN_NEST_ICON} alt="" className="h-[11px] w-auto" />
           进学院小窝
         </span>
       ) : null}
@@ -319,7 +321,18 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <PetAvatar gameId={placement.demand.eggGameId} name={eggNameOf(placement.demand.eggGameId)} size={24} />
+              {placement.demand.eggGameId > 0 ? (
+                <PetAvatar gameId={placement.demand.eggGameId} name={eggNameOf(placement.demand.eggGameId)} size={24} />
+              ) : (
+                // 种公需求的编号是负数蛋组号，没有蛋头像可用：给蛋组首字徽标（R2-2-L08）
+                <span
+                  aria-hidden="true"
+                  data-testid="home-demand-group-badge"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-[11px] font-semibold text-emerald-700"
+                >
+                  {eggNameOf(placement.demand.eggGameId).slice(0, 1)}
+                </span>
+              )}
               <span className="truncate text-sm font-medium text-slate-900">
                 {eggNameOf(placement.demand.eggGameId)}
               </span>
@@ -497,6 +510,10 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
         <h2 className={TITLE}>接单上窝</h2>
         <p className={`${HINT} mt-0.5`} data-testid="home-demand-summary">
           {summary}
+        </p>
+        {/* 账号筛选照旧作用于本页：写明口径，免得「少排了几单」看起来像 bug（R2-2-U01） */}
+        <p className={`${HINT} mt-0.5 text-slate-400`} data-testid="home-demand-scope">
+          按已选的 {snapshots.length} 个账号计算；账号筛选里勾掉的号不参与上窝。
         </p>
       </div>
 

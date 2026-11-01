@@ -41,3 +41,13 @@ export function markCompletionRead(
   }
   return { ...read };
 }
+
+/** 重置本机数据时清掉当前云身份的「完成回执已读」（R2-2-M07）。 */
+export function clearCompletionRead(accountId: string | null): void {
+  if (!accountId || typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(KEY_PREFIX + accountId);
+  } catch {
+    // 清不掉只是那份已读还留着
+  }
+}
