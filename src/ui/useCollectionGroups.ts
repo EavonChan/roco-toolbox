@@ -324,9 +324,11 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
 
   /** 需求列表与本地缓存的唯一写入口：状态、ref、缓存一起更新（2026-11-01）。 */
   const applyDemands = useCallback((list: CollectionDemand[], groupId?: string | null) => {
-    demandsRef.current = list;
-    setDemands(list);
-    saveCollectionGroupCacheDemands(accountRef.current, groupId ?? groupRef.current, list);
+    // 旧缓存 / 旧服务端可能仍带已完成行：列表语义只保留未完成，顺手清洗本机缓存（2026-11-01）
+    const active = list.filter((demand) => demand.status !== 'done');
+    demandsRef.current = active;
+    setDemands(active);
+    saveCollectionGroupCacheDemands(accountRef.current, groupId ?? groupRef.current, active);
   }, []);
 
   /** 已结单统计不进缓存：切组先用缓存出列表，计数等接口回来再补。 */

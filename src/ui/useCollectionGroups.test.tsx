@@ -248,6 +248,19 @@ describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
     expect(result.current.myRecentCompleted.map((demand) => demand.eggGameId)).toEqual([3467]);
   });
 
+  test('旧服务端仍把已完成行混在列表里时，前端也不显示它', async () => {
+    vi.mocked(api.getCollectionDemandFeed).mockResolvedValue(
+      feedOf([
+        demandOf(),
+        demandOf({ eggGameId: 3467, status: 'done', claimerAccountId: 'B' }),
+      ]),
+    );
+
+    const { result } = renderHook(() => useCollectionGroups(input));
+    await flush();
+    expect(result.current.demands.map((demand) => demand.status)).toEqual(['open']);
+  });
+
   test('接单失败后立即重拉需求列表，不用等轮询（R2-3-M04）', async () => {
     vi.mocked(api.claimCollectionDemand).mockRejectedValueOnce(new Error('已被人接单'));
     const { result } = renderHook(() => useCollectionGroups(input));
