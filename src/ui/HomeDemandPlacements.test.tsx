@@ -179,7 +179,7 @@ describe('家园 · 接单上窝', () => {
     expect(screen.queryByTestId('home-demand-row')).toBeNull();
   });
 
-  test('候选可以切换成当前配对', () => {
+  test('「换配对」展开候选，点「用这对」切换成当前配对', () => {
     h.state.items = [demandItem()];
     renderPanel([
       pet({ gameId: egg.gameId, gender: '母', captureId: 'cap_academy' }),
@@ -188,8 +188,10 @@ describe('家园 · 接单上窝', () => {
     ]);
 
     fireEvent.click(screen.getByTestId('home-demand-badge'));
+    expect(screen.getByTestId('home-demand-badge')).toHaveTextContent('换配对 2');
     expect(screen.getByTestId('home-demand-option-0')).toHaveTextContent('当前');
-    fireEvent.click(screen.getByTestId('home-demand-option-1'));
+    expect(screen.getByTestId('home-demand-use-option-1')).toHaveTextContent('用这对');
+    fireEvent.click(screen.getByTestId('home-demand-use-option-1'));
     expect(screen.getByTestId('home-demand-row')).toHaveTextContent('种公乙');
     expect(screen.queryByTestId('home-demand-options')).toBeNull();
   });
@@ -211,7 +213,7 @@ describe('家园 · 接单上窝', () => {
     expect(screen.getAllByTestId('home-demand-chance')[1]).toHaveTextContent('约 30%');
 
     fireEvent.click(screen.getAllByTestId('home-demand-badge')[1]);
-    fireEvent.click(screen.getByTestId('home-demand-option-1'));
+    fireEvent.click(screen.getByTestId('home-demand-use-option-1'));
 
     // 换成「只有母本带性格」的那一对后，整份方案按它重算 → 概率跌到 15%
     expect(screen.getAllByTestId('home-demand-chance')[1]).toHaveTextContent('约 15%');
@@ -227,7 +229,7 @@ describe('家园 · 接单上窝', () => {
     ];
     const view = renderPanel(pets);
     fireEvent.click(screen.getByTestId('home-demand-badge'));
-    fireEvent.click(screen.getByTestId('home-demand-option-1'));
+    fireEvent.click(screen.getByTestId('home-demand-use-option-1'));
     expect(screen.getByTestId('home-demand-row')).toHaveTextContent('种公乙');
     expect(window.localStorage.getItem('roco.demandPlacementChoice:me')).toContain('cap_f2');
 
@@ -280,6 +282,48 @@ describe('家园 · 接单上窝', () => {
     expect(screen.queryByTestId('home-demand-pick-fallback')).toBeNull();
   });
 
+  test('小组页选的蛋母本是进化形态时也能对上，不误报排不上（2026-11-01 用户反馈）', () => {
+    // 挑一颗有进化形态的蛋：小组页记的是蛋 id，家园里的母本却可能是进化后的精灵
+    const eggB = catalog.find(
+      (entry) =>
+        entry.eggGameId === entry.gameId &&
+        entry.maleCapable === true &&
+        entry.gameId !== egg.gameId &&
+        (entry.eggGroups ?? []).includes(groupId) &&
+        catalog.some((other) => other.eggGameId === entry.gameId && other.gameId !== entry.gameId),
+    );
+    expect(eggB).toBeTruthy();
+    const evolved = catalog.find(
+      (entry) => entry.eggGameId === eggB!.gameId && entry.gameId !== eggB!.gameId,
+    );
+    expect(evolved).toBeTruthy();
+
+    h.state.items = [demandItem({ eggGameId: -groupId, gender: '公', nature: '' })];
+    const pets = [
+      // 排在前面的是默认母本：没选蛋时家园会用它
+      pet({ gameId: egg.gameId, gender: '母', name: '母甲', captureId: 'cap_m1' }),
+      pet({ gameId: evolved!.gameId, gender: '母', name: '母乙', captureId: 'cap_m2' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', name: '种公甲', captureId: 'cap_f1' }),
+    ];
+    window.localStorage.setItem(
+      'roco.demandPick',
+      JSON.stringify({
+        [demandPickKey('g1', {
+          demanderAccountId: 'm1',
+          eggGameId: -groupId,
+          nature: '',
+          gender: '公',
+          body: '大块头',
+          voice: '+100',
+        })]: eggB!.gameId,
+      }),
+    );
+
+    renderPanel(pets);
+    expect(screen.getAllByTestId('home-demand-parent')[0]).toHaveTextContent('母乙');
+    expect(screen.queryByTestId('home-demand-pick-fallback')).toBeNull();
+  });
+
   test('种公需求（负数蛋组号）改用蛋组首字徽标，不再是一个字灰块（R2-2-L08）', () => {
     h.state.items = [demandItem({ eggGameId: -groupId, gender: '公', nature: '固执' })];
     renderPanel([
@@ -291,11 +335,11 @@ describe('家园 · 接单上窝', () => {
     expect(badge.textContent).toBe((eggGroupNames[groupId] ?? '').slice(0, 1));
   });
 
-  test('页头写明「按已选账号计算」，说明账号筛选会少算上窝名单（R2-2-U01）', () => {
+  test('页头写明「按全部账号计算」，账号筛选不影响上窝（R2-2-U01）', () => {
     h.state.items = [];
     renderPanel([]);
 
-    expect(screen.getByTestId('home-demand-scope')).toHaveTextContent('按已选的 1 个账号计算');
+    expect(screen.getByTestId('home-demand-scope')).toHaveTextContent('按全部 1 个账号计算');
   });
 
   test('已在家园的绿描边单独画在卡片上层，不会被卡片边框和阴影压住', () => {
@@ -310,9 +354,24 @@ describe('家园 · 接单上窝', () => {
     const frame = frames[0];
     expect(frame.className).toContain('border-emerald-300');
     expect(frame.className).toContain('pointer-events-none');
-    // 尺寸盖住卡片缩放后的外沿（150.4×112.8 + 2px×2）
-    expect(frame.style.width).toBe('154px');
-    expect(frame.style.height).toBe('117px');
+    // 尺寸盖住卡片缩放后的外沿（141.6×106.2 + 2px×2）
+    expect(frame.style.width).toBe('146px');
+    expect(frame.style.height).toBe('110px');
+  });
+
+  test('两张亲本卡在 375 宽的行内并排放得下，不再需要横向滚动（2026-11-01 用户反馈）', () => {
+    h.state.items = [demandItem()];
+    renderPanel([
+      pet({ gameId: egg.gameId, gender: '母', captureId: 'cap_academy' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公' }),
+    ]);
+
+    const boxes = screen.getAllByTestId('home-demand-parent-box');
+    expect(boxes).toHaveLength(2);
+    const total = boxes.reduce((sum, box) => sum + Number.parseFloat(box.style.width), 0);
+    // 375 屏宽下：375 - 页面 32 - 区块 32 - 行边框 2 - 行内边距 16 = 293，间距 8
+    expect(total + 8).toBeLessThanOrEqual(293);
+    expect(screen.getByTestId('home-demand-parent-row').className).not.toContain('overflow-x-auto');
   });
 
   test('提示按可孵出概率配色：学院方案 50% 绿', () => {

@@ -1,5 +1,4 @@
 import type { NavigationIntent, ProfileSection } from './navigation';
-import { guidePending } from './guide';
 import { AccountPanel } from './AccountPanel';
 import { ImportOutcomeNotice } from './ImportOutcomeNotice';
 import { ImportPanel } from './ImportPanel';
@@ -8,13 +7,14 @@ import { Button } from './primitives/Button';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { StateNotice } from './primitives/StateNotice';
 import { setSyncConflict, useSyncFeedback } from './syncNoticeStore';
+import { useSnapshots } from './useSnapshots';
 
 export interface ProfileProps {
   section: ProfileSection;
   returnToGroups: boolean;
   onNavigate: (intent: NavigationIntent) => void;
-  /** 打开完整教程（首启入门卡 / 顶部按钮） */
-  onOpenGuide?: () => void;
+  /** 重播「先导入一次」的首启引导（入门卡上的「教程」按钮） */
+  onStartTour?: () => void;
 }
 
 const SECTIONS = [
@@ -33,10 +33,12 @@ export function Profile({
   section,
   returnToGroups,
   onNavigate,
-  onOpenGuide,
+  onStartTour,
 }: ProfileProps) {
   // 导入后的自动上传冲突仍以 syncNoticeStore 为准，交给 AccountPanel 二选一
   const { conflict: autoConflict } = useSyncFeedback();
+  // 入门卡只在「本机还没有任何导入数据」时出现：导入过一次就不再打扰（2026-11-01）
+  const { snapshots, loaded } = useSnapshots();
 
   return (
     <main className="mx-auto max-w-md space-y-3 p-4">
@@ -80,20 +82,20 @@ export function Profile({
 
       {section === 'data' ? (
         <>
-          {guidePending() ? (
+          {loaded && snapshots.length === 0 ? (
             <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="first-run-card">
               <h2 className="text-base font-semibold text-slate-900">先导入一次，看看还缺什么</h2>
               <p className="mt-1 text-sm text-slate-600">
-                导入后这里会出现母本和种公的进度、缺口与下一步；不用先看教程。
+                导入后这里会出现母本和种公的进度、缺口与下一步；看板、收集、小组也都按这份数据算。
               </p>
-              {onOpenGuide ? (
+              {onStartTour ? (
                 <Button
                   variant="secondary"
                   className="mt-2"
-                  onClick={onOpenGuide}
+                  onClick={onStartTour}
                   data-testid="first-run-guide"
                 >
-                  查看完整教程
+                  教程
                 </Button>
               ) : null}
             </section>

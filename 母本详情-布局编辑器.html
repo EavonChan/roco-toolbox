@@ -1,0 +1,464 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>母本详情卡 · 布局编辑器</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 16px; background: #eef2f7; color: #0f172a;
+        font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
+      .app { max-width: 1120px; margin: 0 auto; }
+      h1 { margin: 0 0 4px; font-size: 18px; }
+      .hint { margin: 0 0 14px; font-size: 13px; line-height: 1.6; color: #64748b; }
+      .toolbar, .inspector {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: 10px 12px; margin-bottom: 12px;
+      }
+      .toolbar label, .inspector label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #475569; }
+      .toolbar input[type="range"] { width: 96px; }
+      .toolbar input[type="number"], .inspector input[type="number"] {
+        width: 64px; min-height: 28px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 6px; font-size: 12px;
+      }
+      button {
+        min-height: 30px; border: 1px solid #cbd5e1; background: #fff; color: #334155;
+        border-radius: 8px; padding: 0 10px; font-size: 12px; cursor: pointer;
+      }
+      button.primary { border-color: #059669; background: #059669; color: #fff; }
+      button:hover { background: #f8fafc; }
+      button.primary:hover { background: #047857; }
+      .stage {
+        --card-w: 315px; --card-h: 463px;
+        padding: 12px; border-radius: 16px; background: #dbe4ef; overflow: auto;
+      }
+      .stage.show-grid .card {
+        background-image:
+          linear-gradient(to right, rgba(148, 163, 184, 0.18) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(148, 163, 184, 0.18) 1px, transparent 1px);
+        background-size: 10px 10px;
+      }
+      .stage.show-outline .el { outline: 1px dotted rgba(100, 116, 139, 0.55); outline-offset: 1px; }
+      .stage.show-outline .el.selected { outline: 1px dashed #10b981; outline-offset: 2px; }
+      .card {
+        position: relative; width: var(--card-w); min-height: var(--card-h);
+        background: #fff; border: 1px solid #cbd5e1; border-radius: 16px;
+        box-shadow: 0 8px 24px rgb(15 23 42 / 0.12); overflow: hidden;
+      }
+      .card-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 14px; border-bottom: 1px solid #f1f5f9; font-size: 16px; font-weight: 600;
+      }
+      .card-head span { color: #94a3b8; font-weight: 400; }
+      .el {
+        position: absolute; transform-origin: top left; transform: scale(var(--scale, 1));
+        cursor: grab; user-select: none; white-space: nowrap; line-height: 1.1;
+      }
+      .el:active { cursor: grabbing; }
+      .el.selected { outline: 1px dashed #10b981; outline-offset: 2px; }
+      .el[contenteditable="true"] {
+        outline: 2px solid #10b981; background: #fff; z-index: 9999 !important;
+        cursor: text; user-select: text;
+      }
+      .avatar { width: 72px; height: 72px; }
+      .avatar img { width: 100%; height: 100%; object-fit: contain; }
+      .name { font-size: 16px; font-weight: 600; color: #1e293b; }
+      .form { font-size: 8px; color: #94a3b8; }
+      .natures { display: flex; gap: 3px; }
+      .nature { background: #fff1f2; color: #e11d48; border-radius: 4px; padding: 2px 6px; font-size: 11px; line-height: 1.35; }
+      .nature.ok { background: #ecfdf5; color: #047857; }
+      .targets { display: flex; gap: 4px; align-items: center; }
+      .targets img { width: 18px; height: 18px; }
+      .box {
+        display: block; width: 291px; white-space: normal; border-radius: 12px;
+        background: #f8fafc; padding: 8px 10px; font-size: 12px; line-height: 1.5; color: #334155;
+      }
+      .box h4 { margin: 0 0 2px; font-size: 11px; font-weight: 600; color: #475569; }
+      .box .miss { color: #e11d48; }
+      .box .sub { color: #64748b; font-size: 11px; }
+      .box .empty { color: #94a3b8; }
+      /* 右上角小方框版「谁能补我」（2026-10-30 v2：信息简写） */
+      .box.compact {
+        width: 104px; padding: 4px 6px; font-size: 9px; line-height: 1.35; border-radius: 8px;
+      }
+      .box.compact h4 { font-size: 9px; margin: 0; }
+      .box.compact p { margin: 1px 0 0; font-size: 9px; overflow: hidden; text-overflow: ellipsis; }
+      .publish {
+        width: 291px; white-space: normal; border-radius: 12px; border: 1px solid #d1fae5;
+        background: #f0fdf4; padding: 8px 10px;
+      }
+      .publish .pub-head { display: flex; align-items: center; justify-content: space-between; }
+      .publish h4 { margin: 0; font-size: 12px; font-weight: 600; color: #334155; }
+      .publish .sub { font-size: 10px; color: #64748b; }
+      .nature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px; }
+      .nature-grid span {
+        display: flex; align-items: center; justify-content: center; height: 26px;
+        border: 1px solid #e2e8f0; border-radius: 6px; background: #fff;
+        font-size: 11px; color: #334155;
+      }
+      .nature-grid span.on { border-color: #059669; color: #047857; font-weight: 600; }
+      .nature-grid span.done { color: #cbd5e1; text-decoration: line-through; }
+      .nature-grid span.sent { color: #059669; background: #ecfdf5; }
+      .nature-grid span.more { border-style: dashed; color: #64748b; }
+      .opt { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 11px; color: #475569; }
+      .opt .k { width: 26px; flex: 0 0 auto; color: #94a3b8; }
+      .opt .chip {
+        border: 1px solid #e2e8f0; background: #fff; border-radius: 6px;
+        padding: 2px 6px; font-size: 11px; color: #334155;
+      }
+      .opt .chip.on { border-color: #059669; color: #047857; font-weight: 600; }
+      .warn { margin-top: 6px; font-size: 10px; color: #b45309; }
+      .actions { display: flex; gap: 6px; margin-top: 8px; }
+      .actions .btn {
+        flex: 1; text-align: center; height: 34px; line-height: 34px; border-radius: 8px;
+        border: 1px solid #e2e8f0; background: #fff; font-size: 13px; color: #334155;
+      }
+      .actions .btn.solid { flex: 2; border-color: #059669; background: #059669; color: #fff; font-weight: 600; }
+      .inspector strong { font-size: 12px; min-width: 110px; }
+      .inspector .spacer { flex: 1 1 auto; }
+      details { margin-top: 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px; }
+      summary { cursor: pointer; font-size: 13px; color: #334155; }
+      textarea {
+        width: 100%; min-height: 180px; margin-top: 8px; border: 1px solid #cbd5e1;
+        border-radius: 8px; padding: 8px; font-family: ui-monospace, Consolas, monospace;
+        font-size: 12px; line-height: 1.45; color: #0f172a; background: #f8fafc;
+      }
+      .tip { margin-top: 12px; font-size: 12px; line-height: 1.7; color: #64748b; }
+      .tip b { color: #334155; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <h1>母本详情卡 · 布局编辑器</h1>
+      <p class="hint">
+        每块都能单独拖动、缩放（滚轮或下方滑块），双击文字可直接改；调完整张卡点「复制布局数据」发我。
+        默认是 2026-10-30 第二版：性格和奖牌挪到名字下方一行、右上角「谁能补我」缩成小方框（信息已简写），
+        下面「我的需求」「发需求」整体上移。
+      </p>
+
+      <div class="toolbar">
+        <label>弹窗宽 <input id="cardWidth" type="range" min="300" max="420" step="1" value="315" /><span id="cardWidthText">315</span>px</label>
+        <label>弹窗高 <input id="cardHeight" type="range" min="360" max="900" step="1" value="463" /><span id="cardHeightText">463</span>px</label>
+        <label><input id="showGrid" type="checkbox" /> 参考线</label>
+        <label><input id="showOutline" type="checkbox" /> 元素边框</label>
+        <button id="reset">重置</button>
+        <button id="copy" class="primary">复制布局数据</button>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="card" data-card="1">
+          <div class="card-head">母本详情 <span>×</span></div>
+
+          <div class="el avatar" data-key="avatar" style="left: 10px; top: 56px">
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3017/icon.png" alt="" />
+          </div>
+          <div class="el name" data-key="name" style="left: 74px; top: 69px">蹦蹦种子</div>
+          <div class="el form" data-key="form" style="left: 141px; top: 73px">·海神球</div>
+          <div class="el natures" data-key="natures" style="left: 74px; top: 98px; --scale: 1">
+            <span class="nature">踏实</span>
+          </div>
+          <div class="el targets" data-key="targets" style="left: 117px; top: 97px; --scale: 1">
+            <img src="public/ui/medals/1001.png" alt="大块头" title="大块头" />
+            <img src="public/ui/medals/1026.png" alt="+100" title="+100" />
+          </div>
+
+          <div class="el box compact" data-key="suppliers" style="left: 192px; top: 69px">
+            <h4>谁能补我</h4>
+            <p class="miss">还缺：踏实</p>
+            <p class="sub">已发布的成员都补不了</p>
+            <p class="sub">3 人未发布 / 未更新</p>
+          </div>
+
+          <div class="el box" data-key="wants" style="left: 12px; top: 131px">
+            <h4>我的需求 · 0</h4>
+            <p style="margin: 0" class="empty">这颗蛋还没发过需求。</p>
+          </div>
+
+          <div class="el publish" data-key="publish" style="left: 12px; top: 189px">
+            <div class="pub-head">
+              <h4>发需求</h4>
+              <span class="sub">1 个性格 = 1 条</span>
+            </div>
+            <div class="nature-grid">
+              <span>固执</span><span>平和</span><span>开朗</span>
+              <span>沉默</span><span>聪明</span><span>胆小</span>
+              <span class="on">踏实</span><span>急躁</span><span class="more">更多 +22</span>
+            </div>
+            <div class="opt">
+              <span class="k">性别</span><span class="chip on">母</span><span class="chip">公</span><span class="chip">不挑</span>
+            </div>
+            <div class="opt">
+              <span class="k">体型</span><span class="chip on">大块头</span><span class="chip">小不点</span>
+            </div>
+            <div class="opt">
+              <span class="k">声音</span><span class="chip on">+100</span><span class="chip">-100</span><span class="chip">婉转声</span><span class="chip">粗嗓门</span>
+            </div>
+            <p class="warn" style="margin: 6px 0 0">有 1 人超过 7 天未更新，可能有人能孵但没发布。仍要发布？</p>
+            <div class="actions">
+              <div class="btn">取消</div>
+              <div class="btn solid">发布 1 条需求</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="inspector">
+        <label>元素 <select id="elementSelect" style="min-height: 30px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0 6px; font-size: 12px; background: #fff;"><option value="">未选中</option></select></label>
+        <strong id="selectionLabel">未选中元素</strong>
+        <label>缩放 <input id="scaleRange" type="range" min="0.4" max="3" step="0.05" value="1" /><span id="scaleText">1.00</span></label>
+        <label>X <input id="xInput" type="number" step="1" value="0" /></label>
+        <label>Y <input id="yInput" type="number" step="1" value="0" /></label>
+        <button id="layerUp">上移一层</button>
+        <button id="layerDown">下移一层</button>
+        <button id="bringFront">置顶</button>
+        <span class="spacer"></span>
+        <span class="hint" style="margin: 0">双击元素改文字</span>
+      </div>
+
+      <details>
+        <summary>布局数据（调完后复制这里发我）</summary>
+        <textarea id="output" readonly placeholder="点「复制布局数据」后这里会出现 JSON"></textarea>
+      </details>
+
+      <p class="tip">
+        <b>说明：</b>每块是一个整体，块内排版（性格 3 列、选项行、按钮）会自己跟着缩放，不用逐字调。
+        头像来自官方 CDN，奖牌用的是项目里的 <code>public/ui/medals/*.png</code>（本地文件，可能需要在本地打开才显示）。
+        「更多 +22」现在是和第 9 格同尺寸的虚线格，点它才展开其余性格。
+      </p>
+    </div>
+
+    <script>
+      (function () {
+        const stage = document.getElementById('stage');
+        const selectionLabel = document.getElementById('selectionLabel');
+        const scaleRange = document.getElementById('scaleRange');
+        const scaleText = document.getElementById('scaleText');
+        const xInput = document.getElementById('xInput');
+        const yInput = document.getElementById('yInput');
+        const elementSelect = document.getElementById('elementSelect');
+        let selected = null;
+
+        const elementLabels = {
+          avatar: '头像', name: '名字', form: '形态', natures: '缺失性格', targets: '目标奖牌',
+          suppliers: '谁能补我', wants: '我的需求', publish: '发需求面板',
+        };
+        [...document.querySelectorAll('.card')].forEach((card, cardIndex) => {
+          [...card.querySelectorAll('.el')].forEach((el) => {
+            const id = 'c' + (cardIndex + 1) + '-' + el.dataset.key;
+            el.dataset.elId = id;
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = elementLabels[el.dataset.key] || el.dataset.key;
+            elementSelect.appendChild(option);
+          });
+        });
+
+        const number = (value, fallback) => {
+          const parsed = Number.parseFloat(value);
+          return Number.isFinite(parsed) ? parsed : fallback;
+        };
+
+        const select = (el) => {
+          if (selected === el) return;
+          if (selected) selected.classList.remove('selected');
+          selected = el;
+          if (!selected) {
+            selectionLabel.textContent = '未选中元素';
+            elementSelect.value = '';
+            return;
+          }
+          selected.classList.add('selected');
+          elementSelect.value = selected.dataset.elId || '';
+          const scale = number(selected.dataset.scale, 1);
+          selectionLabel.textContent = elementLabels[selected.dataset.key] || selected.dataset.key;
+          scaleRange.value = String(scale);
+          scaleText.textContent = scale.toFixed(2);
+          xInput.value = String(Math.round(number(selected.style.left, 0)));
+          yInput.value = String(Math.round(number(selected.style.top, 0)));
+        };
+
+        const applyScale = (el, scale) => {
+          const safe = Math.min(3, Math.max(0.4, scale));
+          el.dataset.scale = String(safe);
+          el.style.setProperty('--scale', String(safe));
+          if (selected === el) {
+            scaleRange.value = String(safe);
+            scaleText.textContent = safe.toFixed(2);
+          }
+        };
+
+        const applyPosition = (el, left, top) => {
+          el.style.left = Math.round(left) + 'px';
+          el.style.top = Math.round(top) + 'px';
+          if (selected === el) {
+            xInput.value = String(Math.round(left));
+            yInput.value = String(Math.round(top));
+          }
+        };
+
+        stage.addEventListener('pointerdown', (event) => {
+          const el = event.target.closest('.el');
+          if (!el) {
+            select(null);
+            return;
+          }
+          if (el.isContentEditable) return;
+          select(el);
+          if (event.button !== 0) return;
+          event.preventDefault();
+
+          const startX = event.clientX;
+          const startY = event.clientY;
+          const startLeft = number(el.style.left, 0);
+          const startTop = number(el.style.top, 0);
+          el.setPointerCapture(event.pointerId);
+
+          const move = (moveEvent) => {
+            applyPosition(el, startLeft + moveEvent.clientX - startX, startTop + moveEvent.clientY - startY);
+          };
+          const up = () => {
+            el.removeEventListener('pointermove', move);
+            el.removeEventListener('pointerup', up);
+            el.removeEventListener('pointercancel', up);
+          };
+          el.addEventListener('pointermove', move);
+          el.addEventListener('pointerup', up);
+          el.addEventListener('pointercancel', up);
+        });
+
+        stage.addEventListener('dblclick', (event) => {
+          const el = event.target.closest('.el');
+          if (!el) return;
+          select(el);
+          el.setAttribute('contenteditable', 'true');
+          el.focus();
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        });
+
+        stage.addEventListener('blur', (event) => {
+          const el = event.target.closest('.el');
+          if (!el) return;
+          el.removeAttribute('contenteditable');
+        }, true);
+
+        stage.addEventListener('keydown', (event) => {
+          const el = event.target.closest('.el');
+          if (!el || !el.isContentEditable) return;
+          if (event.key === 'Enter' || event.key === 'Escape') {
+            event.preventDefault();
+            el.blur();
+          }
+        });
+
+        stage.addEventListener('wheel', (event) => {
+          const el = event.target.closest('.el');
+          if (!el) return;
+          event.preventDefault();
+          const next = number(el.dataset.scale, 1) + (event.deltaY < 0 ? 0.05 : -0.05);
+          applyScale(el, next);
+        }, { passive: false });
+
+        document.addEventListener('keydown', (event) => {
+          if (!selected || selected.isContentEditable) return;
+          if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+          event.preventDefault();
+          const step = event.shiftKey ? 10 : 1;
+          let left = number(selected.style.left, 0);
+          let top = number(selected.style.top, 0);
+          if (event.key === 'ArrowLeft') left -= step;
+          if (event.key === 'ArrowRight') left += step;
+          if (event.key === 'ArrowUp') top -= step;
+          if (event.key === 'ArrowDown') top += step;
+          applyPosition(selected, left, top);
+        });
+
+        scaleRange.addEventListener('input', () => {
+          if (selected) applyScale(selected, number(scaleRange.value, 1));
+        });
+
+        xInput.addEventListener('input', () => {
+          if (selected) applyPosition(selected, number(xInput.value, 0), number(selected.style.top, 0));
+        });
+        yInput.addEventListener('input', () => {
+          if (selected) applyPosition(selected, number(selected.style.left, 0), number(yInput.value, 0));
+        });
+
+        document.getElementById('layerUp').addEventListener('click', () => {
+          if (!selected) return;
+          selected.style.zIndex = String(number(selected.style.zIndex || 1, 1) + 1);
+        });
+        document.getElementById('layerDown').addEventListener('click', () => {
+          if (!selected) return;
+          selected.style.zIndex = String(Math.max(0, number(selected.style.zIndex || 1, 1) - 1));
+        });
+        document.getElementById('bringFront').addEventListener('click', () => {
+          if (!selected) return;
+          selected.style.zIndex = '9999';
+        });
+
+        elementSelect.addEventListener('change', () => {
+          const el = document.querySelector('[data-el-id="' + elementSelect.value + '"]');
+          if (!el) return;
+          select(el);
+          el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        });
+
+        const bindRange = (id, name, textId) => {
+          const input = document.getElementById(id);
+          const text = document.getElementById(textId);
+          const sync = () => {
+            text.textContent = input.value;
+            stage.style.setProperty(name, input.value + 'px');
+          };
+          input.addEventListener('input', sync);
+          sync();
+        };
+        bindRange('cardWidth', '--card-w', 'cardWidthText');
+        bindRange('cardHeight', '--card-h', 'cardHeightText');
+
+        document.getElementById('showGrid').addEventListener('change', (event) => {
+          stage.classList.toggle('show-grid', event.target.checked);
+        });
+        document.getElementById('showOutline').addEventListener('change', (event) => {
+          stage.classList.toggle('show-outline', event.target.checked);
+        });
+        document.getElementById('reset').addEventListener('click', () => location.reload());
+
+        const layoutData = () => ({
+          cardWidth: number(getComputedStyle(stage).getPropertyValue('--card-w'), 343),
+          cardHeight: number(getComputedStyle(stage).getPropertyValue('--card-h'), 620),
+          elements: [...document.querySelectorAll('.card .el')].map((el) => ({
+            key: el.dataset.key,
+            left: number(el.style.left, 0),
+            top: number(el.style.top, 0),
+            scale: number(el.dataset.scale, 1),
+            z: number(el.style.zIndex || 1, 1),
+            text: el.innerText.replace(/\s+/g, ' ').trim(),
+          })),
+        });
+
+        document.getElementById('copy').addEventListener('click', async () => {
+          const text = JSON.stringify(layoutData(), null, 2);
+          const output = document.getElementById('output');
+          output.value = text;
+          try {
+            await navigator.clipboard.writeText(text);
+            selectionLabel.textContent = '布局数据已复制';
+          } catch {
+            output.focus();
+            output.select();
+            document.execCommand('copy');
+            selectionLabel.textContent = '已选中布局数据，按 Ctrl+C 复制';
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>小组页改版预览（375 / 390）</title>
+<style>
+  :root{
+    --emerald:#059669; --emerald-50:#ecfdf5; --emerald-200:#a7f3d0;
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155; --slate-800:#1e293b;
+    --rose-50:#fff1f2; --rose-300:#fda4af; --rose-600:#e11d48;
+    --amber-50:#fffbeb; --amber-200:#fde68a; --amber-700:#b45309;
+    --sky-50:#f0f9ff; --sky-300:#7dd3fc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef2f6;font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:var(--slate-800)}
+  .topbar{position:sticky;top:0;z-index:9;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#fff;border-bottom:1px solid var(--slate-100);font-size:13px;color:var(--slate-500)}
+  .topbar b{color:var(--emerald);font-size:14px}
+  .topbar button{margin-left:auto;border:1px solid var(--slate-200);background:#fff;border-radius:8px;padding:6px 10px;font-size:12px;color:var(--slate-600);cursor:pointer}
+  .wrap{display:flex;flex-wrap:wrap;gap:22px;padding:18px;align-items:flex-start}
+  .frame{width:375px;background:#fff;border-radius:18px;box-shadow:0 6px 24px rgba(15,23,42,.10);overflow:hidden;transition:width .15s}
+  .frame.narrow{width:375px}
+  .frame.wide{width:390px}
+  .frame .caption{padding:8px 12px;font-size:12px;color:var(--slate-500);background:var(--slate-50);border-bottom:1px solid var(--slate-100)}
+  .frame .phone{background:#f6f8fa;padding:12px 16px 16px;min-height:640px}
+  .tabs{display:flex;justify-content:space-between;padding:10px 18px;background:#fff;border-bottom:1px solid var(--slate-100);font-size:14px;color:var(--slate-500)}
+  .tabs span.on{color:var(--emerald);font-weight:600;border-bottom:2px solid var(--emerald);padding-bottom:6px}
+  .card{background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.06);padding:12px}
+  .row{display:flex;align-items:center;gap:8px}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .label{font-size:12px;color:var(--slate-500)}
+  .sub{font-size:11px;color:var(--slate-400)}
+  .chip{border:1px solid var(--slate-200);background:#fff;border-radius:8px;padding:6px 8px;font-size:12px;color:var(--slate-500);white-space:nowrap}
+  .chip.on{border-color:var(--emerald);background:var(--emerald-50);color:var(--emerald);font-weight:600}
+  .chip .n{font-size:10px;color:var(--slate-400);margin-left:4px;font-weight:400}
+  .chips{display:flex;gap:6px;overflow:auto;padding-bottom:2px}
+  .divider{height:1px;background:var(--slate-100);margin:10px 0}
+  .badge{display:inline-block;border-radius:6px;padding:2px 6px;font-size:11px;font-weight:600}
+  .badge.green{background:var(--emerald-50);color:var(--emerald)}
+  .badge.gray{background:var(--slate-100);color:var(--slate-500)}
+  .badge.amber{background:var(--amber-50);color:var(--amber-700)}
+  h2{margin:0;font-size:16px;font-weight:700}
+  .btn{border:1px solid var(--slate-200);background:#fff;border-radius:10px;padding:7px 10px;font-size:12px;color:var(--slate-500);white-space:nowrap}
+  .btn.primary{border-color:var(--emerald);color:var(--emerald);font-weight:600}
+  .btn.solid{background:var(--emerald);border-color:var(--emerald);color:#fff;font-weight:600}
+  .fold{display:flex;align-items:center;justify-content:space-between;padding:10px 0;font-size:13px;color:var(--slate-600)}
+  .fold .caret{color:var(--slate-400);font-size:11px}
+  .fold-body{padding:2px 0 10px;font-size:12px;color:var(--slate-500)}
+  .member{display:flex;align-items:center;gap:8px;padding:6px 0}
+  .dot{width:22px;height:22px;border-radius:50%;background:var(--slate-100);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--slate-500)}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+  .pcard{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;background:var(--slate-50);border-radius:8px;padding:6px 4px 8px}
+  .pcard.blocked{background:#fff;box-shadow:inset 0 0 0 1px #fecdd3}
+  .pcard.self{background:#f0f9ff;box-shadow:inset 0 0 0 1px var(--sky-300)}
+  .pcard .medal{position:absolute;top:4px;width:14px;height:14px;border-radius:3px;background:#dbeafe;color:#1d4ed8;font-size:8px;display:flex;align-items:center;justify-content:center}
+  .pcard .medal.l{left:4px}.pcard .medal.r{right:4px}
+  .pcard img{display:block}
+  .pname{font-size:10px;font-weight:600;line-height:1.2;text-align:center;color:var(--slate-700)}
+  .pname i{font-style:normal;font-size:8px;color:var(--slate-400);margin-left:1px}
+  .natures{display:flex;flex-wrap:wrap;justify-content:center;gap:2px}
+  .nat{border-radius:4px;background:var(--emerald-50);color:var(--emerald);font-size:9px;padding:1px 3px;line-height:1.2}
+  .nat.miss{background:var(--rose-50);color:var(--rose-600)}
+  .demanded{font-size:9px;color:var(--emerald)}
+  .modal-mask{background:rgba(15,23,42,.35);border-radius:12px;padding:14px 10px}
+  .modal{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.2)}
+  .modal .head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--slate-100)}
+  .modal .head h3{margin:0;font-size:15px}
+  .modal .head .x{color:var(--slate-400);font-size:20px;line-height:1}
+  .modal .body{padding:12px 14px}
+  .hbar{display:flex;align-items:flex-start;gap:10px}
+  .hinfo{min-width:0;flex:1}
+  .hname{font-size:16px;font-weight:700;line-height:1.2}
+  .hname i{font-style:normal;font-size:11px;color:var(--slate-400);margin-left:4px}
+  .hmeta{margin-top:4px;font-size:11px;color:var(--slate-500)}
+  .hchips{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+  .box{background:var(--slate-50);border-radius:12px;padding:8px 10px}
+  .box h4{margin:0 0 4px;font-size:11px;color:var(--slate-600)}
+  .box p{margin:2px 0;font-size:12px;color:var(--slate-700);line-height:1.45}
+  .demand{border:1px solid var(--slate-200);border-radius:12px;padding:8px 10px;margin-top:6px}
+  .actions{display:flex;gap:6px;margin-top:6px}
+  .actions .btn{flex:1;min-height:34px;padding:0;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .pub{border-top:1px dashed var(--slate-200);margin-top:10px;padding-top:10px}
+  .pub .opt{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .pub .opt > span:first-child{width:28px;font-size:11px;color:var(--slate-400);flex:none}
+  .pub .opt .chip{padding:5px 7px;font-size:11px;flex:none}
+  .pub .natures-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:8px}
+  .pub .natures-grid .chip{text-align:center;padding:6px 0;font-size:11px}
+  .pub .natures-grid .chip.done{opacity:.45;text-decoration:line-through}
+  .pub .natures-grid .chip.sent{background:var(--emerald-50);border-color:var(--emerald-200);color:var(--emerald)}
+  .pub .more{border:1px dashed var(--slate-300);background:#fff;border-radius:8px;padding:6px 0;font-size:11px;color:var(--slate-500);text-align:center}
+  .foot{display:flex;gap:8px;margin-top:10px}
+  .foot .btn{flex:1;min-height:40px;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .foot .btn.solid{flex:2}
+  .pairwrap{display:flex;gap:8px;overflow:auto;margin-top:6px;padding-bottom:2px}
+  .pet160{position:relative;flex:none;width:160px;height:120px;border:1px solid var(--slate-200);border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05);font-size:0}
+  .pet160 .ab{position:absolute;left:6px;top:10px;width:54px;height:54px}
+  .pet160 .ab img{width:40px;height:40px;object-fit:contain;transform:scale(1.35);transform-origin:top left}
+  .pet160 .rk{position:absolute;right:-4px;top:-4px;width:16px;height:16px;border-radius:50%;background:var(--amber-50);border:1px solid var(--amber-200)}
+  .pet160 .nm{position:absolute;left:64px;top:17px;font-size:10.5px;font-weight:700;transform:scale(.75);transform-origin:top left;white-space:nowrap}
+  .pet160 .nat2{position:absolute;left:125px;top:17px;font-size:8px;background:#f5f3ff;color:#6d28d9;border-radius:3px;padding:1px 3px;transform:scale(1.25);transform-origin:top left}
+  .pet160 .gd{position:absolute;left:67px;top:37px;font-size:10px;font-weight:700}
+  .pet160 .md{position:absolute;left:83px;top:37px;font-size:9px;color:var(--slate-600)}
+  .pet160 .gr{position:absolute;left:65px;top:60px;font-size:8px;color:var(--slate-600);display:flex;gap:2px}
+  .pet160 .gr span{background:var(--slate-100);border-radius:2px;padding:1px 3px}
+  .pet160 .v{position:absolute;top:80px;width:50px;text-align:center}
+  .pet160 .v b{display:block;font-size:8px;color:var(--slate-500);font-weight:400}
+  .pet160 .v i{font-style:normal;font-size:10px;font-weight:700;color:var(--slate-700)}
+  .pet160 .ft{position:absolute;left:8px;top:105px;width:144px;text-align:center;font-size:8px;color:var(--slate-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:12px;color:var(--slate-500);margin:6px 0}
+  .avatars{display:flex;gap:14px;align-items:flex-end;margin-top:6px}
+  .avatars figure{margin:0;text-align:center;font-size:11px;color:var(--slate-500)}
+  .avatars img{width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 2px}
+  .tag{position:absolute;margin:-6px 0 0 38px;background:var(--amber-50);border:1px solid var(--amber-200);border-radius:8px;font-size:9px;padding:0 3px;color:var(--amber-700)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <b>小组页改版预览</b>
+  <span>375px / 390px 对比 · 只看排布，数据是示例</span>
+  <button id="toggle">切换宽度 → 390</button>
+</div>
+
+<div class="wrap">
+
+  <!-- 1. 小组页顶部：一张卡 + 可折叠行 -->
+  <section class="frame narrow" id="f1">
+    <div class="caption">① 小组页顶部：4 张卡合成 1 张（成员 / 新建加入 默认收起）</div>
+    <div class="tabs"><span>看板</span><span>家园</span><span>收集</span><span class="on">小组</span><span>我的</span></div>
+    <div class="phone">
+      <div class="card">
+        <div class="between">
+          <span class="label">收集范围</span>
+          <span class="sub">3 个</span>
+        </div>
+        <div class="chips" style="margin-top:6px">
+          <span class="chip">个人求蛋</span>
+          <span class="chip on">对性母本全收集<span class="n">4</span></span>
+          <span class="chip">洛克工具箱元老组<span class="n">3</span></span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="between">
+          <div class="row" style="min-width:0">
+            <span class="badge green">收集小组</span>
+            <h2>对性母本全收集</h2>
+          </div>
+          <button class="btn">刷新</button>
+        </div>
+        <div class="sub" style="margin-top:3px">4 人 · 组长 菜菜</div>
+
+        <div class="divider"></div>
+
+        <div class="between">
+          <div>
+            <div class="row"><span class="label">我的资源</span><span class="badge green">已发布</span></div>
+            <div class="sub" style="margin-top:3px">200 种母本 · 2 个账号。</div>
+          </div>
+          <button class="btn primary">管理选号</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="fold">
+          <span>成员与邀请 <span class="sub">4 人</span></span>
+          <span class="caret">展开 ▾</span>
+        </div>
+        <div class="divider"></div>
+        <div class="fold">
+          <span>新建 / 加入小组</span>
+          <span class="caret">展开 ▾</span>
+        </div>
+      </div>
+      <p class="note">整页从 4 张卡收到 1 张：范围、组信息、我的资源常显；成员与新建/加入折叠成一行，点开就地展开（见右）。</p>
+    </div>
+  </section>
+
+  <!-- 1b. 展开态 -->
+  <section class="frame narrow" id="f1b">
+    <div class="caption">① 展开态：点「成员与邀请」就地展开，同一张卡里，不再单独一张</div>
+    <div class="tabs"><span>看板</span><span>家园</span><span>收集</span><span class="on">小组</span><span>我的</span></div>
+    <div class="phone">
+      <div class="card">
+        <div class="chips">
+          <span class="chip">个人求蛋</span>
+          <span class="chip on">对性母本全收集<span class="n">4</span></span>
+        </div>
+        <div class="divider"></div>
+        <div class="between">
+          <div class="row"><span class="badge green">收集小组</span><h2>对性母本全收集</h2></div>
+          <button class="btn">刷新</button>
+        </div>
+        <div class="sub" style="margin-top:3px">4 人 · 组长 菜菜</div>
+        <div class="divider"></div>
+        <div class="between">
+          <div>
+            <div class="row"><span class="label">我的资源</span><span class="badge green">已发布</span></div>
+            <div class="sub" style="margin-top:3px">200 种母本 · 2 个账号。</div>
+          </div>
+          <button class="btn primary">管理选号</button>
+        </div>
+        <div class="divider"></div>
+        <div class="fold">
+          <span>成员与邀请 <span class="sub">4 人</span></span>
+          <span class="caret">收起 ▴</span>
+        </div>
+        <div class="fold-body">
+          <div class="between" style="margin-bottom:4px">
+            <span class="sub">邀请码 · 管理</span>
+            <button class="btn" style="padding:4px 8px">复制邀请码</button>
+          </div>
+          <div class="member"><span class="dot">菜</span><span>菜菜</span><span class="badge green">组长</span></div>
+          <div class="member"><span class="dot">阿</span><span>阿乙</span><span class="sub">母本 120 种 · 昨天更新</span></div>
+          <div class="member"><span class="dot">昭</span><span>昭序</span><span class="sub">母本 98 种 · 3 天前</span></div>
+          <div class="member"><span class="dot">哈</span><span>哈基米</span><span class="sub">母本 46 种 · 9 天前未更新</span></div>
+        </div>
+        <div class="divider"></div>
+        <div class="fold">
+          <span>新建 / 加入小组</span>
+          <span class="caret">展开 ▾</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. 我缺的卡片 -->
+  <section class="frame narrow" id="f2">
+    <div class="caption">② 我缺的：头像放大、形态小字跟在名字后；已收一部分的性格往后排</div>
+    <div class="phone">
+      <div class="card">
+        <div class="between">
+          <div class="row"><span class="chip on">我缺的</span><span class="chip">需求中心</span><span class="chip">共同寻找</span></div>
+        </div>
+        <div class="sub" style="margin-top:8px">头像 56 · 四列</div>
+        <div class="grid4" style="margin-top:6px">
+          <div class="pcard"><span class="medal l">大</span><span class="medal r">+</span>
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" width="56" height="56" alt="" />
+            <span class="pname">伊贝儿</span>
+            <span class="natures"><span class="nat miss">胆小</span><span class="nat miss">固执</span></span>
+          </div>
+          <div class="pcard"><span class="medal l">大</span><span class="medal r">+</span>
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3784/icon.png" width="56" height="56" alt="" />
+            <span class="pname">云梦豚</span>
+            <span class="natures"><span class="nat miss">胆小</span></span>
+            <span class="demanded">已发 1 条</span>
+          </div>
+          <div class="pcard self"><span class="medal l">大</span><span class="medal r">+</span>
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" width="56" height="56" alt="" style="filter:hue-rotate(280deg)" />
+            <span class="pname">雪绒鸟<i>·夏</i></span>
+            <span class="natures"><span class="nat miss">开朗</span></span>
+          </div>
+          <div class="pcard blocked"><span class="medal l">大</span><span class="medal r">+</span>
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3784/icon.png" width="56" height="56" alt="" style="filter:hue-rotate(120deg)" />
+            <span class="pname">石冠王蜥<i>·首领</i></span>
+            <span class="natures"><span class="nat miss">傲慢</span></span>
+          </div>
+        </div>
+        <div class="sub" style="margin-top:8px">头像 48 · 同样四列（更松一点）</div>
+        <div class="grid4" style="margin-top:6px">
+          <div class="pcard"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" width="48" height="48" alt="" />
+            <span class="pname">伊贝儿</span><span class="natures"><span class="nat miss">胆小</span></span></div>
+          <div class="pcard"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3784/icon.png" width="48" height="48" alt="" />
+            <span class="pname">云梦豚</span><span class="natures"><span class="nat miss">胆小</span></span></div>
+          <div class="pcard"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" width="48" height="48" alt="" style="filter:hue-rotate(280deg)" />
+            <span class="pname">雪绒鸟<i>·夏</i></span><span class="natures"><span class="nat miss">开朗</span></span></div>
+          <div class="pcard"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3784/icon.png" width="48" height="48" alt="" style="filter:hue-rotate(120deg)" />
+            <span class="pname">石冠王蜥<i>·首领</i></span><span class="natures"><span class="nat miss">傲慢</span></span></div>
+        </div>
+        <p class="note">排序：目标性格一个都没收到 → 已收到其中几个（卡上打勾那个）→ 数据不全 → 确认没有。<br/>形态只写缩略（夏 / 首领），完整名字放 title。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 母本详情：内联发需求 -->
+  <section class="frame narrow" id="f3">
+    <div class="caption">③ 母本详情：发需求就在弹窗里展开，不再开第二层抽屉</div>
+    <div class="phone">
+      <div class="modal-mask">
+        <div class="modal">
+          <div class="head"><h3>母本详情</h3><span class="x">×</span></div>
+          <div class="body">
+            <div class="hbar">
+              <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" width="56" height="56" alt="" style="object-fit:contain" />
+              <div class="hinfo">
+                <div class="hname">伊贝儿<i>（无形态）</i></div>
+                <div class="hchips"><span class="nat miss">胆小</span><span class="nat miss">固执</span><span class="nat">开朗</span></div>
+                <div class="hchips" style="margin-top:5px">
+                  <span class="chip" style="padding:2px 6px;font-size:11px">大块头</span>
+                  <span class="chip" style="padding:2px 6px;font-size:11px">+100</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="box" style="margin-top:10px">
+              <h4>谁能补我</h4>
+              <p style="color:var(--rose-600)">还缺：胆小、固执</p>
+              <p>胆小：阿乙、昭序</p>
+              <p>固执：阿乙</p>
+            </div>
+
+            <div style="margin-top:10px">
+              <h4 style="margin:0 0 4px;font-size:11px;color:var(--slate-600)">我的需求 · 1</h4>
+              <div class="demand">
+                <div class="between"><span class="nat">胆小</span><span class="sub" style="color:var(--emerald)">我接了</span></div>
+                <div class="actions"><button class="btn primary">完成</button><button class="btn">撤回</button></div>
+              </div>
+            </div>
+
+            <div class="pub">
+              <div class="between">
+                <h4 style="margin:0;font-size:12px;color:var(--slate-700)">发需求</h4>
+                <span class="sub">1 个性格 = 1 条</span>
+              </div>
+              <div class="natures-grid">
+                <span class="chip sent">胆小</span><span class="chip">固执</span><span class="chip">开朗</span>
+                <span class="chip done">天真</span><span class="chip done">平和</span><span class="chip">勇敢</span>
+                <span class="chip">淘气</span><span class="chip">急躁</span>
+                <span class="more" style="grid-column:span 3">更多 +9 ▾</span>
+              </div>
+              <div class="opt"><span>性别</span><span class="chip on">母</span><span class="chip">公</span><span class="chip">不挑</span></div>
+              <div class="opt"><span>体型</span><span class="chip on">大块头</span><span class="chip">小不点</span></div>
+              <div class="opt"><span>声音</span><span class="chip on">+100</span><span class="chip">-100</span><span class="chip">婉转</span><span class="chip">粗嗓</span></div>
+              <div class="foot">
+                <button class="btn">取消</button>
+                <button class="btn solid">发布 2 条需求</button>
+              </div>
+              <p class="sub" style="margin:6px 0 0">已收齐的性格置灰不可选；已经发过的性格标绿，不重复发。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. 需求详情：对齐 -->
+  <section class="frame narrow" id="f4">
+    <div class="caption">④ 需求详情：名字 / 性格 / 性别一行对齐，去掉大片空白</div>
+    <div class="phone">
+      <div class="modal-mask">
+        <div class="modal">
+          <div class="head"><h3>需求详情</h3><span class="x">×</span></div>
+          <div class="body" style="padding:12px 7px">
+            <div class="hbar">
+              <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" width="56" height="56" alt="" style="object-fit:contain" />
+              <div class="hinfo">
+                <div class="row" style="gap:6px">
+                  <span class="hname">小星光<i>·首领</i></span>
+                  <span class="nat">胆小</span>
+                </div>
+                <div class="row" style="gap:4px;margin-top:4px">
+                  <span style="color:#db2777;font-size:13px">♀</span>
+                  <img src="public/ui/medals/1001.png" width="16" height="16" alt="大块头" title="大块头" />
+                  <img src="public/ui/medals/1026.png" width="16" height="16" alt="婉转声" title="婉转声" />
+                </div>
+                <div class="hmeta" style="margin-top:4px;display:flex;justify-content:space-between;gap:8px">
+                  <span>需求方：阿乙</span><span style="color:var(--emerald)">状态：待承接</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:10px">
+              <h4 style="margin:0;font-size:11px;color:#065f46">推荐配对</h4>
+              <div class="note" style="color:#065f46;margin:3px 0 0">用这两只同账号配对，可孵出「小星光」。</div>
+              <div class="pairwrap">
+                <div class="pet160">
+                  <div class="ab"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" alt="" /></div>
+                  <div class="nm">小星光</div><div class="nat2">胆小</div>
+                  <div class="gd" style="color:#db2777">♀</div>
+                  <div class="md">🏅🎖</div>
+                  <div class="gr"><span>动物</span></div>
+                  <div class="v" style="left:6px"><b>声音</b><i>100dB</i></div>
+                  <div class="v" style="left:54px"><b>身高</b><i>100.00%</i></div>
+                  <div class="v" style="left:107px"><b>体重</b><i>98.50%</i></div>
+                  <div class="ft">母本 · 测试甲 · 盒子03 第3位</div>
+                </div>
+                <div class="pet160">
+                  <div class="ab"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" alt="" /></div>
+                  <div class="nm">小星光</div><div class="nat2">胆小</div>
+                  <div class="gd" style="color:#2563eb">♂</div>
+                  <div class="md">🏅🎖</div>
+                  <div class="gr"><span>动物</span></div>
+                  <div class="v" style="left:6px"><b>声音</b><i>100dB</i></div>
+                  <div class="v" style="left:54px"><b>身高</b><i>100.00%</i></div>
+                  <div class="v" style="left:107px"><b>体重</b><i>98.50%</i></div>
+                  <div class="ft">种公 · 测试甲 · 盒子03 第0位</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. 头像档位说明 -->
+  <section class="frame narrow" id="f5">
+    <div class="caption">⑤ 头像档位：炫彩不再套异色图（云梦豚 / 伊贝儿 实测）</div>
+    <div class="phone">
+      <div class="card">
+        <div class="avatars">
+          <figure><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3784/icon.png" alt="" /><figcaption>云梦豚 原色</figcaption></figure>
+          <figure><span style="position:relative;display:block"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3784/icon.png" alt="" /><span class="tag">炫彩</span></span><figcaption>炫彩：原色图 + 徽标</figcaption></figure>
+          <figure><span style="position:relative;display:block"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3784/icon_yise.png" alt="" /><span class="tag">异色</span></span><figcaption>异色：异色图</figcaption></figure>
+        </div>
+        <div class="avatars" style="margin-top:14px">
+          <figure><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" alt="" /><figcaption>伊贝儿 原色</figcaption></figure>
+          <figure><span style="position:relative;display:block"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon.png" alt="" /><span class="tag">炫彩</span></span><figcaption>炫彩：原色图 + 徽标</figcaption></figure>
+          <figure><span style="position:relative;display:block"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3043/icon_yise.png" alt="" /><span class="tag">异色</span></span><figcaption>异色：异色图</figcaption></figure>
+        </div>
+        <p class="note">规则：只有 isShiny（含异色炫彩）取 icon_yise.png；isColorful 单独为真时用原色图，徽标仍是「炫彩」。</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  const btn = document.getElementById('toggle');
+  let wide = false;
+  btn.addEventListener('click', () => {
+    wide = !wide;
+    document.querySelectorAll('.frame').forEach((frame) => {
+      frame.classList.toggle('wide', wide);
+      frame.classList.toggle('narrow', !wide);
+    });
+    btn.textContent = wide ? '切换宽度 → 375' : '切换宽度 → 390';
+  });
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { eggGroupNames } from '../data/catalog';
 import { isBreedableGroup } from '../domain/eggs';
-import { bodyMedalIcon, rarityIcon, voiceMedalIcon, voiceMedalName } from '../domain/petIcons';
+import { petBodyMedalIcon, petVoiceMedalIcon, rarityIcon, voiceMedalName } from '../domain/petIcons';
 import { GenderMark } from './GenderMark';
 import { PetAvatar } from './PetAvatar';
 
@@ -47,8 +47,8 @@ const L = {
   gender: { left: 67, top: 37, scale: 1 },
   medals: { left: 83, top: 37, scale: 0.9 },
   groups: { left: 65, top: 60, scale: 1.05 },
-  // 性格在右上角（用户 JSON）；昵称只显示基础名，5 字以内不会碰到它。
-  nature: { left: 125, top: 17, scale: 1.25 },
+  // 性格在右上角（用户 JSON）；2026-11-01 方案 D：徽标右移 4px 到 129，名字不再截断。
+  nature: { left: 129, top: 17, scale: 1.25 },
   sound: { left: 6, top: 80, scale: 1 },
   height: { left: 54, top: 80, scale: 1 },
   weight: { left: 107, top: 80, scale: 1 },
@@ -63,11 +63,12 @@ const at = (key: keyof typeof L): CSSProperties => ({
 });
 
 /**
- * 昵称最大宽度（未缩放坐标，2026-11-01 R2-5-M01 方案 A）：
- * 图鉴唯一 6 字基础名「睡铃雪影娃娃」不截断时右缘会到 127px，压住 left=125 的性格徽标。
- * 78px × scale 0.75 = 58.5px，右缘 64 + 58.5 = 122.5px，离徽标仍有 2.5px；5 字名照常完整显示。
+ * 昵称最大宽度（未缩放坐标，2026-11-01 方案 D）：
+ * 图鉴唯一 6 字基础名「睡铃雪影娃娃」实测右缘 127px，性格徽标已右移到 left=129，两者间隙 2px，
+ * 名字完整显示、不再截断。84px × scale 0.75 = 63px，右缘 64 + 63 = 127px < 129px；
+ * 更长的名字（8 字以上）仍由 truncate 兜底。
  */
-const NAME_MAX_WIDTH = 78;
+const NAME_MAX_WIDTH = 84;
 
 const groupTag = (groupId: number): string =>
   (eggGroupNames[groupId] ?? '').replace(/组$/, '').slice(0, 2);
@@ -103,8 +104,8 @@ export function PetCompactCard({
         ? 'shiny'
         : null;
   const raritySrc = rarityIcon(rarityKind);
-  const bodyIcon = bodyMedalIcon(medalBody);
-  const voiceIcon = voiceMedalIcon(voiceDb);
+  const bodyIcon = petBodyMedalIcon(medalBody, weightPercent);
+  const voiceIcon = petVoiceMedalIcon(voiceDb);
   const voiceName = voiceMedalName(voiceDb);
   const groups = eggGroups.filter(isBreedableGroup).slice(0, 2);
   /**

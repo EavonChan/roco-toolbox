@@ -5,6 +5,7 @@ import { readAccountId } from '../api/session';
 import { clearAccountFilter } from './accountFilterStore';
 import { clearCollapsedAccounts, clearPlacementMarks } from './demandPlacementStore';
 import { clearCompletionRead } from './demandCompletionReadStore';
+import { clearDemandCancelledState } from './demandCancelledNotice';
 import { clearDemandPicks } from './demandPickStore';
 import { resetImportOutcome } from './importOutcomeStore';
 import { setImportMessage } from './importMessageStore';
@@ -40,6 +41,7 @@ export async function resetImportedData(): Promise<void> {
   clearPlacementMarks(accountId);
   clearCompletionRead(accountId);
   clearCollapsedAccounts(accountId);
+  clearDemandCancelledState(accountId);
   clearMyPetsFilters();
   resetListViews();
 }

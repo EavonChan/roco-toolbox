@@ -5,14 +5,14 @@ import type { HomeResident, HomeSnapshot, OwnedPet } from '../domain/types';
 import { useAccountFilter } from './accountFilterStore';
 import { AccountFilterBar } from './AccountFilterBar';
 import { EmptyState } from './EmptyState';
-import { GenderMark } from './GenderMark';
 import { HomeDemandPlacements } from './HomeDemandPlacements';
-import { PetAvatar } from './PetAvatar';
+import { HomePairDiagram } from './HomePairDiagram';
 import { PetCompactCard } from './PetCompactCard';
 import { BODY, CARD, HINT, INSET, PAGE, TITLE } from './primitives/styles';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { useSnapshots } from './useSnapshots';
 import { labelerFor } from './useOwnedPets';
+import { useHomeRefresh, type HomeRefreshController } from './useHomeRefresh';
 
 /**
  * 家园页（2026-10-27）。
@@ -22,7 +22,9 @@ import { labelerFor } from './useOwnedPets';
  * - 游戏给出的实际配对（layEggCouples）
  * - 家园地上有没有蛋（sceneEggs）
  *
- * 不做摆位图。没有采集过家园时，明确告诉用户采集时要进家园走一圈。
+ * 配窝卡片用「摆位图」画法（2026-11-01 用户口径，与看板配窝建议一致）：按配对关系紧凑排，
+ * 学院小窝那只绿底；抓包里的窝坐标大多为空，所以不按真实坐标画。没采集过家园时，
+ * 明确告诉用户采集时要进家园走一圈。
  */
 export interface HomeLandProps {
   onGoImport?: () => void;
@@ -89,27 +91,65 @@ function HomePetCard({ pet, resident }: { pet?: OwnedPet; resident: HomeResident
   );
 }
 
-/** 配窝卡片里的一只精灵：小头像 + 名字 + 性别。 */
-function HomePairChip({ pet, resident }: { pet?: OwnedPet; resident: HomeResident }) {
-  const fullName = resident.name || pet?.name || `精灵 ${resident.instanceId}`;
-  // 多形态只写基础名（形态由头像区分），完整名字放 title（与紧凑卡同一口径）
-  const displayName = fullName.split('_')[0] || fullName;
-  const gender = GENDER_OF(resident.gender || pet?.gender);
+/**
+ * 「刷新家园」：起一次短采集，回来只更新家园（2026-11-01 用户拍板）。
+ * 浏览器里没有采集桥，按钮不可用并说明只能在安卓工具箱内刷。
+ */
+function HomeRefreshBar({ refresh }: { refresh: HomeRefreshController }) {
+  const { available, stage, message, start, finish, cancel } = refresh;
+  const busy = stage === 'starting' || stage === 'saving';
+  const label =
+    stage === 'starting'
+      ? '正在开始…'
+      : stage === 'saving'
+        ? '正在读取…'
+        : stage === 'done'
+          ? '再刷一次'
+          : stage === 'failed'
+            ? '重试'
+            : '刷新家园';
   return (
-    <span
-      className="flex min-w-0 items-center gap-0.5 rounded-md bg-white/80 px-1 py-0.5"
-      data-testid="home-pair-chip"
-      title={fullName}
-    >
-      <PetAvatar
-        gameId={pet?.gameId ?? (Number(resident.baseId) || null)}
-        name={fullName}
-        shiny={pet?.isShiny}
-        size={24}
-      />
-      <span className="max-w-[4.5rem] truncate text-[10px] text-slate-700">{displayName}</span>
-      <GenderMark gender={gender} />
-    </span>
+    <section className="rounded-xl bg-white px-2.5 py-2 shadow-sm" data-testid="home-refresh">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-slate-700">刷新家园</p>
+          <p className="mt-0.5 text-[11px] text-slate-500" data-testid="home-refresh-hint">
+            {available
+              ? '点开始后进游戏打开一次家园即可；只更新家园，宠物和蛋不动。'
+              : '当前环境没有本机采集（只在安卓工具箱安装包内可用）。'}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {available && stage === 'waiting' ? (
+            <button
+              type="button"
+              onClick={finish}
+              className="min-h-[28px] rounded-lg border border-emerald-500 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700"
+              data-testid="home-refresh-finish"
+            >
+              完成刷新
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={stage === 'waiting' ? cancel : start}
+            disabled={!available || busy}
+            className="min-h-[28px] rounded-lg border border-slate-200 px-2 text-[11px] font-medium text-slate-600 disabled:text-slate-300"
+            data-testid="home-refresh-start"
+          >
+            {stage === 'waiting' ? '取消' : label}
+          </button>
+        </div>
+      </div>
+      {message ? (
+        <p
+          className={`mt-1 text-[11px] ${stage === 'failed' ? 'text-rose-600' : 'text-emerald-700'}`}
+          data-testid="home-refresh-message"
+        >
+          {message}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -122,7 +162,6 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
   );
   if (!home) return null;
   const academy = home.nests.filter((nest) => nest.nestType === 'academy').length;
-  const byActor = new Map(home.residents.map((resident) => [resident.actorId, resident]));
   const eggCount = home.sceneEggs.length;
 
   return (
@@ -175,49 +214,15 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
       <div className="mt-3" data-testid="home-pair-cards">
         <div className="flex items-baseline justify-between gap-2">
           <div className="text-xs font-medium text-slate-500">配窝卡片</div>
-          <div className="text-[10px] text-slate-400">按游戏实际配对模拟</div>
+          <div className="text-[10px] text-slate-400">按游戏实际配对</div>
         </div>
         {home.layEggCouples.length === 0 ? (
           <p className={HINT} data-testid="home-no-pairs">
             游戏数据里没有当前配对（可能没有可配对的精灵，或采集时家园还没加载完）。
           </p>
         ) : (
-          <div className="mt-1.5 space-y-1.5">
-            {home.layEggCouples.map((pair) => {
-              const female = byActor.get(pair.femaleActorId);
-              const males = pair.maleActorIds
-                .map((actorId) => byActor.get(actorId))
-                .filter((resident): resident is HomeResident => resident != null);
-              return (
-                <div
-                  key={pair.femaleActorId}
-                  className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-2"
-                  data-testid="home-pair-card"
-                >
-                  <div className="flex flex-wrap items-center gap-1 text-[11px] font-medium">
-                    <span className="text-pink-600">
-                      ♀ {female?.name ?? `精灵 ${pair.femaleActorId}`}
-                    </span>
-                    <span className="text-slate-400">×</span>
-                    <span className="text-sky-600">
-                      ♂ {males.map((resident) => resident.name).join('、') || '公本未知'}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
-                    {female ? (
-                      <HomePairChip pet={pets.get(female.instanceId)} resident={female} />
-                    ) : null}
-                    {males.map((resident) => (
-                      <HomePairChip
-                        key={resident.instanceId}
-                        pet={pets.get(resident.instanceId)}
-                        resident={resident}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="mt-1.5 rounded-xl bg-slate-50 p-2">
+            <HomePairDiagram couples={home.layEggCouples} residents={home.residents} pets={pets} />
           </div>
         )}
       </div>
@@ -292,6 +297,7 @@ export function saveHomeView(view: HomeView): void {
 export function HomeLand({ onGoImport }: HomeLandProps = {}) {
   const { snapshots, loaded } = useSnapshots();
   const { excluded } = useAccountFilter();
+  const homeRefresh = useHomeRefresh();
   const labelOf = useMemo(() => labelerFor(snapshots), [snapshots]);
   const accounts = snapshots.map(labelOf);
   const visible = snapshots.filter((snapshot) => !excluded.has(labelOf(snapshot)));
@@ -326,17 +332,17 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
         />
       </div>
       {snapshots.length > 0 ? <AccountFilterBar accounts={accounts} /> : null}
+      {loaded && view === 'nests' && snapshots.length > 0 ? (
+        <HomeRefreshBar refresh={homeRefresh} />
+      ) : null}
       {!loaded ? (
         <p className={`${HINT}`}>正在读取本地数据…</p>
       ) : view === 'demands' ? (
         snapshots.length === 0 ? (
           <EmptyState onGoImport={onGoImport} />
-        ) : visible.length === 0 ? (
-          <p className={`${HINT} rounded-xl bg-slate-50 p-3`} data-testid="home-demand-no-account">
-            未选择游戏账号：上面点「全选」可恢复。
-          </p>
         ) : (
-          <HomeDemandPlacements snapshots={visible} labelOf={labelOf} />
+          // 账号筛选只影响「家园现状」；上窝按全部账号计算，保证可用产线与同组其他人一致（R2-2-U01）
+          <HomeDemandPlacements snapshots={snapshots} labelOf={labelOf} />
         )
       ) : snapshots.length === 0 ? (
         <EmptyState onGoImport={onGoImport} />

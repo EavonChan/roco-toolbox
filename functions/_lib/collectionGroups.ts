@@ -570,9 +570,13 @@ async function handleDemandWithdraw(
   const params = new URL(request.url).searchParams;
   const nature = (params.get('nature') ?? '').trim();
   if (nature.length > 8) throw new MotherInputError('INVALID_INPUT', 'nature 无效');
-  const gender = params.get('gender') ?? DEFAULT_DEMAND_GENDER;
-  const demandBody = params.get('body') ?? DEFAULT_DEMAND_BODY;
-  const voice = params.get('voice') ?? DEFAULT_DEMAND_VOICE;
+  // 精确操作必须带全三维：缺省不再静默补「母 / 大块头 / +100」，否则会撤错那一条（R2-7-L04）
+  const gender = params.get('gender');
+  const demandBody = params.get('body');
+  const voice = params.get('voice');
+  if (gender == null || demandBody == null || voice == null) {
+    throw new MotherInputError('INVALID_INPUT', '缺少性别 / 体型 / 声音参数');
+  }
   if (!isDemandGender(gender)) throw new MotherInputError('INVALID_INPUT', '性别无效');
   if (!isDemandBody(demandBody)) throw new MotherInputError('INVALID_INPUT', '体型无效');
   if (!isDemandVoice(voice)) throw new MotherInputError('INVALID_INPUT', '声音无效');
@@ -613,9 +617,13 @@ async function handleDemandAction(
   if (typeof nature !== 'string' || nature.length > 8) {
     throw new MotherInputError('INVALID_INPUT', 'nature 无效');
   }
-  const gender = body.gender ?? DEFAULT_DEMAND_GENDER;
-  const demandBody = body.body ?? DEFAULT_DEMAND_BODY;
-  const voice = body.voice ?? DEFAULT_DEMAND_VOICE;
+  // 接单 / 放弃 / 结单是精确操作，三维必须显式传入（R2-7-L04）；发布路径仍保留默认值
+  const gender = body.gender;
+  const demandBody = body.body;
+  const voice = body.voice;
+  if (gender == null || demandBody == null || voice == null) {
+    throw new MotherInputError('INVALID_INPUT', '缺少性别 / 体型 / 声音参数');
+  }
   if (!isDemandGender(gender)) throw new MotherInputError('INVALID_INPUT', '性别无效');
   if (!isDemandBody(demandBody)) throw new MotherInputError('INVALID_INPUT', '体型无效');
   if (!isDemandVoice(voice)) throw new MotherInputError('INVALID_INPUT', '声音无效');

@@ -5,7 +5,7 @@ import { CHANGELOG } from './data/changelog';
 import type { AccountSnapshot } from './domain/parseBackup';
 import { resetSnapshotCacheForTest } from './storage/snapshotStore';
 import { saveSnapshot } from './storage/snapshots';
-import { GUIDE_VERSION } from './ui/guide';
+import { TOUR_SEGMENT_ORDER, TOUR_VERSION } from './ui/tour';
 
 const snapshot = (accountName: string): AccountSnapshot => ({
   accountName,
@@ -16,9 +16,11 @@ const snapshot = (accountName: string): AccountSnapshot => ({
   eggs: [],
 });
 
-/** 把两个首启弹窗标为已读，避免它们挡在页面中间 */
+/** 把首启弹窗 / 各页引导标为已读，避免它们挡在页面中间 */
 const presetFirstRunSeen = () => {
-  window.localStorage.setItem('roco.guideSeen', GUIDE_VERSION);
+  for (const segment of TOUR_SEGMENT_ORDER) {
+    window.localStorage.setItem(`roco.tourSeen.${segment}`, TOUR_VERSION);
+  }
   if (CHANGELOG[0]) window.localStorage.setItem('roco.changelogSeen', CHANGELOG[0].id);
 };
 
@@ -75,7 +77,7 @@ describe('App', () => {
     expect(screen.queryByTestId('group-personal')).toBeNull();
   });
 
-  test('打开教程不会把当前页面卸载重挂（页内选择保留）', () => {
+  test('顶部「教程」重播当前页引导，关闭后仍停在原页面', () => {
     presetFirstRunSeen();
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: '收集' }));
@@ -83,10 +85,14 @@ describe('App', () => {
     expect(screen.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
 
     fireEvent.click(screen.getByTestId('guide-open'));
-    expect(screen.getByTestId('guide-modal')).toBeDefined();
-    fireEvent.click(screen.getByTestId('guide-skip'));
+    expect(screen.getByTestId('tour-root')).toBeDefined();
+    // 跳过会先给出「教程」入口提示，再点一次才关闭
+    fireEvent.click(screen.getByTestId('tour-skip'));
+    fireEvent.click(screen.getByTestId('tour-skip'));
 
-    expect(screen.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('tour-root')).toBeNull();
+    // 页面没有被卸载重挂：仍是收集页（引导首步会把子视图切回母本）
+    expect(screen.getByTestId('collection-kinds')).toBeTruthy();
   });
 
   test('受限存储（读页签键抛错）不白屏', () => {

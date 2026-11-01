@@ -3,6 +3,9 @@ import {
   DEFAULT_DEMAND_BODY,
   DEFAULT_DEMAND_GENDER,
   DEFAULT_DEMAND_VOICE,
+  DEMAND_BODIES,
+  DEMAND_GENDERS,
+  DEMAND_VOICES,
   type DemandBody,
   type DemandGender,
   type DemandVoice,
@@ -99,6 +102,54 @@ const GROUP_DEFAULT: GroupListState = {
   onlyGroupLine: false,
 };
 
+/**
+ * 「我缺的」目标口径（2026-11-01 用户反馈：每次进小组都要重新调「小不点 +100」，很麻烦）。
+ *
+ * 和查询 / 成员筛选这些**临时**查看条件不同，这几项是「我想追什么」，跨小组、跨会话都该沿用，
+ * 所以单独落 localStorage。它是发布需求的默认值来源，读回来要逐项校验（手改 / 旧版本的脏值
+ * 会让发布口径悄悄变掉）。
+ */
+type TargetCriteria = Pick<
+  GroupListState,
+  'targetGender' | 'targetNature' | 'targetBody' | 'targetVoice' | 'targetKind'
+>;
+
+const TARGET_CRITERIA_DEFAULT: TargetCriteria = {
+  targetGender: DEFAULT_DEMAND_GENDER,
+  targetNature: '',
+  targetBody: DEFAULT_DEMAND_BODY,
+  targetVoice: DEFAULT_DEMAND_VOICE,
+  targetKind: 'mother',
+};
+
+const TARGET_CRITERIA_FIELDS = [
+  'targetGender',
+  'targetNature',
+  'targetBody',
+  'targetVoice',
+  'targetKind',
+] as const satisfies ReadonlyArray<keyof GroupListState>;
+
+const isOneOf = <T extends string>(options: readonly T[], value: unknown): value is T =>
+  options.includes(value as T);
+
+const targetCriteriaStore = createModuleStore<TargetCriteria>(TARGET_CRITERIA_DEFAULT, {
+  persistKey: 'roco.groupTargetCriteria',
+  migrate: (loaded) => ({
+    targetGender: isOneOf(DEMAND_GENDERS, loaded?.targetGender)
+      ? loaded.targetGender
+      : TARGET_CRITERIA_DEFAULT.targetGender,
+    targetNature: typeof loaded?.targetNature === 'string' ? loaded.targetNature : '',
+    targetBody: isOneOf(DEMAND_BODIES, loaded?.targetBody)
+      ? loaded.targetBody
+      : TARGET_CRITERIA_DEFAULT.targetBody,
+    targetVoice: isOneOf(DEMAND_VOICES, loaded?.targetVoice)
+      ? loaded.targetVoice
+      : TARGET_CRITERIA_DEFAULT.targetVoice,
+    targetKind: loaded?.targetKind === 'stud' ? 'stud' : 'mother',
+  }),
+});
+
 const keyOf = (accountId: string, groupId: string): string => `${accountId}|${groupId}`;
 
 type GroupLists = Record<string, GroupListState>;
@@ -116,7 +167,10 @@ export function ensureGroupSession(accountId: string): void {
 }
 
 export function useGroupList(accountId: string, groupId: string): GroupListState {
-  return groupStore.use()[keyOf(accountId, groupId)] ?? GROUP_DEFAULT;
+  const session = groupStore.use()[keyOf(accountId, groupId)] ?? GROUP_DEFAULT;
+  // 目标口径走持久化 store：临时查看条件（查询 / 成员筛选等）仍在会话里
+  const target = targetCriteriaStore.use();
+  return { ...session, ...target };
 }
 
 export function setGroupList(
@@ -124,14 +178,39 @@ export function setGroupList(
   groupId: string,
   patch: Partial<GroupListState>,
 ): void {
+  const sessionPatch: Partial<GroupListState> = {};
+  let targetChanged = false;
+  const nextTarget: TargetCriteria = { ...targetCriteriaStore.get() };
+  for (const [field, value] of Object.entries(patch) as Array<
+    [keyof GroupListState, unknown]
+  >) {
+    if ((TARGET_CRITERIA_FIELDS as readonly string[]).includes(field)) {
+      (nextTarget as Record<string, unknown>)[field] = value;
+      targetChanged = true;
+      continue;
+    }
+    (sessionPatch as Record<string, unknown>)[field] = value;
+  }
+  if (targetChanged) targetCriteriaStore.set(nextTarget);
+  if (Object.keys(sessionPatch).length === 0) return;
   const key = keyOf(accountId, groupId);
   const current = groupStore.get();
-  groupStore.set({ ...current, [key]: { ...(current[key] ?? GROUP_DEFAULT), ...patch } });
+  groupStore.set({ ...current, [key]: { ...(current[key] ?? GROUP_DEFAULT), ...sessionPatch } });
 }
 
 export function clearGroupListSession(): void {
   lastGroupAccountId = null;
   groupStore.set({});
+}
+
+/** 供单元测试复位：目标口径是持久化的，测试之间要单独清。 */
+export function resetGroupTargetCriteriaForTest(): void {
+  targetCriteriaStore.set({ ...TARGET_CRITERIA_DEFAULT });
+  try {
+    window.localStorage.removeItem('roco.groupTargetCriteria');
+  } catch {
+    // 忽略
+  }
 }
 
 /** 重置导入数据时清空个人清单搜索与小组临时筛选。 */

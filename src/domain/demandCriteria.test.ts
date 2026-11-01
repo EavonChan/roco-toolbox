@@ -7,6 +7,7 @@ import {
   hasStockForDemand,
   hasStockForStudDemand,
   findStudBreedableSupply,
+  matchesParentGrade,
   memberFreshness,
   pairOptionsForEgg,
   petMatchesDemand,
@@ -482,6 +483,70 @@ describe('配对按概率排序（2026-10-30 石岚号漏选 60% 的回归）', 
     expect(options[0].natureChance).toBe(0.6);
     expect(options[0].malePet.snapshot.accountName).toBe('乙');
     expect(findBreedableSupply(snapshots, criteria, speciesWithMale201).kind).toBe('breedable');
+  });
+
+  test('绿窝需求：性格按学院小窝 100% 算，不再按单方 30% / 双亲 60%', () => {
+    const snapshots = [
+      snapshot(1001, '甲', [
+        // 只有母本带目标性格 → 普通窝是 30%
+        mother(201, { nature: '固执' }),
+        // 三号蛋组的母 / 公，用来验证种公需求的绿窝概率
+        mother(701, { nature: '固执' }),
+        mother(701, { gender: '公', nature: '开朗' }),
+      ]),
+    ];
+    const criteria: DemandCriteria = {
+      eggGameId: 201,
+      nature: '固执',
+      gender: '母',
+      body: '大块头',
+      voice: '+100',
+    };
+    const normal = pairOptionsForEgg(snapshots, criteria, speciesWithMale201);
+    expect(normal[0].natureChance).toBe(0.3);
+    expect(normal[0].greenNest).toBe(false);
+
+    const green = pairOptionsForEgg(snapshots, criteria, speciesWithMale201, 3, true);
+    expect(green[0].natureChance).toBe(1);
+    expect(green[0].greenNest).toBe(true);
+
+    // 种公需求同样认绿窝：性格 100% × 性别 50% = 50%
+    const studDemand = {
+      eggGameId: -3,
+      nature: '固执',
+      gender: '公',
+      body: '大块头',
+      voice: '+100',
+      requireGreenNest: true,
+    };
+    const [studBest] = studHatchOptions(snapshots, studDemand, speciesWithMale201);
+    expect(studBest.greenNest).toBe(true);
+    expect(studBest.chance).toBeCloseTo(0.5);
+  });
+});
+
+describe('满体重 / 零体重：父母按普通档位匹配，交付才要求满分（2026-11-01）', () => {
+  const nearFull = mother(101, { medalBody: '大块头', weightPercent: 98 });
+  const nearFullMale = mother(101, { gender: '公', medalBody: '大块头', weightPercent: 98 });
+  const full = mother(101, { medalBody: '大块头', weightPercent: 100 });
+  const criteria: DemandCriteria = {
+    eggGameId: 101,
+    nature: '',
+    gender: '母',
+    body: '满体重',
+    voice: '',
+  };
+
+  test('父母只要是大块头就能配，不要求本身就 100% 体重', () => {
+    expect(matchesParentGrade(nearFull, criteria)).toBe(true);
+    const options = pairOptionsForEgg([snapshot(1001, '甲', [nearFull, nearFullMale])], criteria, species);
+    expect(options).toHaveLength(1);
+  });
+
+  test('结单 / 现货仍然严格要求满体重', () => {
+    const eggOf = eggMapOf(species);
+    expect(petMatchesDemand(nearFull, criteria, eggOf)).toBe(false);
+    expect(petMatchesDemand(full, criteria, eggOf)).toBe(true);
   });
 });
 

@@ -25,6 +25,8 @@ export function TabNav({ active, onChange }: TabNavProps) {
           type="button"
           onClick={() => onChange(tab.id)}
           aria-current={active === tab.id ? 'page' : undefined}
+          // 新手引导要能单独框到某个页签（例如首启先指「我的」）
+          data-tour={`tab-${tab.id}`}
           className={`min-h-[40px] flex-1 border-b-2 px-2 text-sm font-medium ${
             active === tab.id
               ? 'border-emerald-600 text-emerald-700'

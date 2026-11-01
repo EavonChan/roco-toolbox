@@ -62,15 +62,19 @@ describe('紧凑精灵卡', () => {
     expect(screen.getAllByText('—')).toHaveLength(2);
   });
 
-  test('六字基础名截断，不再压右上角性格徽标', () => {
+  test('六字基础名完整显示，不再压右上角性格徽标（方案 D）', () => {
     render(<PetCompactCard {...base} name="睡铃雪影娃娃" />);
     const name = screen.getByText('睡铃雪影娃娃');
     expect(name).toHaveAttribute('title', '睡铃雪影娃娃');
     expect(name.className).toContain('truncate');
-    // 未缩放 78px × scale 0.75 = 58.5px，右缘 64 + 58.5 = 122.5px < 性格徽标 left 125
-    expect(name.style.maxWidth).toBe('78px');
+    // 84px × scale 0.75 = 63px，右缘 64 + 63 = 127px < 性格徽标 left 129
+    expect(name.style.maxWidth).toBe('84px');
     expect(name.style.left).toBe('64px');
     expect(name.style.transform).toBe('scale(0.75)');
+
+    const nature = screen.getByText('固执');
+    expect(nature.style.left).toBe('129px');
+    expect(nature.style.top).toBe('17px');
   });
 
   test('多形态只显示基础名，完整名字放 title', () => {

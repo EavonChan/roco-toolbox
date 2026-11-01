@@ -14,10 +14,12 @@ import {
   memberFreshness,
   NATURE_CHANCE_LABELS,
   pairOptionsForEgg,
-  studHatchOptions,
   type DemandPairOption,
-  type StudHatchOption,
 } from '../domain/demandCriteria';
+import {
+  studPlacementOptions,
+  type StudPlacementOption,
+} from '../domain/demandPlacement';
 import {
   findStudDemandCandidates,
   type StudDemandCandidate,
@@ -31,8 +33,14 @@ import {
   type ProductionLinesIndex,
   type ProductionTarget,
 } from '../domain/productionLines';
-import { bodyMedalIconByLabel, voiceMedalIconByLabel, voiceMedalLabel } from '../domain/petIcons';
+import {
+  bodyMedalIconByLabel,
+  GREEN_NEST_ICON,
+  voiceMedalIconByLabel,
+  voiceMedalLabel,
+} from '../domain/petIcons';
 import { isBreedableGroup } from '../domain/eggs';
+import { requiredEggWeight } from '../domain/eggWeight';
 import { boxLabel } from '../domain/coverageDetail';
 import { speciesDisplayName } from '../domain/speciesName';
 import type { StudRecommendation } from '../domain/suggestions';
@@ -92,9 +100,9 @@ const DEMAND_CARD_POS = {
   avatar: { left: 18, top: 7, scale: 0.95 },
   /** 性别 + 名字 + 形态后缀合成一行，整卡宽居中（2026-11-01 用户口径：两者强关联）。 */
   nameRow: { top: 49 },
-  /** 两枚奖牌收在两个上角；满体重 / 满声音换蛋神 MAX / MIN 图。 */
-  body: { left: 4, top: 4, scale: 1 },
-  voice: { left: 63, top: 4, scale: 1 },
+  /** 两枚奖牌收在两个上角；满体重 / 满声音换蛋神 MAX / MIN 图。2026-11-01 用户手调：放大到 1.25 / 1.3。 */
+  body: { left: 4, top: 4, scale: 1.25 },
+  voice: { left: 61, top: 4, scale: 1.3 },
   /** 性格全部铺开：1~3 个一行，4~6 个自动换第二行（不再用 +N 角标）。 */
   nature: { top: 63 },
   /** 状态条：满宽、浅色半透明白底 + 细分隔线，贴卡片底部。 */
@@ -258,6 +266,11 @@ export function MotherGroupResources({
    * 用户可能刚拿到蛋、还没重新采集导入。值为 demandKey。
    */
   const [confirmComplete, setConfirmComplete] = useState<string | null>(null);
+  /**
+   * 满体重 / 零体重单的接单二次确认（2026-11-01）：这类单要交付最大 / 最小蛋重的蛋，
+   * 普通大块头 / 小不点父母也能接，先提醒一句再提交。值为 demandKey。
+   */
+  const [confirmClaim, setConfirmClaim] = useState<string | null>(null);
   /** 需求详情（2026-10-28）：点击卡片上的「查看」看是谁发的、该怎么配对。 */
   const [detailKey, setDetailKey] = useState<string | null>(null);
   /** 「我缺的」二级页面：点头像进入，把发需求 / 完成 / 撤回放到大按钮里操作。 */
@@ -809,6 +822,25 @@ export function MotherGroupResources({
     }
   };
 
+  /**
+   * 共同寻找卡片的状态文字（2026-11-01 用户口径）：卡上只显示状态，
+   * 认领 / 释放 / 转交统一进二级页操作。
+   */
+  const seekingTaskLabelOf = (row: MotherCoverageRow): string => {
+    if (tasksError) return '任务读取失败';
+    if (!tasksConfirmed) return tasksLoading ? '核对发布状态…' : '待确认';
+    const owner = taskOf(row)?.ownerAccountId;
+    if (!owner) return '待认领';
+    return owner === viewerAccountId ? '我认领了' : `认领：${nameOf(owner)}`;
+  };
+  const seekingTaskToneOf = (row: MotherCoverageRow): string => {
+    if (tasksError) return 'text-rose-600';
+    if (!tasksConfirmed) return tasksLoading ? 'text-slate-500' : 'text-amber-700';
+    const owner = taskOf(row)?.ownerAccountId;
+    if (!owner) return 'text-slate-500';
+    return owner === viewerAccountId ? 'text-emerald-700' : 'text-slate-500';
+  };
+
   const transferTo = async (row: MotherCoverageRow, toAccountId: string) => {
     if (!onTransferTask || busyKey || !toAccountId) return;
     const key = taskKeyOf(row);
@@ -1182,26 +1214,43 @@ export function MotherGroupResources({
   /**
    * 需求详情里的配对选项（2026-10-30 用户口径：**必须按概率排序**）。
    *
-   * - 种公单：我账号里能孵出这颗公的每颗蛋（名字 / 蛋组 / 概率），推荐用第一颗；
+   * - 种公单：交给 `studPlacementOptions`，与家园「接单上窝」同一套分配，只留最高概率档；
    * - 母本单：蛋是固定的，只算这颗蛋在我账号里的几组配对（最多 3 组），推荐用第一组。
-   *
-   * 之前这里按图鉴顺序取第一个能孵的蛋，会把 30% 的组合当成推荐（石岚号实测）。
    */
+  /** 我承接的其它未完成需求：算「用这颗」候选时一起排，窝位 / 学院占用按真实情况来。 */
+  const placementNeighbours = useMemo(
+    () =>
+      demands
+        .filter((demand) => demand.status === 'claimed' && demand.claimerAccountId === viewerAccountId)
+        .map((demand) => ({ ...demand, claimedAt: demand.updatedAt })),
+    [demands, viewerAccountId],
+  );
+
   const detailPairOptions = useMemo(() => {
     if (!detailDemand) {
-      return { stud: [] as StudHatchOption[], mother: [] as DemandPairOption[] };
+      return { stud: [] as StudPlacementOption[], mother: [] as DemandPairOption[] };
     }
     if (isStudDemandKey(detailDemand.eggGameId)) {
+      // 与家园「接单上窝」共用同一套分配（R2-8-N01）：候选就是真的能排上的组合
+      const self = { ...detailDemand, claimedAt: detailDemand.updatedAt };
+      const key = demandKey(detailDemand);
+      const alongside = placementNeighbours.filter((demand) => demandKey(demand) !== key);
       return {
-        stud: studHatchOptions(snapshots, detailDemand, species),
+        stud: studPlacementOptions(snapshots, self, species, alongside),
         mother: [] as DemandPairOption[],
       };
     }
     return {
-      stud: [] as StudHatchOption[],
-      mother: pairOptionsForEgg(snapshots, detailDemand, species, 3),
+      stud: [] as StudPlacementOption[],
+      mother: pairOptionsForEgg(
+        snapshots,
+        detailDemand,
+        species,
+        3,
+        detailDemand.requireGreenNest === true,
+      ),
     };
-  }, [detailDemand, snapshots, species]);
+  }, [detailDemand, snapshots, species, placementNeighbours]);
 
   /**
    * 种公需求的候选蛋（2026-10-30 用户口径）：按组内已发布产线实时算，
@@ -1315,16 +1364,55 @@ export function MotherGroupResources({
    * 用本机背包找同账号能配的一对（母本 + 种公），找不到时说明还缺什么。
    */
   const demandPairing = (demand: CollectionDemand): ReactNode => {
-    if (snapshots.length === 0) {
+    /**
+     * 满体重 / 零体重单的交付要求（2026-11-01 用户口径）：直接写出要交付的蛋重，
+     * 承接人不用再去查图鉴；绿窝只用标签表示，不写整句解释。
+     */
+    const deliveryLine = (eggName: string, requireGreenNest: boolean): ReactNode => {
+      const target = requiredEggWeight(demand.body, eggName);
+      if (!target) return null;
       return (
-        <p className="px-1 text-[11px] leading-snug text-slate-500">
-          本机还没导入数据；导入后这里会直接给出用哪两只配窝。
+        <p
+          className="flex flex-wrap items-center gap-1 px-1 text-[10px] leading-snug text-amber-700"
+          data-testid="mother-demand-pair-delivery"
+        >
+          <span>
+            需要交付{target.kind === 'max' ? '最大' : '最小'}蛋重 {target.weight} 的
+          </span>
+          {requireGreenNest ? (
+            <span
+              className="inline-flex items-center gap-[2px] rounded bg-lime-50 px-1 text-[9px] leading-[1.15] text-lime-700"
+              title="要求这对亲本进学院小窝（性格 100%）"
+            >
+              <img src={GREEN_NEST_ICON} alt="" className="h-3 w-auto" />
+              绿窝
+            </span>
+          ) : null}
+          <span>【{eggName}】的蛋</span>
         </p>
       );
+    };
+
+    if (snapshots.length === 0) {
+      /** 满体重 / 零体重单的交付要求与配对无关，没导入数据时也要写出来。 */
+      const baseName = isStudDemandKey(demand.eggGameId)
+        ? ''
+        : splitDisplayName(rowByEgg.get(demand.eggGameId)?.name ?? `蛋 ${demand.eggGameId}`).base;
+      return (
+        <div className="space-y-1">
+          {baseName ? deliveryLine(baseName, demand.requireGreenNest === true) : null}
+          <p className="px-1 text-[11px] leading-snug text-slate-500">
+            本机还没导入数据；导入后这里会直接给出用哪两只配窝。
+          </p>
+        </div>
+      );
     }
-    /** 亲本条件（体型 / 声音要双方都满足；性格只要一方带）。 */
+    /** 亲本条件（体型 / 声音要双方都满足；性格只要一方带）。
+     *  满体重 / 零体重按大块头 / 小不点匹配（2026-11-01 用户口径），文案也按这个写。 */
+    const parentBodyLabel =
+      demand.body === '满体重' ? '大块头' : demand.body === '零体重' ? '小不点' : demand.body;
     const gradeText = [
-      demand.body ? `体型 ${demand.body}` : '',
+      parentBodyLabel ? `体型 ${parentBodyLabel}` : '',
       demand.voice ? `声音 ${demand.voice}` : '',
     ]
       .filter(Boolean)
@@ -1343,8 +1431,10 @@ export function MotherGroupResources({
      */
     const pairs = (
       items: Array<{ label: string; pet: OwnedPet | null | undefined }>,
-      advice: string,
       chance?: string,
+      delivery?: ReactNode,
+      /** 绿窝单：这一只要放进学院小窝（性格 100% 遗传），卡上打绿窝角标。 */
+      greenNestPet?: OwnedPet | null,
     ): ReactNode => {
       const visible = items.filter(
         (item): item is { label: string; pet: OwnedPet } => item.pet != null,
@@ -1352,30 +1442,45 @@ export function MotherGroupResources({
       if (visible.length < 2) return null;
       const motherPet = visible.find((item) => item.label === '母本')?.pet ?? visible[0].pet;
       const fatherPet = visible.find((item) => item.label === '种公')?.pet ?? visible[1].pet;
-      const card = (pet: OwnedPet, roleLabel: string) => (
-        <PetCompactCard
-          gameId={pet.gameId}
-          name={nameOfPet(pet)}
-          gender={pet.gender}
-          nature={pet.nature}
-          medalBody={pet.medalBody}
-          voiceDb={pet.voiceDb}
-          heightPercent={pet.heightPercent}
-          weightPercent={pet.weightPercent}
-          eggGroups={speciesByGameId.get(pet.gameId)?.eggGroups ?? []}
-          isShiny={pet.isShiny}
-          isColorful={pet.isColorful}
-          footer={`${pet.account} · ${boxLabel(pet)}`}
-          roleLabel={roleLabel}
-          variant="demand"
-          testId="mother-demand-pair-card"
-        />
-      );
+      const card = (pet: OwnedPet, roleLabel: string) => {
+        const inGreenNest = greenNestPet != null && greenNestPet === pet;
+        return (
+          // 角标要露出卡片外，所以外面套一层 relative（与家园「接单上窝」一致）
+          <div className="relative shrink-0" data-testid="mother-demand-pair-card-wrap">
+            {inGreenNest ? (
+              <span
+                className="absolute -top-2 left-1 z-20 inline-flex items-center gap-[2px] rounded-full bg-emerald-600 px-1 text-[9px] font-bold leading-[1.3] text-white"
+                data-testid="mother-demand-pair-green-nest"
+                title="这只放进学院小窝（性格 100% 遗传）"
+              >
+                <img src={GREEN_NEST_ICON} alt="" className="h-[11px] w-auto" />
+                绿窝
+              </span>
+            ) : null}
+            <PetCompactCard
+              gameId={pet.gameId}
+              name={nameOfPet(pet)}
+              gender={pet.gender}
+              nature={pet.nature}
+              medalBody={pet.medalBody}
+              voiceDb={pet.voiceDb}
+              heightPercent={pet.heightPercent}
+              weightPercent={pet.weightPercent}
+              eggGroups={speciesByGameId.get(pet.gameId)?.eggGroups ?? []}
+              isShiny={pet.isShiny}
+              isColorful={pet.isColorful}
+              footer={`${pet.account} · ${boxLabel(pet)}`}
+              roleLabel={roleLabel}
+              variant="demand"
+              testId="mother-demand-pair-card"
+            />
+          </div>
+        );
+      };
       return (
         <div className="space-y-1" data-testid="mother-demand-pairing-text">
-          <p className="px-1 text-[10px] leading-snug text-emerald-800" data-testid="mother-demand-pair-advice">
-            {advice}
-          </p>
+          {/* 满体重 / 零体重单写清要交付的蛋重；绿窝用标签表示，不再写整句说明（2026-11-01） */}
+          {delivery}
           {chance ? (
             <p
               className="px-1 text-[10px] font-medium leading-snug text-emerald-700"
@@ -1384,8 +1489,9 @@ export function MotherGroupResources({
               {chance}
             </p>
           ) : null}
-          {/* 卡片固定 160 宽，不跟着弹层缩；窄屏改为横向滚动，避免元素错位。 */}
-          <div className="overflow-x-auto">
+          {/* 卡片固定 160 宽，不跟着弹层缩；窄屏改为横向滚动，避免元素错位。
+              pt-2 给绿窝角标留出露出空间（overflow-x-auto 会裁掉卡片外的绝对定位元素）。 */}
+          <div className="overflow-x-auto pt-2">
             <div className="mx-auto flex w-max gap-2">
               {card(motherPet, '母本')}
               {card(fatherPet, '种公')}
@@ -1396,13 +1502,25 @@ export function MotherGroupResources({
     };
 
     /** 这对亲本大概能孵出多少符合要求的蛋：性格概率 × 性别概率（与家园同一口径）。 */
-    const chanceText = (natureChance: number, gender: string): string => {
+    const chanceText = (option: DemandPairOption, gender: string): string => {
       const factor = gender ? 0.5 : 1;
-      const natureLabel =
-        NATURE_CHANCE_LABELS[natureChance] ?? `性格 ${Math.round(natureChance * 100)}%`;
+      const { natureChance } = option;
+      // 绿窝单：性格由学院那只 100% 遗传（绿窝本身由卡片标签表示，这里只写概率口径）
+      const natureLabel = option.greenNest
+        ? '性格 100%'
+        : (NATURE_CHANCE_LABELS[natureChance] ?? `性格 ${Math.round(natureChance * 100)}%`);
       const parts = gender ? [natureLabel, '性别 50%'] : [natureLabel];
       return `约 ${Math.round(natureChance * factor * 100)}% 概率满足这单（${parts.join(' × ')}）`;
     };
+
+
+    /** 绿窝单里「谁进学院小窝」：自带目标性格的那只（母本优先）。 */
+    const greenNestResidentOf = (option: DemandPairOption): OwnedPet | null =>
+      option.greenNest
+        ? option.motherPet.pet.nature === demand.nature
+          ? option.motherPet.pet
+          : option.malePet.pet
+        : null;
 
     if (isStudDemandKey(demand.eggGameId)) {
       const groupName = eggGroupNames[-demand.eggGameId] ?? `蛋组${-demand.eggGameId}`;
@@ -1422,8 +1540,9 @@ export function MotherGroupResources({
           { label: '母本', pet: active.motherPet.pet },
           { label: '种公', pet: active.malePet.pet },
         ],
-        `用这两只同账号配对，可孵出「${active.name}」（${groupName}）`,
-        chanceText(active.natureChance, demand.gender),
+        chanceText(active, demand.gender),
+        deliveryLine(active.name, demand.requireGreenNest === true),
+        greenNestResidentOf(active),
       );
     }
 
@@ -1446,8 +1565,9 @@ export function MotherGroupResources({
         { label: '母本', pet: active.motherPet.pet },
         { label: '种公', pet: active.malePet.pet },
       ],
-      `用这两只同账号配对，可孵出「${eggName}」`,
-      chanceText(active.natureChance, demand.gender),
+      chanceText(active, demand.gender),
+      deliveryLine(eggName, demand.requireGreenNest === true),
+      greenNestResidentOf(active),
     );
   };
 
@@ -1684,7 +1804,10 @@ export function MotherGroupResources({
       for (const key of selected) {
         const eggGameId = Number(key);
         const row = seekingRows.find((item) => item.eggGameId === eggGameId);
-        if (!row || row.holders.length > 0) continue;
+        if (!row) continue;
+        // 只拦「当前筛选范围内」已有人持有：范围外有人有不再阻止认领，
+        // 否则会出现「列表里看得到、点了却认不上」（2026-11-01 拍板 R2-3-U02）
+        if (row.holders.some((holder) => seekingScope.includes(holder.accountId))) continue;
         const task = tasks.find(
           (item) => item.targetKey === `mother:${eggGameId}` && item.status !== 'closed',
         );
@@ -1825,6 +1948,51 @@ export function MotherGroupResources({
       setDemandBusy(false);
     }
   };
+
+  /** 满体重 / 零体重单：接单前要提醒「交付的蛋必须满分」。 */
+  const isEggWeightDemand = (demand: CollectionDemand): boolean =>
+    demand.body === '满体重' || demand.body === '零体重';
+
+  /** 接单入口：满体重 / 零体重单先换成确认块，其他单直接提交。 */
+  const startClaim = (demand: CollectionDemand) => {
+    if (isEggWeightDemand(demand)) {
+      setConfirmClaim(demandKey(demand));
+      return;
+    }
+    void runDemandAction('claim', demand);
+  };
+
+  /** 满体重 / 零体重单的接单确认（2026-11-01 用户口径）。 */
+  const claimConfirmBlock = (demand: CollectionDemand): ReactNode => (
+    <div className="flex w-full flex-col gap-1.5" data-testid="mother-demand-claim-confirm">
+      <span className="text-[11px] leading-snug text-amber-700">
+        本单需要交付{demand.body === '满体重' ? '最大' : '最小'}蛋重的蛋才能完成需求，是否接单？
+      </span>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          disabled={demandBusy}
+          onClick={() => setConfirmClaim(null)}
+          data-testid="mother-demand-claim-confirm-cancel"
+          className="min-h-[40px] flex-1 rounded-lg border border-slate-200 text-sm text-slate-500 disabled:opacity-50"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          disabled={demandBusy}
+          onClick={() => {
+            setConfirmClaim(null);
+            void runDemandAction('claim', demand);
+          }}
+          data-testid="mother-demand-claim-confirm-yes"
+          className="min-h-[40px] flex-1 rounded-lg bg-emerald-600 text-sm font-medium text-white disabled:opacity-50"
+        >
+          确认接单
+        </button>
+      </div>
+    </div>
+  );
 
   /** 需求详情里的完成按钮：没检测到匹配个体时先换成「是否确认已完成」的二次确认 */
   const detailCompleteControl = (demand: CollectionDemand): ReactNode => {
@@ -1983,11 +2151,14 @@ export function MotherGroupResources({
       );
     }
     if (viewerCanSupply(demand)) {
+      if (isEggWeightDemand(demand) && confirmClaim === key) {
+        return claimConfirmBlock(demand);
+      }
       return (
         <button
           type="button"
           disabled={demandBusy}
-          onClick={() => void runDemandAction('claim', demand)}
+          onClick={() => startClaim(demand)}
           data-testid="mother-demand-claim"
           className="min-h-[40px] w-full rounded-lg bg-emerald-600 text-sm font-medium text-white disabled:opacity-50"
         >
@@ -1996,6 +2167,9 @@ export function MotherGroupResources({
       );
     }
     if (myDataStale) {
+      if (isEggWeightDemand(demand) && confirmClaim === key) {
+        return claimConfirmBlock(demand);
+      }
       return (
         <div className="flex flex-col gap-1.5">
           <p className="text-[11px] leading-snug text-amber-700">
@@ -2004,7 +2178,7 @@ export function MotherGroupResources({
           <button
             type="button"
             disabled={demandBusy}
-            onClick={() => void runDemandAction('claim', demand)}
+            onClick={() => startClaim(demand)}
             data-testid="mother-demand-claim-stale"
             className="min-h-[40px] w-full rounded-lg border border-amber-500 text-sm font-medium text-amber-700 disabled:opacity-50"
           >
@@ -2028,6 +2202,7 @@ export function MotherGroupResources({
     setConfirmWithdraw(null);
     setConfirmStud(null);
     setConfirmComplete(null);
+    setConfirmClaim(null);
     setResourceDetailEggId(null);
   }, [effectiveView, targetKind, group.group.id]);
 
@@ -2112,9 +2287,10 @@ export function MotherGroupResources({
             </span>
             {demand.requireGreenNest ? (
               <span
-                className="inline-flex items-center whitespace-nowrap rounded bg-lime-50 px-1 text-[9px] leading-[1.2] text-lime-700"
+                className="inline-flex items-center gap-[1px] whitespace-nowrap rounded bg-lime-50 px-1 text-[9px] leading-[1.2] text-lime-700"
                 title="要求这对亲本进学院小窝（性格 100%）"
               >
+                <img src={GREEN_NEST_ICON} alt="" className="h-[11px] w-auto" />
                 绿窝
               </span>
             ) : null}
@@ -2156,7 +2332,7 @@ export function MotherGroupResources({
             style={{ left: 0, top: pos.nameRow.top, width: DEMAND_CARD_W }}
           >
             <span className="flex min-w-0 items-center gap-[2px] px-1">
-              <GenderChip
+              <GenderMark
                 gender={demand.gender === '公' || demand.gender === '母' ? demand.gender : '未知'}
               />
               <span className="min-w-0 truncate text-[10px] font-medium leading-none text-slate-700">
@@ -2169,7 +2345,7 @@ export function MotherGroupResources({
               否则 min-h / 边框会把整块撑高，看起来就像「整张卡错位」；
               点动作按钮只做动作，不触发整卡打开的详情（2026-10-30） */}
           <div
-            className="absolute flex items-center justify-center gap-1 whitespace-nowrap border-t border-slate-200/70 bg-white/70 text-[9px] leading-[1.2] [&>button]:min-h-0 [&>button]:rounded-[3px] [&>button]:border-0 [&>button]:bg-transparent [&>button]:p-0 [&>button]:text-[9px] [&>button]:leading-[1.2] [&>span]:text-[9px]"
+            className="absolute flex items-center justify-center gap-1 whitespace-nowrap border-t border-slate-200 bg-transparent text-[9px] leading-[1.2] [&>button]:min-h-0 [&>button]:rounded-[3px] [&>button]:border-0 [&>button]:bg-transparent [&>button]:p-0 [&>button]:text-[9px] [&>button]:leading-[1.2] [&>span]:text-[9px]"
             style={{ left: 0, top: pos.action.top, width: DEMAND_CARD_W, height: pos.action.height }}
             onClick={(event) => event.stopPropagation()}
           >
@@ -2695,6 +2871,9 @@ export function MotherGroupResources({
                             target != null &&
                             demands.some(
                               (demand) =>
+                                // 与母本共用一套口径：结单后可以再发同款，只有「还没结束」才算已发到
+                                // （2026-11-01 拍板 R2-3-U01；对象区别只是蛋组 / 单颗蛋）
+                                demand.status !== 'done' &&
                                 demand.demanderAccountId === viewerAccountId &&
                                 demand.eggGameId === -group.groupId &&
                                 demand.nature === rec.natureName &&
@@ -2773,6 +2952,19 @@ export function MotherGroupResources({
               effectiveView === 'missing' && selfBreedableEggIds.has(row.eggGameId);
             const incomplete =
               effectiveView === 'missing' && dataIncompleteEggIds.has(row.eggGameId);
+            /**
+             * 状态条上边线与卡片外框同色（2026-11-01 用户口径）：
+             * 卡片按状态换边框色，状态条若固定用 slate，看起来像两块拼在一起。
+             */
+            const statusBorder = isSelected
+              ? 'border-emerald-500'
+              : selfBreedable
+                ? 'border-sky-300'
+                : blocked
+                  ? 'border-rose-300'
+                  : incomplete
+                    ? 'border-amber-300'
+                    : 'border-slate-200';
             const showIncompleteDivider =
               incomplete && absoluteIndex === publishableRows.length;
             const showBlockedDivider =
@@ -2803,10 +2995,17 @@ export function MotherGroupResources({
                   toggleSelect(selectionKey);
                   return;
                 }
-                if (effectiveView === 'missing') setResourceDetailEggId(row.eggGameId);
+                // 我缺的 / 共同寻找都进二级页操作（2026-11-01：共同寻找的认领也收进详情）
+                if (effectiveView === 'missing' || effectiveView === 'seeking') {
+                  setResourceDetailEggId(row.eggGameId);
+                }
               }}
               aria-disabled={blocked ? true : undefined}
-              style={effectiveView === 'missing' ? { height: DEMAND_CARD_H } : { minHeight: DEMAND_CARD_H }}
+              style={
+                effectiveView === 'missing' || effectiveView === 'seeking'
+                  ? { height: DEMAND_CARD_H }
+                  : { minHeight: DEMAND_CARD_H }
+              }
               className={`relative flex min-w-0 cursor-pointer flex-col items-center overflow-hidden rounded-md ${
                 isSelected
                   ? 'bg-emerald-50 ring-1 ring-emerald-500'
@@ -2907,7 +3106,7 @@ export function MotherGroupResources({
                     data-testid="mother-resource-name"
                   >
                     <span className="flex min-w-0 items-center gap-[2px] px-1">
-                      <GenderChip gender="母" />
+                      <GenderMark gender="母" />
                       <span className="min-w-0 truncate text-[10px] font-medium leading-none text-slate-700">
                         <NameWithForm name={row.name} />
                       </span>
@@ -2935,7 +3134,7 @@ export function MotherGroupResources({
                   ) : null}
                   {effectiveView === 'missing' ? (
                     <div
-                      className="absolute flex items-center justify-center gap-1 whitespace-nowrap border-t border-slate-200/70 bg-white/70 text-[9px] leading-[1.2] [&>button]:min-h-0 [&>button]:rounded-[3px] [&>button]:border-0 [&>button]:bg-transparent [&>button]:p-0 [&>button]:text-[9px] [&>button]:leading-[1.2]"
+                      className={`absolute flex items-center justify-center gap-1 whitespace-nowrap border-t ${statusBorder} bg-transparent text-[9px] leading-[1.2] [&>button]:min-h-0 [&>button]:rounded-[3px] [&>button]:border-0 [&>button]:bg-transparent [&>button]:p-0 [&>button]:text-[9px] [&>button]:leading-[1.2]`}
                       style={{
                         left: 0,
                         top: DEMAND_CARD_POS.action.top,
@@ -2965,99 +3164,27 @@ export function MotherGroupResources({
                       )}
                     </div>
                   ) : null}
+                  {/* 共同寻找：卡片底部也只用状态栏显示状态，认领 / 释放 / 转交都进二级页（2026-11-01） */}
+                  {effectiveView === 'seeking' ? (
+                    <div
+                      className={`absolute flex items-center justify-center gap-1 overflow-hidden border-t ${statusBorder} bg-transparent px-1 text-[9px] leading-[1.2]`}
+                      style={{
+                        left: 0,
+                        top: DEMAND_CARD_POS.action.top,
+                        width: DEMAND_CARD_W,
+                        height: DEMAND_CARD_POS.action.height,
+                      }}
+                      data-testid="mother-task"
+                      title={seekingTaskLabelOf(row)}
+                    >
+                      <span className={`truncate ${seekingTaskToneOf(row)}`}>
+                        {seekingTaskLabelOf(row)}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
-              {/* 共同寻找页的卡片也只展示我的需求状态，撤回 / 完成都去需求详情里点（2026-11-01） */}
-              {myDemands.length > 0 && effectiveView === 'seeking' ? (
-                <div
-                  className="mt-1 w-full text-center text-[9px] leading-[1.3] text-slate-500"
-                  data-testid="mother-demanded"
-                >
-                  我的需求：
-                  {[
-                    myDemands.some((demand) => demand.status === 'open')
-                      ? `${myDemands.filter((demand) => demand.status === 'open').length} 条待承接`
-                      : '',
-                    myDemands.some((demand) => demand.status === 'claimed')
-                      ? `${myDemands.filter((demand) => demand.status === 'claimed').length} 条已接`
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </div>
-              ) : null}
-              {effectiveView === 'seeking' ? (
-                <div className="mt-auto w-full border-t border-slate-200 pt-1 text-[10px]" data-testid="mother-task">
-                  {tasksError ? (
-                    <span className="text-rose-600">任务读取失败：{tasksError}</span>
-                  ) : !tasksConfirmed ? (
-                    tasksLoading ? (
-                      <span className="text-slate-500">正在核对组员发布状态…</span>
-                    ) : (
-                      <span className="text-amber-700">
-                        待确认：{tasksPendingMemberIds.length} 人未发布/更新，暂不能认领
-                      </span>
-                    )
-                  ) : taskOf(row)?.ownerAccountId ? (
-                    <span className="flex flex-wrap items-center gap-1">
-                      <span
-                        className={
-                          taskOf(row)?.ownerAccountId === viewerAccountId
-                            ? 'text-emerald-700'
-                            : 'text-slate-500'
-                        }
-                      >
-                        {taskOf(row)?.ownerAccountId === viewerAccountId
-                          ? '我认领了'
-                          : `负责人：${nameOf(taskOf(row)?.ownerAccountId ?? '')}`}
-                      </span>
-                      {taskOf(row)?.ownerAccountId === viewerAccountId || isOwner ? (
-                        <button
-                          type="button"
-                          disabled={busyKey === taskKeyOf(row)}
-                          onClick={() => void runTask(row, 'release')}
-                          data-testid="mother-task-release"
-                          className="min-h-[22px] rounded border border-slate-200 px-1 text-slate-500 disabled:opacity-50"
-                        >
-                          释放
-                        </button>
-                      ) : null}
-                      {isOwner &&
-                      onTransferTask &&
-                      taskOf(row)?.ownerAccountId !== viewerAccountId ? (
-                        <InlineSelect
-                          label="转交任务"
-                          value=""
-                          options={[
-                            { value: '', label: '转交…' },
-                            ...group.members
-                              .filter((member) => member.accountId !== taskOf(row)?.ownerAccountId)
-                              .map((member) => ({
-                                value: member.accountId,
-                                label: labelOf(member),
-                              })),
-                          ]}
-                          onValueChange={(to) => void transferTo(row, to)}
-                          testId="mother-task-transfer"
-                          menuTestId="mother-task-transfer-options"
-                          className="max-w-[100px]"
-                        />
-                      ) : null}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={busyKey === taskKeyOf(row)}
-                      onClick={() => void runTask(row, 'claim')}
-                      data-testid="mother-task-claim"
-                      className="min-h-[22px] rounded border border-emerald-500 px-1 font-medium text-emerald-700 disabled:opacity-50"
-                    >
-                      {busyKey === taskKeyOf(row) ? '认领中…' : '认领寻找'}
-                    </button>
-                  )}
-                </div>
-              ) : null}
             </li>
             </Fragment>
             );
@@ -3216,10 +3343,12 @@ export function MotherGroupResources({
                 </div>
               </div>
 
-              <div
-                className="rounded-xl bg-slate-50 px-2.5 py-2"
-                data-testid="mother-resource-detail-demands"
-              >
+              {/* 「我的需求」只在我缺的里展示；共同寻找的二级页只留任务操作（2026-11-01） */}
+              {effectiveView === 'missing' ? (
+                <div
+                  className="rounded-xl bg-slate-50 px-2.5 py-2"
+                  data-testid="mother-resource-detail-demands"
+                >
                 <h3 className="text-[11px] font-semibold text-slate-500">
                   我的需求 · {resourceDetailDemands.length}
                 </h3>
@@ -3347,30 +3476,110 @@ export function MotherGroupResources({
                     );
                   })
                 )}
-              </div>
+                </div>
+              ) : null}
 
-              {/* 发需求面板常驻展开（2026-10-30 用户口径：不再点「发需求」才展示下面的内容） */}
-              <ResourcePublishPanel
-                key={eggGameId}
-                eggGameId={eggGameId}
-                collected={natures.filter((nature) => !missingSet.has(nature))}
-                sent={resourceDetailDemands
-                  .filter((demand) => demand.status !== 'done')
-                  .map((demand) => demand.nature)}
-                defaultNatures={publishItem?.natures ?? []}
-                defaultCriteria={{ gender: '母', body: targetBody, voice: targetVoice }}
-                busy={demandBusy}
-                error={publishError}
-                warning={publishItem ? publishWarningFor([eggGameId]) : ''}
-                disabledReason={publishBlockedReason}
-                onCancel={() => {
-                  setPublishError('');
-                  setPublishWarning('');
-                }}
-                onConfirm={(picked, criteria) =>
-                  void publishResourceDemand(eggGameId, picked, criteria)
-                }
-              />
+              {/* 共同寻找：认领 / 释放 / 转交都放在二级页（2026-11-01 用户口径，卡片上只留状态） */}
+              {effectiveView === 'seeking' ? (
+                <div
+                  className="rounded-xl bg-emerald-50/70 px-2.5 py-2"
+                  data-testid="mother-resource-detail-task"
+                >
+                  <h3 className="text-[11px] font-semibold text-emerald-800">共同寻找 · 任务</h3>
+                  <p className="mt-1 text-[11px] leading-snug text-slate-600">
+                    {tasksError
+                      ? `任务读取失败：${tasksError}`
+                      : !tasksConfirmed
+                        ? tasksLoading
+                          ? '正在核对组员发布状态…'
+                          : `待确认：${tasksPendingMemberIds.length} 人未发布/更新，暂不能认领`
+                        : taskOf(resourceDetailRow)?.ownerAccountId
+                          ? taskOf(resourceDetailRow)?.ownerAccountId === viewerAccountId
+                            ? '我认领了这个任务'
+                            : `负责人：${fullNameOf(taskOf(resourceDetailRow)?.ownerAccountId ?? '')}`
+                          : '还没有人认领'}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {!tasksError && tasksConfirmed ? (
+                      taskOf(resourceDetailRow)?.ownerAccountId ? (
+                        <>
+                          {taskOf(resourceDetailRow)?.ownerAccountId === viewerAccountId || isOwner ? (
+                            <button
+                              type="button"
+                              disabled={busyKey === taskKeyOf(resourceDetailRow)}
+                              onClick={() => void runTask(resourceDetailRow, 'release')}
+                              data-testid="mother-task-release"
+                              className="min-h-[32px] rounded-lg border border-slate-200 px-2 text-xs text-slate-500 disabled:opacity-50"
+                            >
+                              释放任务
+                            </button>
+                          ) : null}
+                          {isOwner &&
+                          onTransferTask &&
+                          taskOf(resourceDetailRow)?.ownerAccountId !== viewerAccountId ? (
+                            <InlineSelect
+                              label="转交任务"
+                              value=""
+                              options={[
+                                { value: '', label: '转交给…' },
+                                ...group.members
+                                  .filter(
+                                    (member) =>
+                                      member.accountId !== taskOf(resourceDetailRow)?.ownerAccountId,
+                                  )
+                                  .map((member) => ({
+                                    value: member.accountId,
+                                    label: labelOf(member),
+                                  })),
+                              ]}
+                              onValueChange={(to) => void transferTo(resourceDetailRow, to)}
+                              testId="mother-task-transfer"
+                              menuTestId="mother-task-transfer-options"
+                              className="max-w-[140px]"
+                            />
+                          ) : null}
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busyKey === taskKeyOf(resourceDetailRow)}
+                          onClick={() => void runTask(resourceDetailRow, 'claim')}
+                          data-testid="mother-task-claim"
+                          className="min-h-[32px] rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white disabled:opacity-50"
+                        >
+                          {busyKey === taskKeyOf(resourceDetailRow) ? '认领中…' : '认领寻找'}
+                        </button>
+                      )
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* 发需求面板常驻展开（2026-10-30 用户口径：不再点「发需求」才展示下面的内容）。
+                  共同寻找页不需要发需求，整块隐藏（2026-11-01 用户反馈：多余）。 */}
+              {effectiveView === 'missing' ? (
+                <ResourcePublishPanel
+                  key={eggGameId}
+                  eggGameId={eggGameId}
+                  collected={natures.filter((nature) => !missingSet.has(nature))}
+                  sent={resourceDetailDemands
+                    .filter((demand) => demand.status !== 'done')
+                    .map((demand) => demand.nature)}
+                  defaultNatures={publishItem?.natures ?? []}
+                  defaultCriteria={{ gender: '母', body: targetBody, voice: targetVoice }}
+                  busy={demandBusy}
+                  error={publishError}
+                  warning={publishItem ? publishWarningFor([eggGameId]) : ''}
+                  disabledReason={publishBlockedReason}
+                  onCancel={() => {
+                    setPublishError('');
+                    setPublishWarning('');
+                  }}
+                  onConfirm={(picked, criteria) =>
+                    void publishResourceDemand(eggGameId, picked, criteria)
+                  }
+                />
+              ) : null}
             </div>
           );
         })() : null}
@@ -3499,6 +3708,16 @@ export function MotherGroupResources({
                         className="h-4 w-4"
                       />
                     ) : null}
+                    {detailDemand.requireGreenNest ? (
+                      <span
+                        className="inline-flex items-center gap-[2px] rounded bg-lime-50 px-1 text-[10px] leading-[1.15] text-lime-700"
+                        title="要求这对亲本进学院小窝（性格 100%）"
+                        data-testid="mother-demand-detail-green-nest"
+                      >
+                        <img src={GREEN_NEST_ICON} alt="" className="h-3.5 w-auto" />
+                        绿窝
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                     <span className="min-w-0 truncate text-slate-700" data-testid="mother-demand-detail-demander">
@@ -3561,28 +3780,6 @@ function NameWithForm({ name }: { name: string }) {
         ·{form}
       </i>
     </>
-  );
-}
-
-/**
- * 性别小圆片（2026-11-01 用户口径）：性别与名字强关联，用一个 12px 小圆片贴在名字前。
- * 单独一根 ♀ / ♂ 细线太瘦，和名字挤在一起也分不清归属，改成有底色的圆片更协调。
- */
-function GenderChip({ gender }: { gender: '公' | '母' | '未知' }) {
-  const tone =
-    gender === '公'
-      ? 'bg-sky-100 text-sky-700'
-      : gender === '母'
-        ? 'bg-pink-100 text-pink-600'
-        : 'bg-slate-100 text-slate-500';
-  const mark = gender === '公' ? '♂' : gender === '母' ? '♀' : '?';
-  return (
-    <span
-      className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full text-[9px] leading-none ${tone}`}
-      title={gender === '未知' ? '性别未知' : gender}
-    >
-      {mark}
-    </span>
   );
 }
 
@@ -3691,8 +3888,10 @@ function ResourcePublishPanel({
   );
 
   const total = Math.max(1, picked.length);
-  // 一个性格都没选也能发（= 不挑性格）；只有完全没有可发项时才禁用（2026-10-30）
-  const publishable = !disabledReason;
+  // 一个性格都没选也能发（= 不挑性格）；只有完全没有可发项时才禁用（2026-10-30）。
+  // 绿窝必须指定性格：绿窝靠学院那只 100% 遗传，不挑性格就没有意义（2026-11-01 用户口径）。
+  const greenNestNeedsNature = requireGreenNest && picked.length === 0;
+  const publishable = !disabledReason && !greenNestNeedsNature;
 
   return (
     <div
@@ -3760,9 +3959,17 @@ function ResourcePublishPanel({
             className="h-3.5 w-3.5 shrink-0 accent-emerald-600"
           />
           是否要求绿窝
-          <span className="text-[10px] text-slate-400">（学院小窝，性格 100%）</span>
+          <img src={GREEN_NEST_ICON} alt="" className="h-[15px] w-auto" />
         </label>
       </div>
+      {greenNestNeedsNature ? (
+        <p
+          className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-800"
+          data-testid="mother-resource-green-nest-needs-nature"
+        >
+          要求绿窝需要先选一个性格：学院小窝靠那只自带目标性格 100% 遗传，不挑性格发不了绿窝。
+        </p>
+      ) : null}
       {warning ? (
         <p
           className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-800"
@@ -3822,13 +4029,21 @@ function ResourcePublishPanel({
 function DemandCriteriaTags({ demand, testId }: { demand: CollectionDemand; testId?: string }) {
   // 性别沿用 GenderMark 的口径：母粉、公蓝；声音改用琥珀色，避免和「公」撞色。
   const genderTone = demand.gender === '公' ? 'bg-sky-50 text-sky-700' : 'bg-pink-50 text-pink-700';
-  const rows: Array<{ key: string; text: string; tone: string; filled: boolean }> = [
+  const rows: Array<{ key: string; text: string; tone: string; filled: boolean; icon?: string }> = [
     { key: 'gender', text: GENDER_LABELS[demand.gender], tone: genderTone, filled: Boolean(demand.gender) },
     { key: 'body', text: BODY_LABELS[demand.body], tone: 'bg-emerald-50 text-emerald-700', filled: Boolean(demand.body) },
     { key: 'voice', text: VOICE_LABELS[demand.voice], tone: 'bg-amber-50 text-amber-700', filled: Boolean(demand.voice) },
     { key: 'nature', text: demand.nature || '不挑', tone: 'bg-violet-50 text-violet-700', filled: Boolean(demand.nature) },
     ...(demand.requireGreenNest
-      ? [{ key: 'nest', text: '要求绿窝', tone: 'bg-lime-50 text-lime-700', filled: true }]
+      ? [
+          {
+            key: 'nest',
+            text: '要求绿窝',
+            tone: 'bg-lime-50 text-lime-700',
+            filled: true,
+            icon: GREEN_NEST_ICON,
+          },
+        ]
       : []),
   ];
   return (
@@ -3836,11 +4051,12 @@ function DemandCriteriaTags({ demand, testId }: { demand: CollectionDemand; test
       {rows.map((row) => (
         <span
           key={row.key}
-          className={`whitespace-nowrap rounded px-1 py-0.5 text-[10px] leading-[1.15] ${
+          className={`inline-flex items-center gap-[2px] whitespace-nowrap rounded px-1 py-0.5 text-[10px] leading-[1.15] ${
             row.filled ? row.tone : 'bg-slate-100 text-slate-500'
           }`}
           data-testid={`demand-criteria-${row.key}`}
         >
+          {row.icon ? <img src={row.icon} alt="" className="h-[12px] w-auto" /> : null}
           {row.text}
         </span>
       ))}

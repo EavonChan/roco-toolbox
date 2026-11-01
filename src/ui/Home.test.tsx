@@ -130,13 +130,14 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-residents')).toHaveTextContent('母本甲');
     expect(screen.getByTestId('home-residents')).toHaveTextContent('公本乙');
     expect(screen.getAllByTestId('home-pet-card')).toHaveLength(2);
-    // 两张精灵卡 + 配窝卡片里的一公一母各一个头像
-    expect(screen.getAllByTestId('pet-avatar')).toHaveLength(4);
+    // 配窝卡片改成摆位图画法，不再带小头像：头像只有上面两张精灵卡
+    expect(screen.getAllByTestId('pet-avatar')).toHaveLength(2);
     expect(screen.getByTestId('home-residents')).toHaveTextContent('50.00%');
     expect(screen.getByTestId('home-residents')).toHaveTextContent('99.00%');
     expect(screen.getByTestId('home-pair-cards')).toHaveTextContent('公本乙');
     expect(screen.getByTestId('home-pair-cards')).toHaveTextContent('母本甲');
-    expect(screen.getAllByTestId('home-pair-card')).toHaveLength(1);
+    expect(screen.getAllByTestId('home-pair-cluster')).toHaveLength(1);
+    expect(screen.getAllByTestId('home-pair-node')).toHaveLength(2);
     expect(screen.getByTestId('home-egg-count')).toHaveTextContent('有 1 枚蛋');
     expect(screen.getByTestId('home-eggs')).toHaveTextContent('普通小窝 · 一楼');
   });
@@ -226,17 +227,17 @@ describe('家园页', () => {
     expect(screen.queryByTestId('home-no-capture')).toBeNull();
   });
 
-  test('配窝小卡同样只写基础名，完整名字放 title', () => {
+  test('配窝方块同样只写基础名，完整名字放 title', () => {
     const snapshot = snapshotWithHome();
     snapshot.home!.residents[1].name = '雪绒鸟_夏天的样子';
     h.snapshots = [snapshot];
     render(<HomeLand />);
 
-    const chips = screen.getAllByTestId('home-pair-chip');
-    const chip = chips.find((item) => item.getAttribute('title') === '雪绒鸟_夏天的样子');
-    expect(chip).toBeTruthy();
-    expect(chip).not.toHaveTextContent('夏天的样子');
-    expect(chip).toHaveTextContent('雪绒鸟');
+    const nodes = screen.getAllByTestId('home-pair-node');
+    const node = nodes.find((item) => item.getAttribute('title') === '雪绒鸟_夏天的样子');
+    expect(node).toBeTruthy();
+    expect(node).not.toHaveTextContent('夏天的样子');
+    expect(node).toHaveTextContent('雪绒鸟');
   });
 
   test('配对里缺少公本时降级成「公本未知」，不崩也不空白', () => {
@@ -245,8 +246,16 @@ describe('家园页', () => {
     h.snapshots = [snapshot];
     render(<HomeLand />);
 
-    expect(screen.getByTestId('home-pair-card')).toHaveTextContent('公本未知');
-    expect(screen.getAllByTestId('home-pair-card')).toHaveLength(1);
+    expect(screen.getByTestId('home-pair-cluster')).toHaveTextContent('公本未知');
+    expect(screen.getAllByTestId('home-pair-cluster')).toHaveLength(1);
+  });
+
+  test('浏览器里「刷新家园」不可用，并说明只在安卓工具箱内可刷', () => {
+    h.snapshots = [snapshotWithHome()];
+    render(<HomeLand />);
+
+    expect(screen.getByTestId('home-refresh-hint')).toHaveTextContent('只在安卓工具箱安装包内可用');
+    expect(screen.getByTestId('home-refresh-start')).toBeDisabled();
   });
 
   test('家园分页：默认家园现状，可切到接单上窝并记住选择', () => {
@@ -273,14 +282,15 @@ describe('家园页', () => {
     expect(screen.queryByTestId('home-demand-placements')).toBeNull();
   });
 
-  test('账号全不选时接单上窝提示怎么恢复，不落「窝位不够」', () => {
+  test('账号全不选时接单上窝照常按全部账号计算（R2-2-U01：筛选只影响家园现状）', () => {
     h.snapshots = [snapshotWithHome()];
     toggleAccount('测试甲');
     render(<HomeLand />);
     fireEvent.click(screen.getByTestId('home-view-demands'));
 
-    expect(screen.getByTestId('home-demand-no-account')).toHaveTextContent('未选择游戏账号');
-    expect(screen.queryByTestId('home-demand-placements')).toBeNull();
+    expect(screen.queryByTestId('home-demand-no-account')).toBeNull();
+    expect(screen.getByTestId('home-demand-placements')).toBeTruthy();
+    expect(screen.getByTestId('home-demand-scope')).toHaveTextContent('按全部 1 个账号计算');
   });
 
   test('外部切分页（新手引导）时，已挂载的家园页跟着切，不用重新挂载', () => {

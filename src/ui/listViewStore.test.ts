@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import {
   clearGroupListSession,
   ensureGroupSession,
+  resetGroupTargetCriteriaForTest,
   resetPersonalListViewsForTest,
   setGroupList,
   setPersonalQuery,
@@ -13,6 +14,7 @@ import {
 beforeEach(() => {
   resetPersonalListViewsForTest();
   clearGroupListSession();
+  resetGroupTargetCriteriaForTest();
 });
 
 describe('个人清单搜索（仅本次会话）', () => {
@@ -76,5 +78,37 @@ describe('小组清单临时状态', () => {
     act(() => setGroupList('A', 'g1', { view: 'help' }));
     act(() => setGroupList('A', 'g1', { onlyOwned: true }));
     expect(hook.result.current).toMatchObject({ view: 'help', onlyOwned: true });
+  });
+});
+
+describe('「我缺的」目标口径跨会话记住（2026-11-01 用户反馈）', () => {
+  test('选了小不点 +100 后写进本机，换组也沿用', () => {
+    const g1 = renderHook(() => useGroupList('A', 'g1'));
+    act(() => setGroupList('A', 'g1', { targetBody: '小不点', targetVoice: '+100' }));
+
+    const stored = window.localStorage.getItem('roco.groupTargetCriteria');
+    expect(stored).toContain('小不点');
+    expect(stored).toContain('+100');
+
+    const g2 = renderHook(() => useGroupList('A', 'g2'));
+    expect(g2.result.current.targetBody).toBe('小不点');
+    expect(g1.result.current.targetBody).toBe('小不点');
+  });
+
+  test('换身份清临时筛选，但不丢目标口径', () => {
+    ensureGroupSession('A');
+    const hook = renderHook(() => useGroupList('A', 'g1'));
+    act(() => setGroupList('A', 'g1', { query: '火神', targetNature: '开朗' }));
+
+    act(() => ensureGroupSession('B'));
+    expect(hook.result.current.query).toBe('');
+    expect(hook.result.current.targetNature).toBe('开朗');
+  });
+
+  test('查询 / 成员筛选仍是会话状态，不落盘', () => {
+    renderHook(() => useGroupList('A', 'g1'));
+    act(() => setGroupList('A', 'g1', { query: '火神', memberFilter: 'm1' }));
+
+    expect(window.localStorage.getItem('roco.groupTargetCriteria')).toBeNull();
   });
 });

@@ -390,7 +390,14 @@ test('需求承接：组员可接单、放弃，别人接过的不能再接', as
   assert.equal(demand.status, 'open');
 
   const path = `/api/collection-groups/${created.id}/demands/3454`;
-  const body = { demanderAccountId: A.accountId, eggGameId: 3454, nature: '' };
+  const body = {
+    demanderAccountId: A.accountId,
+    eggGameId: 3454,
+    nature: '',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
+  };
 
   const claim = await call(B.token, 'POST', `${path}/claim`, { ...body, version: demand.version });
   assert.equal(claim.status, 200, JSON.stringify(claim.body));
@@ -419,6 +426,9 @@ test('需求承接：组员可接单、放弃，别人接过的不能再接', as
     demanderAccountId: A.accountId,
     eggGameId: 3455,
     nature: '胆小',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
     version: named.body.demands[0].version,
   });
   assert.equal(namedClaim.status, 200, JSON.stringify(namedClaim.body));
@@ -458,6 +468,9 @@ test('已完成需求不能撤回；组长移除组员会释放承接、取消�
     demanderAccountId: A.accountId,
     eggGameId: 3466,
     nature: '',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
     version: one.version,
   });
   assert.equal(claimOne.status, 200, JSON.stringify(claimOne.body));
@@ -465,13 +478,20 @@ test('已完成需求不能撤回；组长移除组员会释放承接、取消�
     demanderAccountId: A.accountId,
     eggGameId: 3466,
     nature: '',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
     version: claimOne.body.demand.version,
   });
   assert.equal(done.status, 200, JSON.stringify(done.body));
   assert.equal(done.body.demand.status, 'done');
 
   // 已完成的单是已结单凭据，不能撤回
-  const withdrawDone = await call(A.token, 'DELETE', `${base}/demands/3466?nature=`);
+  const withdrawDone = await call(
+    A.token,
+    'DELETE',
+    `${base}/demands/3466?nature=&gender=%E6%AF%8D&body=%E5%A4%A7%E5%9D%97%E5%A4%B4&voice=%2B100`,
+  );
   assert.equal(withdrawDone.status, 409);
   assert.equal(withdrawDone.body.code, 'DEMAND_ALREADY_DONE');
 
@@ -480,6 +500,9 @@ test('已完成需求不能撤回；组长移除组员会释放承接、取消�
     demanderAccountId: A.accountId,
     eggGameId: 3467,
     nature: '胆小',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
     version: two.version,
   });
   assert.equal(claimTwo.status, 200, JSON.stringify(claimTwo.body));
@@ -494,6 +517,9 @@ test('已完成需求不能撤回；组长移除组员会释放承接、取消�
     demanderAccountId: C.accountId,
     eggGameId: 3468,
     nature: '',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
     version: cPublished.body.demands[0].version,
   });
   assert.equal(cClaim.status, 200, JSON.stringify(cClaim.body));
@@ -508,6 +534,9 @@ test('已完成需求不能撤回；组长移除组员会释放承接、取消�
     demanderAccountId: C.accountId,
     eggGameId: 3469,
     nature: '',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
     version: cDonePublish.body.demands[0].version,
   });
   assert.equal(cDoneClaim.status, 200, JSON.stringify(cDoneClaim.body));
@@ -515,6 +544,9 @@ test('已完成需求不能撤回；组长移除组员会释放承接、取消�
     demanderAccountId: C.accountId,
     eggGameId: 3469,
     nature: '',
+    gender: '母',
+    body: '大块头',
+    voice: '+100',
     version: cDoneClaim.body.demand.version,
   });
   assert.equal(cDone.status, 200, JSON.stringify(cDone.body));

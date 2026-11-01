@@ -13,6 +13,8 @@ export interface TourOverlayProps {
   onClose: () => void;
   /** 进入某一步时切页面/子视图（由 App 执行导航） */
   onEnter?: (step: TourStep) => void;
+  /** 本机是否已有导入数据：`waitForImport` 那步据此放行 */
+  importReady?: boolean;
 }
 
 const SPOT_PAD = 6;
@@ -22,7 +24,7 @@ const TOOLTIP_ESTIMATED_HEIGHT = 172;
 /** 等锚点挂载（切页/拉数据有延迟）最多等多少帧，约 1 秒 */
 const MAX_WAIT_FRAMES = 60;
 
-export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
+export function TourOverlay({ steps, onClose, onEnter, importReady = false }: TourOverlayProps) {
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const targetRef = useRef<HTMLElement | null>(null);
@@ -30,8 +32,15 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const onEnterRef = useRef(onEnter);
   const onCloseRef = useRef(onClose);
+  /** 进入「等导入」那步时本机是否已经有数据（有数据就不用自动跳，用户自己点下一步） */
+  const readyAtEntryRef = useRef(importReady);
+  const importReadyRef = useRef(importReady);
+  importReadyRef.current = importReady;
   const step = steps[index];
   const last = index === steps.length - 1;
+  /** 收尾「重看引导」步：跳过时先跳到这里，再点一次才关闭 */
+  const hintIndex = useMemo(() => steps.findIndex((item) => item.hint === true), [steps]);
+  const waitingForImport = step.waitForImport === true && !importReady;
 
   useEffect(() => {
     onEnterRef.current = onEnter;
@@ -48,10 +57,22 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
     cardRef.current?.focus();
   }, [index]);
 
+  // 「先导入一次」那步：进入时先记住本机有没有数据，只有进入后才导入成功的才自动继续；
+  // 本来就有数据的（重看引导）不抢跳，用户自己点下一步。
+  useEffect(() => {
+    readyAtEntryRef.current = importReadyRef.current;
+  }, [index]);
+
+  useEffect(() => {
+    if (step.waitForImport !== true || !importReady || readyAtEntryRef.current || last) return;
+    const timer = window.setTimeout(() => setIndex((value) => value + 1), 600);
+    return () => window.clearTimeout(timer);
+  }, [step.waitForImport, importReady, last]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      // 上层还有模态弹层（例如文字教程）时让给它关，别一次 Esc 关两层
+      // 上层还有模态弹层时让给它关，别一次 Esc 关两层
       if (document.querySelector('[aria-modal="true"]')) return;
       event.preventDefault();
       onCloseRef.current();
@@ -151,6 +172,18 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
     else setIndex((value) => value + 1);
   }, [last, onClose]);
 
+  /**
+   * 跳过：不直接消失，先跳到收尾的「教程入口」那一步（用户要求：跳过时也要告诉他能从教程再进）；
+   * 已经在收尾步时再点才是真正关闭。
+   */
+  const skip = useCallback(() => {
+    if (hintIndex >= 0 && index !== hintIndex) {
+      setIndex(hintIndex);
+      return;
+    }
+    onClose();
+  }, [hintIndex, index, onClose]);
+
   const tooltipStyle: CSSProperties = useMemo(() => {
     const width = Math.min(TOOLTIP_MAX_WIDTH, window.innerWidth - 24);
     if (!rect || rect.height === 0) {
@@ -229,7 +262,7 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
           </span>
           <button
             type="button"
-            onClick={onClose}
+            onClick={skip}
             data-testid="tour-skip"
             className="min-h-[28px] px-1 text-xs text-slate-400"
           >
@@ -247,6 +280,14 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
           >
             {step.body}
           </p>
+          {waitingForImport ? (
+            <p
+              className="mt-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px] text-slate-500"
+              data-testid="tour-wait"
+            >
+              导入成功后会自动继续；也可以先跳过
+            </p>
+          ) : null}
         </div>
         <div className="mt-3 flex items-center gap-2">
           {index > 0 ? (
@@ -262,10 +303,11 @@ export function TourOverlay({ steps, onClose, onEnter }: TourOverlayProps) {
           <button
             type="button"
             onClick={next}
+            disabled={waitingForImport}
             data-testid={last ? 'tour-done' : 'tour-next'}
-            className="min-h-[36px] flex-1 rounded-xl bg-emerald-600 text-sm font-medium text-white active:bg-emerald-700"
+            className="min-h-[36px] flex-1 rounded-xl bg-emerald-600 text-sm font-medium text-white active:bg-emerald-700 disabled:opacity-50"
           >
-            {last ? '开始用' : '下一步'}
+            {last ? (step.hint ? '知道了' : '开始用') : '下一步'}
           </button>
         </div>
       </div>

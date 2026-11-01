@@ -1266,6 +1266,8 @@ function applyPlaintextToAccount(event, capture, retainRawProtocol = true) {
       packetIndex: Number(event.packetIndex || 0),
       order: Number(event.order || 0),
       encoding: "hex",
+      // 注意：bytes 是「零 IV 解整段」后的明文（plaintext = legacy），不是抓到的原始密文帧；
+      // 字段名沿用旧契约，下游按密文二次解读会读不出（R2-7-L10 已确认保留现状）。
       bytes: rawHex
     });
   }

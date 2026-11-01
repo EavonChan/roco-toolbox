@@ -5,6 +5,7 @@
 --
 -- 旧表主键只有 (group, demander, egg, nature)，无法并存同蛋同性格的母/公两条，
 -- 因此重建表，并把主键扩到五个字段。**本文件只执行一次。**
+-- 新库不要跑本文件：functions/schema.sql 已包含新结构，重复执行会报 table already exists。
 --
 -- 应用：
 --   npx wrangler d1 execute roco-toolbox-db --remote --file functions/migrations/2026-10-27-collection-demand-criteria.sql

@@ -5,6 +5,11 @@
 -- 本地预览库：把 --remote 换成 --local
 --
 -- 全部用 IF NOT EXISTS，可重复执行；表已存在时不会改动线上数据。
+--
+-- 新库只跑本文件（一次建好全部表），不要再把 functions/migrations/ 里的迁移全跑一遍：
+-- 其中 2026-10-27-mother-production-lines.sql 与 2026-10-27-collection-demand-criteria.sql
+-- 只能执行一次，重复跑会报 duplicate column / table already exists。
+-- 迁移是给「已有数据的旧库」打补丁用的。
 
 -- 账号：免密，凭「恢复码」找回；恢复码只存 SHA-256 哈希，明文只在注册/轮换时返回一次
 CREATE TABLE IF NOT EXISTS accounts (

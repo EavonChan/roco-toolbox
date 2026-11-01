@@ -73,12 +73,20 @@ const matchesDemandVoice = (pet: OwnedPet, voice: string): boolean =>
  * 要 +100 / -100 必须父母双双同号满分；体型同理（双大块头才出大块头蛋）。
  * 体型认奖牌，也认身高到顶 / 到底（2026-10-26 用户口径）。
  *
+ * 「满体重 / 零体重」在这里**只按大块头 / 小不点算**（2026-11-01 用户口径）：
+ * 孵蛋规则和普通体型一致，出满体重 / 零体重是概率事件，不要求父母本身就满分；
+ * 满分只作为交付要求，由 `petMatchesDemand` 在结单时校验。
+ *
  * 导出给 `demandPlacement.isMotherCandidate` / `isFatherCandidate` 共用
  * （2026-11-01 代码审查 R2-1-M09：那边曾手抄一份，声音档位改口径必然漏改）。
  */
 export const matchesParentGrade = (pet: OwnedPet, criteria: DemandCriteria): boolean =>
-  bodyMatchesCriteria(pet, criteria.body) &&
+  bodyMatchesCriteria(pet, parentBodyOf(criteria.body)) &&
   matchesDemandVoice(pet, criteria.voice);
+
+/** 父母匹配用的体型：满体重 → 大块头、零体重 → 小不点，其余原样。 */
+const parentBodyOf = (body: string): string =>
+  body === '满体重' ? '大块头' : body === '零体重' ? '小不点' : body;
 
 /** 这只个体是否满足需求的所有已选字段（空字段跳过）。 */
 export function petMatchesDemand(
@@ -145,8 +153,10 @@ const eggInfoOf = (species: readonly SpeciesEntry[]): Map<number, EggGroupInfo> 
 export interface DemandPairOption {
   motherPet: PetMatch;
   malePet: PetMatch;
-  /** 目标性格的遗传概率：不挑 1 / 双亲同性格 0.6 / 单方 0.3。 */
+  /** 目标性格的遗传概率：不挑 1 / 学院小窝 1 / 双亲同性格 0.6 / 单方 0.3。 */
   natureChance: number;
+  /** 这组配对是否走绿窝（学院小窝）：性格由学院那只 100% 遗传。 */
+  greenNest: boolean;
 }
 
 /** 性格遗传概率 → 档位描述（界面写概率分解用）。 */
@@ -171,6 +181,11 @@ export function pairOptionsForEgg(
   criteria: DemandCriteria,
   species: readonly SpeciesEntry[],
   limit = 3,
+  /**
+   * 需求要求绿窝（学院小窝）时传 true：性格由学院那只 100% 遗传，
+   * 不再按「双亲同性格 60% / 单方 30%」算（2026-11-01 用户口径）。
+   */
+  greenNest = false,
 ): DemandPairOption[] {
   const eggOfGameId = eggMapOf(species);
   const infoByGameId = eggInfoOf(species);
@@ -208,10 +223,14 @@ export function pairOptionsForEgg(
         const maleHit = Boolean(criteria.nature) && male.nature === criteria.nature;
         // 性格指定时至少一方带目标性格；都没带这一对就不算能孵
         if (criteria.nature && !motherHit && !maleHit) continue;
+        // 绿窝：这一对要进学院小窝。性格指定时由学院那只 100% 遗传，不再看双亲是否同性格。
+        // 不挑性格的单本来就发不了绿窝（发需求处已拦），这里仍按「有性格才算绿窝」处理。
+        const viaGreenNest = greenNest && Boolean(criteria.nature);
         options.push({
           motherPet: { snapshot, pet: female },
           malePet: { snapshot, pet: male },
-          natureChance: !criteria.nature ? 1 : motherHit && maleHit ? 0.6 : 0.3,
+          natureChance: !criteria.nature || viaGreenNest ? 1 : motherHit && maleHit ? 0.6 : 0.3,
+          greenNest: viaGreenNest,
         });
       }
     }
@@ -281,7 +300,14 @@ export interface StudHatchOption extends DemandPairOption {
  */
 export function studHatchOptions(
   snapshots: readonly AccountSnapshot[],
-  demand: { eggGameId: number; nature: string; gender: string; body: string; voice: string },
+  demand: {
+    eggGameId: number;
+    nature: string;
+    gender: string;
+    body: string;
+    voice: string;
+    requireGreenNest?: boolean;
+  },
   species: readonly SpeciesEntry[],
 ): StudHatchOption[] {
   if (!isStudDemandKey(demand.eggGameId)) return [];
@@ -307,6 +333,7 @@ export function studHatchOptions(
       },
       species,
       1,
+      demand.requireGreenNest === true,
     );
     if (!best) continue;
     options.push({
@@ -316,6 +343,7 @@ export function studHatchOptions(
       motherPet: best.motherPet,
       malePet: best.malePet,
       natureChance: best.natureChance,
+      greenNest: best.greenNest,
       chance: best.natureChance * genderFactor,
     });
   }

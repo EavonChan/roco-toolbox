@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>紧凑卡·长昵称压性格徽标 — 布局方案（R2-5 / B7-M01 复核）</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: #eef2f7; color: #0f172a;
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 18px; }
+  .hint { margin: 0 0 12px; font-size: 13px; line-height: 1.7; color: #64748b; max-width: 860px; }
+  .hint code { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 0 4px; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 10px 12px; margin-bottom: 12px; max-width: 860px;
+  }
+  .toolbar label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #475569; }
+  .toolbar input[type="range"] { width: 90px; }
+  .toolbar input[type="number"] { width: 56px; min-height: 28px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 6px; font-size: 12px; }
+  button { min-height: 30px; border: 1px solid #cbd5e1; background: #fff; color: #334155;
+    border-radius: 8px; padding: 0 10px; font-size: 12px; cursor: pointer; }
+  button.on { border-color: #059669; background: #059669; color: #fff; }
+  .phones { display: flex; flex-wrap: wrap; gap: 14px; }
+  .phone { background: #fff; border: 1px solid #cbd5e1; border-radius: 18px; padding: 10px 0 14px; }
+  .phone h2 { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: #64748b; text-align: center; }
+  /* 卡片 160×115：字号/字重/内边距与 src/ui/PetCompactCard.tsx、卡片布局编辑器.html 一致 */
+  .card { position: relative; width: 160px; height: 115px; margin: 0 auto;
+    background: #fff; border: 1px solid #cbd5e1; border-radius: 12px;
+    box-shadow: 0 1px 2px rgb(15 23 42 / .08); overflow: hidden; }
+  .el { position: absolute; transform-origin: top left; transform: scale(var(--scale,1));
+    white-space: nowrap; line-height: 1.1; cursor: grab; user-select: none; }
+  .el:active { cursor: grabbing; }
+  .show-outline .el { outline: 1px dotted rgba(100,116,139,.55); outline-offset: 1px; }
+  .avatar-box { width: 40px; height: 40px; border-radius: 10px; background: #e2e8f0;
+    display: flex; align-items: center; justify-content: center; font-size: 18px; color: #94a3b8; }
+  .name { font-size: 14px; font-weight: 700; color: #0f172a; }
+  .name.trunc { overflow: hidden; text-overflow: ellipsis; }
+  .gender { font-size: 12px; font-weight: 700; color: #db2777; }
+  .medals { display: flex; gap: 2px; }
+  .medal { width: 16px; height: 16px; border-radius: 4px; background: #fef3c7; border: 1px solid #f59e0b;
+    font-size: 8px; color: #b45309; display: flex; align-items: center; justify-content: center; }
+  .groups { display: flex; gap: 2px; }
+  .groups span { background: #f1f5f9; color: #475569; border-radius: 4px; padding: 1px 3px; font-size: 8px; }
+  .nature { background: #f5f3ff; color: #6d28d9; border-radius: 4px; padding: 1px 3px; font-size: 8px; }
+  .metric { width: 46px; text-align: center; }
+  .metric small { display: block; font-size: 8px; color: #64748b; }
+  .metric b { font-size: 10px; color: #334155; }
+  .measure { margin-top: 8px; font-size: 11px; line-height: 1.6; text-align: center; color: #475569; }
+  .measure b { font-weight: 600; }
+  .measure .bad { color: #dc2626; }
+  .ref { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #f43f5e; pointer-events: none; display: none; }
+  .show-ref .ref { display: block; }
+  .ref i { position: absolute; top: 0; left: 2px; font-size: 8px; color: #f43f5e; font-style: normal; white-space: nowrap; }
+  .json { max-width: 860px; margin-top: 12px; background: #0f172a; color: #a7f3d0; border-radius: 12px;
+    padding: 10px 12px; font: 11px/1.6 ui-monospace, Consolas, monospace; white-space: pre-wrap; min-height: 40px; }
+</style>
+</head>
+<body>
+<h1>紧凑卡·长昵称压性格徽标 — 布局方案（待拍板）</h1>
+<p class="hint">
+  问题：昵称 <code>left=64</code>、14px 粗体 × <code>scale 0.75</code> ≈ 10.5px/字；性格徽标 <code>left=125</code>。
+  5 字名右缘 116.5px 不碰；唯一 6 字基础名 <b>睡铃雪影娃娃</b>（gameId 3746）右缘到 <b>127px</b>，末字被徽标压住约 2px。<br>
+  方案 A：昵称加 <code>max-width + 省略号</code>（不动坐标，同 StudMatrix 格子名字 truncate 写法）；
+  方案 B：超过 5 字时昵称 scale 0.75 → 0.62（名完整、字略小）；
+  方案 C：性格徽标 scale 1.25 → 1.0 并右移到 128（动用户手调坐标，仅作对照）；
+  方案 D（2026-11-01 用户口径）：名字不截断，性格徽标整体右移 125 → 129，其余坐标不动。<br>
+  下面两张卡片分别是 375 / 390 屏宽里的真实尺寸（1:1 像素）。昵称与性格徽标可拖动，调完点「复制 JSON」。
+</p>
+<div class="toolbar" id="toolbar">
+  <span style="font-size:12px;color:#475569">方案：</span>
+  <button data-scheme="current">现状（会压）</button>
+  <button data-scheme="A">A 省略号截断</button>
+  <button data-scheme="B">B 长名缩 scale</button>
+  <button data-scheme="C">C 徽标缩小右移</button>
+  <button data-scheme="D" class="on">D 徽标右移（不截断）</button>
+  <label><input type="checkbox" id="outline" checked />元素边框</label>
+  <label><input type="checkbox" id="refs" checked />参考线</label>
+  <label>昵称 scale <input type="range" id="nameScale" min="0.5" max="0.9" step="0.01" value="0.75" /><span id="nameScaleV">0.75</span></label>
+  <label>max-width <input type="number" id="nameMaxW" value="57" />px</label>
+  <label>徽标 scale <input type="range" id="natureScale" min="0.8" max="1.4" step="0.05" value="1.25" /><span id="natureScaleV">1.25</span></label>
+  <button id="copy">复制 JSON</button>
+</div>
+<div class="phones show-outline show-ref" id="phones">
+  <div class="phone" style="width:375px"><h2>375px 屏宽</h2><div class="card" data-phone="375"></div></div>
+  <div class="phone" style="width:390px"><h2>390px 屏宽</h2><div class="card" data-phone="390"></div></div>
+</div>
+<div class="json" id="json">点「复制 JSON」生成当前布局</div>
+<script>
+const NAME = '睡铃雪影娃娃'; // 6 字，图鉴唯一超 5 字基础名（3746）
+// 与 PetCompactCard.tsx 的 L 表一致（left/top/scale）
+const pos = {
+  avatar: { left: 6, top: 10, scale: 1.35 },
+  name:   { left: 64, top: 17, scale: 0.75 },
+  gender: { left: 67, top: 37, scale: 1 },
+  medals: { left: 83, top: 37, scale: 0.9 },
+  groups: { left: 65, top: 60, scale: 1.05 },
+  nature: { left: 125, top: 17, scale: 1.25 },
+  sound:  { left: 6, top: 80, scale: 1 },
+  height: { left: 54, top: 80, scale: 1 },
+  weight: { left: 107, top: 80, scale: 1 },
+};
+let scheme = 'D';
+let nameMaxW = 57;
+
+function el(cls, key, html) {
+  const d = document.createElement('div');
+  d.className = 'el ' + cls;
+  d.dataset.key = key;
+  d.style.left = pos[key].left + 'px';
+  d.style.top = pos[key].top + 'px';
+  d.style.setProperty('--scale', pos[key].scale);
+  d.innerHTML = html;
+  return d;
+}
+function render(card) {
+  card.innerHTML = '';
+  card.appendChild(el('avatar-box-wrap', 'avatar', '<div class="avatar-box">睡</div>'));
+  const name = el('name', 'name', NAME);
+  if (scheme === 'A') { name.classList.add('trunc'); name.style.maxWidth = nameMaxW + 'px'; }
+  card.appendChild(name);
+  card.appendChild(el('gender', 'gender', '♀'));
+  card.appendChild(el('medals', 'medals', '<div class="medal">大</div><div class="medal">+</div>'));
+  card.appendChild(el('groups', 'groups', '<span>天空</span><span>拟人</span>'));
+  card.appendChild(el('nature', 'nature', '开朗'));
+  card.appendChild(el('metric', 'sound', '<small>声音</small><b>+100dB</b>'));
+  card.appendChild(el('metric', 'height', '<small>身高</small><b>100.00%</b>'));
+  card.appendChild(el('metric', 'weight', '<small>体重</small><b>98.00%</b>'));
+  // 参考线：5 字名右缘 116.5、徽标起点 125、现状 6 字名右缘 127
+  for (const [x, label] of [[116.5, '5字右缘'], [125, '徽标125'], [127, '6字右缘127']]) {
+    const r = document.createElement('div');
+    r.className = 'ref'; r.style.left = x + 'px';
+    r.innerHTML = `<i>${label}</i>`;
+    card.appendChild(r);
+  }
+  bindDrag(card);
+  measure(card);
+}
+/**
+ * 实测右缘：名字末尾 / 性格徽标右缘 / 卡片可用宽度（158 = 160 − 左右各 1px 边框），
+ * 徽标右缘超出卡片或名字与徽标相互重叠都标红。
+ */
+function measure(card) {
+  const cr = card.getBoundingClientRect();
+  const cs = getComputedStyle(card);
+  const borderL = parseFloat(cs.borderLeftWidth) || 0;
+  const inner = cr.width - borderL - (parseFloat(cs.borderRightWidth) || 0);
+  const nameRect = card.querySelector('.name').getBoundingClientRect();
+  const natureRect = card.querySelector('.nature').getBoundingClientRect();
+  const nameRight = nameRect.right - cr.left - borderL;
+  const natureRight = natureRect.right - cr.left - borderL;
+  const gap = natureRect.left - nameRect.right;
+  const over = natureRight > inner ? 'bad' : '';
+  const squeezed = gap < 0 ? 'bad' : '';
+  let box = card.parentElement.querySelector('.measure');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'measure';
+    card.parentElement.appendChild(box);
+  }
+  box.innerHTML =
+    `名字右缘 <b>${nameRight.toFixed(1)}</b> · 徽标右缘 <b class="${over}">${natureRight.toFixed(1)}</b> / 可用 ${inner}` +
+    ` · 间隙 <b class="${squeezed}">${gap.toFixed(1)}</b>` +
+    `<br>${natureRight > inner ? '<span class="bad">超出卡片</span>' : '未超出卡片'}` +
+    `${gap < 0 ? ' · <span class="bad">仍然重叠</span>' : ' · 不重叠'}`;
+}
+function bindDrag(card) {
+  card.querySelectorAll('.el').forEach(node => {
+    node.addEventListener('pointerdown', ev => {
+      if (!['name', 'nature'].includes(node.dataset.key)) return;
+      ev.preventDefault();
+      const startX = ev.clientX, startY = ev.clientY;
+      const key = node.dataset.key;
+      const base = { ...pos[key] };
+      const move = e => {
+        pos[key].left = Math.round(base.left + (e.clientX - startX));
+        pos[key].top = Math.round(base.top + (e.clientY - startY));
+        sync();
+      };
+      const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+      addEventListener('pointermove', move); addEventListener('pointerup', up);
+    });
+  });
+}
+function sync() {
+  document.querySelectorAll('.card').forEach(render);
+  document.getElementById('nameScaleV').textContent = pos.name.scale.toFixed(2);
+  document.getElementById('natureScaleV').textContent = pos.nature.scale.toFixed(2);
+  document.getElementById('nameScale').value = pos.name.scale;
+  document.getElementById('natureScale').value = pos.nature.scale;
+}
+document.querySelectorAll('[data-scheme]').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('[data-scheme]').forEach(b => b.classList.toggle('on', b === btn));
+  scheme = btn.dataset.scheme;
+  if (scheme === 'A') { Object.assign(pos.name, { left: 64, top: 17, scale: 0.75 }); Object.assign(pos.nature, { left: 125, top: 17, scale: 1.25 }); }
+  if (scheme === 'B') { Object.assign(pos.name, { left: 64, top: 17, scale: 0.62 }); Object.assign(pos.nature, { left: 125, top: 17, scale: 1.25 }); }
+  if (scheme === 'C') { Object.assign(pos.name, { left: 64, top: 17, scale: 0.75 }); Object.assign(pos.nature, { left: 128, top: 18, scale: 1.0 }); }
+  if (scheme === 'D') { Object.assign(pos.name, { left: 64, top: 17, scale: 0.75 }); Object.assign(pos.nature, { left: 129, top: 17, scale: 1.25 }); }
+  if (scheme === 'current') { Object.assign(pos.name, { left: 64, top: 17, scale: 0.75 }); Object.assign(pos.nature, { left: 125, top: 17, scale: 1.25 }); }
+  sync();
+}));
+document.getElementById('outline').addEventListener('change', e =>
+  document.getElementById('phones').classList.toggle('show-outline', e.target.checked));
+document.getElementById('refs').addEventListener('change', e =>
+  document.getElementById('phones').classList.toggle('show-ref', e.target.checked));
+document.getElementById('nameScale').addEventListener('input', e => { pos.name.scale = Number(e.target.value); sync(); });
+document.getElementById('natureScale').addEventListener('input', e => { pos.nature.scale = Number(e.target.value); sync(); });
+document.getElementById('nameMaxW').addEventListener('input', e => { nameMaxW = Number(e.target.value) || 57; sync(); });
+document.getElementById('copy').addEventListener('click', async () => {
+  const out = {
+    scheme,
+    name: { ...pos.name, ...(scheme === 'A' ? { maxWidth: nameMaxW, truncate: true } : {}) },
+    nature: { ...pos.nature },
+    measured: [...document.querySelectorAll('.card')].map(card => {
+      const box = card.parentElement.querySelector('.measure');
+      return { phone: card.dataset.phone, text: box ? box.textContent : '' };
+    }),
+  };
+  const text = JSON.stringify(out, null, 2);
+  document.getElementById('json').textContent = text;
+  try { await navigator.clipboard.writeText(text); } catch {}
+});
+// 默认展示方案 D：名字不截断，性格徽标右移到 129
+Object.assign(pos.nature, { left: 129, top: 17, scale: 1.25 });
+sync();
+</script>
+</body>
+</html>

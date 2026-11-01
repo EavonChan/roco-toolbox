@@ -27,6 +27,12 @@ import {
   resolveDemandCompletionNotice,
   type DemandCompletionNotice,
 } from './demandCompletionNotice';
+import {
+  readDemandCancelledState,
+  resolveDemandCancelledNotice,
+  saveDemandCancelledState,
+  type DemandCancelledNotice,
+} from './demandCancelledNotice';
 
 export interface CollectionGroupsProps {
   onGoAccount?: () => void;
@@ -89,6 +95,30 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
     }
     setCompletionNotice(null);
   };
+
+  /**
+   * 承接人的「你接的需求已被取消」提示（R2-7-M05）：需求方被移出小组时，
+   * 服务端会连带删掉他没完成的需求，承接人只看到任务凭空消失。
+   * 服务端不记原因（要改表），这里用本机「我接过哪些单」对比。
+   */
+  const [cancelledNotice, setCancelledNotice] = useState<DemandCancelledNotice | null>(null);
+  useEffect(() => {
+    const accountId = hook.accountId;
+    const groupId = hook.currentGroup?.group.id ?? null;
+    if (!accountId || !groupId || hook.loading) {
+      setCancelledNotice(null);
+      return;
+    }
+    const decision = resolveDemandCancelledNotice(
+      [...hook.demands, ...hook.myRecentCompleted],
+      accountId,
+      readDemandCancelledState(accountId, groupId),
+    );
+    saveDemandCancelledState(accountId, groupId, decision.state);
+    setCancelledNotice(decision.notice);
+  }, [hook.accountId, hook.currentGroup, hook.demands, hook.myRecentCompleted, hook.loading]);
+
+  const dismissCancelledNotice = () => setCancelledNotice(null);
 
   /**
    * 小组页一律用**组目标**的模式：已发布的产线就是这个模式算的，
@@ -303,6 +333,26 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
                 重试
               </button>
             </p>
+          ) : null}
+
+          {cancelledNotice ? (
+            <div
+              className="rounded-xl bg-amber-50 px-3 py-2 text-amber-800"
+              data-testid="demand-cancelled-notice"
+            >
+              <p className="text-sm font-medium">你接的 {cancelledNotice.count} 条需求已被取消</p>
+              <p className="mt-0.5 text-xs opacity-90">
+                需求方已离开小组，这条单不会再出现在需求列表里
+              </p>
+              <button
+                type="button"
+                onClick={dismissCancelledNotice}
+                className="mt-1.5 min-h-[28px] rounded-lg bg-white/70 px-2.5 text-xs text-amber-800"
+                data-testid="demand-cancelled-dismiss"
+              >
+                知道了
+              </button>
+            </div>
           ) : null}
 
           {completionNotice ? (

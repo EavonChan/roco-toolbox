@@ -1,5 +1,5 @@
 import type { DemandCriteria } from '../shared/collectionGroups';
-import { matchesParentGrade } from './demandCriteria';
+import { matchesParentGrade, type PetMatch } from './demandCriteria';
 import { isBreedableGroup } from './eggs';
 import { DEFAULT_NEST_COUNT } from './nestPlan';
 import { accountKeyOf, type AccountSnapshot } from './parseBackup';
@@ -555,4 +555,82 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
     totalDemands: demands.length,
     placedCount: accounts.reduce((sum, account) => sum + account.placements.length, 0),
   };
+}
+
+/** 种公需求「我能用哪颗蛋接」的一个选项（与上窝共用同一套分配口径）。 */
+export interface StudPlacementOption {
+  eggGameId: number;
+  name: string;
+  groupIds: number[];
+  /** 命中需求的整体概率 = 性格概率 × 性别概率（挑性别 50%）。 */
+  chance: number;
+  natureChance: number;
+  greenNest: boolean;
+  motherPet: PetMatch;
+  malePet: PetMatch;
+}
+
+/**
+ * 小组页「用这颗」的候选（R2-8-N01 / N02，2026-11-01 拍板 A1）。
+ *
+ * 不再自己另算一套「我能孵的蛋」，而是直接把这条单交给 `buildDemandPlacements`：
+ * 与家园「接单上窝」同一个函数、同一套窝位与学院规则，所以小组页选中的组合回到上窝一定排得上。
+ * `alongside` 传「我承接的其它未完成需求」，让窝位 / 学院占用按真实情况一起算。
+ *
+ * 结果只保留最高概率档（N02）：有 50% 的组合就不列 30%；全是低档时才在同档里列其它组合。
+ */
+export function studPlacementOptions(
+  snapshots: readonly AccountSnapshot[],
+  demand: DemandPlacementDemand,
+  species: readonly SpeciesEntry[],
+  alongside: readonly DemandPlacementDemand[] = [],
+): StudPlacementOption[] {
+  if (demand.eggGameId >= 0) return [];
+  const eggOfGameId = new Map<number, number>();
+  const speciesByGameId = new Map<number, SpeciesEntry>();
+  for (const entry of species) {
+    speciesByGameId.set(entry.gameId, entry);
+    if (entry.eggGameId != null && entry.eggGameId > 0) {
+      eggOfGameId.set(entry.gameId, entry.eggGameId);
+    }
+  }
+
+  const result = buildDemandPlacements({ demands: [...alongside, demand], snapshots, species });
+  const snapshotByKey = new Map(snapshots.map((snapshot) => [accountKeyOf(snapshot), snapshot]));
+  const genderFactor = demand.gender ? 0.5 : 1;
+  const best = new Map<number, StudPlacementOption>();
+  for (const account of result.accounts) {
+    const owner = snapshotByKey.get(account.accountKey);
+    if (!owner) continue;
+    for (const placement of account.placements) {
+      if (placement.demand !== demand) continue;
+      for (const option of placement.options) {
+        const eggGameId = eggOfGameId.get(option.mother.pet.gameId) ?? option.mother.pet.gameId;
+        const entry = speciesByGameId.get(eggGameId);
+        if (!entry) continue;
+        const chance = option.natureChance * genderFactor;
+        const previous = best.get(eggGameId);
+        if (previous && previous.chance >= chance) continue;
+        best.set(eggGameId, {
+          eggGameId,
+          name: entry.name,
+          groupIds: groupsOf(entry),
+          chance,
+          natureChance: option.natureChance,
+          greenNest: option.tier === 'academy',
+          motherPet: { snapshot: owner, pet: option.mother.pet },
+          malePet: { snapshot: owner, pet: option.father.pet },
+        });
+      }
+    }
+  }
+
+  const options = [...best.values()].sort(
+    (a, b) =>
+      b.chance - a.chance ||
+      Number(b.groupIds.length >= 2) - Number(a.groupIds.length >= 2) ||
+      a.eggGameId - b.eggGameId,
+  );
+  const top = options[0]?.chance ?? -1;
+  return options.filter((option) => Math.abs(option.chance - top) < 1e-9);
 }

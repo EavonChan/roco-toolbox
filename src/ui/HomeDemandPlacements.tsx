@@ -3,6 +3,7 @@ import { eggGroupNames, species } from '../data/catalog';
 import { boxLabel } from '../domain/coverageDetail';
 import {
   buildDemandPlacements,
+  studPlacementOptions,
   type DemandPlacement,
   type DemandPlacementDemand,
   type DemandPlacementParent,
@@ -73,6 +74,18 @@ const conditionTags = (demand: DemandPlacementDemand): Array<{ text: string; cla
   return tags;
 };
 
+/**
+ * 亲本小卡的外框尺寸（2026-11-01 用户反馈：卡片下面不该有横向滚动条）。
+ *
+ * 行内可用宽 = 屏宽 - 页面 32 - 区块 32 - 行边框 2 - 行内边距 16 = 屏宽 - 82；
+ * 375 宽下只有 293px，两张卡 + 8px 间距必须 ≤ 293，所以每张 142。
+ * 卡本体 160×120，按 0.885 缩到 141.6×106.2，正好放进 142×107。
+ * 更窄的机型（如 360）让第二张换行，不用滚动、也不裁内容。
+ */
+const PARENT_CARD_W = 142;
+const PARENT_CARD_H = 107;
+const PARENT_CARD_SCALE = 0.885;
+
 function ParentCard({
   role,
   parent,
@@ -91,7 +104,11 @@ function ParentCard({
   const entry = speciesByGameId.get(pet.gameId);
   const box = boxLabel(pet);
   return (
-    <div className="relative shrink-0" style={{ width: 153, height: 115 }}>
+    <div
+      className="relative shrink-0"
+      style={{ width: PARENT_CARD_W, height: PARENT_CARD_H }}
+      data-testid="home-demand-parent-box"
+    >
       {academyNest ? (
         <span className="absolute -top-2 left-1 z-20 inline-flex items-center gap-[2px] rounded-full bg-emerald-600 px-1 text-[9px] font-bold text-white">
           <img src={GREEN_NEST_ICON} alt="" className="h-[11px] w-auto" />
@@ -103,7 +120,7 @@ function ParentCard({
           已在家园
         </span>
       ) : null}
-      <div className="origin-top-left" style={{ transform: 'scale(0.94)' }}>
+      <div className="origin-top-left" style={{ transform: `scale(${PARENT_CARD_SCALE})` }}>
         <PetCompactCard
           variant="demand"
           roleLabel={role}
@@ -125,12 +142,12 @@ function ParentCard({
       {/*
         「已在家园」的绿描边单独画一层、盖在卡片上面：卡片本身带 border + shadow-sm，
         无论 ring 还是底衬都会被它压住一部分（2026-10-30 用户两次反馈）。
-        尺寸 = 卡片缩放后的 150.4×112.8，向外各扩 2px，描边刚好贴着卡片外沿。
+        尺寸 = 卡片缩放后的 141.6×106.2，向外各扩 2px，描边刚好贴着卡片外沿。
       */}
       {inHome ? (
         <div
           className="pointer-events-none absolute -left-0.5 -top-0.5 z-10 rounded-xl border-2 border-emerald-300"
-          style={{ width: 154, height: 117 }}
+          style={{ width: 146, height: 110 }}
           data-testid="home-demand-parent-frame"
         />
       ) : null}
@@ -176,7 +193,7 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
   /** 小组页里选的「用哪颗蛋接单」：键与小组页一致（R2-3-M02）。 */
   const picks = useMemo(() => readDemandPicks(), [items]);
 
-  /** 先按默认配对构建一次，用来找到所选那颗蛋在候选里的位置。 */
+  /** 接单明细：小组页 / 家园共用同一份字段，后面算选蛋偏好和整份方案都以它为准。 */
   const baseDemands = useMemo(
     () =>
       items.map((item) => ({
@@ -193,32 +210,35 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
       })),
     [items],
   );
-  const baseResult = useMemo(
-    () => buildDemandPlacements({ demands: baseDemands, snapshots, species }),
-    [baseDemands, snapshots],
-  );
 
-  /** 把小组页选的蛋映射成「母本 + 种公」偏好对；本机排不上时记一笔用于提示。 */
+  /**
+   * 把小组页选的蛋映射成「母本 + 种公」偏好对；本机排不上时记一笔用于提示。
+   *
+   * 用小组页同一个 `studPlacementOptions` 找候选（2026-11-01 用户反馈）：母本可能是这颗蛋的
+   * 进化形态（选「矮脚爬爬」、本机养的是「恶魔红钻」），不能再拿精灵 gameId 直接和蛋 id 比，
+   * 也必须用同一份候选列表——否则小组页能选、家园却匹配不上，还会误报「排不上」。
+   */
   const pickPreferences = useMemo(() => {
     const pairs: PlacementChoices = {};
     const fallback: Record<string, true> = {};
-    for (const account of baseResult.accounts) {
-      for (const placement of account.placements) {
-        const key = rowKeyOfDemand(placement.demand);
-        const pick = picks[demandPickKey(placement.demand.groupId, placement.demand)];
-        if (pick == null) continue;
-        const option = placement.options.find((item) => item.mother.pet.gameId === pick);
-        const motherCaptureId = option?.mother.pet.captureId;
-        const fatherCaptureId = option?.father.pet.captureId;
-        if (!motherCaptureId || !fatherCaptureId) {
-          fallback[key] = true;
-          continue;
-        }
-        pairs[key] = { motherCaptureId, fatherCaptureId };
+    for (const demand of baseDemands) {
+      const pick = picks[demandPickKey(demand.groupId, demand)];
+      if (pick == null) continue;
+      const key = rowKeyOfDemand(demand);
+      const alongside = baseDemands.filter((item) => item !== demand);
+      const option = studPlacementOptions(snapshots, demand, species, alongside).find(
+        (item) => item.eggGameId === pick,
+      );
+      const motherCaptureId = option?.motherPet.pet.captureId;
+      const fatherCaptureId = option?.malePet.pet.captureId;
+      if (!motherCaptureId || !fatherCaptureId) {
+        fallback[key] = true;
+        continue;
       }
+      pairs[key] = { motherCaptureId, fatherCaptureId };
     }
     return { pairs, fallback };
-  }, [baseResult, picks]);
+  }, [baseDemands, picks, snapshots]);
 
   const demands = useMemo(
     () =>
@@ -362,11 +382,17 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
                 type="button"
                 onClick={() => toggleOptions(rowKey)}
                 aria-expanded={open}
-                title="查看其他候选配对"
-                className="flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1 text-[10px] font-bold text-white"
+                title="还有其他配对，点这里换一对母本 × 种公"
+                className="inline-flex h-6 items-center gap-0.5 rounded-full bg-slate-900 px-2 text-[10px] font-bold text-white"
                 data-testid="home-demand-badge"
               >
-                {placement.options.length}
+                换配对 {placement.options.length}
+                <span
+                  aria-hidden="true"
+                  className={`inline-block transition-transform ${open ? 'rotate-180' : ''}`}
+                >
+                  ▾
+                </span>
               </button>
             ) : null}
             <label className="flex min-h-[28px] cursor-pointer items-center gap-1 rounded-lg border border-slate-200 px-1.5 text-[11px] text-slate-600">
@@ -381,8 +407,8 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
           </div>
         </div>
 
-        {/* 横向滚动容器会裁剪溢出的内容，顶部留出徽标与描边的位置，否则「已在家园」被切掉。 */}
-        <div className="mt-0.5 flex gap-2 overflow-x-auto pb-1.5 pt-2.5">
+        {/* 两张卡 142×2 + 8 间距 = 292，375 宽下放得下；不设横向滚动，顶部留出徽标位置。 */}
+        <div className="mt-0.5 flex flex-wrap gap-2 pb-1.5 pt-2.5" data-testid="home-demand-parent-row">
           <ParentCard
             role="母本"
             parent={active.mother}
@@ -411,37 +437,51 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
         ) : null}
 
         {open && placement.options.length > 1 ? (
-          <div className="mt-1 space-y-0.5 rounded-lg bg-slate-50 p-1.5 text-[10px] text-slate-600" data-testid="home-demand-options">
+          <div className="mt-1 space-y-1 rounded-lg bg-slate-50 p-1.5 text-[11px] text-slate-600" data-testid="home-demand-options">
             {placement.options.map((option, index) => {
               const current = index === 0;
               const motherId = option.mother.pet.captureId;
               const fatherId = option.father.pet.captureId;
+              const choose = () => {
+                if (!motherId || !fatherId) return;
+                // 换候选 = 换整份方案的偏好，分配入口会按这一对重算（页头窝数一起变）
+                setPreferredPairs((currentPicks) => ({
+                  ...currentPicks,
+                  [rowKey]: { motherCaptureId: motherId, fatherCaptureId: fatherId },
+                }));
+                if (accountId) {
+                  writePlacementChoice(accountId, rowKey, {
+                    motherCaptureId: motherId,
+                    fatherCaptureId: fatherId,
+                  });
+                }
+                setOpenOptions((currentOpen) => currentOpen.filter((key) => key !== rowKey));
+              };
               return (
-                <button
+                <div
                   key={`${motherId}-${fatherId}-${index}`}
-                  type="button"
-                  onClick={() => {
-                    if (!motherId || !fatherId) return;
-                    // 换候选 = 换整份方案的偏好，分配入口会按这一对重算（页头窝数一起变）
-                    setPreferredPairs((currentPicks) => ({
-                      ...currentPicks,
-                      [rowKey]: { motherCaptureId: motherId, fatherCaptureId: fatherId },
-                    }));
-                    if (accountId) {
-                      writePlacementChoice(accountId, rowKey, {
-                        motherCaptureId: motherId,
-                        fatherCaptureId: fatherId,
-                      });
-                    }
-                    setOpenOptions((currentOpen) => currentOpen.filter((key) => key !== rowKey));
-                  }}
-                  className={`block w-full rounded px-1 py-0.5 text-left ${
-                    current ? 'bg-emerald-100 font-bold text-emerald-800' : ''
+                  className={`flex min-h-[34px] items-center justify-between gap-2 rounded-md px-2 py-1 ${
+                    current ? 'bg-emerald-100 font-bold text-emerald-800' : 'bg-white'
                   }`}
                   data-testid={`home-demand-option-${index}`}
                 >
-                  {current ? '当前' : `候选 ${index + 1}`}：{option.mother.pet.name} × {option.father.pet.name}
-                </button>
+                  <span className="min-w-0 truncate">
+                    {current ? '当前：' : ''}
+                    {option.mother.pet.name} × {option.father.pet.name}
+                  </span>
+                  {current ? (
+                    <span className="shrink-0 text-[10px] font-medium text-emerald-700">正在用</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={choose}
+                      className="min-h-[26px] shrink-0 rounded-md border border-emerald-500 bg-white px-2 text-[10px] font-medium text-emerald-700"
+                      data-testid={`home-demand-use-option-${index}`}
+                    >
+                      用这对
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -511,9 +551,9 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
         <p className={`${HINT} mt-0.5`} data-testid="home-demand-summary">
           {summary}
         </p>
-        {/* 账号筛选照旧作用于本页：写明口径，免得「少排了几单」看起来像 bug（R2-2-U01） */}
+        {/* 账号筛选只影响「家园现状」；这里按全部账号算，免得「少排了几单」看起来像 bug（R2-2-U01） */}
         <p className={`${HINT} mt-0.5 text-slate-400`} data-testid="home-demand-scope">
-          按已选的 {snapshots.length} 个账号计算；账号筛选里勾掉的号不参与上窝。
+          按全部 {snapshots.length} 个账号计算；账号筛选只影响「家园现状」，不影响这里。
         </p>
       </div>
 

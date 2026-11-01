@@ -1,16 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { TOUR_SEGMENT_ORDER, TOUR_VERSION } from '../src/ui/tour';
 
 const BASE = (process.env.ROCO_MOTHER_API_BASE ?? 'http://127.0.0.1:8789').replace(/\/$/, '');
 
 const { entries: changelogEntries } = JSON.parse(
   readFileSync(join(process.cwd(), 'src', 'data', 'changelog.json'), 'utf8'),
 ) as { entries: Array<{ id: string }> };
-const GUIDE_VERSION = /GUIDE_VERSION\s*=\s*'([^']+)'/.exec(
-  readFileSync(join(process.cwd(), 'src/ui/guide.ts'), 'utf8'),
-)?.[1];
-if (!GUIDE_VERSION) throw new Error('读不到 GUIDE_VERSION');
 
 const CATALOG_VERSION = (
   JSON.parse(readFileSync(join(process.cwd(), 'src', 'data', 'catalog.gen.json'), 'utf8')) as {
@@ -69,7 +66,11 @@ async function contextFor(browser: Browser, identity: Identity, groupId: string)
             { name: 'roco.accountId', value: identity.accountId },
             { name: 'roco.deviceToken', value: identity.token },
             { name: 'roco.changelogSeen', value: changelogEntries[0]?.id ?? '' },
-            { name: 'roco.guideSeen', value: GUIDE_VERSION as string },
+            // 新手引导全部预置为已读，避免首启 / 分页引导挡住联调用例
+            ...TOUR_SEGMENT_ORDER.map((segment) => ({
+              name: `roco.tourSeen.${segment}`,
+              value: TOUR_VERSION,
+            })),
             {
               name: `roco.collectionGroups:${identity.accountId}`,
               value: JSON.stringify({

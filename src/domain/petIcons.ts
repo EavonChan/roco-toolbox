@@ -18,6 +18,31 @@ export function voiceMedalIcon(voiceDb: number | null | undefined): string | nul
   return null;
 }
 
+/**
+ * 精灵本体的体型 / 声音奖牌（2026-11-01 用户口径：满体重 / 满声音要用蛋神的 MAX / MIN 版）。
+ *
+ * - 体型：`大块头` 且体重正好 100% → `1001-max`；`小不点` 且体重正好 0% → `1002-min`；
+ *   其余仍是普通奖牌（98% / 2% 的档位）。
+ * - 声音：±100 才显示奖牌，换成带 MAX 缎带的图。
+ */
+export function petBodyMedalIcon(
+  medalBody: string | null | undefined,
+  weightPercent: number | null | undefined,
+): string | null {
+  const percent = typeof weightPercent === 'number' && Number.isFinite(weightPercent)
+    ? weightPercent
+    : null;
+  if (medalBody === '大块头') return percent != null && percent >= 100 ? '/ui/medals/1001-max.png' : '/ui/medals/1001.png';
+  if (medalBody === '小不点') return percent != null && percent <= 0 ? '/ui/medals/1002-min.png' : '/ui/medals/1002.png';
+  return null;
+}
+
+export function petVoiceMedalIcon(voiceDb: number | null | undefined): string | null {
+  if (voiceDb === 100) return '/ui/medals/1026-max.png';
+  if (voiceDb === -100) return '/ui/medals/1025-max.png';
+  return null;
+}
+
 /** 声音奖牌的名字，用于 title / alt */
 export function voiceMedalName(voiceDb: number | null | undefined): string | null {
   if (voiceDb === 100) return '婉转声';
@@ -63,3 +88,9 @@ export function rarityIcon(kind: string | null | undefined): string | null {
   if (kind === 'shiny-colorful') return '/ui/rarity/shiny-colorful.png';
   return null;
 }
+
+/**
+ * 绿窝（学院小窝）图标（2026-11-01 用户自绘）：需求卡片、需求详情、发需求勾选框、
+ * 接单上窝的「进学院小窝」标识共用同一张图（原图裁掉空白并抠成透明底，128px 宽）。
+ */
+export const GREEN_NEST_ICON = '/ui/nest/green-nest.png';

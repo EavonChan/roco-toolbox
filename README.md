@@ -97,7 +97,7 @@ npm test                                   # Vitest
 npx playwright test --workers=4            # e2e（8 并发会出现偶发 Target crashed）
 ```
 
-e2e 依赖两个首启弹窗（更新公告、使用教程）被预置为「已读」，见 `playwright.config.ts`；**改了 `src/ui/guide.ts` 的 `GUIDE_VERSION` 必须同步改那里**，否则教程会挡住所有用例。
+e2e 依赖首启弹窗（更新公告、新手引导）被预置为「已读」，见 `playwright.config.ts`；**改了 `src/ui/tour.ts` 的 `TOUR_VERSION` 或分段名必须同步改那里**，否则引导会挡住所有用例。
 
 ## 许可与第三方
 

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { clearGroupListSession, setGroupList } from './listViewStore';
+import { clearGroupListSession, resetGroupTargetCriteriaForTest, setGroupList } from './listViewStore';
 import { MotherGroupResources } from './MotherGroupResources';
 import {
   FIXTURE_CATALOG_VERSION,
@@ -64,6 +64,8 @@ const renderResources = () =>
 
 beforeEach(() => {
   clearGroupListSession();
+  // 目标口径是持久化的（2026-11-01），测试之间要复位，否则上一条用例选的类型 / 体型会串味
+  resetGroupTargetCriteriaForTest();
 });
 
 describe('MotherGroupResources 三视图', () => {
@@ -1218,6 +1220,11 @@ describe('MotherGroupResources 三视图', () => {
     );
     expect(greenNest).not.toBeChecked();
     fireEvent.click(greenNest);
+    // 绿窝必须指定性格（2026-11-01）：先选一个可发性格再发布
+    const freeNature = within(panel)
+      .getAllByTestId(/^demand-nature-/)
+      .find((button) => !(button as HTMLButtonElement).disabled)!;
+    fireEvent.click(freeNature);
     fireEvent.click(within(panel).getByTestId('mother-resource-publish-confirm'));
     await waitFor(() =>
       expect(publish).toHaveBeenCalledWith(
@@ -1231,6 +1238,51 @@ describe('MotherGroupResources 三视图', () => {
         }),
       ),
     );
+  });
+
+  test('勾了要求绿窝但没选性格：提示并禁止发布（2026-11-01）', () => {
+    renderResources();
+    fireEvent.click(screen.getAllByTestId('mother-resource-row')[0]);
+    const panel = within(screen.getByTestId('mother-resource-detail')).getByTestId(
+      'mother-resource-publish-panel',
+    );
+    fireEvent.click(
+      within(within(panel).getByTestId('mother-resource-green-nest')).getByRole('checkbox'),
+    );
+    // 绿窝靠学院那只 100% 遗传，不挑性格发不了
+    expect(within(panel).getByTestId('mother-resource-green-nest-needs-nature')).toBeTruthy();
+    expect(within(panel).getByTestId('mother-resource-publish-confirm')).toBeDisabled();
+
+    // 选上一个性格后提示消失、可以发布
+    const freeNature = within(panel)
+      .getAllByTestId(/^demand-nature-/)
+      .find((button) => !(button as HTMLButtonElement).disabled)!;
+    fireEvent.click(freeNature);
+    expect(within(panel).queryByTestId('mother-resource-green-nest-needs-nature')).toBeNull();
+    expect(within(panel).getByTestId('mother-resource-publish-confirm')).not.toBeDisabled();
+  });
+
+  test('绿窝图标：需求卡片与需求详情都用用户自绘的绿窝图标', () => {
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="A"
+        species={catalog}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        demands={[demandOf({ requireGreenNest: true })]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('mother-view-mine'));
+    const card = screen.getAllByTestId('mother-demand-row')[0];
+    const natures = within(card).getByTestId('mother-demand-natures');
+    expect(natures).toHaveTextContent('绿窝');
+    expect(natures.querySelector('img')?.getAttribute('src')).toBe('/ui/nest/green-nest.png');
+
+    fireEvent.click(card);
+    const detail = screen.getByTestId('mother-demand-detail');
+    const nestTag = within(detail).getByTestId('mother-demand-detail-green-nest');
+    expect(nestTag).toHaveTextContent('绿窝');
+    expect(nestTag.querySelector('img')?.getAttribute('src')).toBe('/ui/nest/green-nest.png');
   });
 
   test('只看我发的需求：只留我发过需求的那颗蛋', () => {
@@ -1322,9 +1374,35 @@ describe('MotherGroupResources 三视图', () => {
       />,
     );
     fireEvent.click(screen.getByTestId('mother-view-seeking'));
-    // 201 已被 A 认领 → 显示负责人；101 无人认领 → 可以认领
-    expect(screen.getByText('负责人：A')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('mother-task-claim'));
+    // 2026-11-01：卡片上只显示状态，认领 / 释放都进二级页
+    expect(screen.getByText('认领：A')).toBeTruthy();
+    expect(screen.queryAllByTestId('mother-task-claim')).toHaveLength(0);
+    expect(screen.queryAllByTestId('mother-task-release')).toHaveLength(0);
+
+    const rows = screen.getAllByTestId('mother-resource-row');
+    const claimedRow = rows.find((row) => row.textContent?.includes('水蓝蓝'))!;
+
+    fireEvent.click(claimedRow);
+    const claimedDetail = within(screen.getByTestId('mother-resource-detail'));
+    expect(claimedDetail.getByTestId('mother-resource-detail-task')).toHaveTextContent(
+      '负责人：A',
+    );
+    // 共同寻找的二级页不显示发需求面板与「我的需求」，只留任务操作（2026-11-01）
+    expect(claimedDetail.queryByTestId('mother-resource-publish-panel')).toBeNull();
+    expect(claimedDetail.queryByTestId('mother-resource-detail-demands')).toBeNull();
+    // 不是负责人也不是组长 → 二级页里没有释放按钮
+    expect(claimedDetail.queryByTestId('mother-task-release')).toBeNull();
+    fireEvent.click(screen.getByTestId('mother-resource-detail-close'));
+
+    const claimableRow = screen
+      .getAllByTestId('mother-resource-row')
+      .find(
+        (row) => within(row).getByTestId('mother-task').textContent?.includes('待认领') ?? false,
+      )!;
+    fireEvent.click(claimableRow);
+    fireEvent.click(
+      within(screen.getByTestId('mother-resource-detail')).getByTestId('mother-task-claim'),
+    );
     await waitFor(() => expect(claim).toHaveBeenCalled());
   });
 
@@ -1909,14 +1987,17 @@ describe('MotherGroupResources 三视图', () => {
 
     fireEvent.click(within(row).getByTestId('mother-demand-open'));
     const detail = screen.getByTestId('mother-demand-detail');
-    // 推荐配对给出概率（主数字按家园口径：性格 60% × 性别 50% = 30%）
-    expect(within(detail).getByTestId('mother-demand-pair-chance')).toHaveTextContent('约 30%');
-    expect(within(detail).getByTestId('mother-demand-pair-advice')).toHaveTextContent('测试蛋乙');
+    // 推荐配对给出概率：与家园「接单上窝」同一套分配，这条单能进学院小窝 → 性格 100% × 性别 50% = 50%
+    // （R2-8-N01 统一候选口径前这里按普通窝算 30%）
+    expect(within(detail).getByTestId('mother-demand-pair-chance')).toHaveTextContent('约 50%');
+    // 「用这两只…可孵出…」那句说明已删（2026-11-01 用户口径：多余）
+    expect(within(detail).queryByTestId('mother-demand-pair-advice')).toBeNull();
+    expect(within(detail).getAllByTestId('mother-demand-pair-card')).toHaveLength(2);
 
     const list = within(detail).getByTestId('mother-demand-stud-candidates');
     // 只列我自己能孵的蛋，不再写「谁谁谁能补」
     expect(within(list).queryByText(/能补/)).toBeNull();
-    expect(within(list).getAllByTestId('stud-candidate-chance')[0]).toHaveTextContent('约 30%');
+    expect(within(list).getAllByTestId('stud-candidate-chance')[0]).toHaveTextContent('约 50%');
     // 双蛋组的蛋标出两个蛋组：两栖 × 昆虫
     expect(within(list).getAllByTestId('stud-candidate-groups')[0]).toHaveTextContent(
       '两栖 × 昆虫',
@@ -1925,9 +2006,110 @@ describe('MotherGroupResources 三视图', () => {
     // 点「用这颗」→ 推荐配对跟着换成这颗蛋
     fireEvent.click(within(list).getByTestId('stud-candidate-pick-901'));
     expect(within(list).getByTestId('stud-candidate-pick-901')).toHaveTextContent('已选');
-    expect(within(detail).getByTestId('mother-demand-pair-advice')).toHaveTextContent('测试蛋甲');
     // 选蛋键带小组（R2-3-M01）：同内容需求发到别的组不会读到这条选择
     expect(window.localStorage.getItem('roco.demandPick')).toContain('g1|B');
+  });
+
+  test('绿窝需求：绿窝只用标签表示，概率按性格 100% 算（2026-11-01）', () => {
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="B"
+        species={catalog}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        snapshots={[
+          snapshot(2001, 'B', [
+            mother(101, { nature: '固执' }),
+            mother(101, { gender: '公', nature: '开朗' }),
+          ]),
+        ]}
+        demands={[
+          demandOf({ eggGameId: 101, nature: '固执', requireGreenNest: true }),
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('mother-view-mine'));
+    fireEvent.click(screen.getAllByTestId('mother-demand-row')[0]);
+    const detail = screen.getByTestId('mother-demand-detail');
+    // 绿窝信息只看标签，不再写整句「把 X 放进学院小窝…」
+    expect(within(detail).getByTestId('mother-demand-detail-green-nest')).toHaveTextContent('绿窝');
+    expect(within(detail).queryByTestId('mother-demand-pair-advice')).toBeNull();
+    // 性格走学院 100% × 性别 50% = 50%，不再写「单方带性格 30%」
+    const chance = within(detail).getByTestId('mother-demand-pair-chance');
+    expect(chance).toHaveTextContent('约 50%');
+    expect(chance).toHaveTextContent('性格 100%');
+    expect(chance).not.toHaveTextContent('单方带性格');
+    // 绿窝角标打在「进学院小窝」那只的卡上（自带目标性格 = 母本）
+    const marks = within(detail).getAllByTestId('mother-demand-pair-green-nest');
+    expect(marks).toHaveLength(1);
+    const firstWrap = within(detail).getAllByTestId('mother-demand-pair-card-wrap')[0];
+    expect(within(firstWrap).getByTestId('mother-demand-pair-green-nest')).toBeTruthy();
+  });
+
+  test('满体重单：详情写出要交付的最大蛋重，绿窝用标签表示（2026-11-01）', () => {
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="A"
+        species={catalog}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        demands={[demandOf({ eggGameId: 101, body: '满体重', requireGreenNest: true })]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('mother-view-mine'));
+    fireEvent.click(screen.getAllByTestId('mother-demand-row')[0]);
+    const delivery = within(screen.getByTestId('mother-demand-detail')).getByTestId(
+      'mother-demand-pair-delivery',
+    );
+    // 图鉴里火花的最大蛋重（区间上限）3.4，直接写出来当目标
+    expect(delivery).toHaveTextContent('需要交付最大蛋重 3.4');
+    expect(delivery).toHaveTextContent('【火花】的蛋');
+    expect(delivery).toHaveTextContent('绿窝');
+  });
+
+  test('满体重单接单前先确认，确认后才提交（2026-11-01）', async () => {
+    const claim = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="B"
+        species={catalog}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        snapshots={[
+          snapshot(2001, 'B', [
+            mother(101, { medalBody: '大块头', weightPercent: 100 }),
+            mother(101, { gender: '公', medalBody: '大块头', weightPercent: 98 }),
+          ]),
+        ]}
+        demands={[
+          demandOf({
+            demanderAccountId: 'A',
+            eggGameId: 101,
+            nature: '',
+            gender: '',
+            voice: '',
+            body: '满体重',
+          }),
+        ]}
+        onClaimDemand={claim}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('mother-view-mine'));
+    fireEvent.click(screen.getAllByTestId('mother-demand-row')[0]);
+    const detail = screen.getByTestId('mother-demand-detail');
+    fireEvent.click(within(detail).getByTestId('mother-demand-claim'));
+    // 先只出提示，不提交；「取消」在左、「确认接单」在右
+    expect(claim).not.toHaveBeenCalled();
+    const confirmBlock = within(detail).getByTestId('mother-demand-claim-confirm');
+    expect(confirmBlock).toHaveTextContent(
+      '本单需要交付最大蛋重的蛋才能完成需求，是否接单？',
+    );
+    expect(within(confirmBlock).getAllByRole('button')[0]).toHaveAttribute(
+      'data-testid',
+      'mother-demand-claim-confirm-cancel',
+    );
+    fireEvent.click(within(detail).getByTestId('mother-demand-claim-confirm-yes'));
+    await waitFor(() => expect(claim).toHaveBeenCalledTimes(1));
   });
 
   test('需求中心：已接单的种公需求也能撤回，并提示会取消对方承接（R2-3-H01）', async () => {

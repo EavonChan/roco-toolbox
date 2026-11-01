@@ -8,21 +8,12 @@ const { entries: changelogEntries } = JSON.parse(
 ) as { entries: Array<{ id: string }> };
 
 /**
- * 首启教程的版本号：从 src/ui/guide.ts 里读出来，不再手抄一份。
- * 手抄的那份一旦忘了同步（改教程版本是常规操作），教程弹窗会盖住所有 e2e 用例，
- * 而且是「全套一起红」——所以这里解析失败就直接抛错，宁可启动就炸。
- */
-const guideVersion: string = (() => {
-  const source = readFileSync(join(process.cwd(), 'src', 'ui', 'guide.ts'), 'utf8');
-  const matched = source.match(/GUIDE_VERSION\s*=\s*'([^']+)'/);
-  if (!matched) throw new Error('没法从 src/ui/guide.ts 解析出 GUIDE_VERSION（写法变了？）');
-  return matched[1];
-})();
-
-/**
- * 新手引导版本号：同样从源码解析。引导是首启盖一层的浮层，不预置会把所有 e2e 挡死；
+ * 新手引导版本号：从源码解析。引导是首启盖一层的浮层，不预置会把所有 e2e 挡死；
  * 引导本身由 e2e/tour.spec.ts 用空 storageState 单独验证。
+ *
+ * 分段名要与 `src/ui/tour.ts` 的 `TOUR_SEGMENT_ORDER` 保持一致（那边加段要同步这里）。
  */
+const TOUR_SEGMENT_IDS = ['start', 'dashboard', 'collection', 'groups', 'home', 'profile'] as const;
 const tourVersion: string = (() => {
   const source = readFileSync(join(process.cwd(), 'src', 'ui', 'tour.ts'), 'utf8');
   const matched = source.match(/TOUR_VERSION\s*=\s*'([^']+)'/);
@@ -49,10 +40,12 @@ export default defineConfig({
           origin: 'http://localhost:4173',
           localStorage: [
             { name: 'roco.changelogSeen', value: changelogEntries[0]?.id ?? '' },
-            // 首启「使用教程」引导也是盖一层的模态，同样预置为已读（值从 src/ui/guide.ts 读出来，
-            // 不再手抄；教程本身由 e2e/guide.spec.ts 用空 storageState 单独验证）。
-            { name: 'roco.guideSeen', value: guideVersion },
-            { name: 'roco.tourSeen', value: tourVersion },
+            // 首启 / 分页引导同样是盖一层的浮层，全部预置为已读；
+            // 引导本身由 e2e/tour.spec.ts 用空 storageState 单独验证。
+            ...TOUR_SEGMENT_IDS.map((segment) => ({
+              name: `roco.tourSeen.${segment}`,
+              value: tourVersion,
+            })),
           ],
         },
       ],

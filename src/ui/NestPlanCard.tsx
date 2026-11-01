@@ -4,6 +4,7 @@ import { gradeLabel, type PetGrade } from '../domain/petFilters';
 import type { NestPairing, NestPet, NestPlan, NestTier } from '../domain/nestPlan';
 import { GenderMark } from './GenderMark';
 import { PetAvatar } from './PetAvatar';
+import { pairingColor, pairingDashed } from './pairingColors';
 import { useTargetMode } from './targetModeStore';
 
 const TIER_NAME: Record<NestTier, string> = {
@@ -32,25 +33,6 @@ const UNIT = CELL / NEST_SIZE;
 
 /** 窝块里只画得下 4 个字：先把形态名（下划线后的部分）去掉，再截断 */
 const shortName = (name: string): string => name.split('_')[0].slice(0, 4);
-
-/** 一条配对一种颜色（摆位图的线 + 下面对应的卡片用同一色，便于对号入座） */
-const PAIRING_COLORS = [
-  '#7c3aed',
-  '#d97706',
-  '#0d9488',
-  '#65a30d',
-  '#4f46e5',
-  '#c026d3',
-  '#e11d48',
-  '#0891b2',
-  '#b45309',
-  '#1d4ed8',
-  '#047857',
-  '#a21caf',
-];
-/** 第 n 条配对的线色；超过一轮（12 条）时用**虚线/空心点**区分同色的两条 */
-const pairingColor = (index: number): string => PAIRING_COLORS[index % PAIRING_COLORS.length];
-const pairingDashed = (index: number): boolean => index >= PAIRING_COLORS.length;
 
 interface PairingStyle {
   color: string;

@@ -1,5 +1,5 @@
 import type { OwnedPet, SpeciesEntry } from '../domain/types';
-import { bodyMedalIcon, rarityIcon, voiceMedalIcon, voiceMedalName } from '../domain/petIcons';
+import { petBodyMedalIcon, petVoiceMedalIcon, rarityIcon, voiceMedalName } from '../domain/petIcons';
 import { speciesDisplayName } from '../domain/speciesName';
 import { GenderMark } from './GenderMark';
 import { PetAvatar } from './PetAvatar';
@@ -42,8 +42,8 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
   const rarityKind = pet.isShiny && pet.isColorful ? 'shiny-colorful' : pet.isColorful ? 'colorful' : pet.isShiny ? 'shiny' : null;
   const raritySrc = rarityIcon(rarityKind);
   const rarityName = rarityKind ? RARITY_TEXT[rarityKind] : null;
-  const bodyIcon = bodyMedalIcon(pet.medalBody);
-  const voiceIcon = voiceMedalIcon(pet.voiceDb);
+  const bodyIcon = petBodyMedalIcon(pet.medalBody, pet.weightPercent);
+  const voiceIcon = petVoiceMedalIcon(pet.voiceDb);
   const voiceName = voiceMedalName(pet.voiceDb);
 
   return (

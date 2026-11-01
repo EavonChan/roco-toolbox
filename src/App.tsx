@@ -3,10 +3,18 @@ import { installFlushOnHide, platform, track } from './api/analytics';
 import { CHANGELOG, markChangelogSeen, pendingChangelog, readChangelogSeen } from './data/changelog';
 import { refreshApp } from './pwa/hardRefresh';
 import { ChangelogModal } from './ui/ChangelogModal';
-import { GuideModal } from './ui/GuideModal';
 import { TourOverlay } from './ui/TourOverlay';
-import { TOUR_STEPS, markTourSeen, tourPending, type TourStep } from './ui/tour';
-import { guidePending, markGuideSeen } from './ui/guide';
+import {
+  TOUR_SEGMENTS,
+  anyTourPending,
+  markSegmentSeen,
+  migrateLegacyTourSeen,
+  segmentOfPage,
+  segmentPending,
+  startTourPending,
+  type TourSegment,
+  type TourStep,
+} from './ui/tour';
 import { Dashboard } from './ui/Dashboard';
 import { HomeLand, saveHomeView } from './ui/Home';
 import { Collection } from './ui/Collection';
@@ -19,6 +27,7 @@ import {
   legacyLocation,
   resolveNavigation,
   type AppNavigation,
+  type AppPage,
   type NavigationIntent,
 } from './ui/navigation';
 import { readLastTab, saveLastTab } from './ui/lastTab';
@@ -55,7 +64,7 @@ export default function App() {
   const activeTab = navigation.page;
   /** 手动刷新按钮的忙碌态（真正刷新会让页面重载，这里只防连点） */
   const [refreshing, setRefreshing] = useState(false);
-  const { loaded, refreshError, refreshedAt } = useSnapshots();
+  const { snapshots, loaded, refreshError, refreshedAt } = useSnapshots();
   // 壳（APK）把分享内容注入**当前页面**，而消费分享的监听挂在「导入数据」页里（只挂载当前页）：
   // 应用开着且停在别的页签时，分享会被静默搁置（看起来像「分享过来什么都没发生」）。
   // 所以一收到分享事件就切到导入页；导入完成后**不再自动跳看板**（2026-10-25 用户要求）：
@@ -72,34 +81,49 @@ export default function App() {
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [navigation.page, navigation.profileSection]);
-  // 首启（还没看过教程）：不自动叠阻断弹窗，只在「我的 · 游戏数据」给一张非阻断入门卡（2026-10-24）
-  const firstRun = useState(() => guidePending())[0];
   // 更新内容弹窗：启动时算一次「本机没看过的更新」，点「知道了」后记住已读（2026-10-05 起固定做法）
-  // 新手引导与更新弹窗不叠加：引导待弹时先不讲更新，等下次启动再看（同教程互斥的处理）
+  // 引导与更新弹窗不叠加：还有任一分段待引导时先不讲更新，等下次启动再看（同教程互斥的处理）
   const [changelog, setChangelog] = useState(() =>
-    firstRun || tourPending() ? [] : pendingChangelog(readChangelogSeen()),
+    anyTourPending() ? [] : pendingChangelog(readChangelogSeen()),
   );
   const closeChangelog = () => {
     if (CHANGELOG[0]) markChangelogSeen(CHANGELOG[0].id);
     setChangelog([]);
   };
-  // 使用教程：完整教程只由明确动作打开（首启给非阻断入门卡）；已读记 guide.ts 的版本号
-  const [guide, setGuide] = useState(false);
-  const closeGuide = () => {
-    markGuideSeen();
-    setGuide(false);
-  };
-  // 新手引导（2026-11-01）：首启或版本升级后自动走一次；「教程」里可以随时重放
-  const [tour, setTour] = useState(() => tourPending());
+  /**
+   * 新手引导（2026-11-01 第二轮）：按场景分段，不再固定一条 15 步主线。
+   * - 首启只自动弹 `start`（先导入一次数据，导入成功后收尾提示「教程」入口）；
+   * - 看板 / 收集 / 小组 / 家园 / 我的：第一次进入该页各弹一次；
+   * - 顶部「教程」= 直接重播当前页那一段（文字教程已下线）。
+   */
+  const [tour, setTour] = useState<TourSegment | null>(() => {
+    migrateLegacyTourSeen();
+    return startTourPending() ? 'start' : null;
+  });
   const closeTour = () => {
-    markTourSeen();
-    setTour(false);
+    if (tour) markSegmentSeen(tour);
+    setTour(null);
   };
-  // 两套引导互斥：开文字教程就结束分步引导，避免两层浮层叠在一起
-  const openGuide = () => {
-    if (tour) closeTour();
-    setGuide(true);
+  const replayTour = () => {
+    // 引导进行中点赞「教程」：先按已看结束当前这段，再重播当前页，避免两层浮层
+    if (tour) markSegmentSeen(tour);
+    setTour(segmentOfPage(navigation.page));
   };
+  const startTour = () => {
+    if (tour) markSegmentSeen(tour);
+    setTour('start');
+  };
+  // 首次进入某个页签 → 自动弹该页的引导。引导自己切页时只记下位置，不叠加触发；
+  // 初值取当前页，避免「刚走完引导 / 刷新页面」立刻又弹一次。
+  const tourPageRef = useRef<AppPage>(navigation.page);
+  useEffect(() => {
+    const page = navigation.page;
+    if (tourPageRef.current === page) return;
+    tourPageRef.current = page;
+    if (tour) return;
+    const segment = segmentOfPage(page);
+    if (segmentPending(segment)) setTour(segment);
+  }, [navigation.page, tour]);
   /** 引导切页面：家园页内分页不在导航合同里，先写偏好再切页签 */
   const enterTourStep = useCallback(
     (step: TourStep) => {
@@ -185,8 +209,9 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={openGuide}
+              onClick={replayTour}
               data-testid="guide-open"
+              data-tour="guide-open"
               className="min-h-[30px] rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500"
             >
               教程
@@ -212,7 +237,7 @@ export default function App() {
           section={navigation.profileSection}
           returnToGroups={navigation.returnToGroups}
           onNavigate={navigate}
-          onOpenGuide={openGuide}
+          onStartTour={startTour}
         />
       ) : navigation.page === 'groups' ? (
         <CollectionGroups
@@ -231,18 +256,15 @@ export default function App() {
         />
       )}
       {changelog.length > 0 ? <ChangelogModal entries={changelog} onClose={closeChangelog} /> : null}
-      {/* 完整教程不再首启自动弹：由顶部「教程」或「我的」入门卡明确打开 */}
-      {guide ? (
-        <GuideModal
-          onClose={closeGuide}
-          onStartTour={() => {
-            setGuide(false);
-            setTour(true);
-          }}
-        />
-      ) : null}
+      {/* 首启自动走「先导入一次」主线；其余分段在第一次进入对应页时弹，顶部「教程」重播当前页 */}
       {tour ? (
-        <TourOverlay steps={TOUR_STEPS} onClose={closeTour} onEnter={enterTourStep} />
+        <TourOverlay
+          key={tour}
+          steps={TOUR_SEGMENTS[tour]}
+          onClose={closeTour}
+          onEnter={enterTourStep}
+          importReady={snapshots.length > 0}
+        />
       ) : null}
       {leaveConfirmation}
       {importOutcome.local === 'importing' ? (

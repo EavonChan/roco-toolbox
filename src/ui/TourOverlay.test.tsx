@@ -1,6 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { TOUR_VERSION, TOUR_STEPS, markTourSeen, tourPending } from './tour';
+import {
+  TOUR_HINT_STEP_ID,
+  TOUR_SEGMENT_ORDER,
+  TOUR_SEGMENTS,
+  TOUR_VERSION,
+  markSegmentSeen,
+  migrateLegacyTourSeen,
+  segmentPending,
+  startTourPending,
+} from './tour';
 import { TourOverlay } from './TourOverlay';
 
 describe('新手引导', () => {
@@ -9,54 +18,118 @@ describe('新手引导', () => {
     document.body.innerHTML = '';
   });
 
-  test('首启待弹；标记已读后不再弹（按版本号记）', () => {
-    expect(tourPending()).toBe(true);
-    markTourSeen();
-    expect(tourPending()).toBe(false);
-    window.localStorage.setItem('roco.tourSeen', '0');
-    expect(tourPending()).toBe(true);
-    expect(TOUR_VERSION).not.toBe('0');
+  test('首启只看「先导入一次」；分段已读按版本号记', () => {
+    expect(startTourPending()).toBe(true);
+    expect(segmentPending('dashboard')).toBe(true);
+
+    markSegmentSeen('start');
+    expect(startTourPending()).toBe(false);
+    expect(segmentPending('start')).toBe(false);
+    expect(segmentPending('dashboard')).toBe(true);
+
+    window.localStorage.setItem('roco.tourSeen.start', '1');
+    expect(startTourPending()).toBe(true);
+    expect(TOUR_VERSION).not.toBe('1');
   });
 
-  test('步骤覆盖主线：入口 / 看板 / 收集 / 小组 / 家园 / 导入 / 云同步', () => {
-    const titles = TOUR_STEPS.map((step) => step.title).join('|');
-    expect(titles).toContain('五个入口');
-    expect(titles).toContain('目标档位');
-    expect(titles).toContain('覆盖度');
-    expect(titles).toContain('母本全收集');
-    expect(titles).toContain('一起收集');
-    expect(titles).toContain('需求中心');
-    expect(titles).toContain('接单上窝');
-    expect(titles).toContain('导入');
-    expect(titles).toContain('云同步');
-    // 12-15 步：太短讲不完主线，太长没人看完
-    expect(TOUR_STEPS.length).toBeGreaterThanOrEqual(12);
-    expect(TOUR_STEPS.length).toBeLessThanOrEqual(15);
+  test('老用户迁移：重弹首启主线，分页不再自动弹', () => {
+    window.localStorage.setItem('roco.tourSeen', '1');
+    migrateLegacyTourSeen();
+
+    expect(startTourPending()).toBe(true);
+    for (const segment of TOUR_SEGMENT_ORDER) {
+      if (segment === 'start') continue;
+      expect(segmentPending(segment)).toBe(false);
+    }
+  });
+
+  test('分段覆盖：首启讲导入，其余按页签各一段，末步都是「重看引导」', () => {
+    expect(TOUR_SEGMENT_ORDER).toEqual([
+      'start',
+      'dashboard',
+      'collection',
+      'groups',
+      'home',
+      'profile',
+    ]);
+    const startTitles = TOUR_SEGMENTS.start.map((step) => step.title).join('|');
+    expect(startTitles).toContain('游戏数据');
+    expect(startTitles).toContain('导入');
+    expect(TOUR_SEGMENTS.start.some((step) => step.waitForImport)).toBe(true);
+
+    expect(TOUR_SEGMENTS.dashboard.map((step) => step.title).join('|')).toContain('目标档位');
+    expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('覆盖度');
+    expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('母本全收集');
+    expect(TOUR_SEGMENTS.groups.map((step) => step.title).join('|')).toContain('需求中心');
+    expect(TOUR_SEGMENTS.home.map((step) => step.title).join('|')).toContain('接单上窝');
+    expect(TOUR_SEGMENTS.profile.map((step) => step.title).join('|')).toContain('云同步');
+
+    for (const segment of TOUR_SEGMENT_ORDER) {
+      const steps = TOUR_SEGMENTS[segment];
+      expect(steps[steps.length - 1].id).toBe(TOUR_HINT_STEP_ID);
+      expect(steps[steps.length - 1].anchor).toBe('guide-open');
+    }
   });
 
   test('下一步 / 上一步 / 最后一步收尾', () => {
+    const steps = TOUR_SEGMENTS.dashboard;
     const onClose = vi.fn();
-    render(<TourOverlay steps={TOUR_STEPS} onClose={onClose} />);
+    render(<TourOverlay steps={steps} onClose={onClose} />);
 
-    expect(screen.getByTestId('tour-progress')).toHaveTextContent(`1 / ${TOUR_STEPS.length}`);
+    expect(screen.getByTestId('tour-progress')).toHaveTextContent(`1 / ${steps.length}`);
     fireEvent.click(screen.getByTestId('tour-next'));
     expect(screen.getByTestId('tour-progress')).toHaveTextContent('2 /');
     fireEvent.click(screen.getByTestId('tour-prev'));
     expect(screen.getByTestId('tour-progress')).toHaveTextContent('1 /');
 
-    for (let guard = 0; guard < TOUR_STEPS.length && !screen.queryByTestId('tour-done'); guard += 1) {
+    for (let guard = 0; guard < steps.length && !screen.queryByTestId('tour-done'); guard += 1) {
       fireEvent.click(screen.getByTestId('tour-next'));
     }
+    expect(screen.getByTestId('tour-done')).toHaveTextContent('知道了');
     fireEvent.click(screen.getByTestId('tour-done'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test('任意一步点「跳过」都直接关闭', () => {
+  test('任意一步点「跳过」：先给出「教程」入口提示，再点一次才关闭', () => {
     const onClose = vi.fn();
-    render(<TourOverlay steps={TOUR_STEPS} onClose={onClose} />);
+    render(<TourOverlay steps={TOUR_SEGMENTS.dashboard} onClose={onClose} />);
+
+    fireEvent.click(screen.getByTestId('tour-skip'));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('tour-title')).toHaveTextContent('随时能重看引导');
 
     fireEvent.click(screen.getByTestId('tour-skip'));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('等导入那步：没数据不能下一步，导入成功后自动继续', async () => {
+    const steps = [
+      { id: 'import', title: '先导入一次', body: '导入后自动继续', waitForImport: true },
+      { id: TOUR_HINT_STEP_ID, title: '随时能重看引导', body: '点教程重看', hint: true },
+    ];
+    const onClose = vi.fn();
+    const { rerender } = render(<TourOverlay steps={steps} onClose={onClose} importReady={false} />);
+
+    expect(screen.getByTestId('tour-next')).toBeDisabled();
+    expect(screen.getByTestId('tour-wait')).toBeTruthy();
+
+    rerender(<TourOverlay steps={steps} onClose={onClose} importReady />);
+    await waitFor(
+      () => expect(screen.getByTestId('tour-title')).toHaveTextContent('随时能重看引导'),
+      { timeout: 3000 },
+    );
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test('本来就有数据时重看：不抢跳，等用户点下一步', () => {
+    const steps = [
+      { id: 'import', title: '先导入一次', body: '已经有数据', waitForImport: true },
+      { id: TOUR_HINT_STEP_ID, title: '随时能重看引导', body: '点教程重看', hint: true },
+    ];
+    render(<TourOverlay steps={steps} onClose={() => {}} importReady />);
+
+    expect(screen.getByTestId('tour-next')).toBeEnabled();
+    expect(screen.getByTestId('tour-title')).toHaveTextContent('先导入一次');
   });
 
   test('找到锚点时画聚光方框；找不到时退化成居中说明卡', async () => {
@@ -112,7 +185,7 @@ describe('新手引导', () => {
 
   test('打开时焦点落在卡片上，Esc 可关闭', () => {
     const onClose = vi.fn();
-    render(<TourOverlay steps={TOUR_STEPS} onClose={onClose} />);
+    render(<TourOverlay steps={TOUR_SEGMENTS.dashboard} onClose={onClose} />);
 
     expect(document.activeElement).toBe(screen.getByTestId('tour-card'));
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -121,9 +194,10 @@ describe('新手引导', () => {
 
   test('进入每一步都会通知 App 切页面', () => {
     const onEnter = vi.fn();
-    render(<TourOverlay steps={TOUR_STEPS} onClose={() => {}} onEnter={onEnter} />);
-    expect(onEnter).toHaveBeenCalledWith(TOUR_STEPS[0]);
+    const steps = TOUR_SEGMENTS.dashboard;
+    render(<TourOverlay steps={steps} onClose={() => {}} onEnter={onEnter} />);
+    expect(onEnter).toHaveBeenCalledWith(steps[0]);
     fireEvent.click(screen.getByTestId('tour-next'));
-    expect(onEnter).toHaveBeenCalledWith(TOUR_STEPS[1]);
+    expect(onEnter).toHaveBeenCalledWith(steps[1]);
   });
 });

@@ -46,6 +46,10 @@ describe('重置导入数据', () => {
     window.localStorage.setItem('roco.demandPlacements:acc-me', JSON.stringify({ 'g1|m1|k|1': true }));
     window.localStorage.setItem('roco.demandCompletionRead:acc-me', JSON.stringify({ 'g1|m1|k|1': true }));
     window.localStorage.setItem('roco.demandCollapsedAccounts:acc-me', JSON.stringify(['uid:11']));
+    window.localStorage.setItem(
+      'roco.demandCancelled:acc-me:g1',
+      JSON.stringify({ claimed: ['g1|m1|k|1'], notified: [] }),
+    );
     // 别人的身份不受影响
     window.localStorage.setItem('roco.demandPlacements:acc-other', JSON.stringify({ x: true }));
 
@@ -54,6 +58,7 @@ describe('重置导入数据', () => {
     expect(window.localStorage.getItem('roco.demandPlacements:acc-me')).toBeNull();
     expect(window.localStorage.getItem('roco.demandCompletionRead:acc-me')).toBeNull();
     expect(window.localStorage.getItem('roco.demandCollapsedAccounts:acc-me')).toBeNull();
+    expect(window.localStorage.getItem('roco.demandCancelled:acc-me:g1')).toBeNull();
     expect(window.localStorage.getItem('roco.demandPlacements:acc-other')).not.toBeNull();
   });
 });

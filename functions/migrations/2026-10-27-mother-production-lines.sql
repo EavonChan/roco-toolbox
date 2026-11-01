@@ -5,6 +5,7 @@
 -- 页面提示重新发布；成员重新发布后自动补齐。
 --
 -- SQLite 的 ADD COLUMN 不支持 IF NOT EXISTS，本迁移只执行一次。
+-- 新库不要跑本文件：functions/schema.sql 已包含该列，重复执行会报 duplicate column。
 -- 执行（在仓库根）：
 --   npx wrangler d1 execute roco-toolbox-db --remote --file functions/migrations/2026-10-27-mother-production-lines.sql
 --
