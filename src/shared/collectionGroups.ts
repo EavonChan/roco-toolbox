@@ -367,6 +367,24 @@ export interface CollectionDemand extends DemandCriteria {
   requireGreenNest?: boolean;
 }
 
+/** 「你承接的需求已完成」回执只需要最近这些条，不做全量历史。 */
+export const DEMAND_RECENT_COMPLETED_LIMIT = 20;
+
+/**
+ * 需求中心一次拉全的数据（2026-11-01）。
+ *
+ * 已完成的单不再随列表下发（归档行只增不减，会让长期小组的响应线性膨胀），
+ * 改为：`completedCounts` 供成员区「已结单 N」，`myRecentCompleted` 供完成回执。
+ */
+export interface CollectionDemandFeed {
+  /** 未完成的需求（open / claimed）。 */
+  demands: CollectionDemand[];
+  /** 按承接人累计的已结单数（全时段）。 */
+  completedCounts: Record<string, number>;
+  /** 当前身份承接的最近 N 条已完成。 */
+  myRecentCompleted: CollectionDemand[];
+}
+
 /** 需求行的唯一标识（前端选择 / 撤回 / 接单共用，不依赖行号）。 */
 export function demandKeyOf(demand: DemandCriteria): string {
   return [

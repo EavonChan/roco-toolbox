@@ -25,6 +25,7 @@ import {
   isTargetMode,
   motherCriteriaIdOf,
   type CollectionDemand,
+  type CollectionDemandFeed,
   type CollectionDemandStatus,
   type CollectionGroupDetail,
   type CollectionGroupInfo,
@@ -577,6 +578,34 @@ export async function getCollectionDemands(
     '响应',
   );
   return asArray(data.demands, 'demands').map(parseDemand);
+}
+
+/**
+ * 需求中心的完整数据：未完成列表 + 已结单聚合 + 我的最近完成（2026-11-01）。
+ *
+ * 旧服务端没有后两个字段时按空处理，界面只是不显示计数 / 回执，不会报错。
+ */
+export async function getCollectionDemandFeed(
+  groupId: string,
+  signal?: AbortSignal,
+): Promise<CollectionDemandFeed> {
+  const data = asRecord(
+    await request(
+      `/api/collection-groups/${encodeURIComponent(groupId)}/demands`,
+      jsonInit('GET', undefined, signal),
+    ),
+    '响应',
+  );
+  const rawCounts = asRecord(data.completedCounts ?? {}, 'completedCounts');
+  const completedCounts: Record<string, number> = {};
+  for (const [accountId, value] of Object.entries(rawCounts)) {
+    completedCounts[accountId] = asNumber(value, `completedCounts.${accountId}`);
+  }
+  return {
+    demands: asArray(data.demands, 'demands').map(parseDemand),
+    completedCounts,
+    myRecentCompleted: asArray(data.myRecentCompleted ?? [], 'myRecentCompleted').map(parseDemand),
+  };
 }
 
 export interface DemandRequestCriteria {
