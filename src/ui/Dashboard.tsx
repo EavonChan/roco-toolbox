@@ -20,6 +20,7 @@ import { useMotherCriteria } from './motherCriteriaStore';
 import { useNatureOverrides } from './natureOverrideStore';
 import { setTargetMode } from './targetModeStore';
 import { useAccountFilter } from './accountFilterStore';
+import { removeStudTransferTask, useStudTransferTasks } from './studTransferTaskStore';
 import type { NavigationIntent } from './navigation';
 
 export interface DashboardProps {
@@ -57,6 +58,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     recommendedNatures: motherCriteria.recommendedNatures === true,
   };
   const natureOverrides = useNatureOverrides();
+  /** 种公阵列里手动加入的跨号补种公任务（2026-11-03） */
+  const transferTasks = useStudTransferTasks();
   const naturesOf = useMemo(
     () => createNaturesResolver({ species, overrides: natureOverrides }),
     [natureOverrides],
@@ -263,7 +266,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               看推荐种公 ›
             </button>
           </div>
-          <NestPlanCard plans={plans} emptyNote={nestEmptyNote} />
+          <NestPlanCard
+            plans={plans}
+            emptyNote={nestEmptyNote}
+            transferTasks={transferTasks}
+            onRemoveTransferTask={removeStudTransferTask}
+          />
         </section>
       ) : null}
 

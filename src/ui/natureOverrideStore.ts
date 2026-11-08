@@ -1,5 +1,10 @@
 import { createModuleStore } from './createModuleStore';
-import { activeNatureOverrides, type NatureOverrides } from '../domain/recommendedNatures';
+import {
+  activeNatureOverrides,
+  NATURE_OVERRIDES_KEY,
+  NATURE_OVERRIDES_UPDATED_AT_KEY,
+  type NatureOverrides,
+} from '../domain/recommendedNatures';
 
 /**
  * 「推荐性格」的个人覆盖表（2026-10-25）。
@@ -11,9 +16,22 @@ import { activeNatureOverrides, type NatureOverrides } from '../domain/recommend
  * 这样组长换设备后，小组目标里的那一份仍然是他最新的。
  */
 const store = createModuleStore<NatureOverrides>({}, {
-  persistKey: 'roco.natureOverrides',
+  persistKey: NATURE_OVERRIDES_KEY,
   migrate: (loaded) => activeNatureOverrides(loaded),
 });
+
+/**
+ * 记下本机修改时刻（云同步靠它判断「本机改动是否比云端新」）。
+ * 不改它的话，导入后的自动云同步会把还没上传的修改打回云端旧值（2026-11-02 修）。
+ */
+function markUpdated(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(NATURE_OVERRIDES_UPDATED_AT_KEY, String(Date.now()));
+  } catch {
+    // 隐私模式写不了：本次只在内存生效
+  }
+}
 
 export function getNatureOverrides(): NatureOverrides {
   return store.get();
@@ -31,10 +49,12 @@ export function setEggNatures(eggGameId: number, natures: readonly string[]): vo
   if (kept.length === 0) delete next[String(eggGameId)];
   else next[String(eggGameId)] = kept;
   store.set(next);
+  markUpdated();
 }
 
 export function resetAllNatureOverrides(): void {
   store.set({});
+  markUpdated();
 }
 
 /** 测试用：清空（不写 localStorage 之外的副作用）。 */

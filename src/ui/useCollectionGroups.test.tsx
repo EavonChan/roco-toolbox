@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as api from '../api/collectionGroups';
+import { MotherGroupsApiError } from '../api/motherGroups';
 import { markSynced } from '../api/session';
 import type {
   CollectionDemand,
@@ -30,6 +31,7 @@ vi.mock('../api/collectionGroups', async (importOriginal) => {
     getCollectionDemandFeed: vi.fn(),
     claimCollectionDemand: vi.fn(),
     withdrawCollectionDemand: vi.fn(),
+    publishCollectionResources: vi.fn(),
   };
 });
 
@@ -134,6 +136,29 @@ afterEach(() => {
 });
 
 describe('useCollectionGroups：切组 / 切号 / 撤回', () => {
+  test('发布撞上「其他设备刚更新」时，拉最新修订自动重发一次', async () => {
+    const { result } = renderHook(() => useCollectionGroups(input));
+    await flush();
+
+    // 另一台设备（通常是手机导入后的自动发布）已经把修订推到 3
+    const fresh = detailOf('g1');
+    fresh.members[0].resourceRevision = 3;
+    vi.mocked(api.getCollectionGroup).mockResolvedValue(fresh);
+    vi.mocked(api.publishCollectionResources)
+      .mockRejectedValueOnce(
+        new MotherGroupsApiError(409, 'REVISION_CONFLICT', '小组资源已被其他设备更新，请重新预览再发布'),
+      )
+      .mockResolvedValueOnce({ resourceRevision: 4, publishedAt: 1 });
+
+    await act(async () => {
+      await result.current.stopSharing();
+    });
+
+    expect(api.publishCollectionResources).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api.publishCollectionResources).mock.calls[0][1].baseRevision).toBe(0);
+    expect(vi.mocked(api.publishCollectionResources).mock.calls[1][1].baseRevision).toBe(3);
+  });
+
   test('切组后旧组的需求响应晚到，不会覆盖新组列表', async () => {
     const oldFeed = deferred<CollectionDemandFeed>();
     vi.mocked(api.getCollectionDemandFeed)

@@ -37,7 +37,7 @@ test('没有导入数据时：入门卡可直接导入，点「教程」重播�
 
   await page.getByTestId('first-run-guide').click();
   await expect(page.getByTestId('tour-root')).toBeVisible();
-  await expect(page.getByTestId('tour-title')).toHaveText('先把游戏数据导进来');
+  await expect(page.getByTestId('tour-title')).toHaveText('先采集一次游戏数据');
   await expect(page.getByTestId('tour-progress')).toHaveText('第 1 / 3 步');
 
   // 跳过 → 先给出「教程」入口提示，再点一次才关闭

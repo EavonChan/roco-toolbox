@@ -11,6 +11,7 @@ import {
   backupFileName,
   buildBackup,
   isToolboxBackup,
+  mergeImportedSnapshot,
   mergeSnapshots,
   parseToolboxBackup,
   type MergeResult,
@@ -245,10 +246,15 @@ export function ImportPanel() {
           continue;
         }
 
-        const snapshot = parseBackup(raw, new Date().toISOString());
-        await saveSnapshot(snapshot);
+        const parsed = parseBackup(raw, new Date().toISOString());
         // 按**账号身份（游戏 UID）**替换：重名但不同 UID 的两个账号是两个账号，互不顶掉
-        const key = accountKeyOf(snapshot);
+        const key = accountKeyOf(parsed);
+        // 这次抓包没进家园场景时不要丢掉本机已有的家园（2026-11-01 用户反馈）
+        const snapshot = mergeImportedSnapshot(
+          parsed,
+          working.find((item) => accountKeyOf(item) === key),
+        );
+        await saveSnapshot(snapshot);
         working = [...working.filter((item) => accountKeyOf(item) !== key), snapshot];
         imported.push(snapshot);
         touched.add(key);

@@ -19,6 +19,8 @@ import { Dashboard } from './ui/Dashboard';
 import { HomeLand, saveHomeView } from './ui/Home';
 import { Collection } from './ui/Collection';
 import { CollectionGroups } from './ui/CollectionGroups';
+import { Nearby } from './ui/Nearby';
+import { BattleHudOrb } from './ui/BattleHudOrb';
 import { Profile } from './ui/Profile';
 import { TabNav } from './ui/TabNav';
 import {
@@ -92,7 +94,7 @@ export default function App() {
   };
   /**
    * 新手引导（2026-11-01 第二轮）：按场景分段，不再固定一条 15 步主线。
-   * - 首启只自动弹 `start`（先导入一次数据，导入成功后收尾提示「教程」入口）；
+   * - 首启只自动弹 `start`（先打开「开始采集」，数据到位后收尾提示「教程」入口）；
    * - 看板 / 收集 / 小组 / 家园 / 我的：第一次进入该页各弹一次；
    * - 顶部「教程」= 直接重播当前页那一段（文字教程已下线）。
    */
@@ -247,6 +249,8 @@ export default function App() {
             navigate({ type: 'open-profile', section: 'identity', returnToGroups: true })
           }
         />
+      ) : navigation.page === 'nearby' ? (
+        <Nearby onNavigate={navigate} />
       ) : (
         <Collection
           location={collection}
@@ -267,6 +271,8 @@ export default function App() {
         />
       ) : null}
       {leaveConfirmation}
+      {/* 战斗采集悬浮球（2026-11-07 剥离）：采集进行中全局显示，命中强提醒目标时变色 */}
+      <BattleHudOrb />
       {importOutcome.local === 'importing' ? (
         <div
           className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-900/85 px-4 py-2 text-xs text-white shadow-lg"

@@ -24,7 +24,7 @@ vi.mock('./useCollectionSummary', () => ({
   }),
 }));
 vi.mock('./useOwnedPets', () => ({
-  useOwnedPets: () => ({ owned: [], accounts: ['测试甲'] }),
+  useOwnedPets: () => ({ owned: [], accounts: ['测试甲'], all: [] }),
 }));
 vi.mock('./StudMatrix', () => ({
   StudMatrix: (props: {

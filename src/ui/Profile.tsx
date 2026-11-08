@@ -84,9 +84,9 @@ export function Profile({
         <>
           {loaded && snapshots.length === 0 ? (
             <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="first-run-card">
-              <h2 className="text-base font-semibold text-slate-900">先导入一次，看看还缺什么</h2>
+              <h2 className="text-base font-semibold text-slate-900">先采集一次，看看还缺什么</h2>
               <p className="mt-1 text-sm text-slate-600">
-                导入后这里会出现母本和种公的进度、缺口与下一步；看板、收集、小组也都按这份数据算。
+                采集完成后这里会出现母本和种公的进度、缺口与下一步；看板、收集、小组也都按这份数据算。
               </p>
               {onStartTour ? (
                 <Button

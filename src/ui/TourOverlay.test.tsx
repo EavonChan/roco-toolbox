@@ -48,18 +48,20 @@ describe('新手引导', () => {
       'start',
       'dashboard',
       'collection',
+      'nearby',
       'groups',
       'home',
       'profile',
     ]);
     const startTitles = TOUR_SEGMENTS.start.map((step) => step.title).join('|');
-    expect(startTitles).toContain('游戏数据');
-    expect(startTitles).toContain('导入');
+    expect(startTitles).toContain('采集');
+    expect(startTitles).toContain('开始采集');
     expect(TOUR_SEGMENTS.start.some((step) => step.waitForImport)).toBe(true);
 
     expect(TOUR_SEGMENTS.dashboard.map((step) => step.title).join('|')).toContain('目标档位');
     expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('覆盖度');
     expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('母本全收集');
+    expect(TOUR_SEGMENTS.nearby.map((step) => step.title).join('|')).toContain('雷达');
     expect(TOUR_SEGMENTS.groups.map((step) => step.title).join('|')).toContain('需求中心');
     expect(TOUR_SEGMENTS.home.map((step) => step.title).join('|')).toContain('接单上窝');
     expect(TOUR_SEGMENTS.profile.map((step) => step.title).join('|')).toContain('云同步');

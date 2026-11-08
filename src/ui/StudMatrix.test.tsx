@@ -4,6 +4,7 @@ import type { CoverageSlot } from '../domain/studCoverage';
 import type { OwnedPet, SpeciesEntry } from '../domain/types';
 import { StudMatrix, studMatrixCellName } from './StudMatrix';
 import { resetStudMatrixPicksForTest } from './studMatrixStore';
+import { resetStudTransferTasksForTest } from './studTransferTaskStore';
 
 const species: SpeciesEntry[] = [
   { key: 'a', gameId: 101, name: '单组兽', number: '001', eggGroups: [2] },
@@ -50,6 +51,7 @@ const renderMatrix = () =>
 
 beforeEach(() => {
   resetStudMatrixPicksForTest();
+  resetStudTransferTasksForTest();
 });
 
 describe('StudMatrix', () => {
@@ -313,6 +315,66 @@ describe('StudMatrix', () => {
     await waitFor(() =>
       expect(screen.getByTestId('stud-demand-publish-message')).toHaveTextContent('测试组'),
     );
+  });
+
+  test('单账号视角：其他号能出蛋的缺口格带「补」角标，点开弹窗给出配对', () => {
+    const transferSpecies = species.map((entry) =>
+      entry.gameId === 102 ? { ...entry, maleCapable: true } : entry,
+    );
+    render(
+      <StudMatrix
+        slots={slots}
+        owned={owned}
+        transferPets={[
+          pet({ gameId: 102, gender: '母', nature: '固执', account: '小号A' }),
+          pet({ gameId: 101, nature: '固执', account: '小号A' }),
+        ]}
+        transferTarget="主号"
+        species={transferSpecies}
+        speciesByGameId={new Map(transferSpecies.map((entry) => [entry.gameId, entry]))}
+        eggGroupNames={eggGroupNames}
+        mode="perfect"
+        demandGroups={[{ id: 'g1', name: '测试组' }]}
+        onLoadDemandGroups={vi.fn()}
+        onPublishStudDemand={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.getByTestId('stud-cell-transfer-6-固执')).toHaveTextContent('补');
+    fireEvent.click(screen.getByTestId('stud-cell-empty-6-固执'));
+    const pairs = screen.getByTestId('stud-transfer-pairs');
+    expect(pairs).toHaveTextContent('小号A');
+    expect(pairs).toHaveTextContent('双组兽');
+    expect(pairs).toHaveTextContent('60%');
+    // 加入看板配窝建议：记到本机任务里，按钮立刻变「已加入」
+    fireEvent.click(screen.getByTestId('stud-transfer-add-小号A-102'));
+    expect(screen.getByTestId('stud-transfer-add-小号A-102')).toHaveTextContent('已加入');
+    const tasks = JSON.parse(window.localStorage.getItem('roco.studTransferTask.v1') ?? '[]');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      targetAccount: '主号',
+      sourceAccount: '小号A',
+      eggGameId: 102,
+      natureName: '固执',
+    });
+  });
+
+  test('灰格也能点：自己号没有、其他号也补不了时直接发需求', () => {
+    render(
+      <StudMatrix
+        slots={slots}
+        owned={owned}
+        species={species}
+        speciesByGameId={speciesByGameId}
+        eggGroupNames={eggGroupNames}
+        mode="perfect"
+        demandGroups={[{ id: 'g1', name: '测试组' }]}
+        onLoadDemandGroups={vi.fn()}
+        onPublishStudDemand={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('stud-cell-empty-6-固执'));
+    expect(screen.getByTestId('stud-demand-publish')).toBeTruthy();
+    expect(screen.queryByTestId('stud-transfer-pairs')).toBeNull();
   });
 
   test('炫彩种公在格子和换代表弹层里带炫彩角标', () => {

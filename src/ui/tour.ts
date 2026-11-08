@@ -2,7 +2,7 @@
  * 新手引导（2026-11-01 第二轮：按场景分段，不再固定一条 15 步主线）。
  *
  * 分段规则：
- * - `start`：首次打开只讲「先导入一次数据」，导入成功后收尾提示「教程」入口；
+ * - `start`：首次打开只讲「先采集一次数据」，采集/导入成功后收尾提示「教程」入口；
  * - 其余分段跟着页签走：用户第一次进入看板 / 收集 / 小组 / 家园 / 我的时各弹一次；
  * - 顶部「教程」按钮 = 直接重播**当前页**那一段（文字教程已下线）。
  *
@@ -12,8 +12,8 @@
 const LEGACY_TOUR_SEEN_KEY = 'roco.tourSeen';
 const TOUR_SEEN_PREFIX = 'roco.tourSeen.';
 
-/** 引导版本：改任一分段的步骤时 +1（1 = 固定 15 步；2 = 按场景分段） */
-export const TOUR_VERSION = '2';
+/** 引导版本：改任一分段的步骤时 +1（1 = 固定 15 步；2 = 按场景分段；3 = 首启改为「开始采集」） */
+export const TOUR_VERSION = '3';
 
 /** 目标元素上挂的锚点属性；找不到时退化成居中说明卡。 */
 export const TOUR_ANCHOR_ATTR = 'data-tour';
@@ -25,7 +25,7 @@ export const TOUR_HINT_STEP_ID = 'tour-hint';
  * 这里刻意不 import `navigation.ts`：本文件要被 e2e 工程直接引用（读版本号/步骤），
  * 而 e2e 的 TS 工程只收自包含模块。下列字面量类型与导航合同结构兼容，由 App 转成意图。
  */
-export type TourPage = 'dashboard' | 'home' | 'collection' | 'groups' | 'profile';
+export type TourPage = 'dashboard' | 'home' | 'collection' | 'nearby' | 'groups' | 'profile';
 export type TourCollection =
   | { kind: 'mothers'; status: 'missing' | 'collected' | 'plan' }
   | { kind: 'studs'; view: 'coverage' }
@@ -73,19 +73,19 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
   start: [
     {
       id: 'start-profile',
-      title: '先把游戏数据导进来',
-      body: '第一次用，先到「我的 · 游戏数据」导入一次。看板的缺口、推荐种公、配窝建议都按这份数据算，没导入等于什么都看不到。',
+      title: '先采集一次游戏数据',
+      body: '第一次用，先到「我的 · 游戏数据」采集一次。看板的缺口、推荐种公、配窝建议都按这份数据算，没采集等于什么都看不到。',
       anchor: 'tab-profile',
     },
     {
-      id: 'start-import',
-      title: '采集或选文件导入',
-      body: '有安卓工具箱就点「开始采集」，进度走满会自动导入；已有抓包文件或备份，就点「导入游戏数据」选文件。导入成功后会自动继续。',
+      id: 'start-collect',
+      title: '点「开始采集」',
+      body: '在安卓工具箱里点「开始采集」，按提示同意 VPN 授权，再打开游戏依次看一遍精灵仓库、背包和蛋仓。进度走满会自动停止、保存并导入；采集成功后会自动继续。',
       profileSection: 'data',
-      anchor: 'profile-import',
+      anchor: 'collector-start',
       waitForImport: true,
     },
-    hintStep('数据导进来后，看板会按它算缺口。随时点顶部「教程」，能重看当前页的分步引导；还没导入的话，也可以回「我的 · 游戏数据」再导一次。'),
+    hintStep('数据采集好后，看板会按它算缺口。随时点顶部「教程」，能重看当前页的分步引导；还没采集的话，也可以回「我的 · 游戏数据」再采一次。'),
   ],
   dashboard: [
     {
@@ -130,6 +130,22 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       body: '按蛋统计还缺哪颗、缺什么性格。点开一颗蛋能看到组里谁有、怎么补最快。',
       collection: { kind: 'mothers', status: 'missing' },
       anchor: 'collection-mothers',
+    },
+    hintStep('随时点顶部「教程」，能重看这一页的引导。'),
+  ],
+  nearby: [
+    {
+      id: 'nearby-radar',
+      title: '附近雷达',
+      body: '采集时把视野内的野生精灵画成雷达：圆点是精灵，越靠外越远。橙色/紫/粉色点代表稀有，红圈代表可主动提醒。',
+      page: 'nearby',
+      anchor: 'nearby-radar',
+    },
+    {
+      id: 'nearby-filters',
+      title: '只看你要找的',
+      body: '「稀有」筛掉普通精灵；「可提醒」只留 ±100dB 或体重牌 + 声音牌；「需求」只留需求中心在找的种族。普通精灵离开视野即清理，高价值会保留 10 分钟。',
+      anchor: 'nearby-filters',
     },
     hintStep('随时点顶部「教程」，能重看这一页的引导。'),
   ],
@@ -197,6 +213,7 @@ export const TOUR_SEGMENT_ORDER: TourSegment[] = [
   'start',
   'dashboard',
   'collection',
+  'nearby',
   'groups',
   'home',
   'profile',

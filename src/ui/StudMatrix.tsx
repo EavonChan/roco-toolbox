@@ -8,6 +8,8 @@ import {
   type StudMatrixPet,
 } from '../domain/studMatrix';
 import type { CoverageSlot } from '../domain/studCoverage';
+import { transferPairsForCells, type StudTransferPair } from '../domain/studTransfer';
+import { addStudTransferTask, useStudTransferTasks } from './studTransferTaskStore';
 import type { StudRecommendation } from '../domain/suggestions';
 import { recommendedNaturesForSpecies } from '../domain/studRecommendations';
 import { isBreedableGroup } from '../domain/eggs';
@@ -40,6 +42,13 @@ export interface StudMatrixProps {
   /** 覆盖度槽位（蛋组 × 目标性格 × 档位），来自全局筛选 */
   slots: CoverageSlot[];
   owned: OwnedPet[];
+  /**
+   * 其他账号的精灵（2026-11-02）：只在单账号视角传入。
+   * 用来判断缺口格有没有别的号能出这颗蛋；不传就不显示「补」角标与配对。
+   */
+  transferPets?: OwnedPet[];
+  /** 单账号视角的目标号（「加入配窝建议」记到它名下）。 */
+  transferTarget?: string;
   species: SpeciesEntry[];
   speciesByGameId: Map<number, SpeciesEntry>;
   eggGroupNames: Record<number, string>;
@@ -114,6 +123,8 @@ export function studMatrixCellName(name: string): string {
 export function StudMatrix({
   slots,
   owned,
+  transferPets,
+  transferTarget,
   species,
   speciesByGameId,
   eggGroupNames,
@@ -138,11 +149,22 @@ export function StudMatrix({
   const grade = grades.includes(activeGrade) ? activeGrade : grades[0] ?? '大婉';
 
   const { picks } = useStudMatrixPicks();
+  const transferTasks = useStudTransferTasks();
   const matrix = useMemo(
     () =>
       buildStudMatrix({ slots, owned, species, speciesByGameId, eggGroupNames, mode, grade }),
     [slots, owned, species, speciesByGameId, eggGroupNames, mode, grade],
   );
+  /** 缺口格里，其他号能出哪颗蛋（每个源号只留概率最高的一对）。 */
+  const transferByCell = useMemo(() => {
+    if (!transferPets) return new Map<string, StudTransferPair[]>();
+    const cells = matrix.rows.flatMap((row) =>
+      row.cells
+        .filter((cell) => cell.targeted && cell.candidates.length === 0)
+        .map((cell) => ({ groupId: cell.groupId, natureName: cell.natureName })),
+    );
+    return transferPairsForCells(transferPets, cells, grade, species);
+  }, [transferPets, matrix, grade, species]);
   /** 还没收集的格子填什么推荐种公：按「蛋组 + 性格 + 当前档位」对上。 */
   const recommendationByCell = useMemo(() => {
     const map = new Map<string, StudRecommendation>();
@@ -202,7 +224,7 @@ export function StudMatrix({
     return map;
   }, [matrix.rows, recommendationByCell, species, speciesByGameId, owned]);
   const [picker, setPicker] = useState<PickerState | null>(null);
-  /** 点淡黄推荐格 → 选小组，把这条种公需求发到小组需求中心。 */
+  /** 点缺口格（淡黄「荐」或灰「缺」）→ 选小组，把这条种公需求发到小组需求中心。 */
   const [publishCell, setPublishCell] = useState<{
     eggGroupId: number;
     groupLabel: string;
@@ -214,6 +236,11 @@ export function StudMatrix({
   const demandBody = GRADE_BODY[grade] as DemandBody;
   const demandVoice: DemandVoice =
     grade === '大婉' || grade === '小婉' ? '+100' : '-100';
+  /** 当前弹窗格子里，其他号能出的配对（单账号视角才有）。 */
+  const publishTransferPairs = publishCell
+    ? transferByCell.get(`${publishCell.eggGroupId}::${publishCell.natureName}`)
+    : undefined;
+  const publishNatureName = publishCell?.natureName ?? '';
 
   const openPublish = (cell: StudMatrixCell) => {
     setPublishCell({
@@ -298,7 +325,7 @@ export function StudMatrix({
           ))}
           <span className="ml-auto truncate text-[10px] text-slate-400">
             左右滑动看更多性格
-            {onPublishStudDemand ? ' · 点淡黄格可求蛋' : ''}
+            {onPublishStudDemand ? ' · 点缺口格可求蛋' : ''}
           </span>
         </div>
       ) : null}
@@ -379,6 +406,7 @@ export function StudMatrix({
                           onRecommend={
                             onPublishStudDemand ? () => openPublish(cell) : undefined
                           }
+                          transferFill={transferByCell.has(cellKey)}
                         />
                       </td>
                     );
@@ -415,6 +443,82 @@ export function StudMatrix({
                 公 · {demandBody} · {demandVoice}
               </span>
             </p>
+            {publishTransferPairs && publishTransferPairs.length > 0 ? (
+              <div className="rounded-lg bg-sky-50 px-2 py-1.5" data-testid="stud-transfer-pairs">
+                <p className="text-[11px] font-medium text-sky-700">
+                  其他号能出这对蛋（把蛋传过来在本号孵）
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {publishTransferPairs.map((pair) => {
+                    const added = Boolean(
+                      transferTarget &&
+                        transferTasks.some(
+                          (task) =>
+                            task.targetAccount === transferTarget &&
+                            task.sourceAccount === pair.account &&
+                            task.eggGameId === pair.eggGameId &&
+                            task.natureName === publishNatureName &&
+                            task.grade === grade,
+                        ),
+                    );
+                    return (
+                      <li
+                        key={`${pair.account}-${pair.eggGameId}`}
+                        className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-700"
+                        data-testid="stud-transfer-pair"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium text-sky-700">{pair.account}</span>
+                          <span className="ml-1 text-slate-400">母</span>
+                          {speciesDisplayName(speciesByGameId.get(pair.motherGameId), pair.motherName)}
+                          <span className="text-slate-400">({pair.motherNature})</span>
+                          <span className="mx-1 text-slate-400">×</span>
+                          <span className="text-slate-400">公</span>
+                          {speciesDisplayName(speciesByGameId.get(pair.fatherGameId), pair.fatherName)}
+                          <span className="text-slate-400">({pair.fatherNature})</span>
+                          <span className="ml-1 text-[9px] text-sky-700">
+                            {Math.round(pair.chance * 100)}%
+                          </span>
+                        </div>
+                        {transferTarget ? (
+                          <button
+                            type="button"
+                            disabled={added}
+                            onClick={() =>
+                              addStudTransferTask({
+                                targetAccount: transferTarget,
+                                sourceAccount: pair.account,
+                                eggGameId: pair.eggGameId,
+                                motherGameId: pair.motherGameId,
+                                motherName: pair.motherName,
+                                motherNature: pair.motherNature,
+                                motherCaptureId: pair.motherCaptureId,
+                                fatherGameId: pair.fatherGameId,
+                                fatherName: pair.fatherName,
+                                fatherNature: pair.fatherNature,
+                                fatherCaptureId: pair.fatherCaptureId,
+                                natureName: publishNatureName,
+                                grade,
+                                groupIds: pair.groupIds,
+                                chance: pair.chance,
+                              })
+                            }
+                            data-testid={`stud-transfer-add-${pair.account}-${pair.eggGameId}`}
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
+                              added
+                                ? 'bg-slate-100 text-slate-400'
+                                : 'bg-sky-100 font-medium text-sky-700'
+                            }`}
+                          >
+                            {added ? '已加入' : '加入配窝建议'}
+                          </button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
             <p className="text-[11px] text-slate-400">选一个小组，把这条种公需求发到需求中心。</p>
             {publishMessage ? (
               <p className="rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-700" data-testid="stud-demand-publish-message">
@@ -466,6 +570,7 @@ function MatrixCell({
   grade,
   picks,
   recommendation,
+  transferFill,
   onOpen,
   onRecommend,
 }: {
@@ -473,8 +578,10 @@ function MatrixCell({
   grade: PetGrade;
   picks: Record<string, string>;
   recommendation?: CellRecommendation;
+  /** 其他号能出这个格子需要的蛋（2026-11-02，单账号视角才可能为真）。 */
+  transferFill?: boolean;
   onOpen: () => void;
-  /** 点了淡黄推荐格：发到小组需求中心（没传就只展示、不可点）。 */
+  /** 点了缺口格：发到小组需求中心（没传就只展示、不可点）。 */
   onRecommend?: () => void;
 }) {
   if (!cell.targeted) {
@@ -488,6 +595,15 @@ function MatrixCell({
     );
   }
   const rep = representativeOf(cell, picks, grade);
+  const transferBadge = transferFill ? (
+    <span
+      className="absolute bottom-0.5 right-0.5 rounded bg-white/85 px-0.5 text-[8px] leading-tight text-sky-700"
+      data-testid={`stud-cell-transfer-${cell.groupId}-${cell.natureName}`}
+      title="其他号能出这颗蛋"
+    >
+      补
+    </span>
+  ) : null;
   if (!rep) {
     // 还没收集到：用「优质种公推荐」里对应的那只填上，淡黄色表示这是推荐目标
     if (recommendation) {
@@ -501,6 +617,7 @@ function MatrixCell({
           <span className="absolute right-0.5 top-0.5 rounded bg-white/85 px-0.5 text-[8px] leading-tight text-amber-700">
             荐
           </span>
+          {transferBadge}
         </>
       );
       const shell =
@@ -530,14 +647,33 @@ function MatrixCell({
         </button>
       );
     }
+    // 灰格现在也可点：自己号没有、其他号也补不了时，点开直接发需求求组员
+    const grayShell =
+      'relative flex w-full items-center justify-center overflow-hidden rounded bg-slate-100 text-[10px] text-slate-400';
+    const grayBody = <>缺{transferBadge}</>;
+    if (!onRecommend) {
+      return (
+        <span
+          className={grayShell}
+          style={{ height: CELL_HEIGHT }}
+          data-testid={`stud-cell-empty-${cell.groupId}-${cell.natureName}`}
+          title={transferFill ? '其他号能出这颗蛋' : undefined}
+        >
+          {grayBody}
+        </span>
+      );
+    }
     return (
-      <span
-        className="flex w-full items-center justify-center rounded bg-slate-100 text-[10px] text-slate-400"
+      <button
+        type="button"
+        onClick={onRecommend}
+        className={grayShell}
         style={{ height: CELL_HEIGHT }}
         data-testid={`stud-cell-empty-${cell.groupId}-${cell.natureName}`}
+        title="缺少这只种公；点击加到需求中心"
       >
-        缺
-      </span>
+        {grayBody}
+      </button>
     );
   }
   const count = cell.candidates.length;

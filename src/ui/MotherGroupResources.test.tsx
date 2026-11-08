@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { clearGroupListSession, resetGroupTargetCriteriaForTest, setGroupList } from './listViewStore';
+import { clearDemandPicks, readDemandPicks } from './demandPickStore';
 import { MotherGroupResources } from './MotherGroupResources';
 import {
   FIXTURE_CATALOG_VERSION,
@@ -64,6 +65,8 @@ const renderResources = () =>
 
 beforeEach(() => {
   clearGroupListSession();
+  // 选中的配对也是持久化的（2026-11-02）：不清会让上一条用例的「用这对」串到下一题
+  clearDemandPicks();
   // 目标口径是持久化的（2026-11-01），测试之间要复位，否则上一条用例选的类型 / 体型会串味
   resetGroupTargetCriteriaForTest();
 });
@@ -564,6 +567,117 @@ describe('MotherGroupResources 三视图', () => {
     expect(cards[1]).toHaveTextContent('♂');
     expect(cards[1]).toHaveTextContent('固执');
     expect(cards[1]).toHaveTextContent('石岚 · 盒子04 第7位');
+  });
+
+  test('需求详情：不挑性格母本单，两个母本都能出现在备选里，并能选中具体那一对（2026-11-02）', () => {
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="A"
+        species={catalog}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        snapshots={[
+          snapshot(1001, '石岚', [
+            mother(101, { captureId: 'silent', nature: '沉默', account: '石岚' }),
+            mother(101, { captureId: 'blue', nature: '忧郁', account: '石岚' }),
+            mother(102, { captureId: 'male-1', gender: '公', nature: '开朗', account: '石岚' }),
+          ]),
+        ]}
+        demands={[
+          demandOf({ demanderAccountId: 'B', eggGameId: 101, nature: '', body: '大块头', voice: '+100' }),
+        ]}
+        onClaimDemand={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('mother-view-mine'));
+    fireEvent.click(
+      within(screen.getByTestId('demand-section-can-claim')).getByTestId('mother-demand-open'),
+    );
+    const detail = screen.getByTestId('mother-demand-detail');
+    const alternatives = within(detail).getByTestId('mother-demand-pair-alternatives');
+    expect(alternatives).toHaveTextContent('换个配对');
+    // 两只母本各至少一组：不能只列第一只母本配出来的那一对
+    const rows = within(alternatives).getAllByTestId(/mother-pair-option-/);
+    expect(rows).toHaveLength(2);
+    expect(alternatives).toHaveTextContent('沉默');
+    expect(alternatives).toHaveTextContent('忧郁');
+
+    fireEvent.click(within(alternatives).getByTestId('mother-pair-pick-1'));
+    // 推荐配对卡即时切到忧郁那只母本
+    const cards = within(detail).getAllByTestId('mother-demand-pair-card');
+    expect(cards[0]).toHaveTextContent('忧郁');
+    // 与家园共用同一份本机记忆
+    expect(Object.values(readDemandPicks())).toContainEqual({
+      eggGameId: 101,
+      motherCaptureId: 'blue',
+      fatherCaptureId: 'male-1',
+    });
+  });
+
+  test('需求详情：不挑性格母本单，默认推荐「推荐性格」的配对（2026-11-03）', () => {
+    /** 火花蛋的推荐性格是「固执」。 */
+    const withRecommended: SpeciesEntry[] = catalog.map((entry) =>
+      entry.gameId === 101 ? { ...entry, recommendedNatures: ['固执'] } : entry,
+    );
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="A"
+        species={withRecommended}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        snapshots={[
+          snapshot(1001, '石岚', [
+            mother(101, { captureId: 'adamant-mother', nature: '固执', account: '石岚' }),
+            mother(101, { captureId: 'rash-mother', nature: '急躁', account: '石岚' }),
+            mother(102, { captureId: 'rash-male', gender: '公', nature: '急躁', account: '石岚' }),
+            mother(102, { captureId: 'adamant-male', gender: '公', nature: '固执', account: '石岚' }),
+          ]),
+        ]}
+        demands={[
+          demandOf({ demanderAccountId: 'B', eggGameId: 101, nature: '', body: '大块头', voice: '+100' }),
+        ]}
+        onClaimDemand={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('mother-view-mine'));
+    fireEvent.click(
+      within(screen.getByTestId('demand-section-can-claim')).getByTestId('mother-demand-open'),
+    );
+    const detail = screen.getByTestId('mother-demand-detail');
+    // 不能因为「固执母 × 急躁公」先出现就当成推荐；双亲都带推荐性格的那对才是默认
+    const cards = within(detail).getAllByTestId('mother-demand-pair-card');
+    expect(cards[0]).toHaveTextContent('固执');
+    expect(cards[1]).toHaveTextContent('固执');
+    expect(cards[1]).not.toHaveTextContent('急躁');
+  });
+
+  test('需求详情：母本单只有一组配对时也保留「已选 / 用这对」（2026-11-02）', () => {
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="A"
+        species={catalog}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        snapshots={[
+          snapshot(1001, '石岚', [
+            mother(101, { captureId: 'only-mother', nature: '开朗', account: '石岚' }),
+            mother(102, { captureId: 'only-male', gender: '公', nature: '开朗', account: '石岚' }),
+          ]),
+        ]}
+        demands={[
+          demandOf({ demanderAccountId: 'B', eggGameId: 101, nature: '', body: '大块头', voice: '+100' }),
+        ]}
+        onClaimDemand={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('mother-view-mine'));
+    fireEvent.click(
+      within(screen.getByTestId('demand-section-can-claim')).getByTestId('mother-demand-open'),
+    );
+    const detail = screen.getByTestId('mother-demand-detail');
+    const alternatives = within(detail).getByTestId('mother-demand-pair-alternatives');
+    expect(within(alternatives).getAllByTestId(/mother-pair-option-/)).toHaveLength(1);
+    expect(within(alternatives).getByTestId('mother-pair-pick-0')).toHaveTextContent('已选');
   });
 
   test('需求中心：我接的单，点「查看」也能看到是谁发的', () => {
@@ -1285,21 +1399,42 @@ describe('MotherGroupResources 三视图', () => {
     expect(nestTag.querySelector('img')?.getAttribute('src')).toBe('/ui/nest/green-nest.png');
   });
 
-  test('只看我发的需求：只留我发过需求的那颗蛋', () => {
+  test('不挑性格：勾上后性格筛选不可用，发布的需求不带性格（2026-11-02）', async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
     render(
       <MotherGroupResources
-        group={group}
+        group={groupAllPublished}
         viewerAccountId="A"
         species={catalog}
         catalogVersion={FIXTURE_CATALOG_VERSION}
-        demands={[demandOf({ eggGameId: 201, nature: '胆小' })]}
+        onPublishDemand={publish}
       />,
     );
-    expect(screen.getAllByTestId('mother-resource-row').length).toBeGreaterThan(1);
-    fireEvent.click(screen.getByTestId('mother-only-demanded'));
-    const rows = screen.getAllByTestId('mother-resource-row');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveTextContent('水蓝蓝');
+
+    // 「只看我发的需求」已下线（需求中心能看到）
+    expect(screen.queryByTestId('mother-only-demanded')).toBeNull();
+    const ignore = screen.getByTestId('mother-ignore-natures');
+    expect(ignore.closest('label')).toHaveTextContent('不挑性格');
+
+    fireEvent.click(ignore);
+    // 勾上后性格筛选项不可用
+    expect(screen.getByTestId('mother-target-nature')).toBeDisabled();
+    // 缺口仍按「我没有的母本」算（不看性格）
+    const row = screen
+      .getAllByTestId('mother-resource-row')
+      .find((item) => item.textContent?.includes('水蓝蓝'))!;
+    fireEvent.click(within(row).getByTestId('mother-resource-open'));
+
+    const panel = within(screen.getByTestId('mother-resource-detail')).getByTestId(
+      'mother-resource-publish-panel',
+    );
+    expect(within(panel).getByTestId('mother-resource-publish-no-nature')).toHaveTextContent(
+      '不挑性格',
+    );
+    fireEvent.click(within(panel).getByTestId('mother-resource-publish-confirm'));
+    await waitFor(() =>
+      expect(publish).toHaveBeenCalledWith(201, [], expect.objectContaining({ gender: '母' })),
+    );
   });
 
   test('共同寻找：多选成员只看他们共同缺的，并记住选择', () => {
@@ -2003,9 +2138,10 @@ describe('MotherGroupResources 三视图', () => {
       '两栖 × 昆虫',
     );
 
-    // 点「用这颗」→ 推荐配对跟着换成这颗蛋
-    fireEvent.click(within(list).getByTestId('stud-candidate-pick-901'));
-    expect(within(list).getByTestId('stud-candidate-pick-901')).toHaveTextContent('已选');
+    // 点「用这对」→ 推荐配对跟着换成这对
+    const firstRow = within(list).getAllByTestId(/^stud-candidate-901-/)[0];
+    fireEvent.click(within(firstRow).getByRole('button'));
+    expect(within(firstRow).getByRole('button')).toHaveTextContent('已选');
     // 选蛋键带小组（R2-3-M01）：同内容需求发到别的组不会读到这条选择
     expect(window.localStorage.getItem('roco.demandPick')).toContain('g1|B');
   });
@@ -2181,5 +2317,33 @@ describe('MotherGroupResources 三视图', () => {
     expect(notice).toHaveTextContent('继续加油喵');
     fireEvent.click(screen.getByTestId('demand-completion-thanks-ack'));
     expect(screen.queryByTestId('demand-completion-thanks')).toBeNull();
+  });
+
+  test('已完成单只走「最近完成」时，回执照样写清孵出哪只、结单数也不再是 0', () => {
+    window.localStorage.removeItem('roco.demandCompletionRead:B');
+    render(
+      <MotherGroupResources
+        group={group}
+        viewerAccountId="B"
+        species={catalog}
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        // 2026-11-01 起服务端不再把 done 行放进需求列表：只给最近完成 + 已结单聚合
+        demands={[]}
+        completedCounts={{ B: 3 }}
+        myRecentCompleted={[
+          demandOf({
+            demanderAccountId: 'A',
+            claimerAccountId: 'B',
+            status: 'done',
+            updatedAt: 900,
+          }),
+        ]}
+      />,
+    );
+
+    const notice = screen.getByTestId('demand-completion-thanks');
+    expect(notice).toHaveTextContent('成功孵出');
+    expect(notice).toHaveTextContent('胆小♀·');
+    expect(notice).toHaveTextContent('目前结单 3 条');
   });
 });

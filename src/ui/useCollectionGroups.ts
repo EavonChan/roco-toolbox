@@ -1013,11 +1013,28 @@ export function useCollectionGroups(input: UseCollectionGroupsInput): Collection
       const active = scope(true);
       const draftRevision = draftRevisionRef.current;
 
-      await publishCollectionResources(groupId, {
-        baseRevision: mine.resourceRevision,
-        baseTargetRevision: detail.group.targetRevision,
-        resource,
-      });
+      try {
+        await publishCollectionResources(groupId, {
+          baseRevision: mine.resourceRevision,
+          baseTargetRevision: detail.group.targetRevision,
+          resource,
+        });
+      } catch (failure) {
+        /**
+         * 修订号被别的设备推高了（最常见：手机导入后自动发布一次），本页手里的 `resourceRevision` 已经旧了。
+         * 2026-11-01 用户反馈「百分发布更新资源」时撞上这个：这里拉一次最新修订重发，不让用户白填一遍。
+         * 目标也变了就不硬发——资源是按旧目标挑的，交回界面重新预览。
+         */
+        if (!(isMotherGroupsApiError(failure) && failure.code === 'REVISION_CONFLICT')) throw failure;
+        const latest = await getCollectionGroup(groupId);
+        const latestMine = latest.members.find((member) => member.accountId === account);
+        if (!latestMine || latest.group.targetRevision !== detail.group.targetRevision) throw failure;
+        await publishCollectionResources(groupId, {
+          baseRevision: latestMine.resourceRevision,
+          baseTargetRevision: latest.group.targetRevision,
+          resource,
+        });
+      }
       // 手动发布 = 恢复共享：清掉「主动停止共享」的本机记忆，导入后可以继续自动同步
       setGroupSharingOff(account, groupId, false);
       if (!active()) return;

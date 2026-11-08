@@ -20,7 +20,7 @@ export const labelerFor =
  * 本机全部账号的精灵，并**按账号筛选**（看板 / 覆盖度 / 换什么共用）。
  * 三个页面的数字都从这里出，账号一改就一起改，不会出现「这页筛了那页没筛」。
  */
-export function useOwnedPets(): { owned: OwnedPet[]; accounts: string[] } {
+export function useOwnedPets(): { owned: OwnedPet[]; accounts: string[]; all: OwnedPet[] } {
   const { snapshots } = useSnapshots();
   const { excluded } = useAccountFilter();
 
@@ -32,6 +32,7 @@ export function useOwnedPets(): { owned: OwnedPet[]; accounts: string[] } {
       const label = labelOf(snapshot);
       return snapshot.pets.map((pet) => (pet.account === label ? pet : { ...pet, account: label }));
     });
-    return { owned: filterByAccounts(all, excluded), accounts };
+    // `all` 给种公阵列的跨号补缺用（要找被筛掉的号）；其余页面继续用筛过的 owned
+    return { owned: filterByAccounts(all, excluded), accounts, all };
   }, [snapshots, excluded]);
 }

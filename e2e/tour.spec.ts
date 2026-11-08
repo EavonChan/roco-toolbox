@@ -38,22 +38,22 @@ const CLAIMED_DEMAND = {
   updatedAt: 1_760_000_000_000,
 };
 
-test('首启只讲「先导入一次」：没数据不能下一步，导入成功后自动走到教程提示', async ({ page }) => {
+test('首启只讲「先采集一次」：数据没到位不能下一步，数据到齐后自动走到教程提示', async ({ page }) => {
   await page.goto('/');
 
   const root = page.getByTestId('tour-root');
   await expect(root).toBeVisible();
   await expect(page.getByTestId('tour-progress')).toHaveText('第 1 / 3 步');
-  await expect(page.getByTestId('tour-title')).toHaveText('先把游戏数据导进来');
+  await expect(page.getByTestId('tour-title')).toHaveText('先采集一次游戏数据');
   // 第 1 步框住顶部「我的」页签
   await expect(page.getByTestId('tour-spotlight')).toBeVisible();
 
   await page.getByTestId('tour-next').click();
-  await expect(page.getByTestId('tour-title')).toHaveText('采集或选文件导入');
+  await expect(page.getByTestId('tour-title')).toHaveText('点「开始采集」');
   await expect(page.getByTestId('tour-next')).toBeDisabled();
   await expect(page.getByTestId('tour-wait')).toBeVisible();
 
-  // 导入一份可配对的数据 → 自动进入收尾步，框住顶部「教程」
+  // preview 没有安卓采集桥，这里用一份可配对的数据模拟「采集完成、数据到位」→ 自动进入收尾步
   await page
     .getByTestId('import-input')
     .setInputFiles('src/domain/__fixtures__/backup-breed-pair.json');
@@ -109,7 +109,7 @@ test('顶部「教程」直接重播当前页那一段', async ({ page }) => {
 test('引导进行中点「教程」：结束当前段并重播当前页，不叠出两层', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('tour-root')).toBeVisible();
-  await expect(page.getByTestId('tour-title')).toHaveText('先把游戏数据导进来');
+  await expect(page.getByTestId('tour-title')).toHaveText('先采集一次游戏数据');
 
   await page.getByTestId('guide-open').click();
   await expect(page.getByTestId('tour-root')).toHaveCount(1);

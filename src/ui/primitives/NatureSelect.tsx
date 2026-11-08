@@ -6,6 +6,9 @@ export interface NatureSelectProps {
   label: string;
   value: string;
   onValueChange: (value: string) => void;
+  /** 空值那项叫什么（默认「不挑」）；小组页用「推荐性格」。 */
+  emptyLabel?: string;
+  disabled?: boolean;
   testId?: string;
   menuTestId?: string;
   optionTestId?: (value: string) => string;
@@ -19,7 +22,7 @@ const EXTRA_NATURES = allNatureNames.filter((nature) => !PRIMARY_NATURES.include
 /**
  * 性格选择（2026-10-27）：不再用一个 30 项的页内下拉。
  *
- * - 第一层：`不挑` + 常用性格（八大目标性格）；
+ * - 第一层：空值项（默认「不挑」，小组页叫「推荐性格」）+ 常用性格（八大目标性格）；
  * - 第二层：搜索 / 展开全部 30 个；
  * - 已选的非常用性格仍然保留在触发按钮上，不会被静默丢掉。
  */
@@ -27,6 +30,8 @@ export function NatureSelect({
   label,
   value,
   onValueChange,
+  emptyLabel = '不挑',
+  disabled = false,
   testId,
   menuTestId,
   optionTestId,
@@ -35,7 +40,7 @@ export function NatureSelect({
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const currentLabel = value || '不挑';
+  const currentLabel = value || emptyLabel;
 
   const keywordText = keyword.trim();
   const matches = useMemo(() => {
@@ -88,10 +93,11 @@ export function NatureSelect({
         ref={triggerRef}
         type="button"
         aria-expanded={open}
-        aria-label={`${label}：${currentLabel}`}
+        aria-label={currentLabel === label ? label : `${label}：${currentLabel}`}
+        disabled={disabled}
         onClick={() => setOpen(true)}
         data-testid={testId}
-        className={`flex min-h-[32px] max-w-full items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-normal text-slate-600 ${className}`}
+        className={`flex min-h-[32px] max-w-full items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-normal text-slate-600 disabled:bg-slate-50 disabled:text-slate-300 ${className}`}
       >
         <span className="truncate">{currentLabel}</span>
         <span aria-hidden="true" className="text-[10px] text-slate-400">
@@ -120,7 +126,7 @@ export function NatureSelect({
                 : 'border-slate-200 bg-white text-slate-600'
             }`}
           >
-            不挑
+            {emptyLabel}
           </button>
 
           <input

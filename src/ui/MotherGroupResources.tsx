@@ -84,7 +84,7 @@ import { SearchField } from './primitives/SearchField';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { StateNotice } from './primitives/StateNotice';
 import { GenderMark } from './GenderMark';
-import { demandPickKey, readDemandPicks, writeDemandPicks, type DemandPicks } from './demandPickStore';
+import { demandPickKey, pickEggIdOf, readDemandPicks, writeDemandPicks, type DemandPicks } from './demandPickStore';
 import { completionReadKey, markCompletionRead, readCompletionRead } from './demandCompletionReadStore';
 
 /**
@@ -237,8 +237,10 @@ export function MotherGroupResources({
   const list = useGroupList(viewerAccountId, group.group.id);
   const setList = (patch: Partial<GroupListState>) =>
     setGroupList(viewerAccountId, group.group.id, patch);
-  const { view, query, memberFilter, missingMembers, seekingMembers, onlyOwned, onlyDemanded } = list;
+  const { view, query, memberFilter, missingMembers, seekingMembers, onlyOwned, ignoreNatures } = list;
   const { targetNature, targetBody, targetVoice, targetKind, onlyGroupLine } = list;
+  /** 勾了「不挑性格」就完全不管性格：缺口判定 / 发布都按 nature = '' 算。 */
+  const natureFilter = ignoreNatures ? '' : targetNature;
   // 旧值兼容：`help`（旧的「我能补谁」）与 `all`（旧「小组资源」）都落到「需求中心」
   const effectiveView: ViewId = view === 'help' || view === 'all'
     ? 'mine'
@@ -295,7 +297,6 @@ export function MotherGroupResources({
     missingMembers,
     query,
     onlyOwned,
-    onlyDemanded,
   ]);
 
   useEffect(() => {
@@ -372,6 +373,15 @@ export function MotherGroupResources({
     return eggNatures(species, eggGameId, target.natureOverrides);
   };
 
+  /**
+   * 不挑性格的单：接单人默认按「推荐性格」给配对排序（2026-11-03 用户口径）。
+   * 优先用自己 / 组里设定的收集性格，没设定就退回图鉴的推荐性格。
+   */
+  const pairPreferredNaturesOf = (eggGameId: number): string[] => {
+    const configured = configuredNaturesOf(eggGameId);
+    return configured.length > 0 ? configured : defaultEggNatures(species, eggGameId);
+  };
+
   /** 产线判定的图鉴索引：只随 species 重建一次（2026-10-29 代码审查 B1-M02）。 */
   const productionIndex = useMemo(() => buildProductionIndex(species), [species]);
 
@@ -396,8 +406,9 @@ export function MotherGroupResources({
         new Set((member.resource?.accounts ?? []).flatMap((account) => account.eggGameIds)),
       );
     }
-    /** 这颗蛋要看的性格：手选的优先；否则用个人收集口径；都没有 = 不限（''）。 */
+    /** 这颗蛋要看的性格：勾了不挑就完全不管；否则手选的优先，再退回个人收集口径。 */
     const naturesOfRow = (configured: readonly string[]): string[] => {
+      if (ignoreNatures) return [''];
       if (targetNature) return [targetNature];
       return configured.length > 0 ? [...configured] : [''];
     };
@@ -405,7 +416,7 @@ export function MotherGroupResources({
       if (memberId === viewerAccountId && snapshots.length > 0) {
         return hasStockForDemand(
           snapshots,
-          { eggGameId, nature: targetNature, gender: '母', body: targetBody, voice: targetVoice },
+          { eggGameId, nature: natureFilter, gender: '母', body: targetBody, voice: targetVoice },
           species,
         );
       }
@@ -415,7 +426,7 @@ export function MotherGroupResources({
           memberSupplies(memberId, {
             kind: 'mother',
             eggGameId,
-            nature: targetNature,
+            nature: natureFilter,
             body: targetBody,
             voice: targetVoice,
           }) === true
@@ -520,6 +531,8 @@ export function MotherGroupResources({
     snapshots,
     species,
     targetNature,
+    ignoreNatures,
+    natureFilter,
     targetBody,
     targetVoice,
     productionIndex,
@@ -561,7 +574,7 @@ export function MotherGroupResources({
         snapshots,
         {
           eggGameId: row.eggGameId,
-          nature: targetNature,
+          nature: natureFilter,
           gender: '母' as const,
           body: targetBody,
           voice: targetVoice,
@@ -571,7 +584,7 @@ export function MotherGroupResources({
       if (supply.kind === 'breedable') result.add(row.eggGameId);
     }
     return result;
-  }, [rows, snapshots, species, targetNature, targetBody, targetVoice]);
+  }, [rows, snapshots, species, natureFilter, targetBody, targetVoice]);
   /** 本机产线（种公页「自己能产」用）；按当前模式、同账号、双方同档位计算。 */
   const viewerLines = useMemo(() => {
     if (snapshots.length > 0) {
@@ -671,16 +684,6 @@ export function MotherGroupResources({
     [targetRows, coverageByEgg, seekingScope],
   );
 
-  /** 我发过需求的蛋（供「只看我发的需求」筛选，早于卡片渲染计算）。 */
-  const myDemandedEggs = useMemo(
-    () =>
-      new Set(
-        demands
-          .filter((demand) => demand.demanderAccountId === viewerAccountId)
-          .map((demand) => demand.eggGameId),
-      ),
-    [demands, viewerAccountId],
-  );
   /** 我还没结束的需求：即使我已经拿到这只蛋，也要保留卡片才能撤回/确认完成。 */
   const myUnfinishedDemandedEggs = useMemo(
     () =>
@@ -717,7 +720,6 @@ export function MotherGroupResources({
 
   const filtered = (currentRows ?? []).filter((row) => {
     if (onlyOwned && row.holders.length === 0) return false;
-    if (onlyDemanded && !myDemandedEggs.has(row.eggGameId)) return false;
     // 「我缺的」：勾了几个人就取并集——其中任意一人能补就算命中（2026-10-28 用户口径）。
     // 「共同寻找」的范围由 seekingMembers 决定，这里不掺和。
     if (effectiveView === 'missing' && missingMembers.length > 0) {
@@ -745,7 +747,9 @@ export function MotherGroupResources({
    * 先看一个性格都还没收到的蛋，收了一半的往后沉；不跨分区。
    */
   const partiallyCollected = (row: TargetRow): boolean =>
-    row.configuredNatures.length > 0 && row.missingNatures.length < row.configuredNatures.length;
+    !ignoreNatures &&
+    row.configuredNatures.length > 0 &&
+    row.missingNatures.length < row.configuredNatures.length;
   const sinkPartiallyCollected = (list: TargetRow[]): TargetRow[] =>
     [...list].sort((a, b) => Number(partiallyCollected(a)) - Number(partiallyCollected(b)));
 
@@ -1005,14 +1009,18 @@ export function MotherGroupResources({
   useEffect(() => {
     setCompletionRead(readCompletionRead(viewerAccountId));
   }, [viewerAccountId, group.group.id]);
+  /**
+   * 已完成的来源（2026-11-01）：服务端「我承接的最近完成」优先，旧接口才从列表里的 done 行兜底。
+   * 需求列表已经不再下发已完成行，仍从 `demands` 里找会让回执里的「孵出哪只」和结单数都变成空 / 0。
+   */
+  const completedSource =
+    myRecentCompleted.length > 0
+      ? myRecentCompleted
+      : demands.filter((demand) => demand.status === 'done');
+
   const completionThanks = (() => {
     if (!viewerAccountId) return null;
-    // 已完成不再随列表下发（2026-11-01）：优先用服务端给的「我承接的最近完成」
-    const completed =
-      myRecentCompleted.length > 0
-        ? myRecentCompleted
-        : demands.filter((demand) => demand.status === 'done');
-    const unread = completed.filter(
+    const unread = completedSource.filter(
       (demand) =>
         demand.status === 'done' &&
         demand.claimerAccountId === viewerAccountId &&
@@ -1248,9 +1256,10 @@ export function MotherGroupResources({
         species,
         3,
         detailDemand.requireGreenNest === true,
+        pairPreferredNaturesOf(detailDemand.eggGameId),
       ),
     };
-  }, [detailDemand, snapshots, species, placementNeighbours]);
+  }, [detailDemand, snapshots, species, placementNeighbours, natureOverrides, target]);
 
   /**
    * 种公需求的候选蛋（2026-10-30 用户口径）：按组内已发布产线实时算，
@@ -1300,7 +1309,7 @@ export function MotherGroupResources({
   const representativeOf = (demand: CollectionDemand): StudDemandCandidate | null => {
     const list = candidatesOf(demand);
     if (list.length === 0) return null;
-    const picked = demandPicks[pickKeyOf(demand)];
+    const picked = pickEggIdOf(demandPicks[pickKeyOf(demand)]);
     return list.find((item) => item.eggGameId === picked) ?? list[0];
   };
 
@@ -1320,21 +1329,17 @@ export function MotherGroupResources({
 
   /** 我在这个组里已结的单数，以及按结单数排的组内名次（2026-10-30 用户口径）。 */
   const myCompletionStats = (() => {
-    const counts = new Map<string, number>();
-    for (const demand of demands) {
-      if (demand.status !== 'done' || !demand.claimerAccountId) continue;
-      counts.set(demand.claimerAccountId, (counts.get(demand.claimerAccountId) ?? 0) + 1);
-    }
-    const mine = viewerAccountId ? counts.get(viewerAccountId) ?? 0 : 0;
+    // 用与成员区同一份「已结单」聚合：需求列表里已经不再有 done 行，直接数列表会永远是 0
+    const mine = viewerAccountId ? completedCounts.get(viewerAccountId) ?? 0 : 0;
     if (mine === 0) return { mine, rank: 0 };
-    const rank = [...counts.values()].filter((value) => value > mine).length + 1;
+    const rank = [...completedCounts.values()].filter((value) => value > mine).length + 1;
     return { mine, rank };
   })();
 
   /** 待感谢的已完成单各是什么精灵（最多列 3 条，多了用「等 N 单」）。 */
   const completionSamples = (() => {
     if (!completionThanks || !viewerAccountId) return [];
-    return demands
+    return completedSource
       .filter(
         (demand) =>
           demand.status === 'done' &&
@@ -1346,10 +1351,68 @@ export function MotherGroupResources({
   })();
 
 
-  const pickDemandEgg = (demand: CollectionDemand, eggGameId: number) => {
-    const next = { ...demandPicks, [pickKeyOf(demand)]: eggGameId };
+  /** 我选的组合（蛋 + 那一对亲本）；种公单里同蛋不同公要分开记。 */
+  const pickDemandOption = (demand: CollectionDemand, option: StudPlacementOption) => {
+    const next = {
+      ...demandPicks,
+      [pickKeyOf(demand)]: {
+        eggGameId: option.eggGameId,
+        motherCaptureId: option.motherPet.pet.captureId,
+        fatherCaptureId: option.malePet.pet.captureId,
+      },
+    };
     setDemandPicks(next);
     writeDemandPicks(next);
+  };
+
+  /** 母本单选中的「母本 × 种公」也落本机记忆，家园按同一对排（2026-11-02）。 */
+  const pickDemandPair = (demand: CollectionDemand, option: DemandPairOption) => {
+    const next = {
+      ...demandPicks,
+      [pickKeyOf(demand)]: {
+        eggGameId: demand.eggGameId,
+        motherCaptureId: option.motherPet.pet.captureId,
+        fatherCaptureId: option.malePet.pet.captureId,
+      },
+    };
+    setDemandPicks(next);
+    writeDemandPicks(next);
+  };
+
+  /** 我选中的那对（先按亲本精确匹配，再退回按蛋匹配）。 */
+  const activeStudOption = (
+    demand: CollectionDemand,
+    list: readonly StudPlacementOption[],
+  ): StudPlacementOption | null => {
+    const picked = demandPicks[pickKeyOf(demand)];
+    if (typeof picked === 'object' && picked) {
+      const exact = list.find(
+        (item) =>
+          item.eggGameId === picked.eggGameId &&
+          (!picked.motherCaptureId ||
+            item.motherPet.pet.captureId === picked.motherCaptureId) &&
+          (!picked.fatherCaptureId ||
+            item.malePet.pet.captureId === picked.fatherCaptureId),
+      );
+      if (exact) return exact;
+    }
+    const eggGameId = pickEggIdOf(picked);
+    return list.find((item) => item.eggGameId === eggGameId) ?? list[0] ?? null;
+  };
+
+  /** 母本单选中的那一对在候选里的位置：先按 demandPicks 精确匹配，匹配不到返回 null。 */
+  const pickedPairIndex = (
+    demand: CollectionDemand,
+    list: readonly DemandPairOption[],
+  ): number | null => {
+    const picked = demandPicks[pickKeyOf(demand)];
+    if (typeof picked !== 'object' || !picked) return null;
+    const index = list.findIndex(
+      (item) =>
+        (!picked.motherCaptureId || item.motherPet.pet.captureId === picked.motherCaptureId) &&
+        (!picked.fatherCaptureId || item.malePet.pet.captureId === picked.fatherCaptureId),
+    );
+    return index >= 0 ? index : null;
   };
 
   /** 候选蛋的可配蛋组名（去掉「组」字）：双蛋组写成「动物 × 拟人」（2026-10-30 用户口径）。 */
@@ -1524,9 +1587,7 @@ export function MotherGroupResources({
 
     if (isStudDemandKey(demand.eggGameId)) {
       const groupName = eggGroupNames[-demand.eggGameId] ?? `蛋组${-demand.eggGameId}`;
-      const list = detailPairOptions.stud;
-      const picked = demandPicks[pickKeyOf(demand)];
-      const active = list.find((item) => item.eggGameId === picked) ?? list[0] ?? null;
+      const active = activeStudOption(demand, detailPairOptions.stud);
       if (!active) {
         return (
           <p className="px-1 text-[11px] leading-snug text-slate-500" data-testid="mother-demand-pairing-text">
@@ -1547,7 +1608,9 @@ export function MotherGroupResources({
     }
 
     const list = detailPairOptions.mother;
-    const index = Math.min(pairPicks[demandKey(demand)] ?? 0, Math.max(0, list.length - 1));
+    const savedIndex = pickedPairIndex(demand, list);
+    const index =
+      savedIndex ?? Math.min(pairPicks[demandKey(demand)] ?? 0, Math.max(0, list.length - 1));
     const active = list[index] ?? null;
     const eggName = splitDisplayName(
       rowByEgg.get(demand.eggGameId)?.name ?? `蛋 ${demand.eggGameId}`,
@@ -1576,38 +1639,44 @@ export function MotherGroupResources({
     chance >= 0.5 ? 'text-emerald-700' : chance >= 0.3 ? 'text-amber-600' : 'text-rose-600';
 
   /**
-   * 推荐配对下面的备选（2026-10-30 用户口径）。
+   * 推荐配对下面的备选（2026-10-30 用户口径，2026-11-01 调整为「组合」口径）。
    *
-   * - 种公单：蛋组里任何一颗蛋都可能满足，列出**我自己**能孵的那几颗
-   *   （名字 + 蛋组 + 概率），点「用这颗」同时换卡片头像与推荐配对；
-   * - 母本单：蛋是固定的，只给几组「换个种公」，不做成全量列表，
-   *   否则推荐就没意义了。
+   * - 种公单：列出**所有同概率档的「母本 × 种公」组合**（同一颗蛋配不同公也算不同组合），
+   *   点「用这对」同时换卡片头像与推荐配对；
+   * - 母本单：蛋是固定的，列出几组「母本 × 种公」；按母本限流保证每个可用母本至少出现一次，
+   *   只有一组时也渲染，方便「选具体那一对」。
    */
   const demandAlternatives = (demand: CollectionDemand): ReactNode => {
     if (isStudDemandKey(demand.eggGameId)) {
       const list = detailPairOptions.stud;
       if (list.length < 2) return null;
-      const picked = demandPicks[pickKeyOf(demand)];
-      const activeId =
-        list.find((item) => item.eggGameId === picked)?.eggGameId ?? list[0].eggGameId;
+      const active = activeStudOption(demand, list);
+      /** 同一对亲本算一条（同蛋不同公是两条）。 */
+      const keyOf = (item: StudPlacementOption): string =>
+        `${item.motherPet.pet.captureId ?? item.motherPet.pet.gameId}|${
+          item.malePet.pet.captureId ?? item.malePet.pet.gameId
+        }`;
+      const activeKey = active ? keyOf(active) : null;
       return (
         <div className="rounded-lg bg-slate-50 px-1 py-1.5" data-testid="mother-demand-stud-candidates">
           <h3 className="px-1 text-[11px] font-semibold text-slate-600">
-            我能用这些蛋接 · {list.length}
+            可用的母本 × 种公 · {list.length}
           </h3>
           <ul className="mt-1 space-y-1">
-            {list.map((item) => {
-              const on = item.eggGameId === activeId;
+            {list.map((item, index) => {
+              const on = keyOf(item) === activeKey;
               return (
                 <li
-                  key={item.eggGameId}
+                  key={keyOf(item)}
                   className="flex items-center gap-2 px-1"
-                  data-testid={`stud-candidate-${item.eggGameId}`}
+                  data-testid={`stud-candidate-${item.eggGameId}-${index}`}
                 >
                   <PetAvatar gameId={item.eggGameId} name={item.name} size={24} />
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1 truncate text-[11px] font-medium text-slate-700">
-                      <span className="truncate">{item.name}</span>
+                      <span className="truncate">
+                        {item.motherPet.pet.name} × {item.malePet.pet.name}
+                      </span>
                       <span
                         className="shrink-0 rounded bg-emerald-50 px-1 text-[9px] leading-tight text-emerald-700"
                         data-testid="stud-candidate-groups"
@@ -1619,19 +1688,19 @@ export function MotherGroupResources({
                       className={`truncate text-[10px] ${chanceToneOf(item.chance)}`}
                       data-testid="stud-candidate-chance"
                     >
-                      约 {Math.round(item.chance * 100)}%（
+                      {item.name} · 约 {Math.round(item.chance * 100)}%（
                       {NATURE_CHANCE_LABELS[item.natureChance] ?? '性格'} × 性别 50%）
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => pickDemandEgg(demand, item.eggGameId)}
-                    data-testid={`stud-candidate-pick-${item.eggGameId}`}
+                    onClick={() => pickDemandOption(demand, item)}
+                    data-testid={`stud-candidate-pick-${item.eggGameId}-${index}`}
                     className={`min-h-[28px] shrink-0 rounded-md px-2 text-[11px] ${
                       on ? 'bg-emerald-600 text-white' : 'border border-emerald-500 text-emerald-700'
                     }`}
                   >
-                    {on ? '已选' : '用这颗'}
+                    {on ? '已选' : '用这对'}
                   </button>
                 </li>
               );
@@ -1642,31 +1711,48 @@ export function MotherGroupResources({
     }
 
     const list = detailPairOptions.mother;
-    if (list.length < 2) return null;
-    const index = Math.min(pairPicks[demandKey(demand)] ?? 0, list.length - 1);
+    // 只有一组也要渲染：不挑性格时「选具体哪一对」就是点这里（2026-11-02）
+    if (list.length < 1) return null;
+    const savedIndex = pickedPairIndex(demand, list);
+    const index = savedIndex ?? Math.min(pairPicks[demandKey(demand)] ?? 0, list.length - 1);
     const chanceOfPair = (natureChance: number) =>
       Math.round(natureChance * (demand.gender ? 0.5 : 1) * 100);
+    const pairRowKey = (item: (typeof list)[number], position: number): string =>
+      `${item.motherPet.pet.captureId ?? item.motherPet.pet.gameId}|${
+        item.malePet.pet.captureId ?? item.malePet.pet.gameId
+      }|${position}`;
     return (
       <div className="rounded-lg bg-slate-50 px-1 py-1.5" data-testid="mother-demand-pair-alternatives">
-        <h3 className="px-1 text-[11px] font-semibold text-slate-600">换个种公</h3>
+        <h3 className="px-1 text-[11px] font-semibold text-slate-600">换个配对</h3>
         <ul className="mt-1 space-y-1">
           {list.map((item, position) => {
             const on = position === index;
+            const motherName = speciesDisplayName(
+              speciesByGameId.get(item.motherPet.pet.gameId),
+              item.motherPet.pet.name,
+            );
             const maleName = speciesDisplayName(
               speciesByGameId.get(item.malePet.pet.gameId),
               item.malePet.pet.name,
             );
             return (
               <li
-                key={`${item.malePet.pet.gameId}:${position}`}
+                key={pairRowKey(item, position)}
                 className="flex items-center gap-2 px-1"
                 data-testid={`mother-pair-option-${position}`}
               >
-                <PetAvatar gameId={item.malePet.pet.gameId} name={maleName} size={24} />
+                <PetAvatar gameId={item.motherPet.pet.gameId} name={motherName} size={24} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[11px] font-medium text-slate-700">
+                    {motherName}
+                    <span className="ml-0.5 text-[9px] text-slate-400">
+                      {item.motherPet.pet.nature}
+                    </span>
+                    <span className="mx-1 text-slate-400">×</span>
                     {maleName}
-                    <span className="ml-1 text-[9px] text-slate-400">{item.malePet.pet.nature}</span>
+                    <span className="ml-0.5 text-[9px] text-slate-400">
+                      {item.malePet.pet.nature}
+                    </span>
                   </p>
                   <p
                     className={`truncate text-[10px] ${chanceToneOf(chanceOfPair(item.natureChance) / 100)}`}
@@ -1677,9 +1763,10 @@ export function MotherGroupResources({
                 </div>
                 <button
                   type="button"
-                  onClick={() =>
-                    setPairPicks((current) => ({ ...current, [demandKey(demand)]: position }))
-                  }
+                  onClick={() => {
+                    pickDemandPair(demand, item);
+                    setPairPicks((current) => ({ ...current, [demandKey(demand)]: position }));
+                  }}
                   data-testid={`mother-pair-pick-${position}`}
                   className={`min-h-[28px] shrink-0 rounded-md px-2 text-[11px] ${
                     on ? 'bg-emerald-600 text-white' : 'border border-emerald-500 text-emerald-700'
@@ -1739,6 +1826,14 @@ export function MotherGroupResources({
         .map((demand) => `${demand.nature}:${demand.gender}:${demand.body}:${demand.voice}`),
     );
     const targetRow = targetRows.find((row) => row.eggGameId === eggGameId);
+    /**
+     * 勾了「不挑性格」（2026-11-02 用户口径）：只要组内有我缺的母本的产线就能提需求，
+     * 发布出去的就是一条「不挑性格」的需求；已经发过同样条件的不重复发。
+     */
+    if (ignoreNatures) {
+      if (existing.has(`:母:${targetBody}:${targetVoice}`)) return null;
+      return { eggGameId, name: base, natures: [] };
+    }
     const rowMissing = targetRow?.missingNatures;
     // 目标性格已经收齐（或手选的那一个已经收到）→ 没有可发的了
     if (rowMissing && rowMissing.length === 0) return null;
@@ -2445,8 +2540,10 @@ export function MotherGroupResources({
           {targetKind === 'mother' ? (
             <div className="flex min-w-0 flex-1 items-center gap-1" data-testid="mother-target-filter">
               <NatureSelect
-                label="性格"
-                value={targetNature}
+                label="推荐性格"
+                value={natureFilter}
+                emptyLabel="推荐性格"
+                disabled={ignoreNatures}
                 onValueChange={(value) => setList({ targetNature: value })}
                 testId="mother-target-nature"
                 menuTestId="mother-target-nature-options"
@@ -2632,11 +2729,11 @@ export function MotherGroupResources({
             <label className="flex items-center gap-1 text-[11px] text-slate-500">
               <input
                 type="checkbox"
-                checked={onlyDemanded}
-                onChange={(event) => setList({ onlyDemanded: event.target.checked })}
-                data-testid="mother-only-demanded"
+                checked={ignoreNatures}
+                onChange={(event) => setList({ ignoreNatures: event.target.checked })}
+                data-testid="mother-ignore-natures"
               />
-              只看我发的需求
+              不挑性格
             </label>
           </div>
         )}
@@ -2941,7 +3038,8 @@ export function MotherGroupResources({
           {pageRows.map((row, index) => {
             // 瀑布流按整个列表的绝对位置判断分区标题。
             const absoluteIndex = index;
-            const natures = row.configuredNatures;
+            // 勾了「不挑性格」就不再展示性格标签（缺口与发布都不看性格）
+            const natures = ignoreNatures ? [] : row.configuredNatures;
             const { base } = splitDisplayName(row.name);
             const selectionKey = selectionKeyOf(row.eggGameId);
             const isSelected = selected.includes(selectionKey);
@@ -3229,7 +3327,7 @@ export function MotherGroupResources({
         {resourceDetailRow ? (() => {
           const eggGameId = resourceDetailRow.eggGameId;
           const { base } = splitDisplayName(resourceDetailRow.name);
-          const natures = resourceDetailRow.configuredNatures;
+          const natures = ignoreNatures ? [] : resourceDetailRow.configuredNatures;
           const missingNatures = resourceDetailRow.missingNatures.filter(Boolean);
           const missingSet = new Set(missingNatures);
           const supplierLines = [...resourceDetailRow.suppliersByNature.entries()].map(
@@ -3566,6 +3664,7 @@ export function MotherGroupResources({
                     .filter((demand) => demand.status !== 'done')
                     .map((demand) => demand.nature)}
                   defaultNatures={publishItem?.natures ?? []}
+                  lockNature={ignoreNatures}
                   defaultCriteria={{ gender: '母', body: targetBody, voice: targetVoice }}
                   busy={demandBusy}
                   error={publishError}
@@ -3798,6 +3897,8 @@ interface ResourcePublishPanelProps {
   /** 已经发过需求的性格（不可重复发）。 */
   sent: string[];
   defaultNatures: string[];
+  /** 勾了「不挑性格」：性格整块锁死，发出去的需求不带性格要求。 */
+  lockNature?: boolean;
   defaultCriteria: DemandCriteriaDraft;
   busy: boolean;
   error: string;
@@ -3820,6 +3921,7 @@ function ResourcePublishPanel({
   collected,
   sent,
   defaultNatures,
+  lockNature = false,
   defaultCriteria,
   busy,
   error,
@@ -3887,10 +3989,12 @@ function ResourcePublishPanel({
     </div>
   );
 
-  const total = Math.max(1, picked.length);
+  // 勾了「不挑性格」：性格整块锁死，不参与发布（发出去的需求不带性格要求）
+  const pickedNatures = lockNature ? [] : picked;
+  const total = Math.max(1, pickedNatures.length);
   // 一个性格都没选也能发（= 不挑性格）；只有完全没有可发项时才禁用（2026-10-30）。
   // 绿窝必须指定性格：绿窝靠学院那只 100% 遗传，不挑性格就没有意义（2026-11-01 用户口径）。
-  const greenNestNeedsNature = requireGreenNest && picked.length === 0;
+  const greenNestNeedsNature = requireGreenNest && pickedNatures.length === 0;
   const publishable = !disabledReason && !greenNestNeedsNature;
 
   return (
@@ -3900,8 +4004,18 @@ function ResourcePublishPanel({
     >
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-xs font-semibold text-slate-600">发需求</h3>
-        <span className="text-[10px] text-slate-400">1 个性格 = 1 条</span>
+        <span className="text-[10px] text-slate-400">
+          {lockNature ? '不挑性格 = 1 条' : '1 个性格 = 1 条'}
+        </span>
       </div>
+      {lockNature ? (
+        <p
+          className="mt-1.5 rounded-lg bg-white px-2 py-1.5 text-[11px] text-slate-500"
+          data-testid="mother-resource-publish-no-nature"
+        >
+          已勾「不挑性格」：发出去的需求不要求性格，只要组内有这颗蛋的母本产线就能接。
+        </p>
+      ) : (
       <div className="mt-1.5 grid grid-cols-3 gap-1" data-testid="mother-resource-publish-natures">
         {visible.map((nature) => {
           const done = collectedSet.has(nature);
@@ -3944,6 +4058,7 @@ function ResourcePublishPanel({
           </button>
         ) : null}
       </div>
+      )}
       <div className="mt-1.5 space-y-1">
         {optionRow('性别', DEMAND_GENDERS, gender, GENDER_LABELS, setGender, 'mother-publish-gender')}
         {optionRow('体型', PUBLISH_BODIES, body, BODY_LABELS, setBody, 'mother-publish-body')}
@@ -4007,13 +4122,13 @@ function ResourcePublishPanel({
         <button
           type="button"
           disabled={busy || !publishable}
-          onClick={() => onConfirm(picked, { gender, body, voice, requireGreenNest })}
+          onClick={() => onConfirm(pickedNatures, { gender, body, voice, requireGreenNest })}
           data-testid="mother-resource-publish-confirm"
           className="min-h-[34px] flex-[2] rounded-lg bg-emerald-600 text-xs font-medium text-white disabled:bg-slate-200 disabled:text-slate-500"
         >
           {busy
             ? '发布中…'
-            : picked.length > 0
+            : pickedNatures.length > 0
               ? `发布 ${total} 条需求`
               : '发布（不挑性格）'}
         </button>

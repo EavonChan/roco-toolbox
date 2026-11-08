@@ -297,15 +297,15 @@ export const DEMAND_NATURE_MAX = 6;
 export const DEMAND_NATURE_LENGTH_MAX = 8;
 
 /**
- * 需求 / 承接上限（2026-10-26 用户给的产能模型）：
- * 20 人 × 约 5 蛋 ≈ 100 份供给，每人发 5 条需求正好闭环。
- * 所以按「5 × 本人在本组发布的游戏账号数」算，多号多额度。
+ * 需求 / 承接上限（2026-11-06 用户要求额度翻倍）：
+ * 20 人 × 约 5 蛋 ≈ 100 份供给；附近页能按需求中心命中后，需求消耗更快，
+ * 允许每人发 10 条（按「10 × 本人在本组发布的游戏账号数」算，多号多额度）。
  */
-export const DEMAND_LIMIT_PER_ACCOUNT = 5;
+export const DEMAND_LIMIT_PER_ACCOUNT = 10;
 /** 单成员绝对上限（防刷屏）。 */
-export const DEMAND_LIMIT_PER_MEMBER_CAP = 20;
-/** 单个小组需求总数上限（20 人 × 10）。 */
-export const DEMAND_LIMIT_PER_GROUP = 200;
+export const DEMAND_LIMIT_PER_MEMBER_CAP = 40;
+/** 单个小组需求总数上限（20 人 × 20）。 */
+export const DEMAND_LIMIT_PER_GROUP = 400;
 
 /** 某成员在当前小组的需求上限；账号数未发布时按 1 算。 */
 export function demandLimitPerMember(accountCount: number): number {

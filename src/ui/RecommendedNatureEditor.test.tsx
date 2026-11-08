@@ -40,6 +40,8 @@ describe('推荐性格编辑器', () => {
     );
     expect(row).toBeTruthy();
     expect(row).toHaveTextContent('胆小');
+    // 本机改动要记下修改时刻，云同步才能判断「本机比云端新」
+    expect(Number(window.localStorage.getItem('roco.natureOverridesUpdatedAt'))).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByTestId(/nature-editor-reset-\d+/)[0]);
     expect(
