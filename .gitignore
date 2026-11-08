@@ -9,6 +9,7 @@ node_modules/
 
 # 本地截图与布局调试产物（不占版本库体积）
 .screenshots/
+.shots/
 截图-*/
 
 # 你的账号数据（含个人游戏数据，默认不入版本库）
@@ -20,6 +21,9 @@ node_modules/
 # 构建产物
 dist/
 .vite/
+# 桌面版（Electron）资源与安装包
+desktop/app-dist/
+release/
 .wrangler/
 test-results/
 playwright-report/
