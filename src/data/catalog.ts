@@ -1,4 +1,5 @@
 import catalogGen from './catalog.gen.json';
+import productEggNatures from './productEggNatures.json';
 import type { EggGroupId, SpeciesEntry } from '../domain/types';
 import type { TargetNature } from '../domain/studCoverage';
 
@@ -33,10 +34,26 @@ export const eggGroupNames: Record<number, string> = Object.fromEntries(
   ]),
 );
 
-export const species: SpeciesEntry[] = data.species.map((entry) => ({
-  ...entry,
-  eggGroups: (entry.eggGroups ?? []).filter((g): g is EggGroupId => typeof g === 'number'),
-}));
+/**
+ * 产品设定的推荐性格（2026-11-02 用户拍板）。
+ *
+ * 菜菜确认的那份「推荐性格」作为**产品默认口径**，覆盖图鉴烘焙的
+ * `eggRecommendedNatures`（没覆盖到的蛋仍按 PVP 推荐 / 种族值兜底）。
+ * 只覆盖基础形态（`eggGameId === gameId`），运行期按蛋查——与个人覆盖表的优先级一致：
+ * 个人改过的蛋仍以个人表为准，没改过的蛋用这里的产品口径。
+ */
+const PRODUCT_EGG_NATURES: Record<string, string[]> =
+  (productEggNatures as { natures: Record<string, string[]> }).natures;
+
+export const species: SpeciesEntry[] = data.species.map((entry) => {
+  const productNatures =
+    entry.eggGameId === entry.gameId ? PRODUCT_EGG_NATURES[String(entry.gameId)] : undefined;
+  return {
+    ...entry,
+    eggGroups: (entry.eggGroups ?? []).filter((g): g is EggGroupId => typeof g === 'number'),
+    ...(productNatures?.length ? { eggRecommendedNatures: [...productNatures] } : {}),
+  };
+});
 
 /**
  * 进化链里**最高形态**的推荐性格。

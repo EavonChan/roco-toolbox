@@ -37,4 +37,21 @@ describe('wiki 蛋归属兜底', () => {
     const base = pet({ egg_group: [1] });
     expect(wikiEggBaseOf(base, [base])).toBeNull();
   });
+
+  test('首领形态走 siblings 找到基础形态的蛋（S5 琉璃君主）', () => {
+    const base = pet({ key: 'pet_000108', game_id: 3120, name: '翡翠水母', stage: 1, evolution_id: 'evo-base' });
+    const lord = pet({
+      key: 'pet_000705',
+      game_id: 5066,
+      name: '琉璃君主',
+      stage: 4,
+      evolution_id: 'evo-lord',
+      form: '首领形态',
+      is_lord_evolution: true,
+      siblings: ['pet_000108'],
+      image: { has_egg: false },
+      ecology: {},
+    });
+    expect(wikiEggBaseOf(lord, [base, lord])).toBe(3120);
+  });
 });

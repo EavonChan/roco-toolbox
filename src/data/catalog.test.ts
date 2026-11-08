@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { species } from './catalog';
+import { allNatureNames, species } from './catalog';
+import productEggNatures from './productEggNatures.json';
 
 describe('图鉴数据', () => {
   test('新赛季精灵（云梦豚 / 长江豚）已按蛋物种接入', () => {
@@ -26,5 +27,25 @@ describe('图鉴数据', () => {
     // 书魔虫两个分支各有主流（古卷执政官 聪明 / 古卷匣魔像 固执）→ 都保留
     const book = species.find((entry) => entry.name === '书魔虫');
     expect(book?.eggRecommendedNatures).toEqual(['聪明', '固执']);
+  });
+
+  test('产品设定的推荐性格（2026-11-02）覆盖到对应的每一颗蛋', () => {
+    const eggs = new Map(
+      species.filter((entry) => entry.eggGameId === entry.gameId).map((entry) => [entry.gameId, entry]),
+    );
+    for (const [key, natures] of Object.entries(productEggNatures.natures)) {
+      const egg = eggs.get(Number(key));
+      expect(egg, `产品推荐性格里没有这颗蛋：${key}`).toBeTruthy();
+      expect(egg!.eggRecommendedNatures).toEqual(natures);
+      for (const nature of natures) expect(allNatureNames).toContain(nature);
+    }
+    // 图鉴原本没有推荐值的蛋也能用产品口径
+    expect(species.find((entry) => entry.name === '云梦豚')?.eggRecommendedNatures).toEqual([
+      '聪明',
+      '开朗',
+      '急躁',
+      '胆小',
+      '沉默',
+    ]);
   });
 });

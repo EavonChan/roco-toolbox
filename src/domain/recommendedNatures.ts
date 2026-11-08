@@ -14,6 +14,11 @@ import { fallbackNature } from './studRecommendations';
  */
 export type NatureOverrides = Record<string, string[]>;
 
+/** 覆盖表的 localStorage 键（本机 + 云同步偏好键，见 `api/sync.ts`） */
+export const NATURE_OVERRIDES_KEY = 'roco.natureOverrides';
+/** 覆盖表最后一次在本机修改的时间（毫秒），云同步按它判断哪边更新 */
+export const NATURE_OVERRIDES_UPDATED_AT_KEY = 'roco.natureOverridesUpdatedAt';
+
 const eggKey = (eggGameId: number): string => String(eggGameId);
 
 /**

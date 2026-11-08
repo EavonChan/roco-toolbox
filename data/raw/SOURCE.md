@@ -6,8 +6,8 @@
 - 地址：https://wiki.biligame.com/nrc/
 - 站点声明：https://wiki.biligame.com/nrc/Project:%E7%AB%99%E7%82%B9%E5%A3%B0%E6%98%8E
 - 抓取方式：MediaWiki API（`api.php?action=parse&prop=wikitext`），非 HTML 爬取
-- 抓取时间：2026-09-25
-- 数据版本：`s4-2026-09-24`（wiki 自报 `current_version`）
+- 抓取时间：2026-11-05
+- 数据版本：`s5-2026-10-31`（wiki 自报 `current_version`）
 
 ## 抓取的数据模块
 
@@ -16,6 +16,11 @@
 | `Catalog.lua` | `Module:Pets/data/Catalog` | 625 只精灵：蛋组、性别比、蛋重阈值、种族值、属性、图鉴号等 |
 | `Config.lua` | `Module:Pets/data/Config` | 数据版本、图鉴数量、天赋池等配置 |
 | `Index.lua` | `Module:Pets/data/Index` | 精灵索引 |
+| `SeasonConfig.lua` | `Module:Pets/SeasonConfig` | 当前赛季分片命名空间（如 `精灵图鉴/S5`） |
+| `SeasonManifest.lua` | `Module:精灵图鉴/S5/配置` | 赛季清单：分片命名空间、格式（`dragon-tuples-1`）与模块名 |
+| `Season-S5-Roster.lua` | `Module:精灵图鉴/S5/数据/精灵` | S5 新增精灵分片（打包为 `[格式, 字段表, 数据]`） |
+
+> 2026-11-05 起，赛季新增精灵只出现在上图的分片模块中，旧 `Module:Pets/data/Catalog` 不再包含新赛季精灵；刷新脚本会把 Roster 分片按 wiki 的「同键整条替换」语义并入图鉴。
 
 ## 许可与署名要求
 

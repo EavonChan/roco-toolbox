@@ -11,6 +11,11 @@ import { diffCatalogs, isBreedable, renderChangeReport } from './src/pet-diff.mj
 import { fetchAllModules } from './src/fetch-modules.mjs';
 import { extractNatures } from './src/natures.mjs';
 import { extractPvpNatureRecommendations, pickTargetNatures, rankNaturesByEggGroup } from './src/pvp-natures.mjs';
+import {
+  decodeSeasonShard,
+  mergeSeasonCatalog,
+  seasonShardModuleTitle,
+} from './src/season-shards.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -27,9 +32,15 @@ const MODULES = [
   { title: 'Module:Pets/data/Catalog', file: 'Catalog.lua', snapshot: true },
   { title: 'Module:Pets/data/Config', file: 'Config.lua', snapshot: true },
   { title: 'Module:Pets/data/Index', file: 'Index.lua', snapshot: true },
+  // 新版图鉴的赛季指针：指向当前赛季的分片命名空间（如 精灵图鉴/S5）。
+  { title: 'Module:Pets/SeasonConfig', file: 'SeasonConfig.lua', snapshot: true },
   // 1 MB 的大模块，只用来提取 30 条性格数据，不留快照。
   { title: 'Module:Pets/data/TrainingReference', file: 'TrainingReference.lua', snapshot: false },
 ];
+
+/** 赛季分片快照：清单本身 + 每个赛季的精灵（Roster）分片。 */
+const SEASON_MANIFEST_FILE = 'SeasonManifest.lua';
+const seasonRosterFile = (code) => `Season-${code}-Roster.lua`;
 
 /** 原子写：先写临时文件再改名，中途失败不会留下半个文件。 */
 function writeAtomic(path, content) {
@@ -52,6 +63,64 @@ async function fetchAll() {
     }
   }
   return fetched;
+}
+
+/**
+ * 新版 wiki（精灵图鉴/S5）把赛季新增精灵放在分片里，旧 Catalog 不再更新。
+ * 依次读赛季指针 → 清单 → Roster 分片；联网时顺手写快照，--from-raw 时只读快照。
+ *
+ * @returns {Promise<Array<{code: string, season: object, text: string}>>}
+ */
+async function loadSeasonShards({ fromRaw, fetched }) {
+  const configPath = join(rawDir, 'SeasonConfig.lua');
+  if (!existsSync(configPath)) return [];
+  const configText = fromRaw
+    ? readFileSync(configPath, 'utf8')
+    : fetched.find((item) => item.file === 'SeasonConfig.lua')?.text ?? readFileSync(configPath, 'utf8');
+  const viewNamespace = parseLuaReturn(configText).view_namespace;
+  if (!viewNamespace) return [];
+
+  const manifestPath = join(rawDir, SEASON_MANIFEST_FILE);
+  let manifestText;
+  if (fromRaw) {
+    if (!existsSync(manifestPath)) throw new Error(`缺少赛季清单快照 ${SEASON_MANIFEST_FILE}，请先联网刷新一次`);
+    manifestText = readFileSync(manifestPath, 'utf8');
+  } else {
+    const [item] = await fetchAllModules({
+      modules: [{ title: `Module:${viewNamespace}/配置`, file: SEASON_MANIFEST_FILE }],
+    });
+    manifestText = item.text;
+    writeAtomic(manifestPath, manifestText);
+    console.log(`已抓取赛季清单 Module:${viewNamespace}/配置（${(manifestText.length / 1024).toFixed(0)} KB）`);
+  }
+
+  const manifest = parseLuaReturn(manifestText);
+  const shards = [];
+
+  for (const season of manifest.seasons ?? []) {
+    // 清单里一个赛季一项；用赛季自己的命名空间取名，避免未来多赛季互相覆盖快照。
+    const code =
+      season.season ??
+      String(season.namespace ?? '').split('/').filter(Boolean).slice(-2)[0] ??
+      manifest.current?.season ??
+      viewNamespace.split('/').pop();
+    const file = seasonRosterFile(code);
+    const title = seasonShardModuleTitle(season, 'Roster');
+    let text;
+    if (fromRaw) {
+      const path = join(rawDir, file);
+      if (!existsSync(path)) throw new Error(`缺少赛季分片快照 ${file}，请先联网刷新一次`);
+      text = readFileSync(path, 'utf8');
+    } else {
+      const [item] = await fetchAllModules({ modules: [{ title, file }] });
+      text = item.text;
+      writeAtomic(join(rawDir, file), text);
+      console.log(`已抓取 ${title}（${(text.length / 1024).toFixed(0)} KB）`);
+    }
+    shards.push({ code, season, text });
+  }
+
+  return shards;
 }
 
 function buildPetRecord(catalog) {
@@ -87,7 +156,15 @@ async function main() {
     }
   }
 
-  const catalog = parseLuaReturn(readFileSync(join(rawDir, 'Catalog.lua'), 'utf8'));
+  let catalog = parseLuaReturn(readFileSync(join(rawDir, 'Catalog.lua'), 'utf8'));
+  const seasonShards = await loadSeasonShards({ fromRaw, fetched });
+  for (const shard of seasonShards) {
+    const decoded = decodeSeasonShard(shard.text, shard.season);
+    catalog = mergeSeasonCatalog(catalog, decoded);
+    console.log(
+      `赛季分片 ${shard.code}：精灵 ${Object.keys(decoded).length} 条（并入后 ${Object.keys(catalog).length}）`,
+    );
+  }
   const config = parseLuaReturn(readFileSync(join(rawDir, 'Config.lua'), 'utf8'));
   const index = parseLuaReturn(readFileSync(join(rawDir, 'Index.lua'), 'utf8'));
   const pets = buildPetRecord(catalog);
