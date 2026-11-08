@@ -1,7 +1,7 @@
-{
+﻿{
   "versionName": "1.2.7",
   "versionCode": 18,
   "apkUrl": "https://roco-toolbox-downloads.pages.dev/android/roco-toolbox-latest.apk",
-  "notes": "回退修复版：需求中心与发需求流程恢复，修复上一版问题；本版起低于 1.2.7 需更新后继续使用。",
-  "minSupportedVersionCode": 18
+  "notes": "回退修复版：需求中心与发需求流程恢复，修复上一版问题。建议更新到本版。",
+  "minSupportedVersionCode": 17
 }
