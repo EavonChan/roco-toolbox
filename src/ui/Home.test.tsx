@@ -136,7 +136,6 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-residents')).toHaveTextContent('99.00%');
     expect(screen.getByTestId('home-pair-cards')).toHaveTextContent('公本乙');
     expect(screen.getByTestId('home-pair-cards')).toHaveTextContent('母本甲');
-    expect(screen.getAllByTestId('home-pair-cluster')).toHaveLength(1);
     expect(screen.getAllByTestId('home-pair-node')).toHaveLength(2);
     expect(screen.getByTestId('home-egg-count')).toHaveTextContent('有 1 枚蛋');
     expect(screen.getByTestId('home-eggs')).toHaveTextContent('普通小窝 · 一楼');
@@ -148,9 +147,12 @@ describe('家园页', () => {
     h.snapshots = [snapshot];
     render(<HomeLand />);
 
-    const card = screen.getAllByTestId('home-pet-card')[0];
-    expect(card).toHaveTextContent('雪绒鸟');
+    const card = screen
+      .getAllByTestId('home-pet-card')
+      .find((item) => item.textContent?.includes('雪绒鸟'));
+    expect(card).toBeTruthy();
     expect(card).not.toHaveTextContent('夏天的样子');
+    expect(card).toHaveTextContent('雪绒鸟');
   });
 
   test('没有家园记录时给出采集提示', () => {
@@ -194,10 +196,45 @@ describe('家园页', () => {
     render(<HomeLand />);
 
     const cards = screen.getAllByTestId('home-pet-card');
-    expect(cards[0]).not.toHaveAttribute('data-academy');
-    expect(cards[1]).toHaveAttribute('data-academy', 'true');
-    expect(cards[1].className).toContain('bg-emerald-50');
+    const academyCards = cards.filter((card) => card.getAttribute('data-academy') === 'true');
+    expect(academyCards).toHaveLength(1);
+    expect(academyCards[0].className).toContain('bg-emerald-50');
     expect(screen.getByText('小窝（学院 1）')).toBeTruthy();
+  });
+
+  test('家园精灵按配对顺序排：同一对挨着，1:2 的簇排到普通两对之后', () => {
+    const snapshot = snapshotWithHome();
+    const base = snapshot.home!.residents[0];
+    const resident = (actorId: string, instanceId: string, name: string, gender: '公' | '母', academy = false) => ({
+      ...base,
+      actorId,
+      instanceId,
+      name,
+      gender,
+      nest: academy
+        ? { ...base.nest!, nestType: 'academy' as const, nestName: '学院小窝' }
+        : base.nest,
+    });
+    snapshot.home!.residents = [
+      resident('1', '101', '甲', '母'),
+      resident('2', '102', '乙', '公'),
+      resident('3', '103', '丙', '母'),
+      resident('4', '104', '丁', '公', true),
+      resident('5', '105', '戊', '母'),
+    ];
+    // 两条普通配对 + 一条 1:2（丁 同时配 丙 和 戊）
+    snapshot.home!.layEggCouples = [
+      { femaleActorId: '1', maleActorIds: ['2'] },
+      { femaleActorId: '3', maleActorIds: ['4'] },
+      { femaleActorId: '5', maleActorIds: ['4'] },
+    ];
+    h.snapshots = [snapshot];
+    render(<HomeLand />);
+
+    const order = screen
+      .getAllByTestId('home-pet-card')
+      .map((card) => ['甲', '乙', '丙', '丁', '戊'].find((name) => card.textContent?.includes(name)));
+    expect(order).toEqual(['甲', '乙', '丙', '丁', '戊']);
   });
 
   test('采集期间有精灵进出时提示配对可能过期', () => {
@@ -234,7 +271,7 @@ describe('家园页', () => {
     render(<HomeLand />);
 
     const nodes = screen.getAllByTestId('home-pair-node');
-    const node = nodes.find((item) => item.getAttribute('title') === '雪绒鸟_夏天的样子');
+    const node = nodes.find((item) => item.getAttribute('data-name') === '雪绒鸟_夏天的样子');
     expect(node).toBeTruthy();
     expect(node).not.toHaveTextContent('夏天的样子');
     expect(node).toHaveTextContent('雪绒鸟');
@@ -246,8 +283,7 @@ describe('家园页', () => {
     h.snapshots = [snapshot];
     render(<HomeLand />);
 
-    expect(screen.getByTestId('home-pair-cluster')).toHaveTextContent('公本未知');
-    expect(screen.getAllByTestId('home-pair-cluster')).toHaveLength(1);
+    expect(screen.getByTestId('home-pair-diagram')).toHaveTextContent('公本未知');
   });
 
   test('浏览器里「刷新家园」不可用，并说明只在安卓工具箱内可刷', () => {

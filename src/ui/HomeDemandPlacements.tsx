@@ -23,7 +23,8 @@ import {
   type PlacementChoices,
   type PlacementMarks,
 } from './demandPlacementStore';
-import { demandPickKey, readDemandPicks } from './demandPickStore';
+import { demandPickKey, pickEggIdOf, readDemandPicks } from './demandPickStore';
+import { useNatureOverrides } from './natureOverrideStore';
 import { PetAvatar } from './PetAvatar';
 import { PetCompactCard } from './PetCompactCard';
 import { CARD, HINT, TITLE } from './primitives/styles';
@@ -166,6 +167,8 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
   );
   const [marks, setMarks] = useState<PlacementMarks>(() => readPlacementMarks(accountId));
   const [openOptions, setOpenOptions] = useState<string[]>([]);
+  /** 不挑性格的单按「推荐性格」配对时要认用户的按蛋覆盖（2026-11-03）。 */
+  const natureOverrides = useNatureOverrides();
 
   useEffect(() => {
     setMarks(readPlacementMarks(accountId));
@@ -226,9 +229,19 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
       if (pick == null) continue;
       const key = rowKeyOfDemand(demand);
       const alongside = baseDemands.filter((item) => item !== demand);
-      const option = studPlacementOptions(snapshots, demand, species, alongside).find(
-        (item) => item.eggGameId === pick,
-      );
+      const options = studPlacementOptions(snapshots, demand, species, alongside);
+      // 小组页选的是「蛋」或「某一对亲本」：先按亲本精确匹配，再退回按蛋匹配
+      const option =
+        (typeof pick === 'object'
+          ? options.find(
+              (item) =>
+                item.eggGameId === pick.eggGameId &&
+                (!pick.motherCaptureId ||
+                  item.motherPet.pet.captureId === pick.motherCaptureId) &&
+                (!pick.fatherCaptureId ||
+                  item.malePet.pet.captureId === pick.fatherCaptureId),
+            )
+          : undefined) ?? options.find((item) => item.eggGameId === pickEggIdOf(pick));
       const motherCaptureId = option?.motherPet.pet.captureId;
       const fatherCaptureId = option?.malePet.pet.captureId;
       if (!motherCaptureId || !fatherCaptureId) {
@@ -263,8 +276,8 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
   );
 
   const result = useMemo(
-    () => buildDemandPlacements({ demands, snapshots, species }),
-    [demands, snapshots],
+    () => buildDemandPlacements({ demands, snapshots, species, natureOverrides }),
+    [demands, snapshots, natureOverrides],
   );
 
   const placedRows = useMemo(

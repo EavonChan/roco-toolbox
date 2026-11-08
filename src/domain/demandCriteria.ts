@@ -3,6 +3,7 @@ import type { DemandBody, DemandCriteria, DemandVoice } from '../shared/collecti
 import { isBreedableGroup } from './eggs';
 import { matchesVoiceOption } from './petFilters';
 import type { AccountSnapshot } from './parseBackup';
+import { defaultEggNatures } from './recommendedNatures';
 import type { OwnedPet, SpeciesEntry } from './types';
 
 /**
@@ -186,7 +187,15 @@ export function pairOptionsForEgg(
    * 不再按「双亲同性格 60% / 单方 30%」算（2026-11-01 用户口径）。
    */
   greenNest = false,
+  /**
+   * 需求**不挑性格**时用来排序的推荐性格（2026-11-03 用户口径）：
+   * 接单人默认按推荐性格配（双亲都带推荐性格的排最前），一组都没有时才用其它配对。
+   * 不传时取图鉴的默认推荐性格；界面可传已解析过用户覆盖表的结果。
+   */
+  preferredNatures: readonly string[] = defaultEggNatures(species, criteria.eggGameId),
 ): DemandPairOption[] {
+  const preferred = criteria.nature ? [] : preferredNatures.filter(Boolean);
+  const preferredSet = new Set(preferred);
   const eggOfGameId = eggMapOf(species);
   const infoByGameId = eggInfoOf(species);
   /** 所有形态的蛋组：公本只要是同蛋组即可，不要求是蛋物种本体（进化形态也能配）。 */
@@ -236,8 +245,38 @@ export function pairOptionsForEgg(
     }
   }
   // sort 是稳定的：同概率时保留「先导入的账号 → 先出现的个体」顺序
-  options.sort((a, b) => b.natureChance - a.natureChance);
-  return options.slice(0, Math.max(1, limit));
+  options.sort(
+    (a, b) =>
+      b.natureChance -
+        a.natureChance ||
+      // 不挑性格时：双亲都带推荐性格 > 一方带 > 都不带（2026-11-03）
+      Number(preferredSet.has(b.motherPet.pet.nature)) +
+        Number(preferredSet.has(b.malePet.pet.nature)) -
+        (Number(preferredSet.has(a.motherPet.pet.nature)) +
+          Number(preferredSet.has(a.malePet.pet.nature))),
+  );
+  /**
+   * 按母本限流（2026-11-02）：不挑性格时所有组合概率都是 1，直接 slice 会让第一只母本
+   * 吃满名额、后面的母本永远看不到。每个母本先给 cap/2 组，保证第二个母本能出现；
+   * cap=1（`findBreedableSupply`）时仍只取排序后的全局第一组，行为不变。
+   */
+  const cap = Math.max(1, limit);
+  const perMother = Math.max(1, Math.ceil(cap / 2));
+  const picked: DemandPairOption[] = [];
+  const countByMother = new Map<string, number>();
+  const motherKeyOf = (option: DemandPairOption): string =>
+    `${accountKeyOfSnapshot(option.motherPet.snapshot)}:${
+      option.motherPet.pet.captureId ?? option.motherPet.pet.gameId
+    }`;
+  for (const option of options) {
+    const key = motherKeyOf(option);
+    const used = countByMother.get(key) ?? 0;
+    if (used >= perMother) continue;
+    countByMother.set(key, used + 1);
+    picked.push(option);
+    if (picked.length >= cap) break;
+  }
+  return picked;
 }
 
 /**

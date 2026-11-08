@@ -1,11 +1,15 @@
-import { eggGroupNames } from '../data/catalog';
-import { NEST_SIZE } from '../domain/nestGeometry';
+import { eggGroupNames, species } from '../data/catalog';
 import { gradeLabel, type PetGrade } from '../domain/petFilters';
 import type { NestPairing, NestPet, NestPlan, NestTier } from '../domain/nestPlan';
+import { speciesDisplayName } from '../domain/speciesName';
 import { GenderMark } from './GenderMark';
+import { NestLayoutSvg } from './NestLayoutSvg';
 import { PetAvatar } from './PetAvatar';
 import { pairingColor, pairingDashed } from './pairingColors';
+import type { StudTransferTask } from './studTransferTaskStore';
 import { useTargetMode } from './targetModeStore';
+
+const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
 
 const TIER_NAME: Record<NestTier, string> = {
   academy: '学院',
@@ -26,14 +30,6 @@ const TIER_CLASS: Record<NestTier, string> = {
 const CHIP = 'rounded bg-slate-100 px-1.5 py-0.5 text-[10px] leading-none text-slate-600';
 const groupName = (groupId: number): string => eggGroupNames[groupId] ?? `蛋组${groupId}`;
 
-/** 摆位图里每个小窝的边长（像素）。 */
-const CELL = 11;
-/** 坐标单位是「地板单元」、1 窝 = NEST_SIZE 单元，所以一个单元只有 CELL / NEST_SIZE 像素。 */
-const UNIT = CELL / NEST_SIZE;
-
-/** 窝块里只画得下 4 个字：先把形态名（下划线后的部分）去掉，再截断 */
-const shortName = (name: string): string => name.split('_')[0].slice(0, 4);
-
 interface PairingStyle {
   color: string;
   dashed: boolean;
@@ -47,87 +43,27 @@ const viewKeyOf = (pairing: NestPairing): string =>
 
 /**
  * 摆位图：按坐标把窝画出来（绿块=学院小窝），线=会配对的边。
- * 图层顺序 = 窝块 → 连线 → 名字：线画在窝块**之上**（否则会被方块盖住），名字再压在线上（保证读得清）。
+ * 画法已抽到 `NestLayoutSvg`（家园现状的配窝卡片共用同一张图，2026-11-01）。
  */
 function NestLayoutMap({ plan, styleByKey }: { plan: NestPlan; styleByKey: Map<string, PairingStyle> }) {
   if (plan.slots.length === 0) return null;
-  const xs = plan.slots.map((slot) => slot.position.x);
-  const ys = plan.slots.map((slot) => slot.position.y);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  // 图形本身 = 跨度 + 1 窝（最后一个窝自己占的宽/高），四周再各留 1 窝边距
-  // （不留的话最外圈方块的描边会被 viewBox 裁掉）
-  const width = Math.max(...xs) - minX + 3 * NEST_SIZE;
-  const height = Math.max(...ys) - minY + 3 * NEST_SIZE;
-  const px = (value: number, base: number): number => (value - base + NEST_SIZE) * UNIT;
-  const position = (slot: { position: { x: number; y: number } }) => ({
-    x: px(slot.position.x, minX),
-    y: px(slot.position.y, minY),
-  });
   return (
-    <svg
-      viewBox={`0 0 ${width * UNIT} ${height * UNIT}`}
-      className="mt-1 max-h-36 w-full rounded-lg bg-slate-50"
-      role="img"
-      aria-label="小窝摆位图"
-      data-testid="nest-layout"
-    >
-      {plan.slots.map((slot, index) => {
-        const { x, y } = position(slot);
-        return (
-          <rect
-            key={`nest-${index}`}
-            x={x}
-            y={y}
-            width={CELL}
-            height={CELL}
-            rx={2}
-            fill={slot.academy ? '#059669' : '#ffffff'}
-            stroke={slot.academy ? '#047857' : '#cbd5e1'}
-            strokeWidth={0.6}
-          />
-        );
-      })}
-      {plan.pairings.map((pairing, index) => (
-        <line
-          key={`line-${index}`}
-          x1={px(pairing.fatherPosition.x, minX) + CELL / 2}
-          y1={px(pairing.fatherPosition.y, minY) + CELL / 2}
-          x2={px(pairing.motherPosition.x, minX) + CELL / 2}
-          y2={px(pairing.motherPosition.y, minY) + CELL / 2}
-          stroke={styleByKey.get(viewKeyOf(pairing))?.color ?? '#64748b'}
-          strokeDasharray={styleByKey.get(viewKeyOf(pairing))?.dashed ? '2 1.6' : undefined}
-          strokeWidth={0.7}
-          strokeLinecap="round"
-        />
-      ))}
-      {plan.slots.map((slot, index) => {
-        const { x, y } = position(slot);
-        const genderMark = slot.pet.gender === '公' ? '♂' : '♀';
-        return (
-          <g key={`label-${index}`}>
-            <text
-              x={x + CELL / 2}
-              y={y + CELL / 2 - 0.5}
-              textAnchor="middle"
-              fontSize={2.3}
-              fill={slot.academy ? '#ffffff' : '#334155'}
-            >
-              {shortName(slot.pet.name)}
-            </text>
-            <text
-              x={x + CELL / 2}
-              y={y + CELL / 2 + 2.8}
-              textAnchor="middle"
-              fontSize={2.4}
-              fill={slot.academy ? '#a7f3d0' : slot.pet.gender === '公' ? '#0284c7' : '#db2777'}
-            >
-              {genderMark}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <NestLayoutSvg
+      slots={plan.slots.map((slot, index) => ({
+        key: `${index}`,
+        name: slot.pet.name,
+        gender: slot.pet.gender,
+        academy: slot.academy,
+        position: slot.position,
+      }))}
+      lines={plan.pairings.map((pairing, index) => ({
+        key: `${index}`,
+        from: pairing.fatherPosition,
+        to: pairing.motherPosition,
+        color: styleByKey.get(viewKeyOf(pairing))?.color ?? '#64748b',
+        dashed: styleByKey.get(viewKeyOf(pairing))?.dashed,
+      }))}
+    />
   );
 }
 
@@ -304,10 +240,23 @@ function PairingCard({ view, testId }: { view: PairingView; testId: string }) {
  *
  * `emptyNote`：没有可排方案时的提示语。目标已全收齐时由页面改写成「已全部收集」，
  * 不再让用户去覆盖度找不存在的缺口（2026-10-24）。
+ *
+ * `transferTasks`：种公阵列里手动「加入配窝建议」的跨号补种公任务（2026-11-03），
+ * 和目标号的方案一起展示——本质上是给自己补种公。
  */
-export function NestPlanCard({ plans, emptyNote }: { plans: NestPlan[]; emptyNote?: string }) {
+export function NestPlanCard({
+  plans,
+  emptyNote,
+  transferTasks = [],
+  onRemoveTransferTask,
+}: {
+  plans: NestPlan[];
+  emptyNote?: string;
+  transferTasks?: StudTransferTask[];
+  onRemoveTransferTask?: (id: string) => void;
+}) {
   const usable = plans.filter((plan) => plan.pairings.length > 0);
-  if (usable.length === 0) {
+  if (usable.length === 0 && transferTasks.length === 0) {
     return (
       <p className="mt-1 text-sm text-slate-400" data-testid="breed-empty">
         {emptyNote ?? '当前没有能排的配窝方案——先到「覆盖度」挑要补的缺口，或缺的配对方/母本还没到位。'}
@@ -315,8 +264,10 @@ export function NestPlanCard({ plans, emptyNote }: { plans: NestPlan[]; emptyNot
     );
   }
   return (
-    <div className="mt-1 space-y-4" data-testid="breed-list">
-      {usable.map((plan) => {
+    <div className="mt-1">
+      {usable.length > 0 ? (
+        <div className="space-y-4" data-testid="breed-list">
+          {usable.map((plan) => {
         const views = mergePairings(plan.pairings);
         const styleByKey = new Map(views.map((view) => [view.key, { color: view.color, dashed: view.dashed }]));
         return (
@@ -340,6 +291,68 @@ export function NestPlanCard({ plans, emptyNote }: { plans: NestPlan[]; emptyNot
           </div>
         );
       })}
+        </div>
+      ) : null}
+      {transferTasks.length > 0 ? (
+        <TransferTaskList tasks={transferTasks} onRemove={onRemoveTransferTask} />
+      ) : null}
+    </div>
+  );
+}
+
+/** 跨号补种公任务（2026-11-03）：目标是给当前账号补一颗蛋。 */
+function TransferTaskList({
+  tasks,
+  onRemove,
+}: {
+  tasks: StudTransferTask[];
+  onRemove?: (id: string) => void;
+}) {
+  return (
+    <div className="mt-3" data-testid="breed-transfer-tasks">
+      <h3 className="mb-1 text-xs font-medium text-slate-400">给我补种公（跨号）</h3>
+      <ul className="space-y-1">
+        {tasks.map((task) => (
+          <li
+            key={task.id}
+            className="flex items-start gap-2 rounded-xl bg-sky-50 px-2.5 py-2"
+            data-testid="breed-transfer-task"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] leading-relaxed text-slate-700">
+                <span className="font-medium text-sky-700">{task.targetAccount}</span>
+                <span className="mx-1 text-slate-400">←</span>
+                <span className="font-medium">{task.sourceAccount}</span>
+                <span className="ml-1 text-slate-400">母</span>
+                {speciesDisplayName(speciesByGameId.get(task.motherGameId), task.motherName)}
+                <span className="text-slate-400">({task.motherNature})</span>
+                <span className="mx-1 text-slate-400">×</span>
+                <span className="text-slate-400">公</span>
+                {speciesDisplayName(speciesByGameId.get(task.fatherGameId), task.fatherName)}
+                <span className="text-slate-400">({task.fatherNature})</span>
+                <span className="ml-1 text-[9px] text-sky-700">
+                  {Math.round(task.chance * 100)}%
+                </span>
+              </p>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                孵蛋传过来补：
+                {task.groupIds.map((groupId) => `${groupName(groupId)}·${task.natureName}`).join('、')}
+              </p>
+            </div>
+            {onRemove ? (
+              <button
+                type="button"
+                onClick={() => onRemove(task.id)}
+                aria-label={`移除「${task.sourceAccount} 补 ${task.natureName}」`}
+                data-testid="breed-transfer-remove"
+                className="shrink-0 rounded px-1 text-[11px] leading-none text-slate-400"
+              >
+                ×
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

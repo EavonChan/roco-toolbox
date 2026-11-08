@@ -50,6 +50,17 @@ describe('resolveDemandCancelledNotice', () => {
     expect(decision.notice).toBeNull();
   });
 
+  test('结单会更新 updatedAt：按内容认成已完成，不误报「需求方已离开小组」', () => {
+    const cached = demand();
+    // 第一次刷新只记录（本机还没存过这个组）
+    const first = resolveDemandCancelledNotice([cached], 'B', null);
+    // 对方结单：从需求列表消失，只出现在「我承接的最近完成」里，updatedAt 变了
+    const done = demand({ status: 'done', updatedAt: 99 });
+    const decision = resolveDemandCancelledNotice([done], 'B', first.state);
+
+    expect(decision.notice).toBeNull();
+  });
+
   test('同一条取消只提示一次', () => {
     const cached = demand();
     const decision = resolveDemandCancelledNotice(

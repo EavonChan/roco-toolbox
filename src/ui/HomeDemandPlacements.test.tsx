@@ -196,7 +196,7 @@ describe('家园 · 接单上窝', () => {
     expect(screen.queryByTestId('home-demand-options')).toBeNull();
   });
 
-  test('换候选按新配对重算：概率跟着这一对变，不是只换显示', () => {
+  test('换候选按新配对重算：同档多条都列出来，低档的不列', () => {
     h.state.items = [
       demandItem({ nature: '固执', updatedAt: 1 }),
       demandItem({ nature: '开朗', updatedAt: 2, demanderAccountId: 'm2' }),
@@ -205,19 +205,22 @@ describe('家园 · 接单上窝', () => {
       pet({ gameId: egg.gameId, gender: '母', nature: '固执', captureId: 'cap_m1' }),
       pet({ gameId: fatherSpecies.gameId, gender: '公', nature: '固执', captureId: 'cap_f0' }),
       pet({ gameId: egg.gameId, gender: '母', nature: '开朗', captureId: 'cap_m2' }),
-      pet({ gameId: fatherSpecies.gameId, gender: '公', nature: '开朗', captureId: 'cap_f1' }),
-      pet({ gameId: fatherSpecies.gameId, gender: '公', nature: '固执', captureId: 'cap_f2' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', name: '开朗公甲', nature: '开朗', captureId: 'cap_f1' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', name: '开朗公乙', nature: '开朗', captureId: 'cap_f2' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公', name: '固执公', nature: '固执', captureId: 'cap_f3' }),
     ]);
 
-    // 第二条单默认是「双亲同性格」的 30%（60% × 性别 50%）
+    // 第二条单默认是「双亲同性格」的 30%（60% × 性别 50%）；同档两对，30% 的那对（15%）不列
     expect(screen.getAllByTestId('home-demand-chance')[1]).toHaveTextContent('约 30%');
+    expect(screen.getAllByTestId('home-demand-badge')[1]).toHaveTextContent('换配对 2');
+    expect(screen.queryByText(/约 15%/)).toBeNull();
 
     fireEvent.click(screen.getAllByTestId('home-demand-badge')[1]);
     fireEvent.click(screen.getByTestId('home-demand-use-option-1'));
 
-    // 换成「只有母本带性格」的那一对后，整份方案按它重算 → 概率跌到 15%
-    expect(screen.getAllByTestId('home-demand-chance')[1]).toHaveTextContent('约 15%');
-    expect(screen.getAllByTestId('home-demand-chance')[1].className).toContain('text-rose-600');
+    // 换成同档的另一对：概率不变，种公换成第二只
+    expect(screen.getAllByTestId('home-demand-chance')[1]).toHaveTextContent('约 30%');
+    expect(screen.getAllByTestId('home-demand-row')[1]).toHaveTextContent('开朗公乙');
   });
 
   test('挑过的候选写进本机，重进仍按那一对显示', () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { clearDemandPicks, readDemandPicks, writeDemandPicks } from './demandPickStore';
+import { clearDemandPicks, pickEggIdOf, readDemandPicks, writeDemandPicks } from './demandPickStore';
 
 beforeEach(() => window.localStorage.clear());
 
@@ -15,6 +15,18 @@ describe('种公需求「用哪颗蛋接单」的本机记忆', () => {
 
     writeDemandPicks({ 'g1|m1|100:固执:母': 300 });
     expect(readDemandPicks()).toEqual({ 'g1|m1|100:固执:母': 300 });
+  });
+
+  test('记「某一对亲本」时原样读回，蛋 id 仍能取到', () => {
+    writeDemandPicks({
+      k: { eggGameId: 901, motherCaptureId: 'cap-m', fatherCaptureId: 'cap-f' },
+    });
+    expect(readDemandPicks()).toEqual({
+      k: { eggGameId: 901, motherCaptureId: 'cap-m', fatherCaptureId: 'cap-f' },
+    });
+    expect(pickEggIdOf({ eggGameId: 901 })).toBe(901);
+    expect(pickEggIdOf(902)).toBe(902);
+    expect(pickEggIdOf(undefined)).toBeUndefined();
   });
 
   test('坏数据与非数字值被过滤，不影响接单', () => {

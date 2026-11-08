@@ -141,6 +141,34 @@ describe('buildDemandPlacements', () => {
     expect(placement.academyResident).toBeNull();
   });
 
+  test('不挑性格的单：默认按推荐性格配对，没有推荐配对才用其它（2026-11-03）', () => {
+    /** 火花蛋的推荐性格是「固执」。 */
+    const recommended: SpeciesEntry[] = species.map((entry) =>
+      entry.gameId === 100 ? { ...entry, recommendedNatures: ['固执'] } : entry,
+    );
+    const adamantMother = pet({ gameId: 100, gender: '母', nature: '固执' });
+    const rashMother = pet({ gameId: 100, gender: '母', nature: '急躁' });
+    const rashFather = pet({ gameId: 200, gender: '公', nature: '急躁' });
+    const adamantFather = pet({ gameId: 200, gender: '公', nature: '固执' });
+    const result = buildDemandPlacements({
+      demands: [demand({ nature: '' })],
+      snapshots: [snap('账号A', 11, [adamantMother, rashMother, rashFather, adamantFather])],
+      species: recommended,
+    });
+
+    const [placement] = result.accounts[0].placements;
+    expect(placement.mother.pet).toBe(adamantMother);
+    expect(placement.father.pet).toBe(adamantFather);
+
+    // 一对都没有带推荐性格时照样给配对，不让单排不上
+    const fallback = buildDemandPlacements({
+      demands: [demand({ nature: '' })],
+      snapshots: [snap('账号A', 11, [rashMother, rashFather])],
+      species: recommended,
+    });
+    expect(fallback.accounts[0].placements).toHaveLength(1);
+  });
+
   test('学院那只可以共用服务两条同款单（1:2），不额外占窝，也不会出现第二只绿窝', () => {
     const motherA = pet({ gameId: 100, gender: '母', nature: '固执' });
     const fatherA = pet({ gameId: 200, gender: '公', nature: '固执' });

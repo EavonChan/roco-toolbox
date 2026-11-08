@@ -6,7 +6,7 @@ import { useAccountFilter } from './accountFilterStore';
 import { AccountFilterBar } from './AccountFilterBar';
 import { EmptyState } from './EmptyState';
 import { HomeDemandPlacements } from './HomeDemandPlacements';
-import { HomePairDiagram } from './HomePairDiagram';
+import { HomePairDiagram, buildHomePairClusters } from './HomePairDiagram';
 import { PetCompactCard } from './PetCompactCard';
 import { BODY, CARD, HINT, INSET, PAGE, TITLE } from './primitives/styles';
 import { SegmentedControl } from './primitives/SegmentedControl';
@@ -160,9 +160,54 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
     () => (home ? petsByInstance(snapshot) : new Map<string, OwnedPet>()),
     [snapshot, home],
   );
+  /**
+   * 家园住户 → 背包精灵：先按实例 id，找不到再按名字兜底（同名唯一时才算）。
+   * 换过采集 / 短采集刷新家园后，住户的实例 id 可能不在旧背包快照里，
+   * 不兜底的话性别会显示「未知」（2026-11-01 用户反馈兽花蕾 / 恶魔叮）。
+   */
+  const petOf = useMemo(() => {
+    const byName = new Map<string, OwnedPet[]>();
+    for (const pet of pets.values()) {
+      const list = byName.get(pet.name) ?? [];
+      list.push(pet);
+      byName.set(pet.name, list);
+    }
+    return (resident: HomeResident): OwnedPet | undefined => {
+      const exact = pets.get(resident.instanceId);
+      if (exact) return exact;
+      const sameName = byName.get(resident.name);
+      return sameName?.length === 1 ? sameName[0] : undefined;
+    };
+  }, [pets]);
   if (!home) return null;
   const academy = home.nests.filter((nest) => nest.nestType === 'academy').length;
   const eggCount = home.sceneEggs.length;
+  /**
+   * 家园精灵按配对顺序排（2026-11-01 用户口径）：同一簇（一对 / 学院 1:2）的精灵挨在一起；
+   * 1:2 那种三个人共享一只的簇整簇排到后面，保证「配对的精灵都排到一起」。
+   * 没参与配对的住户保持原顺序排在最后。
+   */
+  const orderedResidents = (() => {
+    const clusters = buildHomePairClusters(home.layEggCouples, home.residents, pets);
+    const byActor = new Map(home.residents.map((resident) => [resident.actorId, resident]));
+    const sorted = [...clusters].sort(
+      (a, b) => Number(a.nodes.length > 2) - Number(b.nodes.length > 2),
+    );
+    const seen = new Set<string>();
+    const list: HomeResident[] = [];
+    for (const cluster of sorted) {
+      for (const node of cluster.nodes) {
+        const resident = byActor.get(node.actorId);
+        if (!resident || seen.has(resident.instanceId)) continue;
+        list.push(resident);
+        seen.add(resident.instanceId);
+      }
+    }
+    for (const resident of home.residents) {
+      if (!seen.has(resident.instanceId)) list.push(resident);
+    }
+    return list;
+  })();
 
   return (
     <section className="rounded-2xl bg-white p-1.5 shadow-sm" data-testid={`home-account-${snapshot.gameId}`}>
@@ -185,19 +230,24 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-        <div className={INSET}>
-          <div className={TITLE}>{home.residents.length}</div>
-          <div className={HINT}>家园精灵</div>
-        </div>
-        <div className={INSET}>
-          <div className={TITLE}>{home.nests.length}</div>
-          <div className={HINT}>小窝（学院 {academy}）</div>
-        </div>
-        <div className={INSET}>
-          <div className={TITLE}>{home.layEggCouples.length}</div>
-          <div className={HINT}>实际配对</div>
-        </div>
+      {/* 2026-11-01 用户口径：三个数字方框太大 → 改成一行小标签 */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5" data-testid="home-stats">
+        <span className="rounded-md bg-slate-50 px-1.5 py-[3px] text-[11px] leading-none text-slate-500">
+          <span className="mr-0.5 text-[13px] font-semibold text-slate-800">
+            {home.residents.length}
+          </span>
+          <span>家园精灵</span>
+        </span>
+        <span className="rounded-md bg-slate-50 px-1.5 py-[3px] text-[11px] leading-none text-slate-500">
+          <span className="mr-0.5 text-[13px] font-semibold text-slate-800">{home.nests.length}</span>
+          <span>小窝（学院 {academy}）</span>
+        </span>
+        <span className="rounded-md bg-slate-50 px-1.5 py-[3px] text-[11px] leading-none text-slate-500">
+          <span className="mr-0.5 text-[13px] font-semibold text-slate-800">
+            {home.layEggCouples.length}
+          </span>
+          <span>实际配对</span>
+        </span>
       </div>
 
       {home.couplesStale ? (
@@ -221,7 +271,7 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
             游戏数据里没有当前配对（可能没有可配对的精灵，或采集时家园还没加载完）。
           </p>
         ) : (
-          <div className="mt-1.5 rounded-xl bg-slate-50 p-2">
+          <div className="mt-1.5">
             <HomePairDiagram couples={home.layEggCouples} residents={home.residents} pets={pets} />
           </div>
         )}
@@ -235,11 +285,11 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
         {home.residents.length === 0 ? (
           <p className={HINT}>当前家园没有精灵。</p>
         ) : (
-          <div className="mt-1.5 flex flex-wrap gap-2" data-testid="home-residents">
-            {home.residents.map((resident) => (
+          <div className="mt-1.5 flex flex-wrap justify-center gap-2" data-testid="home-residents">
+            {orderedResidents.map((resident) => (
               <HomePetCard
                 key={resident.instanceId}
-                pet={pets.get(resident.instanceId)}
+                pet={petOf(resident)}
                 resident={resident}
               />
             ))}

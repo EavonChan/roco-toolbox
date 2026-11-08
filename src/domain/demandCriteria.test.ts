@@ -459,6 +459,61 @@ describe('配对按概率排序（2026-10-30 石岚号漏选 60% 的回归）', 
     expect(findStudBreedableSupply(snapshots, demand, twoEggSpecies).kind).toBe('breedable');
   });
 
+  test('不挑性格：同一账号的多个母本都要能出现，不被第一只吃满名额（2026-11-02）', () => {
+    const snapshots = [
+      snapshot(1001, '石岚', [
+        mother(101, { captureId: 'silent', nature: '沉默' }),
+        mother(102, { gender: '公', captureId: 'male-1' }),
+        mother(102, { gender: '公', captureId: 'male-2' }),
+        mother(102, { gender: '公', captureId: 'male-3' }),
+        mother(102, { captureId: 'blue', nature: '忧郁' }),
+      ]),
+    ];
+    const criteria: DemandCriteria = {
+      eggGameId: 101,
+      nature: '',
+      gender: '母',
+      body: '',
+      voice: '',
+    };
+    const options = pairOptionsForEgg(snapshots, criteria, species, 3);
+    // 三组名额里必须给第二只母本留一个，否则「仓库里有满足的精灵却选不到」
+    expect(options).toHaveLength(3);
+    expect(options.map((option) => option.motherPet.pet.captureId)).toContain('blue');
+    // limit=1 仍只取全局第一组，findBreedableSupply 的口径不变
+    expect(pairOptionsForEgg(snapshots, criteria, species, 1)).toHaveLength(1);
+  });
+
+  test('不挑性格：接单人优先推荐带推荐性格的配对（2026-11-03）', () => {
+    /** 火花蛋的推荐性格是「固执」（真实数据来自图鉴的 PVP 推荐表）。 */
+    const withRecommended: SpeciesEntry[] = catalog.map((entry) =>
+      entry.gameId === 101 ? { ...entry, recommendedNatures: ['固执'] } : entry,
+    );
+    const snapshots = [
+      snapshot(1001, '石岚', [
+        mother(101, { captureId: 'adamant-mother', nature: '固执' }),
+        mother(101, { captureId: 'rash-mother', nature: '急躁' }),
+        mother(102, { captureId: 'rash-male', gender: '公', nature: '急躁' }),
+        mother(102, { captureId: 'adamant-male', gender: '公', nature: '固执' }),
+      ]),
+    ];
+    const criteria: DemandCriteria = {
+      eggGameId: 101,
+      nature: '',
+      gender: '母',
+      body: '大块头',
+      voice: '+100',
+    };
+    // 先出现的「固执母 × 急躁公」不能当推荐；双亲都带推荐性格的那对排第一
+    const options = pairOptionsForEgg(snapshots, criteria, withRecommended);
+    expect(options[0].motherPet.pet.captureId).toBe('adamant-mother');
+    expect(options[0].malePet.pet.captureId).toBe('adamant-male');
+    // 覆盖表指定另一组推荐性格时按覆盖的来
+    const overridden = pairOptionsForEgg(snapshots, criteria, withRecommended, 3, false, ['急躁']);
+    expect(overridden[0].motherPet.pet.captureId).toBe('rash-mother');
+    expect(overridden[0].malePet.pet.captureId).toBe('rash-male');
+  });
+
   test('多账号时取概率最高的那一对（原来按账号顺序会拿到 30%）', () => {
     const snapshots = [
       // 先导入的号：种公不带目标性格 → 30%

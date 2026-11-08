@@ -8,7 +8,26 @@ import { demandKeyOf, type DemandCriteria } from '../shared/collectionGroups';
 
 const KEY = 'roco.demandPick';
 
-export type DemandPicks = Record<string, number>;
+/**
+ * 选中的组合：老数据只记蛋（number），2026-11-01 起还能记具体那一对亲本。
+ * 种公单里同一颗蛋配不同公是不同组合，只记蛋会把用户挑的那一对冲掉。
+ */
+export interface DemandPickPair {
+  eggGameId: number;
+  motherCaptureId?: string;
+  fatherCaptureId?: string;
+}
+
+export type DemandPick = number | DemandPickPair;
+
+export type DemandPicks = Record<string, DemandPick>;
+
+/** 取选中的蛋 id（老数据是 number，新数据在对象里）。 */
+export function pickEggIdOf(pick: DemandPick | undefined): number | undefined {
+  if (pick == null) return undefined;
+  if (typeof pick === 'number') return Number.isFinite(pick) ? pick : undefined;
+  return Number.isFinite(pick.eggGameId) ? pick.eggGameId : undefined;
+}
 
 /**
  * 选蛋记忆的键：小组 + 需求方 + 需求内容（2026-11-01 代码审查 R2-3-M01）。
@@ -29,10 +48,21 @@ export function readDemandPicks(): DemandPicks {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return {};
     const picks: DemandPicks = {};
-    for (const [demandKey, eggGameId] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof eggGameId === 'number' && Number.isFinite(eggGameId)) {
-        picks[demandKey] = eggGameId;
+    for (const [demandKey, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        picks[demandKey] = value;
+        continue;
       }
+      if (!value || typeof value !== 'object') continue;
+      const record = value as Record<string, unknown>;
+      if (typeof record.eggGameId !== 'number' || !Number.isFinite(record.eggGameId)) continue;
+      picks[demandKey] = {
+        eggGameId: record.eggGameId,
+        motherCaptureId:
+          typeof record.motherCaptureId === 'string' ? record.motherCaptureId : undefined,
+        fatherCaptureId:
+          typeof record.fatherCaptureId === 'string' ? record.fatherCaptureId : undefined,
+      };
     }
     return picks;
   } catch {

@@ -3,6 +3,7 @@ import { matchesParentGrade, type PetMatch } from './demandCriteria';
 import { isBreedableGroup } from './eggs';
 import { DEFAULT_NEST_COUNT } from './nestPlan';
 import { accountKeyOf, type AccountSnapshot } from './parseBackup';
+import { eggNatures, type NatureOverrides } from './recommendedNatures';
 import type { OwnedPet, SpeciesEntry } from './types';
 
 /**
@@ -113,6 +114,11 @@ export interface DemandPlacementInput {
   snapshots: readonly AccountSnapshot[];
   species: readonly SpeciesEntry[];
   nestCount?: number;
+  /**
+   * 不挑性格的单默认按「推荐性格」配对（2026-11-03 用户口径）：
+   * 传用户的按蛋覆盖表，没传就是图鉴默认推荐性格。
+   */
+  natureOverrides?: NatureOverrides;
 }
 
 interface Target {
@@ -161,6 +167,8 @@ interface PairPick {
   natureChance: number;
   newNests: number;
   academyResident: 'mother' | 'father' | null;
+  /** 不挑性格时：这一对里带推荐性格的亲本数（0~2）。 */
+  natureFit: number;
 }
 
 interface PairPickResult {
@@ -202,11 +210,19 @@ function isMotherCandidate(chip: Chip, target: Target, demand: DemandPlacementDe
   return matchesParentGrade(pet, demand);
 }
 
-function isFatherCandidate(chip: Chip, target: Target, demand: DemandPlacementDemand, state: AccountState): boolean {
+/**
+ * 公本候选：只要和**母本**有共同蛋组就能配（后代随母方，所以目标组由母本保证）。
+ *
+ * 2026-11-01 修正：原来按「需求的目标蛋组」筛公本，会把「和目标组无关、但和母本同组」的公排掉。
+ * 例：拟人组种公单，母本 火豆丁（巨灵组 + 拟人组）、公 矮脚爬爬（巨灵组 + 昆虫组）——
+ * 两者在巨灵组同组可以孵，后代是母本 火豆丁（拟人组），完全满足需求；旧口径（以及
+ * `pairOptionsForEgg`）就是按母本的蛋组筛公本的。
+ */
+function isFatherCandidate(chip: Chip, motherGroups: readonly number[], demand: DemandPlacementDemand, state: AccountState): boolean {
   const pet = chip.pet;
   if (pet.gender !== '公') return false;
   const groups = groupsOf(state.speciesByGameId.get(pet.gameId));
-  if (!groups.some((group) => target.groups.includes(group))) return false;
+  if (!groups.some((group) => motherGroups.includes(group))) return false;
   return matchesParentGrade(pet, demand);
 }
 
@@ -216,14 +232,20 @@ function pickPair(
   state: AccountState,
   nestCount: number,
   allowSecondShare: boolean,
+  preferredNatures: ReadonlySet<string> = new Set(),
 ): PairPickResult | null {
   const mothers = state.pets.filter((chip) => isMotherCandidate(chip, target, demand, state));
-  const fathers = state.pets.filter((chip) => isFatherCandidate(chip, target, demand, state));
   const picks: Array<PairPick & { bothNature: number }> = [];
   const academyHasRoom = state.academyPartners < MAX_ACADEMY_PARTNERS;
   const academyFree = state.academyPetKey === null;
 
   for (const mother of mothers) {
+    // 公本按**这只母本**的蛋组筛（同组才能孵；后代随母方，目标组由母本保证）
+    const motherGroups = groupsOf(state.speciesByGameId.get(mother.pet.gameId));
+    const breedingGroups = motherGroups.length > 0 ? motherGroups : target.groups;
+    const fathers = state.pets.filter((chip) =>
+      isFatherCandidate(chip, breedingGroups, demand, state),
+    );
     for (const father of fathers) {
       if (mother.key === father.key) continue;
       if (mother.pet.gender === father.pet.gender) continue;
@@ -289,6 +311,11 @@ function pickPair(
       const bothNature =
         (demand.nature && mother.pet.nature === demand.nature ? 1 : 0) +
         (demand.nature && father.pet.nature === demand.nature ? 1 : 0);
+      // 不挑性格时没有目标性格可算，用推荐性格给配对排序（2026-11-03）
+      const natureFit = demand.nature
+        ? 0
+        : Number(preferredNatures.has(mother.pet.nature)) +
+          Number(preferredNatures.has(father.pet.nature));
       // 「不挑性格」= 性格这一项必然满足，概率 1（不要再用 0.6 / 0.3 当占位值，免得调用方误读）。
       const natureChance = !demand.nature || tier === 'academy' ? 1 : tier === 'normal60' ? 0.6 : 0.3;
 
@@ -300,6 +327,7 @@ function pickPair(
         newNests,
         academyResident,
         bothNature,
+        natureFit,
       });
     }
   }
@@ -308,6 +336,8 @@ function pickPair(
   picks.sort(
     (a, b) =>
       b.natureChance - a.natureChance ||
+      // 不挑性格的单：双亲都带推荐性格 > 一方带 > 都不带
+      b.natureFit - a.natureFit ||
       a.newNests - b.newNests ||
       b.bothNature - a.bothNature ||
       a.mother.key.localeCompare(b.mother.key) ||
@@ -334,14 +364,25 @@ function pickPair(
     !preferred ||
     (best.mother.pet.captureId === preferred.motherCaptureId &&
       best.father.pet.captureId === preferred.fatherCaptureId);
-  const options: PairPick[] = picks.slice(0, 5).map((pick) => ({
-    mother: pick.mother,
-    father: pick.father,
-    tier: pick.tier,
-    natureChance: pick.natureChance,
-    newNests: pick.newNests,
-    academyResident: pick.academyResident,
-  }));
+  /**
+   * 候选 = **与最高概率档相同的全部「母本 × 种公」组合**（2026-11-01 用户口径）。
+   *
+   * 原来只截前 5 条，同概率时按个体顺序排，会把「火豆丁 × 矮脚爬爬」这类真实能配的组合挤掉
+   * （家园「换配对 N」里就看不到）。低于最高档的仍然不列（例如有 30% 就不列 15%），
+   * 只有 15% 时照样列 15%。用户手动挑的那对始终留在第一位（哪怕它是低档）。
+   */
+  const topChance = Math.max(...picks.map((pick) => pick.natureChance));
+  const options: PairPick[] = picks
+    .filter((pick, index) => index === 0 || pick.natureChance === topChance)
+    .map((pick) => ({
+      mother: pick.mother,
+      father: pick.father,
+      tier: pick.tier,
+      natureChance: pick.natureChance,
+      newNests: pick.newNests,
+      academyResident: pick.academyResident,
+      natureFit: pick.natureFit,
+    }));
   return { best, options, prefHonored };
 }
 
@@ -353,10 +394,15 @@ function diagnose(
   if (!target) return 'impossible';
   const mothers = state.pets.filter((chip) => isMotherCandidate(chip, target, demand, state));
   if (mothers.length === 0) return 'no-mother';
-  const fathers = state.pets.filter((chip) => isFatherCandidate(chip, target, demand, state));
-  if (fathers.length === 0) return 'no-father';
+  /** 公本按这只母本的蛋组筛（同 `pickPair`：同组才能配，后代随母方） */
+  const fathersOf = (mother: Chip): Chip[] => {
+    const motherGroups = groupsOf(state.speciesByGameId.get(mother.pet.gameId));
+    const breedingGroups = motherGroups.length > 0 ? motherGroups : target.groups;
+    return state.pets.filter((chip) => isFatherCandidate(chip, breedingGroups, demand, state));
+  };
+  if (!mothers.some((mother) => fathersOf(mother).length > 0)) return 'no-father';
   const hasNaturePair = mothers.some((mother) =>
-    fathers.some(
+    fathersOf(mother).some(
       (father) =>
         mother.key !== father.key &&
         (!demand.nature || mother.pet.nature === demand.nature || father.pet.nature === demand.nature),
@@ -487,28 +533,47 @@ export function buildDemandPlacements(input: DemandPlacementInput): DemandPlacem
     }
 
     /**
+     * 不挑性格的母本单：按「推荐性格」给配对排序（2026-11-03 用户口径）。
+     * 种公单（eggGameId < 0）与指定性格的单都不参与，保持原口径。
+     */
+    const preferredNatures =
+      demand.nature || demand.eggGameId <= 0
+        ? new Set<string>()
+        : new Set(eggNatures(input.species, demand.eggGameId, input.natureOverrides));
+
+    /**
      * 跨账号择优（用户 2026-11-01 拍板，对齐 changelog 2026-10-30d「多个账号时取概率最高的那一对」）：
-     * 各账号先各自挑出最优配对，再比 `natureChance`，同级比新占窝数，仍相同则保留靠前的账号。
+     * 各账号先各自挑出最优配对，再比 `natureChance`，同级比推荐性格命中数，再次比新占窝数，
+     * 仍相同则保留靠前的账号。
      */
     const pickAcrossAccounts = (
       allowSecondShare: boolean,
     ): { state: AccountState; result: PairPickResult } | null => {
       let best: { state: AccountState; result: PairPickResult } | null = null;
       for (const state of states) {
-        const result = pickPair(target, demand, state, nestCount, allowSecondShare);
+        const result = pickPair(
+          target,
+          demand,
+          state,
+          nestCount,
+          allowSecondShare,
+          preferredNatures,
+        );
         if (!result) continue;
-        if (
-          best === null ||
+        if (best === null) {
+          best = { state, result };
+          continue;
+        }
+        const better =
           // 用户挑过的配对优先：能在哪个账号排上，就落到哪个账号，不再按概率比掉它。
           Number(result.prefHonored) > Number(best.result.prefHonored) ||
           (result.prefHonored === best.result.prefHonored &&
-            result.best.natureChance > best.result.best.natureChance) ||
-          (result.prefHonored === best.result.prefHonored &&
-            result.best.natureChance === best.result.best.natureChance &&
-            result.best.newNests < best.result.best.newNests)
-        ) {
-          best = { state, result };
-        }
+            (result.best.natureChance > best.result.best.natureChance ||
+              (result.best.natureChance === best.result.best.natureChance &&
+                (result.best.natureFit > best.result.best.natureFit ||
+                  (result.best.natureFit === best.result.best.natureFit &&
+                    result.best.newNests < best.result.best.newNests)))));
+        if (better) best = { state, result };
       }
       return best;
     };
@@ -578,6 +643,7 @@ export interface StudPlacementOption {
  * `alongside` 传「我承接的其它未完成需求」，让窝位 / 学院占用按真实情况一起算。
  *
  * 结果只保留最高概率档（N02）：有 50% 的组合就不列 30%；全是低档时才在同档里列其它组合。
+ * 同一颗蛋配不同公是**不同组合**，都要列出来（2026-11-01 用户口径：所有种公 × 母本）。
  */
 export function studPlacementOptions(
   snapshots: readonly AccountSnapshot[],
@@ -598,7 +664,8 @@ export function studPlacementOptions(
   const result = buildDemandPlacements({ demands: [...alongside, demand], snapshots, species });
   const snapshotByKey = new Map(snapshots.map((snapshot) => [accountKeyOf(snapshot), snapshot]));
   const genderFactor = demand.gender ? 0.5 : 1;
-  const best = new Map<number, StudPlacementOption>();
+  /** 一对亲本一个候选：同一颗蛋的不同种公不再被合并掉。 */
+  const best = new Map<string, StudPlacementOption>();
   for (const account of result.accounts) {
     const owner = snapshotByKey.get(account.accountKey);
     if (!owner) continue;
@@ -609,9 +676,12 @@ export function studPlacementOptions(
         const entry = speciesByGameId.get(eggGameId);
         if (!entry) continue;
         const chance = option.natureChance * genderFactor;
-        const previous = best.get(eggGameId);
+        const key = `${option.mother.pet.captureId ?? option.mother.pet.gameId}|${
+          option.father.pet.captureId ?? option.father.pet.gameId
+        }`;
+        const previous = best.get(key);
         if (previous && previous.chance >= chance) continue;
-        best.set(eggGameId, {
+        best.set(key, {
           eggGameId,
           name: entry.name,
           groupIds: groupsOf(entry),
@@ -628,8 +698,11 @@ export function studPlacementOptions(
   const options = [...best.values()].sort(
     (a, b) =>
       b.chance - a.chance ||
+      Number(b.greenNest) - Number(a.greenNest) ||
       Number(b.groupIds.length >= 2) - Number(a.groupIds.length >= 2) ||
-      a.eggGameId - b.eggGameId,
+      a.eggGameId - b.eggGameId ||
+      a.motherPet.pet.name.localeCompare(b.motherPet.pet.name) ||
+      a.malePet.pet.name.localeCompare(b.malePet.pet.name),
   );
   const top = options[0]?.chance ?? -1;
   return options.filter((option) => Math.abs(option.chance - top) < 1e-9);

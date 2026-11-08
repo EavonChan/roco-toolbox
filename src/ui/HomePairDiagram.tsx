@@ -1,34 +1,46 @@
-import { buildClusterOffsets, NEST_SIZE } from '../domain/nestGeometry';
+import { buildClusterOffsets } from '../domain/nestGeometry';
 import type { HomePair, HomeResident, OwnedPet } from '../domain/types';
-import { GenderMark } from './GenderMark';
-import { PAIRING_COLORS, pairingColor } from './pairingColors';
+import { NestLayoutSvg, type NestSvgLine, type NestSvgSlot } from './NestLayoutSvg';
+import { pairingColor, pairingDashed } from './pairingColors';
 
 /**
- * 家园现状的「配窝卡片」（2026-11-01 用户口径：用看板「配窝建议」里那张摆位图的画法）。
+ * 家园现状的「配窝卡片」（2026-11-01 用户口径：**严格按看板「配窝建议」那张摆位图**）。
  *
  * 和配窝建议的区别：那边画的是**建议**排位（`buildNestPlans` 算出来的坐标），
  * 这边画的是**游戏里实际成立的配对**（`layEggCouples`）。抓包里的窝坐标大多为空，
- * 所以两边都不按真实坐标、只按配对关系紧凑排：同一簇内的窝用 `buildClusterOffsets`
- * 排成「能连上的三角形/并排」，簇与簇之间留空隙、各用一种线色。
+ * 所以两边都不按真实坐标：同一簇内的窝用 `buildClusterOffsets` 排位。
+ *
+ * 排法（2026-11-01 用户口径）：一簇一张图、一行放两张，每张铺满自己的半格；不套灰底卡片
+ * （一对只有两个方块，卡片底色只会显得空）。四周留白也比配窝建议小，方块才够大。
  *
  * 方块里只写名字（最多 4 字，完整名放 title）+ 性别；学院小窝那只是绿底白字。
  */
 
-/** 方块边长（px）。 */
-const BOX = 56;
+/** 配窝卡片四周留白（地板单元）：1/4 窝，只够描边不被裁，剩下的都留给方块。 */
+const HOME_PAIR_PADDING = 2;
+
+/** 展示顺序：母在左、公在右（与「配窝建议」的配对行、下面的家园精灵卡保持一致）。 */
+const genderRank = (gender: HomePairNode['gender']): number =>
+  gender === '母' ? 0 : gender === '公' ? 1 : 2;
+
 /**
- * 相邻两块的留白（px）：坐标单位是「地板单元」、1 窝 = 8 单元，
- * 这里让 1 个单元 = (BOX + GAP) / 8 像素，两块之间正好空出 GAP 给连线露出来。
+ * 把摆位分给这一簇的方块：先按「母 → 公 → 未知」定展示顺序，再把从左到右的摆位依次发下去。
+ * `buildClusterOffsets` 只保证互不重叠、能连线，具体哪个方块落在哪一格由这里决定。
  */
-const GAP = 12;
-const UNIT = (BOX + GAP) / NEST_SIZE;
-/** 方块里只放得下 4 个字：先去形态后缀，再截断（与配窝建议的窝块一致）。 */
-const SHORT_NAME_LEN = 4;
-
-const shortName = (name: string): string => name.split('_')[0].slice(0, SHORT_NAME_LEN);
-
-const genderOf = (value: string | undefined): '公' | '母' | '未知' =>
-  value === '公' || value === '母' ? value : '未知';
+function positionsOf(cluster: HomePairCluster): Array<{ x: number; y: number }> {
+  const order = cluster.nodes
+    .map((node, index) => ({ index, rank: genderRank(node.gender) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((item) => item.index);
+  const offsets = [...buildClusterOffsets(cluster.nodes.length)].sort(
+    (a, b) => a.x - b.x || a.y - b.y,
+  );
+  const positions = cluster.nodes.map(() => ({ x: 0, y: 0 }));
+  order.forEach((nodeIndex, slot) => {
+    positions[nodeIndex] = offsets[slot];
+  });
+  return positions;
+}
 
 export interface HomePairNode {
   actorId: string;
@@ -58,17 +70,35 @@ export function buildHomePairClusters(
   pets: ReadonlyMap<string, OwnedPet>,
 ): HomePairCluster[] {
   const residentByActor = new Map(residents.map((resident) => [resident.actorId, resident]));
+  // 实例 id 对不上时（重新抓包 / 背包里没这只）退一步按名字找，且只在「同名唯一」时采用
+  const petsByName = new Map<string, OwnedPet[]>();
+  for (const pet of pets.values()) {
+    const list = petsByName.get(pet.name) ?? [];
+    list.push(pet);
+    petsByName.set(pet.name, list);
+  }
+  const petOf = (resident: HomeResident): OwnedPet | undefined => {
+    const exact = pets.get(resident.instanceId);
+    if (exact) return exact;
+    const sameName = petsByName.get(resident.name);
+    return sameName?.length === 1 ? sameName[0] : undefined;
+  };
 
   const nodeOf = (actorId: string): HomePairNode => {
     const resident = residentByActor.get(actorId);
     if (!resident) {
       return { actorId, name: '公本未知', gender: '未知', academy: false, missing: true };
     }
-    const pet = pets.get(resident.instanceId);
+    const pet = petOf(resident);
     return {
       actorId,
       name: resident.name || pet?.name || `精灵 ${actorId}`,
-      gender: genderOf(resident.gender || pet?.gender),
+      gender:
+        resident.gender === '公' || resident.gender === '母'
+          ? resident.gender
+          : pet?.gender === '公' || pet?.gender === '母'
+            ? pet.gender
+            : '未知',
       academy: resident.nest?.nestType === 'academy',
       missing: false,
     };
@@ -127,81 +157,40 @@ export function HomePairDiagram({ couples, residents, pets }: HomePairDiagramPro
   if (clusters.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-start gap-3" data-testid="home-pair-diagram">
-      {clusters.map((cluster, index) => {
-        const color = pairingColor(index);
-        const dashed = index >= PAIRING_COLORS.length;
-        // 同一簇内紧凑排位（与配窝建议同一个几何：1 窝 = 8 单元）
-        const raw = buildClusterOffsets(cluster.nodes.length);
-        // 贪心是从左侧找位，算出来母本可能落在右边：整体镜像一下，统一「母本在左」更好读
-        const maxX = Math.max(...raw.map((position) => position.x));
-        const minX = Math.min(...raw.map((position) => position.x));
-        const positions =
-          raw[0].x === minX ? raw : raw.map((position) => ({ x: maxX - position.x, y: position.y }));
-        const width = Math.max(...positions.map((position) => position.x)) * UNIT + BOX;
-        const height = Math.max(...positions.map((position) => position.y)) * UNIT + BOX;
-        const centerOf = (nodeIndex: number) => ({
-          x: positions[nodeIndex].x * UNIT + BOX / 2,
-          y: positions[nodeIndex].y * UNIT + BOX / 2,
-        });
+    <div className="flex flex-wrap justify-center gap-x-2 gap-y-1" data-testid="home-pair-diagram">
+      {clusters.map((cluster, clusterIndex) => {
+        const positions = positionsOf(cluster);
+        const slots: NestSvgSlot[] = cluster.nodes.map((node, nodeIndex) => ({
+          key: node.actorId,
+          name: node.name,
+          gender: node.gender,
+          academy: node.academy,
+          missing: node.missing,
+          position: positions[nodeIndex],
+        }));
+        const lines: NestSvgLine[] = cluster.edges.map(([from, to], edgeIndex) => ({
+          key: `${cluster.key}-${edgeIndex}`,
+          from: positions[from],
+          to: positions[to],
+          color: pairingColor(clusterIndex),
+          dashed: pairingDashed(clusterIndex),
+        }));
+        // 一行两张、每张铺满半格；不套灰底卡片（一对只有两个方块，卡片底色只会显得空）
         return (
           <div
             key={cluster.key}
-            className="relative shrink-0"
-            style={{ width, height }}
+            className="flex w-[calc(50%-4px)] items-center justify-center"
             data-testid="home-pair-cluster"
           >
-            <svg
-              className="pointer-events-none absolute inset-0"
-              width={width}
-              height={height}
-              aria-hidden="true"
-            >
-              {cluster.edges.map(([from, to], edgeIndex) => {
-                const start = centerOf(from);
-                const end = centerOf(to);
-                return (
-                  <line
-                    key={`${from}-${to}-${edgeIndex}`}
-                    x1={start.x}
-                    y1={start.y}
-                    x2={end.x}
-                    y2={end.y}
-                    stroke={color}
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                    strokeDasharray={dashed ? '4 3' : undefined}
-                  />
-                );
-              })}
-            </svg>
-            {cluster.nodes.map((node, nodeIndex) => (
-              <div
-                key={node.actorId}
-                className={`absolute flex flex-col items-center justify-center rounded-xl border ${
-                  node.academy
-                    ? 'border-emerald-700 bg-emerald-600 text-white'
-                    : node.missing
-                      ? 'border-dashed border-slate-300 bg-white text-slate-400'
-                      : 'border-slate-300 bg-white text-slate-700'
-                }`}
-                style={{
-                  left: positions[nodeIndex].x * UNIT,
-                  top: positions[nodeIndex].y * UNIT,
-                  width: BOX,
-                  height: BOX,
-                }}
-                title={node.name}
-                data-testid="home-pair-node"
-              >
-                <span className="max-w-full truncate px-1 text-[11px] font-medium leading-none">
-                  {shortName(node.name)}
-                </span>
-                <span className="mt-1.5 leading-none">
-                  <GenderMark gender={node.gender} />
-                </span>
-              </div>
-            ))}
+            <NestLayoutSvg
+              slots={slots}
+              lines={lines}
+              label="家园实际配对"
+              testId="home-pair-cluster-map"
+              slotTestId="home-pair-node"
+              className="mx-auto block w-[58%]"
+              padding={HOME_PAIR_PADDING}
+            />
           </div>
         );
       })}

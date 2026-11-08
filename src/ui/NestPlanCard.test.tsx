@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import {
   type NestPairing,
@@ -302,6 +302,43 @@ describe('NestPlanCard（配窝建议的行合并规则）', () => {
     expect(rows[0]).toHaveTextContent('学院 100%');
     expect(rows[1]).toHaveTextContent('普通 60%');
     expect(rows[2]).toHaveTextContent('普通 30%');
+  });
+});
+
+describe('NestPlanCard 跨号补种公', () => {
+  test('有补种公任务时，即使没有能排的方案也展示；可以移除', () => {
+    const removed: string[] = [];
+    render(
+      <NestPlanCard
+        plans={[planOf([])]}
+        transferTasks={[
+          {
+            id: 'task-1',
+            createdAt: 1,
+            targetAccount: '主号',
+            sourceAccount: '小号A',
+            eggGameId: 101,
+            motherGameId: 101,
+            motherName: '火花',
+            motherNature: '固执',
+            fatherGameId: 102,
+            fatherName: '火神',
+            fatherNature: '固执',
+            natureName: '固执',
+            grade: '大婉',
+            groupIds: [2],
+            chance: 0.6,
+          },
+        ]}
+        onRemoveTransferTask={(id) => removed.push(id)}
+      />,
+    );
+    expect(screen.getByTestId('breed-transfer-tasks')).toHaveTextContent('给我补种公（跨号）');
+    expect(screen.getByTestId('breed-transfer-task')).toHaveTextContent('主号');
+    expect(screen.getByTestId('breed-transfer-task')).toHaveTextContent('小号A');
+    expect(screen.getByTestId('breed-transfer-task')).toHaveTextContent('巨灵组·固执');
+    fireEvent.click(screen.getByTestId('breed-transfer-remove'));
+    expect(removed).toEqual(['task-1']);
   });
 });
 
