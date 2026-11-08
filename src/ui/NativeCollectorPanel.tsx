@@ -1,30 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CAPTURE_UPLOAD_MAX_BYTES, collectorAction, readCollectorState, type CaptureUpload, type CollectorAction, type CollectorState } from '../collector/nativeCollector';
-import {
-  hasAutoImported,
-  hasAutoStopped,
-  markAutoImported,
-  markAutoStopped,
-  setPendingCompletion,
-  takePendingCompletion,
-  unmarkAutoStopped,
-  type PendingCompletion,
-} from '../collector/captureSessionStore';
+import { CAPTURE_UPLOAD_MAX_BYTES, collectorAction, isDesktopShell, readCaptureDevices, readCollectorState, selectCaptureDevice, type CaptureDeviceList, type CaptureUpload, type CollectorAction, type CollectorState } from '../collector/nativeCollector';
+import { clearAutoImportCompletion, requestAutoImport, useAutoImport, type AutoImportStage } from '../collector/autoImportFlow';
+import { markCaptureOrigin, observeCollectorState, useCaptureOrigin } from '../collector/captureOriginStore';
 import { Button } from './primitives/Button';
 import { ModalSurface } from './primitives/ModalSurface';
 import { StateNotice } from './primitives/StateNotice';
-import { getImportOutcome, useImportOutcome } from './importOutcomeStore';
+import { useImportOutcome } from './importOutcomeStore';
 import type { ImportOutcome } from './importOutcomeStore';
 import { CaptureProgressView } from './CaptureProgressView';
+import { toggleLiveMode, useLiveMode } from '../collector/liveModeStore';
+import { toggleRareAlert, useRareAlert } from '../collector/rareAlertStore';
 
 const sizeLabel = (size: number) => `${(size / 1024 / 1024).toFixed(2)} MiB`;
-/** 等文件落盘 / 等导入与云同步的上限；超时也要给用户一个结果，不能一直转圈 */
-const SAVE_WAIT_MS = 8000;
-const IMPORT_WAIT_MS = 20000;
-const delay = (ms: number) => new Promise<void>((resolve) => { window.setTimeout(resolve, ms); });
-/** 自动导入走到哪一步（弹窗只在 done / failed 时出现，2026-10-25 用户要求） */
-type AutoStage = 'idle' | 'stopping' | 'importing' | 'syncing' | 'done' | 'failed';
-const AUTO_STAGE_LABEL: Partial<Record<AutoStage, string>> = {
+/** 自动导入走到哪一步（弹窗只在 done / failed 时出现，2026-10-25 用户要求）。
+ *  2026-11-07：自动停止 / 保存 / 导入的流程抽到模块级 autoImportFlow（附近页触发的是同一流程），这里只订阅展示。 */
+const AUTO_STAGE_LABEL: Partial<Record<AutoImportStage, string>> = {
   stopping: '正在保存本次采集…',
   importing: '已保存，正在导入工具箱…',
   syncing: '已导入工具箱，正在同步私有云…',
@@ -54,16 +44,28 @@ const uploadTone = (upload: CaptureUpload) => upload.state === 'persisted' ? 'te
 export function NativeCollectorPanel() {
   const [state, setState] = useState<CollectorState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 桌面版（Electron）：底层是 Npcap 抓本机网卡，需要选网卡 → 见下方 desktop 分支 */
+  const [desktop] = useState(() => isDesktopShell());
+  const [devices, setDevices] = useState<CaptureDeviceList | null>(null);
   /** 先同步判断有没有采集桥：没有桥时首屏直接给说明卡，避免异步检查后再更新造成闪烁 */
   const [checked, setChecked] = useState(() => typeof window === 'undefined' || !window.RocoCapture);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  /** 原包批量删除（2026-11-06）：勾选 + 全选，逐条调用原生删除 */
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(() => new Set());
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
   const [requestedImport, setRequestedImport] = useState(false);
-  /** 自动导入结束（成功或失败）后才弹「导入完成」；只等到保存时弹窗要如实说尚未导入 */
-  const [completed, setCompleted] = useState<PendingCompletion | null>(null);
-  const [autoStage, setAutoStage] = useState<AutoStage>('idle');
-  const [completionError, setCompletionError] = useState<string | null>(null);
-  const lastActionError = useRef<string | null>(null);
+  /** 2026-11-07：自动停止 / 保存 / 导入在模块级 autoImportFlow 里跑，这里只订阅它的状态做展示；
+   *  附近页触发的也是同一流程，所以等待期间切页不会中断，回来也不会重复导入。 */
+  const flow = useAutoImport();
+  const completed = flow.completion;
+  const autoStage = flow.stage;
+  const completionError = flow.completionError;
+  /** 采集归属：这路采集是从附近页还是本页发起的（决定要不要自动停止 / 导入） */
+  const captureOrigin = useCaptureOrigin();
+  const liveMode = useLiveMode();
+  const rareAlertOn = useRareAlert();
   const importLock = useRef(false);
   const mounted = useRef(false);
   const reading = useRef(false);
@@ -88,24 +90,60 @@ export function NativeCollectorPanel() {
     try {
       const next = await readCollectorState();
       if (mounted.current) { setState(next); setError(null); }
+      // 采集真正开始后把会话 id 绑进「采集归属」（附近页发起 / 本页发起）
+      observeCollectorState(next);
     }
     catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : '无法读取采集状态'); }
     finally { reading.current = false; if (mounted.current) setChecked(true); }
   }, []);
   useEffect(() => {
     mounted.current = true;
-    // 等待保存 / 导入期间切走再回来：补弹上次没看过的完成提示
-    const pending = takePendingCompletion();
-    if (pending) setCompleted(pending);
     void refresh();
     const poll = window.setInterval(() => { if (!document.hidden) refresh(); }, 1500);
     const visible = () => { if (!document.hidden) refresh(); };
     document.addEventListener('visibilitychange', visible);
     return () => { mounted.current = false; window.clearInterval(poll); document.removeEventListener('visibilitychange', visible); };
   }, [refresh]);
+  // 桌面版：读一次网卡列表（Npcap 未装时 error 里会带原因）
+  useEffect(() => {
+    if (!desktop) return;
+    let alive = true;
+    void readCaptureDevices().then((list) => { if (alive) setDevices(list); });
+    return () => { alive = false; };
+  }, [desktop]);
+  // 文件被删 / 被壳清理后，把已勾选但已不存在的 id 去掉
+  useEffect(() => {
+    setSelectedFiles((current) => {
+      if (current.size === 0 || !state) return current;
+      const existing = new Set(state.files.map((file) => file.id));
+      const next = new Set([...current].filter((id) => existing.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [state?.files]);
+  const toggleSelectedFile = (id: string) => {
+    setSelectedFiles((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const deleteSelectedFiles = async () => {
+    const ids = [...selectedFiles];
+    setConfirmBatchDelete(false);
+    if (ids.length === 0) return;
+    setBatchDeleting(true);
+    try {
+      for (const id of ids) await action('deleteCapture', id);
+    } finally {
+      setBatchDeleting(false);
+      setSelectedFiles(new Set());
+    }
+  };
   const action = async (name: CollectorAction, id?: string): Promise<boolean> => {
     setActionError(null);
-    lastActionError.current = null;
+    // 从本页点「开始采集」：这路采集是导入导向（数据收齐自动停止并导入，原有行为）
+    if (name === 'startCapture') markCaptureOrigin('profile');
     if (name === 'importCapture') {
       if (importing || importLock.current) return false;
       importLock.current = true;
@@ -119,113 +157,11 @@ export function NativeCollectorPanel() {
     }
     catch (cause) {
       const message = cause instanceof Error ? cause.message : '操作失败，请重试';
-      lastActionError.current = message;
       setRequestedImport(false);
       setActionError(message);
       return false;
     }
     finally { await refresh(); }
-  };
-  /** 等壳把文件真正保存完（阶段回到 idle 且能看到这个文件），再请求导入 */
-  const waitForSaved = async (session: string): Promise<'saved' | 'failed' | 'timeout'> => {
-    const deadline = Date.now() + SAVE_WAIT_MS;
-    while (mounted.current && Date.now() < deadline) {
-      try {
-        const current = await readCollectorState();
-        if (mounted.current) setState(current);
-        if (current && current.phase === 'failed') return 'failed';
-        if (current && current.phase === 'idle' && current.files.some((file) => file.id === session)) return 'saved';
-      } catch { /* 保存中读不到状态：继续等 */ }
-      await delay(300);
-    }
-    return 'timeout';
-  };
-  /**
-   * 壳里的 importCapture 在「还在保存」时会被拒绝（请先停止采集并等待保存完成）。
-   * 刚停完就调用很容易撞上这个窗口，所以按提示重试一小会儿再判失败。
-   */
-  const importWithRetry = async (session: string): Promise<boolean> => {
-    for (let attempt = 0; attempt < 30 && mounted.current; attempt += 1) {
-      if (await action('importCapture', session)) return true;
-      if (!/等待保存完成/.test(lastActionError.current ?? '')) return false;
-      await delay(500);
-    }
-    return false;
-  };
-  /** 等导入结果：本机保存完成 → 云同步到终态（或超时）。弹窗只在这之后出现。 */
-  const waitForImportOutcome = async (baseline: number): Promise<'saved' | 'failed' | 'timeout'> => {
-    const deadline = Date.now() + IMPORT_WAIT_MS;
-    while (mounted.current && Date.now() < deadline) {
-      const current = getImportOutcome();
-      if (current.operationId > baseline) {
-        if (current.local === 'failed') return 'failed';
-        if (current.local === 'saved') {
-          if (current.cloud !== 'syncing') return 'saved';
-          setAutoStage('syncing');
-        }
-      }
-      await delay(250);
-    }
-    const current = getImportOutcome();
-    if (current.operationId > baseline && current.local === 'saved') return 'saved';
-    return current.operationId > baseline && current.local === 'failed' ? 'failed' : 'timeout';
-  };
-  /**
-   * 采集完成（稳定进度条走满）自动停止、保存并**自动导入**（2026-10-25 用户要求）。
-   * 本轮再改（2026-10-25）：**先不弹窗**，等本机导入与云同步都到终态再弹「导入完成」，
-   * 避免用户只看到「正在准备自动导入」、误以为没同步。
-   * 标记放在模块级会话集合里：切页卸载再回来也不会重复停止或重复导入。
-   */
-  const handleCaptureReady = (session: string | undefined) => {
-    if (!session || hasAutoStopped(session)) return;
-    markAutoStopped(session);
-    setCompletionError(null);
-    setAutoStage('stopping');
-    void (async () => {
-      const stopped = await action('stopCapture');
-      if (!stopped) {
-        unmarkAutoStopped(session);
-        if (mounted.current) setAutoStage('idle');
-        return;
-      }
-      const saved = await waitForSaved(session);
-      // 等保存期间切页：这时还没请求导入，回来只能提示「已保存、尚未导入」，不能说成导入完成
-      if (!mounted.current) { setPendingCompletion(session, 'saved-only'); return; }
-      if (saved !== 'saved') {
-        setAutoStage('idle');
-        setActionError(
-          saved === 'failed'
-            ? '本次采集未完整保存，请重新采集；文件列表里仍可导出原包'
-            : '采集已保存，但没等到文件就绪；请在文件列表里点「解析并导入」',
-        );
-        return;
-      }
-      if (hasAutoImported(session)) return;
-      markAutoImported(session);
-      setAutoStage('importing');
-      const baseline = getImportOutcome().operationId;
-      const requested = await importWithRetry(session);
-      if (!requested) {
-        if (!mounted.current) { setPendingCompletion(session); return; }
-        setAutoStage('failed');
-        setCompletionError(lastActionError.current ?? '无法开始导入');
-        setCompleted({ session, stage: 'importing' });
-        return;
-      }
-      const result = await waitForImportOutcome(baseline);
-      // 等结果期间切页会卸载面板：记下待弹提示，回来再补，且只补一次
-      if (!mounted.current) { setPendingCompletion(session); return; }
-      if (result === 'failed') {
-        setAutoStage('failed');
-        setCompletionError(getImportOutcome().message ?? '导入失败，请在文件列表里重试');
-      } else if (result === 'timeout') {
-        setAutoStage('failed');
-        setCompletionError('导入没有完成，请在文件列表里点「解析并导入」重试');
-      } else {
-        setAutoStage('done');
-      }
-      setCompleted({ session, stage: 'importing' });
-    })();
   };
   if (!checked) {
     // 有采集桥但状态还没读完：先撑住卡片高度，避免切进「我的」时整块从无到有闪一下
@@ -247,7 +183,9 @@ export function NativeCollectorPanel() {
       <section className="rounded-2xl bg-white p-3 shadow-sm" data-testid="native-collector-fallback">
         <h2 className="text-base font-semibold text-slate-900">本机采集</h2>
         <p className="mt-1 text-xs text-slate-500">
-          当前环境没有内置采集（只在安卓工具箱安装包内提供）。网页版请用下面的「导入游戏数据」手选抓包 / 备份文件；装了安卓版仍看不到，请更新安装包。
+          {desktop
+            ? '桌面版采集组件没有加载成功，请重启工具箱；仍不行请更新到最新安装包。'
+            : '当前环境没有内置采集（只在安卓工具箱安装包内提供）。网页版请用下面的「导入游戏数据」手选抓包 / 备份文件；装了安卓版仍看不到，请更新安装包。'}
         </p>
       </section>
     );
@@ -260,43 +198,144 @@ export function NativeCollectorPanel() {
   const activeFileId = busy ? state?.fileId : undefined;
   const visibleFiles = state ? state.files.filter((file) => file.id !== activeFileId) : [];
   /** 弹窗只在导入结束后出现；失败 / 超时 / 导入报错都算「未完成」，要继续给出可操作提示 */
-  const savedOnly = completed?.stage === 'saved-only';
-  const importFailed =
-    !savedOnly && (autoStage === 'failed' || outcome.local === 'failed' || completionError != null);
-  const popupTitle = savedOnly
-    ? '采集已保存，尚未导入'
-    : importFailed ? '导入未完成' : outcome.local === 'importing' ? '正在导入' : '导入完成';
+  const importFailed = autoStage === 'failed' || outcome.local === 'failed' || completionError != null;
+  const popupTitle = importFailed ? '导入未完成' : outcome.local === 'importing' ? '正在导入' : '导入完成';
+  /** 这路采集是附近页发起的（雷达导向）：不自动停止 / 导入，给一行说明 */
+  const nearbyOwned = busy && captureOrigin.origin === 'nearby'
+    && (captureOrigin.session == null || captureOrigin.session === state?.fileId);
   return (
     <section className="space-y-2 rounded-2xl bg-white p-3 shadow-sm" data-testid="native-collector">
       <h2 className="text-base font-semibold text-slate-900">本机采集</h2>
-      <p className="text-xs text-slate-500">仅在手机本地保存与解析；点「上传蛋神助手」才会把原包发送到蛋神助手云端。</p>
+      <p className="text-xs text-slate-500">
+        {desktop
+          ? '在你自己的电脑上用 Npcap 抓取游戏流量，只在本地保存与解析，不上传任何数据。'
+          : '仅在手机本地保存与解析；点「上传蛋神助手」才会把原包发送到蛋神助手云端。'}
+      </p>
       {error ? <StateNotice kind="error" title={error} action={<Button variant="secondary" onClick={refresh}>重试读取状态</Button>} /> : null}
       {actionError ? <StateNotice kind="error" title={actionError} /> : null}
+      {flow.error ? <StateNotice kind="error" title={flow.error} /> : null}
       {state ? <>
-        {!state.supported ? <StateNotice kind="unknown" title="内置采集需要 Android 8 或以上" description="当前手机仍可手动导入已有文件。" /> : <>
-          <ol className="list-decimal space-y-0.5 pl-5 text-xs text-slate-500">
-            <li>关闭其他 VPN 或游戏加速器，开始采集并同意系统 VPN 授权。</li>
-            <li>打开游戏，重新登录，依次查看精灵仓库、背包与蛋仓。</li>
-            <li>查看数据进度；内容稳定（进度条走满）后会自动停止、保存并开始导入。</li>
-          </ol>
-          <div className="flex flex-wrap gap-2">
+        {!state.supported ? <StateNotice kind="unknown" title={desktop ? '没有找到 Npcap' : '内置采集需要 Android 8 或以上'}
+          description={desktop
+            ? '实时采集依赖 Npcap 抓本机网卡。请先安装 Npcap（安装时勾选 WinPcap API 兼容模式），装完重启工具箱。'
+            : '当前手机仍可手动导入已有文件。'}
+          action={desktop
+            ? <a className="text-emerald-700 underline" href="https://npcap.com/#download" target="_blank" rel="noreferrer">下载 Npcap</a>
+            : undefined} /> : <>
+          {desktop ? <>
+            <div className="space-y-1.5 rounded-xl border border-slate-100 px-3 py-2" data-testid="desktop-capture-device">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-slate-800">抓包网卡</p>
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void readCaptureDevices().then(setDevices); }}>刷新</Button>
+              </div>
+              {devices?.ok && devices.devices.length > 0 ? (
+                <select
+                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700"
+                  value={devices.selected ?? 'auto'}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const name = event.target.value;
+                    void selectCaptureDevice(name).then((message) => {
+                      if (message) setActionError(message);
+                      void readCaptureDevices().then(setDevices);
+                    });
+                  }}
+                >
+                  <option value="auto">自动（所有网卡，推荐）</option>
+                  {devices.devices.map((device) => <option key={device.name} value={device.name}>{device.description}</option>)}
+                </select>
+              ) : <p className="text-xs text-amber-800">{devices?.error || '正在读取网卡…'}</p>}
+              <p className="text-xs text-slate-500">默认自动打开所有网卡，不用猜流量走哪块；用加速器时也可以手动选对应的 TAP 网卡。提示无权限请以管理员身份运行。</p>
+            </div>
+            <ol className="list-decimal space-y-0.5 pl-5 text-xs text-slate-500">
+              <li>保持网络连接，点「开始采集」。</li>
+              <li>打开游戏并登录，进入野外或家园场景。</li>
+              <li>{liveMode ? '持续获取已开启：数据会边玩边更新，不收齐也不自动停止；想结束时点「停止并保存」。' : '查看数据进度；内容稳定（进度条走满）后会自动停止、保存并开始导入。'}</li>
+            </ol>
+          </> : (
+            <ol className="list-decimal space-y-0.5 pl-5 text-xs text-slate-500">
+              <li>关闭其他 VPN 或游戏加速器，开始采集并同意系统 VPN 授权。</li>
+              <li>打开游戏，重新登录，依次查看精灵仓库、背包与蛋仓。</li>
+              <li>{liveMode ? '持续获取已开启：数据会边玩边更新，不收齐也不自动停止；想结束时点「停止并保存」。' : '查看数据进度；内容稳定（进度条走满）后会自动停止、保存并开始导入。'}</li>
+            </ol>
+          )}
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2" data-testid="native-live-mode">
+            <div>
+              <p className="text-sm font-medium text-slate-800">持续获取模式</p>
+              <p className="text-xs text-slate-500">{liveMode ? '已开启：数据收齐也不自动停止，边玩边更新。' : '开启后不用点停止，新数据会实时进结果页。'}</p>
+            </div>
+            <Button size="sm" variant={liveMode ? 'primary' : 'secondary'} aria-pressed={liveMode} onClick={() => toggleLiveMode()}>
+              {liveMode ? '已开启' : '已关闭'}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2" data-testid="native-rare-alert">
+            <div>
+              <p className="text-sm font-medium text-slate-800">附近强提醒</p>
+              <p className="text-xs text-slate-500">{rareAlertOn ? '附近刷到稀有（±100dB / 体重牌+声音牌）或命中需求中心时弹通知。' : '已关闭：附近稀有与需求命中只展示，不弹通知。'}</p>
+            </div>
+            <Button size="sm" variant={rareAlertOn ? 'primary' : 'secondary'} aria-pressed={rareAlertOn} onClick={() => toggleRareAlert()}>
+              {rareAlertOn ? '已开启' : '已关闭'}
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2" data-tour="collector-start">
             {busy ? <Button disabled={state.phase === 'stopping'} onClick={() => action('stopCapture')}>停止并保存</Button>
-              : <Button disabled={importing || !!error} onClick={() => action('startCapture')}>开始采集</Button>}
-            <Button variant="secondary" onClick={() => action('openGame')}>打开游戏</Button>
+              : <Button disabled={importing || !!error || (desktop && !devices?.ok)} onClick={() => action('startCapture')}>开始采集</Button>}
+            {desktop ? null : <Button variant="secondary" onClick={() => action('openGame')}>打开游戏</Button>}
           </div>
         </>}
         <StateNotice kind={state.phase === 'failed' ? 'error' : 'cached'} title={state.message || '准备采集'} />
-        <CaptureProgressView state={state} onReady={() => handleCaptureReady(state.fileId)} />
+        <CaptureProgressView state={state} live={liveMode} rareAlertOn={rareAlertOn} onReady={() => requestAutoImport(state.fileId)} />
         {AUTO_STAGE_LABEL[autoStage] ? (
           <p className="text-xs text-emerald-700" data-testid="capture-auto-status">{AUTO_STAGE_LABEL[autoStage]}</p>
         ) : null}
+        {nearbyOwned ? (
+          <p className="text-xs text-slate-500" data-testid="capture-nearby-owned">
+            本次采集由「附近」页开始：不会自动停止，也不会自动导入；想导入先停止，再在文件列表点「解析并导入」。
+          </p>
+        ) : null}
         {busy ? <p className="text-xs text-slate-500">已记录 {state.packets} 包 · {sizeLabel(state.bytes)}。数量不代表数据已收齐。</p> : null}
         <p className="text-xs text-slate-500">最多保留 10 个原包，每次上限 128 MiB；导入后仍保留，不会自动清理。</p>
-        {!uploadSupported ? <p className="text-xs text-slate-500">更新安卓安装包后可直接上传蛋神助手。</p> : null}
-        {visibleFiles.length === 0 ? <p className="text-sm text-slate-500">还没有本机采集文件</p> : <ul className="space-y-1.5">
+        {!uploadSupported && !desktop ? <p className="text-xs text-slate-500">更新安卓安装包后可直接上传蛋神助手。</p> : null}
+        {visibleFiles.length === 0 ? <p className="text-sm text-slate-500">还没有本机采集文件</p> : <>
+          <div className="flex flex-wrap items-center justify-between gap-2" data-testid="capture-file-bulk">
+            <label className="flex min-h-[32px] items-center gap-1.5 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={selectedFiles.size > 0 && selectedFiles.size === visibleFiles.length}
+                onChange={(event) => setSelectedFiles(event.target.checked ? new Set(visibleFiles.map((file) => file.id)) : new Set())}
+                disabled={busy || importing || batchDeleting}
+                data-testid="capture-file-select-all"
+              />
+              全选（{visibleFiles.length} 个）
+            </label>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={busy || importing || batchDeleting || !!state.uploadBusy || selectedFiles.size === 0}
+              busy={batchDeleting}
+              onClick={() => setConfirmBatchDelete(true)}
+              data-testid="capture-file-delete-selected"
+            >
+              删除已选 {selectedFiles.size} 个
+            </Button>
+          </div>
+          <ul className="space-y-1.5">
           {visibleFiles.map((file) => <li key={file.id} className="space-y-1.5 rounded-xl border border-slate-100 p-2.5">
-            <p className="break-all text-sm text-slate-700">{file.name}</p>
-            <p className="text-xs text-slate-500">{new Date(file.createdAt).toLocaleString()} · {sizeLabel(file.size)}</p>
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={selectedFiles.has(file.id)}
+                onChange={() => toggleSelectedFile(file.id)}
+                disabled={busy || importing || batchDeleting}
+                aria-label={`选择 ${file.name}`}
+                data-testid={`capture-file-select-${file.id}`}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="break-all text-sm text-slate-700">{file.name}</p>
+                <p className="text-xs text-slate-500">{new Date(file.createdAt).toLocaleString()} · {sizeLabel(file.size)}</p>
+              </div>
+            </div>
             {!file.valid ? <p className="text-xs text-amber-800">未完整保存或没有可用数据，请重新采集；仍可导出原包。</p> : null}
             {file.upload ? <p className={`text-xs ${uploadTone(file.upload)}`}>{uploadStatus(file.upload)}</p> : null}
             {uploadSupported && file.size > CAPTURE_UPLOAD_MAX_BYTES
@@ -316,28 +355,28 @@ export function NativeCollectorPanel() {
               <Button size="sm" variant="danger" disabled={busy || importing || !!error || !!state.uploadBusy} onClick={() => setDeleting(file.id)}>删除</Button>
             </div>
           </li>)}
-        </ul>}
+          </ul>
+        </>}
         <details className="text-xs text-slate-500">
           <summary className="flex min-h-[32px] cursor-pointer items-center">采集组件与开源许可</summary>
-          <p>基于蛋神助手采集器 1.2.6 的原生转发与 PCAP 代码；zdtun © Emanuele Faranda，LGPL-3.0-or-later；工具箱集成代码 GPL-3.0-only。</p>
+          <p>基于蛋神助手采集器 1.2.9 的原生转发与 PCAP 代码；zdtun © Emanuele Faranda，LGPL-3.0-or-later；工具箱集成代码 GPL-3.0-only。</p>
           <a className="inline-flex min-h-[32px] items-center text-emerald-700 underline" href="https://github.com/sasaki-ishiran/roco-toolbox/blob/codex/android-collector/android-shell/THIRD_PARTY.md" target="_blank" rel="noreferrer">查看来源、许可证与对应源码</a>
         </details>
       </> : null}
-      <ModalSurface open={completed != null} title={popupTitle} onClose={() => setCompleted(null)} testId="capture-complete" footer={
+      <ModalSurface open={completed != null} title={popupTitle} onClose={() => clearAutoImportCompletion()} testId="capture-complete" footer={
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setCompleted(null)}>取消</Button>
+          <Button variant="secondary" onClick={() => clearAutoImportCompletion()}>取消</Button>
           <Button
             disabled={
               !uploadSupported ||
               !completedFile?.valid ||
               completedFile.size > CAPTURE_UPLOAD_MAX_BYTES ||
-              busy ||
               !!state?.uploadBusy ||
               !!error
             }
             onClick={() => {
               const id = completed?.session;
-              setCompleted(null);
+              clearAutoImportCompletion();
               if (id) void action('uploadCapture', id);
             }}
           >
@@ -347,11 +386,7 @@ export function NativeCollectorPanel() {
       }>
         <div className="space-y-1 p-4" data-testid="capture-complete-status">
           <p className="text-sm text-slate-600">已自动停止并保存本次采集。</p>
-          {savedOnly ? (
-            <p className="text-xs text-slate-600" data-testid="capture-complete-outcome">
-              这次采集还没有导入工具箱：关掉弹窗后在文件列表点「解析并导入」。
-            </p>
-          ) : importFailed ? (
+          {importFailed ? (
             <p className="text-xs text-rose-600" data-testid="capture-complete-outcome">
               导入没有完成：{completionError ?? outcome.message ?? '请在文件列表里点「解析并导入」重试'}
             </p>
@@ -360,7 +395,7 @@ export function NativeCollectorPanel() {
           ) : (
             <p className="text-xs text-slate-600" data-testid="capture-complete-outcome">导入完成，游戏数据已保存到本机。</p>
           )}
-          {!savedOnly && outcome.local === 'saved' ? (
+          {outcome.local === 'saved' ? (
             <div data-testid="capture-complete-after-import">
               <p className="text-xs text-slate-500" data-testid="capture-complete-cloud">{CLOUD_LABEL[outcome.cloud]}</p>
               <p className="text-xs text-slate-500" data-testid="capture-complete-group">
@@ -371,7 +406,7 @@ export function NativeCollectorPanel() {
             </div>
           ) : null}
           <p className="text-xs text-slate-400">
-            {importFailed || savedOnly
+            {importFailed
               ? '原包仍保留在文件列表里，可手动重试或直接上传蛋神助手。'
               : '原包仍会保留；刷新页面或切回本页不会重复导入。'}
           </p>
@@ -381,6 +416,12 @@ export function NativeCollectorPanel() {
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setDeleting(null)}>保留文件</Button>
           <Button variant="danger" disabled={busy || importing} onClick={() => { if (deleting) action('deleteCapture', deleting); setDeleting(null); }}>确认删除</Button>
+        </div>
+      }><p className="p-4 text-sm text-slate-600">删除后无法恢复原包；已导入的游戏数据会保留。</p></ModalSurface>
+      <ModalSurface open={confirmBatchDelete} title={`删除已选的 ${selectedFiles.size} 个本机原包？`} onClose={() => setConfirmBatchDelete(false)} footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setConfirmBatchDelete(false)}>保留文件</Button>
+          <Button variant="danger" disabled={busy || importing || batchDeleting} onClick={() => { void deleteSelectedFiles(); }}>确认删除</Button>
         </div>
       }><p className="p-4 text-sm text-slate-600">删除后无法恢复原包；已导入的游戏数据会保留。</p></ModalSurface>
     </section>

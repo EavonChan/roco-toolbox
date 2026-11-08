@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { CollectorState } from '../collector/nativeCollector';
 import { resetCaptureSessionMarks } from '../collector/captureSessionStore';
+import { resetAutoImportForTest } from '../collector/autoImportFlow';
+import { markCaptureOrigin, resetCaptureOriginForTest } from '../collector/captureOriginStore';
 import { beginImport, resetImportOutcomeForTest, updateImportOutcome } from './importOutcomeStore';
 import { NativeCollectorPanel } from './NativeCollectorPanel';
 
@@ -16,6 +18,8 @@ const file = { id: 'capture-123.pcap', name: 'capture-123.pcap', size: 1234, cre
 beforeEach(() => {
   resetCaptureSessionMarks();
   resetImportOutcomeForTest();
+  resetAutoImportForTest();
+  resetCaptureOriginForTest();
 });
 
 afterEach(() => {
@@ -114,8 +118,7 @@ describe('采集完成自动停止与自动导入', () => {
     expect(within(dialog).getByTestId('capture-complete-group')).toHaveTextContent('2 个小组');
   });
 
-  test('等待文件保存时切页：回来只提示「尚未导入」，不谎报导入完成', async () => {
-    // 停止成功但文件还没落盘：waitForSaved 会一直轮询，此时用户切页卸载面板
+  test('等待保存期间切页：自动导入在后台继续跑完，回来弹「导入完成」且不重复导入', async () => {
     let state: CollectorState = {
       version: 1, supported: true, phase: 'capturing', message: '采集中', packets: 2, bytes: 1234,
       files: [file], progressVersion: 1, fileId: file.id, savedBytes: 1234,
@@ -123,7 +126,7 @@ describe('采集完成自动停止与自动导入', () => {
     const bridge = {
       getState: () => JSON.stringify(state),
       stopCapture: vi.fn(() => {
-        state = { ...state, phase: 'idle', message: '已停止并保存', files: [] };
+        state = { ...state, phase: 'idle', message: '已停止并保存' };
         return '';
       }),
       importCapture: vi.fn(() => { finishImport(); return ''; }),
@@ -134,21 +137,31 @@ describe('采集完成自动停止与自动导入', () => {
       uploadCapture: vi.fn(() => ''),
     };
     window.RocoCapture = bridge;
-
     const view = render(<NativeCollectorPanel />);
     fireEvent.click(await screen.findByRole('button', { name: '模拟进度走满' }));
     await waitFor(() => expect(bridge.stopCapture).toHaveBeenCalledTimes(1));
 
+    // 切页卸载面板：2026-11-07 起自动导入流程在模块级继续跑（保存 → 导入 → 等结果）
     view.unmount();
-    // 等 waitForSaved 轮询到卸载标记并写入待补提示
-    await act(async () => { await new Promise((resolve) => { window.setTimeout(resolve, 400); }); });
+    await act(async () => { await new Promise((resolve) => { window.setTimeout(resolve, 700); }); });
+    expect(bridge.importCapture).toHaveBeenCalledWith(file.id);
 
     render(<NativeCollectorPanel />);
-    const dialog = await screen.findByRole('dialog', { name: '采集已保存，尚未导入' });
-    expect(within(dialog).getByTestId('capture-complete-outcome')).toHaveTextContent(
-      '这次采集还没有导入工具箱',
-    );
-    expect(dialog).not.toHaveTextContent('导入完成，游戏数据已保存到本机');
+    const dialog = await screen.findByRole('dialog', { name: '导入完成' });
+    expect(within(dialog).getByTestId('capture-complete-outcome')).toHaveTextContent('游戏数据已保存到本机');
+    // 面板回来后不会再触发一次导入
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(bridge.importCapture).toHaveBeenCalledTimes(1);
+  });
+
+  test('附近页发起的采集：不自动停止 / 导入，并给出一行说明', async () => {
+    const bridge = setup();
+    markCaptureOrigin('nearby');
+    fireEvent.click(await screen.findByRole('button', { name: '模拟进度走满' }));
+
+    expect(screen.getByTestId('capture-nearby-owned')).toHaveTextContent('本次采集由「附近」页开始');
+    await act(async () => { await new Promise((resolve) => { window.setTimeout(resolve, 300); }); });
+    expect(bridge.stopCapture).not.toHaveBeenCalled();
     expect(bridge.importCapture).not.toHaveBeenCalled();
   });
 });

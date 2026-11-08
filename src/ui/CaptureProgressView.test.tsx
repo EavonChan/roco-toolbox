@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { useCaptureProgress } from '../collector/useCaptureProgress';
 import type { CaptureAnalysis, CaptureProgress } from '../collector/captureProgress';
@@ -53,5 +53,21 @@ describe('采集进度走满', () => {
     const onReady = vi.fn();
     render(<CaptureProgressView state={{ ...state, phase: 'idle' }} onReady={onReady} />);
     expect(onReady).not.toHaveBeenCalled();
+  });
+
+  test('持续获取模式：走满也不自动停止；关掉开关后交回原流程', () => {
+    mockProgress();
+    const onReady = vi.fn();
+    const { rerender } = render(<CaptureProgressView state={state} live onReady={onReady} />);
+    expect(onReady).not.toHaveBeenCalled();
+    expect(screen.getByText(/可随时停止导入/)).toBeTruthy();
+    rerender(<CaptureProgressView state={state} onReady={onReady} />);
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
+  test('持续获取模式显示实时条', () => {
+    mockProgress();
+    render(<CaptureProgressView state={state} live />);
+    expect(document.querySelector('[data-testid="live-capture-banner"]')).toBeTruthy();
   });
 });

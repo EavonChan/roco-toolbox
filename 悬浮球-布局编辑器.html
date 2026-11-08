@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>战斗采集悬浮球 · 布局编辑器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f172a; color: #e2e8f0; min-height: 100vh;
+    display: flex; gap: 24px; padding: 24px; flex-wrap: wrap; align-items: flex-start;
+  }
+  h1 { font-size: 16px; margin-bottom: 4px; color: #f8fafc; }
+  .sub { font-size: 12px; color: #94a3b8; margin-bottom: 16px; }
+
+  /* 画布区 */
+  .stage-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .phone {
+    width: 390px; height: 844px; border-radius: 28px; border: 4px solid #334155;
+    background: #f1f5f9; position: relative; overflow: hidden; flex-shrink: 0;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  /* 模拟附近页背景 */
+  .mock-page { position: absolute; inset: 0; padding: 12px; }
+  .mock-card { background: #fff; border-radius: 14px; padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .mock-card h3 { font-size: 13px; color: #1e293b; margin-bottom: 4px; }
+  .mock-card p { font-size: 11px; color: #64748b; line-height: 1.5; }
+  .mock-radar { height: 180px; border-radius: 14px; background: radial-gradient(circle at 50% 50%, #e0f2fe 0%, #f0f9ff 60%); position: relative; margin-bottom: 8px; }
+  .mock-radar::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 120px; height: 120px;
+    transform: translate(-50%,-50%); border: 1px dashed #94a3b8; border-radius: 50%;
+  }
+  .mock-tabbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: #fff;
+    display: flex; align-items: center; justify-content: space-around; font-size: 10px; color: #94a3b8;
+    border-top: 1px solid #e2e8f0;
+  }
+  .guide-line { position: absolute; background: #f43f5e66; display: none; pointer-events: none; z-index: 90; }
+  .show-guides .guide-line { display: block; }
+  .guide-v { width: 1px; top: 0; bottom: 0; left: var(--gx); }
+  .guide-h { height: 1px; left: 0; right: 0; top: var(--gy); }
+
+  /* 悬浮球 */
+  .orb {
+    position: absolute; border-radius: 50%; cursor: grab; touch-action: none; user-select: none;
+    background: var(--default-color, #334155d9); box-shadow: 0 6px 20px rgba(0,0,0,.35);
+    z-index: 100; transition: background .25s ease;
+  }
+  .orb.hit { background: var(--hit-color, #f43f5e); animation: pulse 1.6s ease-in-out infinite; }
+  .orb:active { cursor: grabbing; }
+  .orb.outlined { outline: 2px dashed #f43f5e; outline-offset: 2px; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 6px 20px rgba(0,0,0,.35), 0 0 0 0 rgba(244,63,94,.55); }
+    50% { box-shadow: 0 6px 20px rgba(0,0,0,.35), 0 0 0 14px rgba(244,63,94,0); }
+  }
+  .orb-label { position: absolute; z-index: 101; font-size: 10px; background: #0f172aee; color: #e2e8f0; padding: 2px 6px; border-radius: 6px; pointer-events: none; display: none; white-space: nowrap; }
+  .show-labels .orb-label { display: block; }
+
+  /* 详情卡 */
+  .detail {
+    position: absolute; width: 230px; background: #fff; border-radius: 16px; padding: 10px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.3); z-index: 110; display: none;
+  }
+  .detail.open { display: block; }
+  .detail h4 { font-size: 12px; color: #1e293b; display: flex; justify-content: space-between; align-items: center; }
+  .detail h4 button { border: 0; background: none; font-size: 15px; color: #94a3b8; cursor: pointer; padding: 2px 6px; }
+  .detail ul { list-style: none; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .detail li {
+    font-size: 11px; line-height: 16px; color: #475569; background: #f1f5f9;
+    border-radius: 6px; padding: 2px 6px;
+  }
+  .detail li.name { background: #1e293b; color: #fff; font-weight: 600; }
+  .detail li.hot { background: #fef3c7; color: #b45309; font-weight: 600; }
+  .detail li.hit-chip { background: #f43f5e; color: #fff; font-weight: 600; display: none; }
+  .detail.hit li.hit-chip { display: block; }
+  .detail .hit-tip { display: none; }
+  .detail.hit .hit-tip { display: block; }
+  .detail .hint { margin-top: 6px; font-size: 10px; color: #94a3b8; }
+
+  /* 控制面板 */
+  .panel {
+    flex: 1; min-width: 300px; max-width: 420px; background: #1e293b; border-radius: 16px;
+    padding: 16px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .panel h2 { font-size: 13px; color: #f8fafc; }
+  .row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #cbd5e1; }
+  .row label { min-width: 72px; }
+  .row input[type=range] { flex: 1; }
+  .row .val { min-width: 48px; text-align: right; color: #38bdf8; font-variant-numeric: tabular-nums; }
+  .row input[type=color] { width: 40px; height: 26px; border: 0; border-radius: 6px; background: none; cursor: pointer; padding: 0; }
+  .seg { display: flex; border: 1px solid #334155; border-radius: 10px; overflow: hidden; }
+  .seg button { flex: 1; padding: 8px; font-size: 12px; border: 0; background: #0f172a; color: #94a3b8; cursor: pointer; }
+  .seg button.on { background: #0ea5e9; color: #fff; }
+  .toggle-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    padding: 8px 14px; border-radius: 10px; border: 1px solid #334155; background: #0f172a;
+    color: #cbd5e1; font-size: 12px; cursor: pointer;
+  }
+  .btn:hover { border-color: #0ea5e9; color: #e2e8f0; }
+  .btn.primary { background: #0ea5e9; border-color: #0ea5e9; color: #fff; }
+  textarea {
+    width: 100%; height: 110px; background: #0f172a; color: #7dd3fc; border: 1px solid #334155;
+    border-radius: 10px; padding: 10px; font-size: 11px; font-family: Consolas, monospace; resize: vertical;
+  }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #059669; color: #fff; padding: 8px 18px; border-radius: 10px; font-size: 12px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 999; }
+  .toast.show { opacity: 1; }
+  .state-text { font-size: 12px; color: #94a3b8; background: #0f172a; border-radius: 10px; padding: 10px; line-height: 1.7; }
+  .state-text b { color: #38bdf8; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="stage-wrap">
+  <h1>战斗采集悬浮球 · 可交互原型</h1>
+  <p class="sub">拖动小球调整位置 · 点球展开详情 · 右侧调尺寸/颜色/状态，改完复制 JSON 发回来即可落码</p>
+  <div class="phone" id="phone">
+    <div class="mock-page">
+      <div class="mock-card">
+        <h3>大世界采集 · 附近精灵</h3>
+        <p>采集中 · 12 只 · 稀有 3 只<br>更新于 21:32:05</p>
+      </div>
+      <div class="mock-radar"></div>
+      <div class="mock-card">
+        <h3>战斗采集 · 赛季奇遇</h3>
+        <p>守卫 龙棋士 · 恶魔狼 L41 · 公 · 勇敢<br>声音 14dB · 体重 82.00kg（30%）</p>
+      </div>
+    </div>
+    <div class="mock-tabbar">
+      <span>家园</span><span>看板</span><span>收集</span><span style="color:#0ea5e9;font-weight:600">附近</span><span>小组</span><span>我的</span>
+    </div>
+    <div class="guide-line guide-v" style="--gx: 12px"></div>
+    <div class="guide-line guide-h" style="--gy: 12px"></div>
+
+    <!-- 悬浮球（位置/大小由 JS 控制） -->
+    <div class="orb" id="orb" title="战斗悬浮球"></div>
+    <div class="orb-label" id="orbLabel">悬浮球 left / top</div>
+
+    <!-- 详情卡 -->
+    <div class="detail" id="detail">
+      <h4>
+        战斗采集 · 赛季奇遇
+        <button type="button" id="detailClose" aria-label="关闭">×</button>
+      </h4>
+      <ul>
+        <li class="name">恶魔狼</li>
+        <li>L41</li>
+        <li>公</li>
+        <li>勇敢</li>
+        <li>14dB</li>
+        <li>1.80m（45%）</li>
+        <li>82.00kg（30%）</li>
+        <li class="hit-chip">命中目标</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>参数调整</h2>
+  <div class="row"><label>球尺寸</label><input type="range" id="size" min="36" max="72" step="2"><span class="val" id="sizeVal">48px</span></div>
+  <div class="row"><label>默认色</label><input type="color" id="defaultColor" value="#334155"><span class="val">不变色时</span></div>
+  <div class="row"><label>命中色</label><input type="color" id="hitColor" value="#f43f5e"><span class="val">命中目标时</span></div>
+  <div class="row"><label>透明度</label><input type="range" id="opacity" min="30" max="100" step="5"><span class="val" id="opacityVal">85%</span></div>
+
+  <div class="row"><label>球状态</label></div>
+  <div class="seg">
+    <button type="button" id="stateDefault" class="on">默认（未命中）</button>
+    <button type="button" id="stateHit">命中目标（变色闪烁）</button>
+  </div>
+
+  <div class="toggle-row">
+    <button class="btn" id="toggleDetail">展开 / 收起详情卡</button>
+    <button class="btn" id="toggleGuides">参考线</button>
+    <button class="btn" id="toggleOutlines">元素边框</button>
+    <button class="btn" id="toggleLabels">坐标标签</button>
+    <button class="btn" id="resetPos">重置位置</button>
+  </div>
+
+  <div class="state-text" id="stateText">当前：<b>默认</b> · left <b>322</b> / top <b>660</b> · 尺寸 <b>48px</b></div>
+
+  <h2>布局 JSON（调完复制发回来）</h2>
+  <textarea id="json" readonly></textarea>
+  <button class="btn primary" id="copyJson">复制布局 JSON</button>
+</div>
+
+<div class="toast" id="toast">已复制</div>
+
+<script>
+(function () {
+  var phone = document.getElementById('phone');
+  var orb = document.getElementById('orb');
+  var orbLabel = document.getElementById('orbLabel');
+  var detail = document.getElementById('detail');
+  var sizeInput = document.getElementById('size');
+  var sizeVal = document.getElementById('sizeVal');
+  var defaultColor = document.getElementById('defaultColor');
+  var hitColor = document.getElementById('hitColor');
+  var opacityInput = document.getElementById('opacity');
+  var opacityVal = document.getElementById('opacityVal');
+  var stateText = document.getElementById('stateText');
+  var jsonBox = document.getElementById('json');
+  var toast = document.getElementById('toast');
+
+  var KEY = 'roco.orbPrototype';
+  var state = { left: 322, top: 660, size: 48, defaultColor: '#334155', hitColor: '#f43f5e', opacity: 85, hit: false, detailOpen: false };
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved) state = Object.assign(state, saved, { hit: false, detailOpen: false });
+  } catch (e) { /* 忽略坏数据 */ }
+
+  function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
+
+  function clamp(x, y) {
+    var w = phone.clientWidth, h = phone.clientHeight, m = 8;
+    return {
+      left: Math.min(Math.max(m, x - state.size / 2), w - state.size - m),
+      top: Math.min(Math.max(m, y - state.size / 2), h - state.size - m)
+    };
+  }
+
+  function layoutOrb() {
+    orb.style.left = state.left + 'px';
+    orb.style.top = state.top + 'px';
+    orb.style.width = state.size + 'px';
+    orb.style.height = state.size + 'px';
+    orb.style.setProperty('--default-color', hexToRgba(state.defaultColor, state.opacity));
+    orb.style.setProperty('--hit-color', state.hitColor);
+    orb.classList.toggle('hit', state.hit);
+    orbLabel.style.left = (state.left + state.size + 6) + 'px';
+    orbLabel.style.top = state.top + 'px';
+    orbLabel.textContent = '悬浮球 ' + state.left + ' / ' + state.top;
+  }
+
+  function layoutDetail() {
+    detail.classList.toggle('open', state.detailOpen);
+    detail.classList.toggle('hit', state.hit);
+    if (!state.detailOpen) return;
+    var w = phone.clientWidth, h = phone.clientHeight;
+    var left = Math.max(8, Math.min(state.left - 230 + state.size, w - 238));
+    var top = Math.min(state.top + state.size + 8, h - 210);
+    detail.style.left = left + 'px';
+    detail.style.top = top + 'px';
+  }
+
+  function refresh() {
+    layoutOrb(); layoutDetail(); updateStateText(); updateJson();
+  }
+
+  function updateStateText() {
+    stateText.innerHTML = '当前：' + (state.hit ? '<b>命中目标（变色闪烁）</b>' : '<b>默认（未命中）</b>')
+      + ' · left <b>' + state.left + '</b> / top <b>' + state.top + '</b> · 尺寸 <b>' + state.size + 'px</b> · 透明度 <b>' + state.opacity + '%</b>';
+  }
+
+  function updateJson() {
+    jsonBox.value = JSON.stringify({
+      left: state.left, top: state.top, size: state.size,
+      defaultColor: state.defaultColor, hitColor: state.hitColor, opacity: state.opacity
+    }, null, 2);
+  }
+
+  function hexToRgba(hex, percent) {
+    var n = parseInt(hex.slice(1), 16);
+    var a = Math.round(percent / 100 * 255);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + (a / 255).toFixed(2) + ')';
+  }
+
+  // 拖动 + 点击
+  var drag = null;
+  orb.addEventListener('pointerdown', function (e) {
+    drag = { x: e.clientX, y: e.clientY, moved: false };
+    if (orb.setPointerCapture) { try { orb.setPointerCapture(e.pointerId); } catch (err) {} }
+  });
+  orb.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return;
+    drag.moved = true;
+    var rect = phone.getBoundingClientRect();
+    var pos = clamp(e.clientX - rect.left, e.clientY - rect.top);
+    state.left = pos.left; state.top = pos.top;
+    refresh();
+  });
+  orb.addEventListener('pointerup', function (e) {
+    if (!drag) return;
+    if (drag.moved) {
+      var rect = phone.getBoundingClientRect();
+      var pos = clamp(e.clientX - rect.left, e.clientY - rect.top);
+      state.left = pos.left; state.top = pos.top;
+    } else {
+      state.detailOpen = !state.detailOpen;
+    }
+    drag = null; save(); refresh();
+  });
+
+  document.getElementById('detailClose').addEventListener('click', function () {
+    state.detailOpen = false; save(); refresh();
+  });
+
+  // 控件
+  sizeInput.value = state.size;
+  sizeVal.textContent = state.size + 'px';
+  opacityInput.value = state.opacity;
+  opacityVal.textContent = state.opacity + '%';
+  defaultColor.value = state.defaultColor;
+  hitColor.value = state.hitColor;
+
+  sizeInput.addEventListener('input', function () {
+    state.size = Number(sizeInput.value);
+    sizeVal.textContent = state.size + 'px';
+    var c = clamp(state.left + state.size / 2, state.top + state.size / 2);
+    state.left = c.left; state.top = c.top;
+    save(); refresh();
+  });
+  defaultColor.addEventListener('input', function () { state.defaultColor = this.value; save(); refresh(); });
+  hitColor.addEventListener('input', function () { state.hitColor = this.value; save(); refresh(); });
+  opacityInput.addEventListener('input', function () {
+    state.opacity = Number(this.value);
+    opacityVal.textContent = state.opacity + '%';
+    save(); refresh();
+  });
+
+  var stateDefault = document.getElementById('stateDefault');
+  var stateHit = document.getElementById('stateHit');
+  stateDefault.addEventListener('click', function () { state.hit = false; save(); refresh(); });
+  stateHit.addEventListener('click', function () { state.hit = true; save(); refresh(); });
+
+  document.getElementById('toggleDetail').addEventListener('click', function () { state.detailOpen = !state.detailOpen; refresh(); });
+  document.getElementById('toggleGuides').addEventListener('click', function () { phone.classList.toggle('show-guides'); this.classList.toggle('primary'); });
+  document.getElementById('toggleOutlines').addEventListener('click', function () {
+    orb.classList.toggle('outlined');
+    detail.style.outline = (detail.style.outline === '2px dashed rgb(244, 63, 94)') ? '' : '2px dashed #f43f5e';
+    this.classList.toggle('primary');
+  });
+  document.getElementById('toggleLabels').addEventListener('click', function () { phone.classList.toggle('show-labels'); this.classList.toggle('primary'); });
+  document.getElementById('resetPos').addEventListener('click', function () {
+    state.left = 322; state.top = 660; save(); refresh();
+  });
+
+  document.getElementById('copyJson').addEventListener('click', function () {
+    jsonBox.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    if (navigator.clipboard) navigator.clipboard.writeText(jsonBox.value).catch(function () {});
+    toast.classList.add('show');
+    setTimeout(function () { toast.classList.remove('show'); }, 1200);
+  });
+
+  // 命中态按钮高亮同步
+  var syncSeg = function () {
+    stateDefault.classList.toggle('on', !state.hit);
+    stateHit.classList.toggle('on', state.hit);
+  };
+  var oldRefresh = refresh;
+  refresh = function () { oldRefresh(); syncSeg(); };
+  refresh();
+
+  // 参考线跟随球心
+  phone.addEventListener('pointermove', function (e) {
+    var rect = phone.getBoundingClientRect();
+    var v = phone.querySelector('.guide-v'), h = phone.querySelector('.guide-h');
+    v.style.setProperty('--gx', (e.clientX - rect.left) + 'px');
+    h.style.setProperty('--gy', (e.clientY - rect.top) + 'px');
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,9 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { NativeCollectorPanel } from './NativeCollectorPanel';
 import { CAPTURE_UPLOAD_MAX_BYTES, type CollectorState } from '../collector/nativeCollector';
+import { resetLiveModeForTest } from '../collector/liveModeStore';
+import { resetRareAlertForTest } from '../collector/rareAlertStore';
 const file = { id: 'capture-123.pcap', name: 'capture-123.pcap', size: 1234, createdAt: 123, valid: true };
-afterEach(() => { delete window.RocoCapture; });
+afterEach(() => { delete window.RocoCapture; resetLiveModeForTest(); resetRareAlertForTest(); });
 function setup(overrides: Partial<CollectorState> = {},
   options: { onUpload?: (patch: (next: Partial<CollectorState>) => void) => void; withoutUpload?: boolean } = {}) {
   let state: CollectorState = { version: 1, supported: true, phase: 'idle', message: '准备采集', packets: 0, bytes: 0, files: [file], ...overrides };
@@ -21,6 +23,22 @@ function setup(overrides: Partial<CollectorState> = {},
   return bridge;
 }
 describe('内置采集入口', () => {
+  test('持续获取模式可切换，并改成不高亮自动停止的说明', async () => {
+    setup();
+    await waitFor(() => expect(screen.getByTestId('native-live-mode')).toBeTruthy());
+    const row = screen.getByTestId('native-live-mode');
+    fireEvent.click(within(row).getByRole('button', { name: '已关闭' }));
+    expect(within(row).getByRole('button', { name: '已开启' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText(/想结束时点「停止并保存」/)).toBeTruthy();
+  });
+  test('稀有精灵提醒开关可切换，默认开启', async () => {
+    setup();
+    await waitFor(() => expect(screen.getByTestId('native-rare-alert')).toBeTruthy());
+    const row = screen.getByTestId('native-rare-alert');
+    expect(within(row).getByRole('button', { name: '已开启' })).toBeTruthy();
+    fireEvent.click(within(row).getByRole('button', { name: '已开启' }));
+    expect(within(row).getByRole('button', { name: '已关闭' })).toBeTruthy();
+  });
   test('网页环境显示本机采集说明，不伪造开始采集按钮', async () => {
     render(<NativeCollectorPanel />);
     await waitFor(() => expect(screen.getByTestId('native-collector-fallback')).toBeTruthy());
@@ -68,6 +86,17 @@ describe('内置采集入口', () => {
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '确认删除' })); });
     expect(bridge.deleteCapture).toHaveBeenCalledWith(file.id);
+  });
+  test('原包支持全选并批量删除', async () => {
+    const files = [file, { ...file, id: 'capture-456.pcap', name: 'capture-456.pcap', createdAt: 456 }];
+    const bridge = setup({ files });
+    await waitFor(() => expect(screen.getByTestId('capture-file-select-all')).toBeTruthy());
+    await act(async () => { fireEvent.click(screen.getByTestId('capture-file-select-all')); });
+    expect(screen.getByTestId('capture-file-delete-selected')).toHaveTextContent('删除已选 2 个');
+    await act(async () => { fireEvent.click(screen.getByTestId('capture-file-delete-selected')); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '确认删除' })); });
+    expect(bridge.deleteCapture).toHaveBeenCalledWith(file.id);
+    expect(bridge.deleteCapture).toHaveBeenCalledWith('capture-456.pcap');
   });
   test('老 Android 说明版本限制，桥错误可以重试', async () => {
     setup({ supported: false });
