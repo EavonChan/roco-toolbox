@@ -73,8 +73,11 @@ export interface GroupListState {
    */
   seekingMembers: string[];
   onlyOwned: boolean;
-  /** 只看我发过需求的蛋（2026-10-26）。 */
-  onlyDemanded: boolean;
+  /**
+   * 「我缺的」不看性格（2026-11-02 用户口径）：只要组内有我缺的母本的产线就能提需求，
+   * 完全不按性格算缺口；同时性格筛选项不可用，发布出去的需求也没有性格要求。
+   */
+  ignoreNatures: boolean;
   /** 「我缺的」目标口径：只影响查看与下一次发需求的默认值，不改已发需求。 */
   targetGender: DemandGender;
   targetNature: string;
@@ -93,7 +96,7 @@ const GROUP_DEFAULT: GroupListState = {
   missingMembers: [],
   seekingMembers: [],
   onlyOwned: false,
-  onlyDemanded: false,
+  ignoreNatures: false,
   targetGender: DEFAULT_DEMAND_GENDER,
   targetNature: '',
   targetBody: DEFAULT_DEMAND_BODY,
@@ -111,7 +114,7 @@ const GROUP_DEFAULT: GroupListState = {
  */
 type TargetCriteria = Pick<
   GroupListState,
-  'targetGender' | 'targetNature' | 'targetBody' | 'targetVoice' | 'targetKind'
+  'targetGender' | 'targetNature' | 'targetBody' | 'targetVoice' | 'targetKind' | 'ignoreNatures'
 >;
 
 const TARGET_CRITERIA_DEFAULT: TargetCriteria = {
@@ -120,6 +123,7 @@ const TARGET_CRITERIA_DEFAULT: TargetCriteria = {
   targetBody: DEFAULT_DEMAND_BODY,
   targetVoice: DEFAULT_DEMAND_VOICE,
   targetKind: 'mother',
+  ignoreNatures: false,
 };
 
 const TARGET_CRITERIA_FIELDS = [
@@ -128,6 +132,7 @@ const TARGET_CRITERIA_FIELDS = [
   'targetBody',
   'targetVoice',
   'targetKind',
+  'ignoreNatures',
 ] as const satisfies ReadonlyArray<keyof GroupListState>;
 
 const isOneOf = <T extends string>(options: readonly T[], value: unknown): value is T =>
@@ -147,6 +152,7 @@ const targetCriteriaStore = createModuleStore<TargetCriteria>(TARGET_CRITERIA_DE
       ? loaded.targetVoice
       : TARGET_CRITERIA_DEFAULT.targetVoice,
     targetKind: loaded?.targetKind === 'stud' ? 'stud' : 'mother',
+    ignoreNatures: loaded?.ignoreNatures === true,
   }),
 });
 

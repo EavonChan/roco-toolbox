@@ -203,10 +203,14 @@ describe('legacyLocation：新页面写回旧键', () => {
       lastTab: 'home',
       swapView: 'eggs',
     });
+    expect(legacyLocation({ ...base, page: 'nearby' })).toEqual({
+      lastTab: 'dashboard',
+      swapView: 'eggs',
+    });
   });
 
   test('不把新 page 字符串写进旧 lastTab', () => {
-    for (const page of ['dashboard', 'collection', 'groups', 'profile'] as const) {
+    for (const page of ['dashboard', 'collection', 'groups', 'profile', 'nearby'] as const) {
       expect(['dashboard', 'myPets', 'coverage', 'swap', 'import']).toContain(
         legacyLocation({ ...base, page }).lastTab,
       );

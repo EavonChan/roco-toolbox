@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>地图视图 + 悬浮小窗 · 方案预览</title>
+<style>
+  :root { --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --brand:#059669; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#f1f5f9; color:var(--ink); font:14px/1.5 "Microsoft YaHei UI","PingFang SC",sans-serif; }
+  .page { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lead { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
+  .grid { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+  .col { flex: 0 0 auto; }
+  .col h2 { font-size: 14px; margin: 0 0 4px; }
+  .col .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; max-width: 390px; }
+  .phone { width: 390px; background:#f8fafc; border:1px solid var(--line); border-radius: 22px; padding: 10px 0 16px; box-shadow: 0 10px 30px rgba(15,23,42,.08); }
+  .phone .inner { padding: 0 12px; display:flex; flex-direction:column; gap:8px; }
+  .card { background:#fff; border-radius:16px; padding:12px; box-shadow:0 1px 2px rgba(15,23,42,.06); }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .title { font-size:14px; font-weight:600; }
+  .btn { border:1px solid var(--line); background:#fff; border-radius:8px; padding:0 8px; height:28px; font-size:12px; color:#475569; cursor:pointer; }
+  .btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
+  .meta { color: var(--muted); font-size:11px; margin:6px 0 0; }
+  .seg { display:flex; gap:4px; background:#f1f5f9; border-radius:10px; padding:3px; }
+  .seg button { flex:1; border:0; background:transparent; border-radius:8px; height:28px; font-size:12px; color:#475569; cursor:pointer; }
+  .seg button[aria-pressed="true"] { background:#fff; color:var(--brand); font-weight:600; box-shadow:0 1px 2px rgba(15,23,42,.08); }
+  .map-card { padding:4px; }
+  .map-head { display:flex; align-items:center; justify-content:space-between; padding:2px 4px 6px; }
+  .map-head p { margin:0; font-size:12px; font-weight:500; color:#475569; }
+  .map { position:relative; width:100%; aspect-ratio:1/1; border-radius:12px; overflow:hidden; background:#1e293b; touch-action:none; cursor:grab; }
+  .map.dragging { cursor:grabbing; }
+  .map img { position:absolute; left:0; top:0; pointer-events:none; user-select:none; }
+  .ring { position:absolute; border:1px solid rgba(255,255,255,.38); border-radius:50%; pointer-events:none; }
+  .self { position:absolute; transform:translate(-50%,-50%); pointer-events:none; text-align:center; }
+  .self i { display:block; width:16px; height:16px; border-radius:50%; background:#0ea5e9; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  .self span { font-size:9px; color:#fff; text-shadow:0 1px 3px #000; }
+  .pet { position:absolute; transform:translate(-50%,-50%); background:none; border:0; padding:0; cursor:pointer; }
+  .pet i { display:block; border-radius:50%; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.35); }
+  .pet.rare i { width:14px; height:14px; }
+  .pet:not(.rare) i { width:10px; height:10px; }
+  .pet em { position:absolute; left:50%; top:100%; transform:translateX(-50%); margin-top:2px; white-space:nowrap; background:rgba(15,23,42,.82); color:#fff; font-size:9px; line-height:12px; padding:0 4px; border-radius:3px; font-style:normal; }
+  .pet.alert::after { content:""; position:absolute; left:50%; top:50%; width:20px; height:20px; margin:-10px 0 0 -10px; border:2px solid #f43f5e; border-radius:50%; }
+  .zoom { position:absolute; right:8px; top:8px; display:flex; flex-direction:column; gap:4px; }
+  .zoom button { width:28px; height:28px; border-radius:8px; border:0; background:rgba(255,255,255,.92); color:#334155; font-size:14px; font-weight:600; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .zoom button.small { font-size:10px; font-weight:500; }
+  .legend { position:absolute; left:8px; bottom:6px; display:flex; gap:8px; flex-wrap:wrap; color:rgba(255,255,255,.92); font-size:9px; pointer-events:none; }
+  .legend b { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:3px; }
+  .petcard { position:absolute; left:8px; right:8px; bottom:24px; background:rgba(15,23,42,.92); color:#fff; border-radius:8px; padding:6px 8px; font-size:11px; display:none; }
+  .petcard.show { display:block; }
+  .petcard .n { font-weight:600; font-size:12px; }
+  .petcard .d { color:#cbd5e1; font-size:10px; margin-top:2px; }
+  .note { color:#94a3b8; font-size:11px; text-align:center; margin:6px 0 0; }
+  /* 悬浮小窗 */
+  .overlay { width:460px; height:300px; background:#0f172a; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; color:#e2e8f0; box-shadow:0 12px 30px rgba(15,23,42,.35); }
+  .ov-head { display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 8px; background:#111c33; border-bottom:1px solid #1e293b; }
+  .ov-head .st { font-size:11px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ov-head .st b { color:#34d399; }
+  .ov-head .acts { display:flex; gap:4px; flex:0 0 auto; }
+  .ov-head button { border:1px solid #334155; background:#1e293b; color:#cbd5e1; border-radius:6px; font-size:11px; padding:2px 6px; cursor:pointer; white-space:nowrap; }
+  .ov-head button[aria-pressed="true"] { background:#f59e0b; border-color:#f59e0b; color:#1f2937; font-weight:600; }
+  .ov-main { flex:1; display:flex; gap:8px; padding:8px; min-height:0; }
+  .ov-map { position:relative; width:240px; height:240px; border-radius:10px; overflow:hidden; background:#1e293b; flex:0 0 auto; }
+  .ov-map canvas { display:block; width:100%; height:100%; }
+  .ov-map span { position:absolute; left:5px; bottom:4px; font-size:9px; color:#cbd5e1; text-shadow:0 1px 2px #000; }
+  .ov-list { flex:1; min-width:0; margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:2px; overflow-y:auto; }
+  .ov-list li { display:flex; align-items:baseline; gap:4px; background:#111c33; border:1px solid #1e293b; border-radius:7px; padding:3px 5px; min-height:22px; }
+  .ov-list li.alert { border-color:#be123c; background:#2a1220; }
+  .ov-list li.rare { border-color:#b45309; }
+  .ov-list .dot { width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
+  .ov-list .name { font-weight:600; color:#f1f5f9; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ov-list .meta { margin-left:auto; font-size:10px; color:#94a3b8; white-space:nowrap; }
+  .ov-list .tag { font-size:9px; color:#f87171; white-space:nowrap; }
+  .ov-foot { display:flex; justify-content:space-between; padding:1px 8px 4px; font-size:10px; color:#64748b; }
+  .overlay.collapsed { height:38px; width:280px; }
+  .overlay.collapsed .ov-main, .overlay.collapsed .ov-foot { display:none; }
+  .overlay.collapsed .ov-head { height:100%; border-bottom:0; }
+  #expand { display:none; }
+  .overlay.collapsed #expand { display:inline-block; }
+  .overlay.collapsed #collapse { display:none; }
+  /* 明色主题 */
+  .overlay.light { background:#ffffff; color:#0f172a; }
+  .overlay.light .ov-head { background:#f8fafc; border-bottom-color:#e2e8f0; }
+  .overlay.light .ov-head .st { color:#64748b; }
+  .overlay.light .ov-head .st b { color:#059669; }
+  .overlay.light .ov-head button { background:#fff; border-color:#e2e8f0; color:#475569; }
+  .overlay.light .ov-head button[aria-pressed="true"] { background:#f59e0b; border-color:#f59e0b; color:#1f2937; }
+  .overlay.light .ov-map { background:#e2e8f0; }
+  .overlay.light .ov-map span { color:#475569; text-shadow:0 1px 2px #fff; }
+  .overlay.light .ov-list li { background:#f8fafc; border-color:#e2e8f0; }
+  .overlay.light .ov-list li.alert { background:#fef2f2; border-color:#fecdd3; }
+  .overlay.light .ov-list li.rare { border-color:#fcd34d; }
+  .overlay.light .ov-list .name { color:#0f172a; }
+  .overlay.light .ov-list .meta { color:#64748b; }
+  .overlay.light .ov-list .tag { color:#be123c; }
+  .overlay.light .ov-foot { color:#94a3b8; }
+  .notes { margin-top: 10px; width: 380px; font-size: 12px; color: var(--muted); }
+  .notes li { margin: 2px 0; }
+  .pill { display:inline-block; background:#e2e8f0; color:#475569; border-radius:999px; padding:0 6px; font-size:11px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>地图视图 + 悬浮小窗 · 方案预览</h1>
+  <p class="lead">这是给审核用的可交互稿（不是最终打包界面）。地图支持拖动 / 滚轮缩放 / 点精灵；点右上角「+ − 自身」可复位。数据用的是真实抓包里的坐标。</p>
+
+  <div class="grid">
+    <div class="col">
+      <h2>① 附近页 · 地图视图（390 宽）</h2>
+      <p class="hint">替换原来的「雷达」视图：真实世界坐标落点，不再有 115m 视野裁剪。</p>
+      <div class="phone">
+        <div class="inner">
+          <div class="card">
+            <div class="row">
+              <span class="title">大世界采集 · 附近精灵</span>
+              <div style="display:flex;gap:4px">
+                <button class="btn">悬浮小窗</button>
+                <button class="btn primary">开始采集</button>
+              </div>
+            </div>
+            <p class="meta">场景 10003 · 附近 18 只 · 稀有 6 只 · 需求命中 2 只</p>
+            <p class="meta" style="margin-top:2px">更新于 16:38:15</p>
+          </div>
+
+          <div class="card" style="display:flex;flex-direction:column;gap:6px">
+            <div class="seg" data-seg="filter">
+              <button aria-pressed="true">全部</button><button>稀有</button><button>需求</button>
+            </div>
+            <div class="seg" data-seg="view">
+              <button aria-pressed="true">地图</button><button>列表</button>
+            </div>
+          </div>
+
+          <div class="card map-card">
+            <div class="map-head">
+              <p>地图 · 卡洛西亚大陆</p>
+              <div style="display:flex;gap:4px"><button class="btn">刷新</button><button class="btn">全屏</button></div>
+            </div>
+            <div class="map" id="map">
+              <img id="mapimg" src="public/maps/10003.webp" alt="卡洛西亚大陆" />
+              <div class="zoom">
+                <button data-zoom="in">+</button>
+                <button data-zoom="out">−</button>
+                <button class="small" data-zoom="self">我</button>
+              </div>
+              <div class="legend">
+                <span><b style="background:#0ea5e9"></b>我</span>
+                <span><b style="background:#64748b"></b>普通</span>
+                <span><b style="background:#f59e0b"></b>异色/炫彩</span>
+                <span><b style="background:#f43f5e"></b>需求命中</span>
+              </div>
+              <div class="petcard" id="petcard"><div class="n"></div><div class="d"></div></div>
+            </div>
+            <p class="note">拖动 / 滚轮缩放；点位是世界坐标实测位置，不随视野裁剪</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2>② PC 悬浮小窗（460 × 300，置顶）</h2>
+      <p class="hint">主交互是<b>收起 / 展开</b>：收起后只剩一条状态条（280×38），点「展开」回来。右上「明/暗」切主题。「小窗不挡点击」是高级选项，放在工具箱「附近」页，不占小窗按钮（按 <span class="pill">Ctrl+Alt+O</span> 恢复）。</p>
+      <div class="overlay" id="overlay">
+        <div class="ov-head">
+          <span class="st" id="ovstatus"><b>采集中</b> · 已接通 · 附近 4 只</span>
+          <span class="acts">
+            <button id="expand" title="展开列表与小地图">展开</button>
+            <button id="collapse" title="收起成状态条">收起</button>
+            <button id="theme" title="切换明色 / 暗色">明/暗</button>
+            <button>×</button>
+          </span>
+        </div>
+        <div class="ov-main">
+          <div class="ov-map"><canvas id="ovmap" width="240" height="240"></canvas><span>≈380m</span></div>
+          <ul class="ov-list" id="ovlist"></ul>
+        </div>
+        <div class="ov-foot"><span>场景 10003</span><span>更新 16:38:15</span></div>
+      </div>
+      <ul class="notes">
+        <li>· 地图放大到原来的 1.8 倍（240×240）；列表压成两行：名字/等级 + 距离/方向 + 一个牌子</li>
+        <li>· 窗口高度按「地图 + 边距」定，下面不再留空白；点「收起」变 280×38 状态条</li>
+        <li>· 状态条上直接能看到「附近 N 只 · 稀有 M」，需要细节再展开</li>
+        <li>· 主题、收起状态、位置都会记住；小窗始终置顶</li>
+      </ul>
+    </div>
+  </div>
+</div>
+<script>
+const MAP = { originX: 306000, originY: 408000, side: 408000, width: 4096, height: 4096 };
+const MPP = MAP.side / 100 / MAP.width;
+const SELF = { x: 616845, y: 663625 };
+const PETS = [
+  { name:'冰川企鹅', level:38, kinds:['big','high'], rare:true, alert:false, x:620100, y:662100, distance:42, bearing:'东北' },
+  { name:'雪豆丁', level:45, kinds:['colorful'], rare:true, alert:true, x:613900, y:670200, distance:88, bearing:'西南' },
+  { name:'火花', level:33, kinds:[], rare:false, alert:false, x:622200, y:663800, distance:120, bearing:'东' },
+  { name:'小草虫', level:12, kinds:[], rare:false, alert:false, x:617000, y:668000, distance:210, bearing:'南' },
+  { name:'喵喵', level:26, kinds:['shiny'], rare:true, alert:false, x:611500, y:660500, distance:180, bearing:'西北' },
+  { name:'蹦蹦种子', level:19, kinds:[], rare:false, alert:false, x:619400, y:666400, distance:70, bearing:'东南' },
+  { name:'护主犬', level:41, kinds:['high'], rare:true, alert:false, x:615200, y:665100, distance:60, bearing:'西' },
+  { name:'蓝影马', level:44, kinds:['big'], rare:true, alert:false, x:618600, y:661000, distance:95, bearing:'北' },
+];
+const KIND_LABEL = { colorful:'炫彩', shiny:'异色', pollution:'污染', big:'大块头', small:'小不点', high:'婉转声', low:'粗嗓门' };
+const colorOf = (kinds) => kinds.includes('pollution') ? '#7c3aed' : kinds.includes('shiny') ? '#f59e0b'
+  : kinds.includes('colorful') ? '#ec4899' : (kinds.includes('big')||kinds.includes('small')) ? '#0ea5e9'
+  : (kinds.includes('high')||kinds.includes('low')) ? '#059669' : '#64748b';
+const project = (p) => ({ px:(p.x-MAP.originX)/MAP.side*MAP.width, py:(p.y-MAP.originY)/MAP.side*MAP.width });
+
+const mapEl = document.getElementById('map');
+const img = document.getElementById('mapimg');
+let view = { scale:1, tx:0, ty:0 };
+function fit() {
+  const rect = mapEl.getBoundingClientRect();
+  const scale = rect.width / (520 / MPP);
+  const self = project(SELF);
+  view = { scale, tx: rect.width/2 - self.px*scale, ty: rect.height/2 - self.py*scale };
+  draw();
+}
+function draw() {
+  const { scale, tx, ty } = view;
+  img.style.width = MAP.width*scale + 'px';
+  img.style.height = MAP.height*scale + 'px';
+  img.style.transform = `translate(${tx}px,${ty}px)`;
+  mapEl.querySelectorAll('.pet,.self,.ring').forEach(el=>el.remove());
+  const at = (p) => { const q = project(p); return { x: tx+q.px*scale, y: ty+q.py*scale }; };
+  const self = at(SELF);
+  [100,300].forEach(m => {
+    const r = (m/MPP)*scale;
+    const ring = document.createElement('div');
+    ring.className='ring';
+    ring.style.cssText = `left:${self.x-r}px;top:${self.y-r}px;width:${r*2}px;height:${r*2}px`;
+    mapEl.append(ring);
+  });
+  PETS.forEach(p => {
+    const s = at(p);
+    const btn = document.createElement('button');
+    btn.className = 'pet' + (p.rare?' rare':'') + (p.alert?' alert':'');
+    btn.style.left = s.x+'px'; btn.style.top = s.y+'px';
+    btn.innerHTML = `<i style="background:${colorOf(p.kinds)}"></i>` + (p.rare?`<em>${p.name}</em>`:'');
+    btn.title = `${p.name} Lv${p.level} · ${p.distance}m ${p.bearing}`;
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); showCard(p); });
+    mapEl.append(btn);
+  });
+  const selfEl = document.createElement('div');
+  selfEl.className='self'; selfEl.style.left=self.x+'px'; selfEl.style.top=self.y+'px';
+  selfEl.innerHTML = '<i></i><span>我</span>';
+  mapEl.append(selfEl);
+}
+function showCard(p) {
+  const card = document.getElementById('petcard');
+  card.classList.add('show');
+  card.querySelector('.n').textContent = `${p.name} · Lv${p.level}${p.alert?' · 需求命中':''}`;
+  card.querySelector('.d').textContent = `${p.kinds.length?p.kinds.join('·')+' · ':''}${p.distance}m ${p.bearing}`;
+}
+document.getElementById('petcard').addEventListener('click', ()=>document.getElementById('petcard').classList.remove('show'));
+
+let dragging = null;
+mapEl.addEventListener('pointerdown', (e)=>{ if(e.target.closest('.pet')) return; dragging={x:e.clientX,y:e.clientY}; mapEl.classList.add('dragging'); mapEl.setPointerCapture(e.pointerId); });
+mapEl.addEventListener('pointermove', (e)=>{ if(!dragging) return; const dx=e.clientX-dragging.x, dy=e.clientY-dragging.y; dragging={x:e.clientX,y:e.clientY}; view.tx+=dx; view.ty+=dy; draw(); });
+const stop = ()=> { dragging=null; mapEl.classList.remove('dragging'); };
+mapEl.addEventListener('pointerup', stop); mapEl.addEventListener('pointercancel', stop);
+mapEl.addEventListener('wheel', (e)=>{ e.preventDefault(); const rect=mapEl.getBoundingClientRect(); const fx=e.clientX-rect.left, fy=e.clientY-rect.top;
+  const factor = e.deltaY<0?1.18:1/1.18; const scale = Math.min(6, Math.max(0.04, view.scale*factor)); const ratio=scale/view.scale;
+  view = { scale, tx: fx-(fx-view.tx)*ratio, ty: fy-(fy-view.ty)*ratio }; draw(); }, { passive:false });
+mapEl.querySelector('[data-zoom="in"]').onclick = ()=>{ const r=mapEl.getBoundingClientRect(); zoomAt(1.35, r.width/2, r.height/2); };
+mapEl.querySelector('[data-zoom="out"]').onclick = ()=>{ const r=mapEl.getBoundingClientRect(); zoomAt(1/1.35, r.width/2, r.height/2); };
+mapEl.querySelector('[data-zoom="self"]').onclick = fit;
+function zoomAt(f, fx, fy){ const scale=Math.min(6,Math.max(0.04,view.scale*f)); const ratio=scale/view.scale; view={ scale, tx:fx-(fx-view.tx)*ratio, ty:fy-(fy-view.ty)*ratio }; draw(); }
+
+document.querySelectorAll('[data-seg]').forEach(seg=>{
+  seg.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+    seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));
+    btn.setAttribute('aria-pressed','true');
+  }));
+});
+document.getElementById('collapse').addEventListener('click', ()=>{
+  document.getElementById('overlay').classList.add('collapsed');
+  document.getElementById('ovstatus').innerHTML = '<b>采集中</b> · 4 只 · 稀有 3';
+});
+document.getElementById('expand').addEventListener('click', ()=>{
+  document.getElementById('overlay').classList.remove('collapsed');
+  document.getElementById('ovstatus').innerHTML = '<b>采集中</b> · 已接通 · 附近 4 只';
+});
+document.getElementById('theme').addEventListener('click', ()=>{
+  document.getElementById('overlay').classList.toggle('light');
+});
+
+// 悬浮小窗
+const ov = document.getElementById('ovmap'); const ctx = ov.getContext('2d');
+const ovImg = new Image(); ovImg.src='public/maps/10003.webp';
+function drawOverlay(){
+  const VIEW=380, viewPx=VIEW/MPP, scale=ov.width/viewPx, c=project(SELF);
+  ctx.clearRect(0,0,ov.width,ov.height);
+  if (ovImg.complete) ctx.drawImage(ovImg, c.px-viewPx/2, c.py-viewPx/2, viewPx, viewPx, 0,0,ov.width,ov.height);
+  ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(ov.width/2,ov.height/2,(100/MPP)*scale,0,Math.PI*2); ctx.stroke();
+  PETS.slice(0,6).forEach(p=>{ const q=project(p); const x=(q.px-c.px)*scale+ov.width/2, y=(q.py-c.py)*scale+ov.height/2;
+    if (x<-8||y<-8||x>ov.width+8||y>ov.height+8) return;
+    ctx.beginPath(); ctx.fillStyle=colorOf(p.kinds); ctx.arc(x,y,p.rare?3.6:2.6,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.2; ctx.stroke();
+    if(p.alert){ ctx.beginPath(); ctx.strokeStyle='#f43f5e'; ctx.lineWidth=1.5; ctx.arc(x,y,5.5,0,Math.PI*2); ctx.stroke(); }
+  });
+  ctx.beginPath(); ctx.fillStyle='#0ea5e9'; ctx.arc(ov.width/2,ov.height/2,4,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+}
+ovImg.onload = drawOverlay;
+
+const list = document.getElementById('ovlist');
+[...PETS].sort((a,b)=>Number(b.alert)-Number(a.alert)||Number(b.rare)-Number(a.rare)||a.distance-b.distance).slice(0,8).forEach(p=>{
+  const li=document.createElement('li'); if(p.alert) li.className='alert'; else if(p.rare) li.className='rare';
+  const tags=[]; if(p.alert) tags.push('需求'); if(p.rare&&p.kinds.length) tags.push(KIND_LABEL[p.kinds[0]]||p.kinds[0]);
+  li.innerHTML = `<i class="dot" style="background:${colorOf(p.kinds)}"></i><span class="name">${p.name} Lv${p.level}</span>`+
+                 `<span class="meta">${p.distance}m ${p.bearing}</span>`+(tags.length?`<span class="tag">${tags.join('·')}</span>`:'');
+  list.append(li);
+});
+
+fit();
+drawOverlay();
+window.addEventListener('resize', ()=>{ fit(); drawOverlay(); });
+</script>
+</body>
+</html>

@@ -45,7 +45,7 @@ describe('小组清单临时状态', () => {
       missingMembers: [],
       seekingMembers: [],
       onlyOwned: false,
-      onlyDemanded: false,
+      ignoreNatures: false,
       targetGender: '母',
       targetNature: '',
       targetBody: '大块头',
@@ -110,5 +110,15 @@ describe('「我缺的」目标口径跨会话记住（2026-11-01 用户反馈�
     act(() => setGroupList('A', 'g1', { query: '火神', memberFilter: 'm1' }));
 
     expect(window.localStorage.getItem('roco.groupTargetCriteria')).toBeNull();
+  });
+
+  test('「不挑性格」写进本机，换组与刷新后沿用（2026-11-02 用户口径）', () => {
+    renderHook(() => useGroupList('A', 'g1'));
+    act(() => setGroupList('A', 'g1', { ignoreNatures: true }));
+
+    expect(window.localStorage.getItem('roco.groupTargetCriteria')).toContain('"ignoreNatures":true');
+
+    const g2 = renderHook(() => useGroupList('A', 'g2'));
+    expect(g2.result.current.ignoreNatures).toBe(true);
   });
 });

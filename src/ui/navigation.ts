@@ -10,7 +10,7 @@ import type { CollectionGroupType } from '../shared/collectionGroups';
  * 这里只放纯函数：App 持有唯一状态，页面只发意图（`NavigationIntent`），
  * 不直接改别页内部状态。新视图记忆放内存，不扩展云同步键。
  */
-export type AppPage = 'dashboard' | 'home' | 'collection' | 'groups' | 'profile';
+export type AppPage = 'dashboard' | 'home' | 'collection' | 'nearby' | 'groups' | 'profile';
 
 export type CollectionLocation =
   | { kind: 'mothers'; status: 'missing' | 'collected' | 'plan'; eggGameId?: number }
@@ -149,6 +149,8 @@ export function legacyLocation(state: AppNavigation): LegacyLocation {
     return { lastTab: 'swap', swapView: state.groupType === 'stud' ? 'eggs' : 'sharing' };
   }
   if (state.page === 'profile') return { lastTab: 'import', swapView: 'eggs' };
+  // 附近是 2026-11-06 新增页面，旧键没有对应值；回落到看板，避免写进旧版不认识的值。
+  if (state.page === 'nearby') return { lastTab: 'dashboard', swapView: 'eggs' };
   if (state.page === 'home') return { lastTab: 'home', swapView: 'eggs' };
   if (state.page === 'dashboard') return { lastTab: 'dashboard', swapView: 'eggs' };
   if (state.collection.kind === 'studs') {
