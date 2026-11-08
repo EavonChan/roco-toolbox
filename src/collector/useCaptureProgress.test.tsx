@@ -4,12 +4,13 @@ import type { CaptureAnalysis } from './captureProgress';
 import { clearCaptureProgressCache } from './captureProgressCache';
 import type { CollectorState } from './nativeCollector';
 import { useCaptureProgress } from './useCaptureProgress';
+import { resetDecodeWorkerForTest } from '../pcap/decodeInWorker';
 
 const analysis: CaptureAnalysis = { fingerprint: 'a', hasGameTraffic: true, hasKey: true, hasProfile: true, accountCount: 1, boxes: 1, records: 1, missingRecords: 0, hasEggInventory: true, eggInventoryComplete: true, eggRecords: 0, completionCandidate: true, truncated: false, flowErrors: 0, stableWaitMs: 12000 };
 const state: CollectorState = { version: 1, supported: true, phase: 'capturing', message: '', packets: 2, bytes: 100, files: [], progressVersion: 1, fileId: 'capture-1.pcap', savedBytes: 100 };
 beforeEach(() => { clearCaptureProgressCache(); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); delete window.RocoCapture; });
-function setup() {
+afterEach(() => { resetDecodeWorkerForTest(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); delete window.RocoCapture; });
+function setup(options: { live?: boolean } = {}) {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
   let fail = false;
   let size = 100;
@@ -17,9 +18,20 @@ function setup() {
   class WorkerStub {
     onmessage?: (event: unknown) => void;
     terminate() {}
-    postMessage() { queueMicrotask(() => this.onmessage?.({ data: fail ? { ok: false, error: '本次无法解析' } : { ok: true, value: analysis } })); }
+    // Worker 长驻后请求带 id，回包必须原样带回，主线程才认得出是哪一轮
+    postMessage(message: { id?: number }) { queueMicrotask(() => this.onmessage?.({ data: { id: message.id, ...(fail ? { ok: false, error: '本次无法解析' } : { ok: true, value: analysis }) } })); }
   }
   vi.stubGlobal('Worker', WorkerStub);
+  // live 分支走增量读取（readCaptureSnapshotBytes）：首轮全量，之后 ?from=N 只取新增段
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    const match = /[?&]from=(\d+)/.exec(String(input));
+    const from = match ? Number(match[1]) : 0;
+    return {
+      ok: true,
+      headers: { get: (name: string) => (name === 'X-Capture-From' ? String(from) : null) },
+      arrayBuffer: async () => new Uint8Array(Math.max(0, size - from)).buffer,
+    } as unknown as Response;
+  }));
   window.RocoCapture = {
     getState: () => JSON.stringify(state),
     inspectCapture: () => {
@@ -27,8 +39,8 @@ function setup() {
       return JSON.stringify({ id: state.fileId, size, url: 'https://roco-share.invalid/collector/12345678-1234-1234-1234-123456789abc' });
     },
   };
-  const hook = renderHook((value) => useCaptureProgress(value), { initialProps: state });
-  return { ...hook, failure: () => { fail = true; size++; }, inspectCalls: () => inspectCalls };
+  const hook = renderHook((value) => useCaptureProgress(value, options), { initialProps: state });
+  return { ...hook, failure: () => { fail = true; size++; }, grow: () => { size += 100; }, inspectCalls: () => inspectCalls };
 }
 const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 
@@ -73,5 +85,15 @@ describe('采集进度生命周期', () => {
     await tick(30000);
     expect(second.result.current.progress?.stage).toBe('ready');
     expect(first.inspectCalls()).toBe(calls);
+  });
+  test('持续获取模式：走满后继续读快照，新数据能刷新', async () => {
+    const hook = setup({ live: true });
+    await tick(0); await tick(15000);
+    expect(hook.result.current.progress?.stage).toBe('ready');
+    const calls = hook.inspectCalls();
+    hook.grow();
+    await tick(2500);
+    expect(hook.inspectCalls()).toBeGreaterThan(calls);
+    expect(hook.result.current.sourceBytes).toBe(200);
   });
 });

@@ -49,6 +49,16 @@ public final class CaptureFiles {
         if (!file.delete()) throw new IOException("删除文件失败");
         File marker = marker(file);
         if (marker.exists() && !marker.delete()) throw new IOException("文件已删除，但中断标记未能清理");
+        File trimmed = trimmedMarker(file);
+        if (trimmed.exists()) trimmed.delete();
     }
+    /** 标记「战斗模式采集，只保留最近一段」：文件本身无残标记，但不能完整导入。 */
+    static void markTrimmed(File file) throws IOException {
+        try (FileOutputStream marker = new FileOutputStream(trimmedMarker(file))) {
+            marker.write(1); marker.getFD().sync();
+        }
+    }
+    public synchronized boolean trimmed(File file) { return trimmedMarker(file).exists(); }
     private static File marker(File file) { return new File(file.getPath() + ".incomplete"); }
+    private static File trimmedMarker(File file) { return new File(file.getPath() + ".trimmed"); }
 }

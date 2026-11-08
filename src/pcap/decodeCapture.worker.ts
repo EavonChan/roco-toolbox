@@ -3,7 +3,10 @@ import { isCollectorCaptureUrl, MAX_CAPTURE_BYTES } from './collectorUrl';
 import { inspectCaptureBytes } from '../collector/inspectCapture';
 
 // The decoder is shared with the existing import flow, not a second protocol model.
-self.onmessage = async (event: MessageEvent<{ bytes?: Uint8Array; url?: string; fileName: string; mode?: 'inspect' }>) => {
+// Worker 长驻复用（2026-11-08）：同一 Worker 会连续处理多轮请求，必须带 id 回包，
+// 主线程才分得清哪一轮的结果；模块级解密缓存也依赖 Worker 不被销毁。
+self.onmessage = async (event: MessageEvent<{ id?: number; bytes?: Uint8Array; url?: string; fileName: string; mode?: 'inspect'; windowBytes?: number; resume?: string }>) => {
+  const id = event.data.id;
   try {
     let bytes = event.data.bytes;
     if (event.data.url) {
@@ -15,9 +18,15 @@ self.onmessage = async (event: MessageEvent<{ bytes?: Uint8Array; url?: string; 
       bytes = new Uint8Array(await response.arrayBuffer());
     }
     if (!bytes || bytes.byteLength > MAX_CAPTURE_BYTES) throw new Error('抓包为空或超过 128MiB');
-    const value = event.data.mode === 'inspect' ? await inspectCaptureBytes(bytes) : convertPcapBytes(bytes, event.data.fileName);
-    self.postMessage({ ok: true, value });
+    const value = event.data.mode === 'inspect'
+      ? await inspectCaptureBytes(bytes, {
+        windowBytes: event.data.windowBytes,
+        sessionKey: event.data.fileName,
+        resume: event.data.resume,
+      })
+      : convertPcapBytes(bytes, event.data.fileName);
+    self.postMessage({ id, ok: true, value });
   } catch (error) {
-    self.postMessage({ ok: false, error: error instanceof Error ? error.message : '无法解析抓包文件' });
+    self.postMessage({ id, ok: false, error: error instanceof Error ? error.message : '无法解析抓包文件' });
   }
 };

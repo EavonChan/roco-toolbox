@@ -10,6 +10,10 @@
 import pako from 'pako';
 import { CATALOG_VERSION } from '../data/catalog';
 import { mergeSnapshots } from '../domain/backup';
+import {
+  NATURE_OVERRIDES_KEY,
+  NATURE_OVERRIDES_UPDATED_AT_KEY,
+} from '../domain/recommendedNatures';
 import type { AccountSnapshot } from '../domain/parseBackup';
 import { listSnapshots, writeSnapshots } from '../storage/snapshots';
 import { refreshSnapshots } from '../storage/snapshotStore';
@@ -26,7 +30,8 @@ export const SYNCED_PREF_KEYS = [
   'roco.excludedAccounts',
   'roco.petPageSize',
   'roco.copyPreviewOff',
-  'roco.natureOverrides',
+  NATURE_OVERRIDES_KEY,
+  NATURE_OVERRIDES_UPDATED_AT_KEY,
 ] as const;
 
 /**
@@ -42,17 +47,24 @@ export const SYNCED_PREF_KEYS = [
  *
  * 其余 `SYNCED_PREF_KEYS`（分页、复制提示、我的精灵筛选、小窝钉选等）属于
  * "每台设备自己的显示习惯"，仍只补本机没有的键，不互相覆盖。
+ *
+ * 推荐性格覆盖表不在这里：它按**修改时间**合并（本机/云端谁更新用谁），
+ * 否则会把本机还没上传的修改打回云端旧值（2026-11-02 修）。
  */
 export const CLOUD_WINS_PREF_KEYS: ReadonlySet<string> = new Set([
   'roco.targetMode',
   'roco.motherCriteria',
   'roco.excludedAccounts',
   'roco.coverageFilter',
-  // 推荐性格覆盖决定「谁算达标母本」，两台不一致会直接导致小组口径不同 → 以云端为准
-  'roco.natureOverrides',
 ]);
 
 const SNAPSHOT_TYPE = 'roco-toolbox-cloud';
+
+/** 读毫秒时间戳：缺省 / 坏数据都按 0（老数据没有时间戳时，本机有值就保留本机）。 */
+const timestampOf = (raw: string | null | undefined): number => {
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
+};
 
 export interface CloudSnapshot {
   type: typeof SNAPSHOT_TYPE;
@@ -187,6 +199,25 @@ export async function applySnapshot(
   for (const key of SYNCED_PREF_KEYS) {
     const value = snapshot.prefs?.[key];
     if (typeof value !== 'string') continue;
+    // 修改时间键与覆盖表成对处理，不单独参与下面的「补本机缺的键」逻辑
+    if (key === NATURE_OVERRIDES_UPDATED_AT_KEY) continue;
+    if (key === NATURE_OVERRIDES_KEY) {
+      const current = window.localStorage.getItem(key);
+      const localAt = timestampOf(window.localStorage.getItem(NATURE_OVERRIDES_UPDATED_AT_KEY));
+      const cloudAt = timestampOf(snapshot.prefs?.[NATURE_OVERRIDES_UPDATED_AT_KEY]);
+      // 本机改过且不比云端旧 → 保留本机（本机没有这个键时仍从云端取）
+      if (current === null || cloudAt > localAt) {
+        if (current !== value) {
+          window.localStorage.setItem(key, value);
+          prefsAdopted.push(key);
+        }
+        const cloudAtRaw = snapshot.prefs?.[NATURE_OVERRIDES_UPDATED_AT_KEY];
+        if (typeof cloudAtRaw === 'string') {
+          window.localStorage.setItem(NATURE_OVERRIDES_UPDATED_AT_KEY, cloudAtRaw);
+        }
+      }
+      continue;
+    }
     const current = window.localStorage.getItem(key);
     // 口径类键（目标模式 / 母本达标标准 / 账号筛选）以云端为准——两台算出来的数字才对得上；
     // 其余键只补本机没有的（每台设备的显示/筛选习惯不同，别互相覆盖）

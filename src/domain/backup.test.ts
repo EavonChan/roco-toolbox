@@ -7,6 +7,7 @@ import {
   parseToolboxBackup,
 } from './backup';
 import type { AccountSnapshot } from './parseBackup';
+import type { HomeSnapshot } from './types';
 
 /** 账号名 → 稳定的假 UID（真实场景 UID 唯一；测试里按名字派生，保证不同账号不同主键） */
 const gameIdOf = (name: string): number =>
@@ -35,6 +36,18 @@ const at = (name: string, when: string, count = 1): AccountSnapshot => ({
   ...snapshot(name, count),
   exportedAt: when,
   importedAt: when,
+});
+
+/** 一份最小家园快照（只用来验证「导入不会把家园弄丢」） */
+const homeOf = (capturedAt: string): HomeSnapshot => ({
+  schemaVersion: 1,
+  gameId: '1',
+  capturedAt,
+  residents: [],
+  nests: [],
+  layEggCouples: [{ femaleActorId: 'f', maleActorIds: ['m'] }],
+  sceneEggs: [],
+  couplesStale: false,
 });
 
 describe('buildBackup / parseToolboxBackup', () => {
@@ -194,6 +207,34 @@ describe('mergeSnapshots 多设备合并', () => {
     expect(result.kept).toEqual(['测试甲']);
     expect(result.updated).toEqual([]);
     expect(result.snapshots[0].pets).toHaveLength(5);
+  });
+
+  test('新数据没带家园（这次没进家园场景）→ 保留本机原有家园', () => {
+    // 2026-11-01 用户反馈：导入一次背包数据后家园整个消失
+    const local: AccountSnapshot = {
+      ...at('测试甲', '2026-09-26T00:00:00.000Z', 2),
+      home: homeOf('2026-09-25T00:00:00.000Z'),
+    };
+    const incoming = at('测试甲', '2026-09-27T00:00:00.000Z', 5);
+
+    const result = mergeSnapshots([local], [incoming]);
+    expect(result.updated).toEqual(['测试甲']);
+    expect(result.snapshots[0].pets).toHaveLength(5);
+    expect(result.snapshots[0].home?.capturedAt).toBe('2026-09-25T00:00:00.000Z');
+  });
+
+  test('新数据带家园 → 用新采的家园', () => {
+    const local: AccountSnapshot = {
+      ...at('测试甲', '2026-09-26T00:00:00.000Z', 2),
+      home: homeOf('2026-09-25T00:00:00.000Z'),
+    };
+    const incoming: AccountSnapshot = {
+      ...at('测试甲', '2026-09-27T00:00:00.000Z', 5),
+      home: homeOf('2026-09-27T00:00:00.000Z'),
+    };
+
+    const result = mergeSnapshots([local], [incoming]);
+    expect(result.snapshots[0].home?.capturedAt).toBe('2026-09-27T00:00:00.000Z');
   });
 
   test('时间相同时保留本地', () => {

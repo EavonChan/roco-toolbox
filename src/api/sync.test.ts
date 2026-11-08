@@ -258,4 +258,100 @@ describe('云同步快照', () => {
     // 本机也拿到了云端那份
     expect((await listSnapshots()).map((item) => item.accountName).sort()).toEqual(['云端乙', '本机甲']);
   });
+
+  test('推荐性格：本机改过且比云端新，不被云端旧值覆盖（2026-11-02 修）', async () => {
+    const local = { '3001': ['踏实', '开朗'] };
+    window.localStorage.setItem('roco.natureOverrides', JSON.stringify(local));
+    window.localStorage.setItem('roco.natureOverridesUpdatedAt', '2000');
+    const result = await applySnapshot({
+      type: 'roco-toolbox-cloud',
+      version: 4,
+      savedAt: '',
+      catalogVersion: 's4',
+      accounts: [],
+      prefs: {
+        'roco.natureOverrides': JSON.stringify({ '3001': ['固执'] }),
+        'roco.natureOverridesUpdatedAt': '1000',
+      },
+    });
+    expect(window.localStorage.getItem('roco.natureOverrides')).toBe(JSON.stringify(local));
+    expect(window.localStorage.getItem('roco.natureOverridesUpdatedAt')).toBe('2000');
+    expect(result.prefsAdopted).not.toContain('roco.natureOverrides');
+  });
+
+  test('推荐性格：云端确实更新时采用云端，并记下云端修改时间', async () => {
+    window.localStorage.setItem('roco.natureOverrides', JSON.stringify({ '3001': ['踏实'] }));
+    window.localStorage.setItem('roco.natureOverridesUpdatedAt', '1000');
+    const cloud = { '3001': ['胆小'] };
+    const result = await applySnapshot({
+      type: 'roco-toolbox-cloud',
+      version: 5,
+      savedAt: '',
+      catalogVersion: 's4',
+      accounts: [],
+      prefs: {
+        'roco.natureOverrides': JSON.stringify(cloud),
+        'roco.natureOverridesUpdatedAt': '2000',
+      },
+    });
+    expect(window.localStorage.getItem('roco.natureOverrides')).toBe(JSON.stringify(cloud));
+    expect(window.localStorage.getItem('roco.natureOverridesUpdatedAt')).toBe('2000');
+    expect(result.prefsAdopted).toContain('roco.natureOverrides');
+  });
+
+  test('推荐性格：本机没改过（无键）时仍从云端取', async () => {
+    const cloud = { '3001': ['胆小'] };
+    await applySnapshot({
+      type: 'roco-toolbox-cloud',
+      version: 6,
+      savedAt: '',
+      catalogVersion: 's4',
+      accounts: [],
+      prefs: {
+        'roco.natureOverrides': JSON.stringify(cloud),
+        'roco.natureOverridesUpdatedAt': '2000',
+      },
+    });
+    expect(window.localStorage.getItem('roco.natureOverrides')).toBe(JSON.stringify(cloud));
+    expect(window.localStorage.getItem('roco.natureOverridesUpdatedAt')).toBe('2000');
+  });
+
+  test('syncNow 不会把本机刚改的推荐性格拉回云端旧值', async () => {
+    const local = { '3001': ['胆小'] };
+    window.localStorage.setItem('roco.natureOverrides', JSON.stringify(local));
+    window.localStorage.setItem('roco.natureOverridesUpdatedAt', '2000');
+    const cloud: CloudSnapshot = {
+      type: 'roco-toolbox-cloud',
+      version: 3,
+      savedAt: '',
+      catalogVersion: 's4',
+      accounts: [],
+      prefs: {
+        'roco.natureOverrides': JSON.stringify({ '3001': ['固执'] }),
+        'roco.natureOverridesUpdatedAt': '1000',
+      },
+    };
+    let putBody: { baseVersion?: number; payload?: string } | null = null;
+    vi.stubGlobal('fetch', (_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        putBody = JSON.parse(String(init.body)) as { baseVersion?: number; payload?: string };
+        return Promise.resolve(jsonResponse({ ok: true, version: 4 }));
+      }
+      return Promise.resolve(
+        jsonResponse({
+          ok: true,
+          snapshot: { version: 3, updatedAt: 1, bytes: 10, payload: encodeSnapshot(cloud) },
+        }),
+      );
+    });
+
+    const result = await syncNow();
+
+    expect(result.ok).toBe(true);
+    // 本机较新的修改留在本机，也随本次推送同步到云端
+    expect(window.localStorage.getItem('roco.natureOverrides')).toBe(JSON.stringify(local));
+    expect(
+      decodeSnapshot(putBody!.payload!).prefs['roco.natureOverrides'],
+    ).toBe(JSON.stringify(local));
+  });
 });

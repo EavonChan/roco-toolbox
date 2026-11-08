@@ -179,7 +179,7 @@ function cachedParseLooseProto(bytes, start, end = bytes.length) {
   return cached.probe(start);
 }
 
-function parseLooseProto(bytes, start, end = bytes.length) {
+function parseLooseProto(bytes, start = 0, end = bytes.length) {
   const fields = new Map();
   let offset = start;
   while (offset < end) {
@@ -248,6 +248,15 @@ function decodeProfile(plaintext) {
     return { game_id: gameId, player_name: playerName };
   }
   return null;
+}
+
+/**
+ * 帧的 profile 解析结果缓存在解密缓存对象上：场景全量帧有 50KB+，
+ * 每轮重扫一遍字节很贵，而同一帧的 profile 永远不变。
+ */
+function profileOfFrame(decoded) {
+  if (decoded.profile === undefined) decoded.profile = decodeProfile(decoded.legacy);
+  return decoded.profile;
 }
 
 function isNormalBox(fields) {
@@ -409,7 +418,7 @@ function pcapFormat(bytes) {
   throw new Error("无法识别 PCAP 文件头，请确认选择的是经典 .pcap 文件。");
 }
 
-function readGameFlows(bytes, { allowTruncated = false } = {}) {
+function readGameFlows(bytes, { allowTruncated = false, startRecordOffset = 24 } = {}) {
   const { littleEndian } = pcapFormat(bytes);
   const read32 = littleEndian ? readU32LE : readU32BE;
   const linkType = read32(bytes, 20);
@@ -418,7 +427,9 @@ function readGameFlows(bytes, { allowTruncated = false } = {}) {
   }
   const flows = new Map();
   const flowGenerations = new Map();
-  let offset = 24;
+  // 窗口化巡检（2026-11-08）：只从指定记录起点开始扫，但 packetStart 仍是**整份文件里的绝对偏移**，
+  // 这样窗口滑动时同一帧的缓存键不变（见 frameCache）。
+  let offset = Math.max(24, Number(startRecordOffset) || 24);
   let packets = 0;
   let truncated = false;
   while (offset + 16 <= bytes.length) {
@@ -448,12 +459,17 @@ function readGameFlows(bytes, { allowTruncated = false } = {}) {
     const generation = Number(flowGenerations.get(baseKey) || 1);
     const key = `${baseKey}#${generation}`;
     if (!tcp.payload.length) continue;
-    if (!flows.has(key)) flows.set(key, { key, firstPacket: packets, serverSegments: [] });
-    if (serverToClient) flows.get(key).serverSegments.push({
+    // cacheKey 不含 generation：窗口化巡检时窗口里看不到更早的握手帧，代次会从 1 重新计数，
+    // 用它做缓存键会让同一帧在不同轮次算出不同 key。绝对文件偏移已经能区分连接，所以去掉代次。
+    if (!flows.has(key)) flows.set(key, { key, cacheKey: baseKey, firstPacket: packets, serverSegments: [], clientSegments: [] });
+    const segment = {
       sequence: tcp.sequence,
       payload: tcp.payload,
-      packetIndex: packets
-    });
+      packetIndex: packets,
+      packetStart
+    };
+    if (serverToClient) flows.get(key).serverSegments.push(segment);
+    else flows.get(key).clientSegments.push(segment);
   }
   return {
     flows: Array.from(flows.values()),
@@ -470,26 +486,46 @@ function reassemble(segments) {
   const ranges = [];
   let next = null;
   let length = 0;
-  sorted.forEach(({ sequence, payload, packetIndex }) => {
+  sorted.forEach(({ sequence, payload, packetIndex, packetStart }) => {
     if (next === null) next = sequence;
     if (sequence + payload.length <= next) return;
     if (sequence > next) throw new Error(`TCP 流缺失 ${sequence - next} 字节，无法安全重组`);
     const trim = Math.max(0, next - sequence);
     const chunk = payload.subarray(trim);
     chunks.push(chunk);
-    ranges.push({ start: length, end: length + chunk.length, packetIndex: Number(packetIndex || 0) });
+    ranges.push({
+      start: length,
+      end: length + chunk.length,
+      packetIndex: Number(packetIndex || 0),
+      // 该段数据在整份 pcap 里的绝对字节偏移（trim 掉的字节也要算进去）
+      packetStart: Number(packetStart || 0) + trim
+    });
     length += chunk.length;
     next += chunk.length;
   });
   return { bytes: concatBytes(chunks), ranges };
 }
 
-function framePacketIndex(ranges, start, end) {
+/**
+ * 帧在 TCP 流里的位置 → 包序号 + **整份文件的绝对字节偏移**。
+ * 绝对偏移用于跨轮缓存键：窗口滑动时同一帧的偏移不变，缓存才能命中（见 frameCache）。
+ */
+function frameLocation(ranges, start, end) {
   let packetIndex = 0;
+  let owner = null;
+  let firstOverlap = null;
   ranges.forEach((range) => {
-    if (range.end > start && range.start < end) packetIndex = Math.max(packetIndex, range.packetIndex);
+    if (range.end > start && range.start < end) {
+      if (!firstOverlap) firstOverlap = range;
+      if (range.start <= start && start < range.end) owner = range;
+      packetIndex = Math.max(packetIndex, range.packetIndex);
+    }
   });
-  return packetIndex;
+  const anchor = owner || firstOverlap;
+  return {
+    packetIndex,
+    fileOffset: anchor ? anchor.packetStart + Math.max(0, start - anchor.start) : 0
+  };
 }
 
 function parseTgcpFrames(bytes, ranges = []) {
@@ -521,10 +557,12 @@ function parseTgcpFrames(bytes, ranges = []) {
       : (kind === 144 ? 0 : bytes[offset + 20]);
     const end = offset + headerLength + payloadLength;
     if (end > bytes.length) break;
+    const location = frameLocation(ranges, offset, end);
     frames.push({
       bytes: bytes.subarray(offset, end),
       streamOffset: offset,
-      packetIndex: framePacketIndex(ranges, offset, end)
+      packetIndex: location.packetIndex,
+      fileOffset: location.fileOffset
     });
     offset = end;
   }
@@ -602,6 +640,16 @@ function createAccountCapture(profile = null) {
     latestHome: null,
     homeEvents: [],
     foreignScene: false,
+    /** 野外场景号（338/348）；家园场景为 30001/30002 */
+    wildScene: null,
+    /** 自身世界坐标（上行 307）；拿不到时为 null，雷达退回估算中心 */
+    wildSelf: null,
+    /** uniqueId → 野外实体（330 全量 + 1043 增量） */
+    wildPets: new Map(),
+    /** `petId:level:height:weight` → 宠物记录里的性格/性别（4934/579/4908，2026-11-06 验证） */
+    ownedPetDetails: new Map(),
+    /** 最近一次赛季奇遇战（4886/4890）里守卫的个体数据 */
+    seasonEncounter: null,
     capturedAt: new Date().toISOString(),
     batchStarted: false,
     tailSeen: false,
@@ -1154,9 +1202,183 @@ function resolveFramePayload(encrypted, key) {
   return { legacy, business: fallback };
 }
 
-function decodeFlow(flow, flowIndex) {
+/**
+ * 跨轮解密缓存（2026-11-08 性能修复）。
+ *
+ * 实时巡检每轮都从头重解整个文件，实测瓶颈**只有** AES 解密（约 6ms/帧），
+ * 字节扫描 12000 包仅 3–7ms；抓包涨到 7MiB 时单轮要 4s 以上，界面刷新严重滞后。
+ * TCP 流是 append-only，已解出帧的位置稳定，因此按「流 + 帧在整份文件里的绝对字节偏移」
+ * 复用解密结果，每轮只真正解密新增帧。用绝对偏移而不是包序号 / 帧序，是因为实时巡检
+ * 只解文件尾部窗口（见 extractPcap 的 windowBytes），窗口滑动后包序号与帧序都会变。
+ * 命中前用长度 + 首尾字节校验，重连 / 重组变化导致密文不同时自动落空重解，不会用到错数据。
+ */
+const FRAME_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+const frameCache = new Map();
+let frameCacheBytes = 0;
+
+function frameSignature(bytes) {
+  let head = 0;
+  let tail = 0;
+  for (let index = 0; index < 8 && index < bytes.length; index += 1) head = (head * 31 + bytes[index]) | 0;
+  for (let index = Math.max(0, bytes.length - 8); index < bytes.length; index += 1) tail = (tail * 31 + bytes[index]) | 0;
+  return `${bytes.length}:${head}:${tail}`;
+}
+
+function frameCacheSlot(flowKey, key, fileOffset, frameIndex) {
+  // fileOffset 为 0（没有包区间信息）时退回帧序，只影响极端兜底路径。
+  // key 也进缓存键：同一偏移理论上只会用一种 key 写，但重连后注入 key 解错的兜底
+  // 情景下，不能把错 key 的结果喂给对 key。
+  const keyTag = key ? keyIdOf(key) : "-";
+  return fileOffset > 0 ? `${flowKey}#${keyTag}#${fileOffset}` : `${flowKey}#${keyTag}#f${frameIndex}`;
+}
+
+const keyIdCache = new WeakMap();
+
+function keyIdOf(key) {
+  let id = keyIdCache.get(key);
+  if (!id) {
+    id = bytesToHex(key instanceof Uint8Array ? key : new Uint8Array(key)).slice(0, 16);
+    keyIdCache.set(key, id);
+  }
+  return id;
+}
+
+function cachedFramePayload(flowKey, key, fileOffset, frameIndex, encrypted) {
+  const slot = frameCache.get(frameCacheSlot(flowKey, key, fileOffset, frameIndex));
+  return slot && slot.signature === frameSignature(encrypted) ? slot.decoded : null;
+}
+
+function rememberFramePayload(flowKey, key, fileOffset, frameIndex, encrypted, decoded) {
+  const cacheSlot = frameCacheSlot(flowKey, key, fileOffset, frameIndex);
+  const previous = frameCache.get(cacheSlot);
+  if (previous) frameCacheBytes -= previous.size;
+  const size = decoded.legacy.length + (decoded.business ? decoded.business.payload.length : 0);
+  // 超过上限直接清空：巡检只关心最新数据，清空后下一轮重建，不会无限占内存。
+  if (frameCacheBytes + size > FRAME_CACHE_MAX_BYTES) {
+    frameCache.clear();
+    frameCacheBytes = 0;
+  }
+  frameCache.set(cacheSlot, { signature: frameSignature(encrypted), decoded, size });
+  frameCacheBytes += size;
+  return decoded;
+}
+
+function decryptFrameOnce(flowKey, key, fileOffset, frameIndex, encrypted) {
+  const hit = cachedFramePayload(flowKey, key, fileOffset, frameIndex, encrypted);
+  if (hit) { frameCacheHits += 1; return hit; }
+  frameCacheMisses += 1;
+  return rememberFramePayload(
+    flowKey, key, fileOffset, frameIndex, encrypted,
+    resolveFramePayload(encrypted, key),
+  );
+}
+
+let frameCacheHits = 0;
+let frameCacheMisses = 0;
+/** 测试 / 性能诊断用：解密缓存命中情况。 */
+export function __frameCacheStats() {
+  return { hits: frameCacheHits, misses: frameCacheMisses, entries: frameCache.size, bytes: frameCacheBytes };
+}
+/** 测试用：清空跨轮解密缓存与已知 AES key。 */
+export function __resetFrameCacheForTest() {
+  frameCache.clear();
+  frameCacheBytes = 0;
+  frameCacheHits = 0;
+  frameCacheMisses = 0;
+  recentKeys.clear();
+  resetNearbyBaseline("");
+  headScannedKey = "";
+  liveStateImportedKey = "";
+}
+
+/**
+ * 最近一次解出的 AES key（按连接，不含代次）。
+ * 尾部窗口通常不含握手帧（key 帧），窗口化巡检时用这里的 key 注入；
+ * 重连换了 key 时注入会解出乱码，所以注入前必须先用帧验证（见 validateInjectedKey）。
+ */
+const recentKeys = new Map();
+
+/**
+ * 307 自己移动（c2s）：跳过前 14 字节，field 2 是坐标。
+ *
+ * 参考多多的 `parse_player_position_307`：坐标有效范围 100000–2000000（世界坐标）。
+ * 上行帧是否与下行同构仍待真机验证；解析失败就返回 null，不影响其它字段。
+ */
+function parsePlayerPosition307(payload) {
+  if (!payload || payload.length < 16) return null;
+  const body = payload.subarray(14);
+  const fields = parseLooseProto(body);
+  if (!fields) return null;
+  const wrap = (fields.get(2) || []).find((value) => value instanceof Uint8Array);
+  const pos = wrap ? parseLooseProto(wrap) : fields;
+  if (!pos) return null;
+  const x = wildFieldNumber(pos, 1);
+  const y = wildFieldNumber(pos, 2);
+  if (x < 100000 || x > 2000000 || y < 100000 || y > 2000000) return null;
+  return { x, y };
+}
+
+/** 上行（客户端→服务器）里的自身坐标：同一连接用下行的 AES key 试解，明文帧也兜底试一次。 */
+function decodeClientSelfPosition(flow, aesKey) {
+  if (!flow.clientSegments || !flow.clientSegments.length) return null;
+  const cacheKey = flow.cacheKey || flow.key;
+  let frames;
+  try {
+    const stream = reassemble(flow.clientSegments);
+    frames = parseTgcpFrames(stream.bytes, stream.ranges);
+  } catch { return null; }
+  let latest = null;
+  for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
+    const frame = frames[frameIndex].bytes;
+    if (frame[6] !== 64 || frame[7] !== 19) continue;
+    const headerLength = frame[16];
+    const encrypted = frame.subarray(headerLength);
+    const bodies = [];
+    if (aesKey && encrypted.length && encrypted.length % 16 === 0) {
+      // 上行帧同样走跨轮缓存（方向前缀 :c，避免与下行帧的绝对偏移相撞）
+      try {
+        bodies.push(decryptFrameOnce(`${cacheKey}:c`, aesKey, frames[frameIndex].fileOffset, frameIndex, encrypted).business);
+      } catch { /* 上行格式不同就跳过 */ }
+    }
+    bodies.push(businessPayload(encrypted));
+    for (const business of bodies) {
+      if (!business || business.opcode !== 307) continue;
+      const self = parsePlayerPosition307(business.payload);
+      if (self) latest = self;
+    }
+  }
+  return latest;
+}
+
+/**
+ * 注入 key 的验证：解 1~2 帧，能看到 0x55aa 业务帧头或合法的 profile 帧才认。
+ *
+ * 窗口里看不到握手帧时只能用上一轮学到的 key；重连换了 key 就会解出乱码，
+ * 必须验证，否则会把垃圾数据当成附近精灵 / 奇遇战。
+ */
+function validateInjectedKey(frames, startIndex, key) {
+  let tried = 0;
+  for (let index = startIndex; index < frames.length && tried < 6; index += 1) {
+    const frame = frames[index].bytes;
+    if (frame[6] !== 64 || frame[7] !== 19) continue;
+    const encrypted = frame.subarray(frame[16]);
+    if (!encrypted.length || encrypted.length % 16) continue;
+    tried += 1;
+    try {
+      const resolved = resolveFramePayload(encrypted, key);
+      // 业务帧（0x55aa）是首选证据；只有 legacy 帧的连接（部分老协议）用 profile 帧验证，
+      // 否则尾窗每轮都会因为「验证不过」退回全量。
+      if (resolved.business || decodeProfile(resolved.legacy)) return true;
+    } catch { /* 这一帧解不开就继续试下一帧 */ }
+  }
+  return false;
+}
+
+function decodeFlow(flow, flowIndex, options = {}) {
+  const injectedKey = options.injectedKey || null;
   const reassembled = reassemble(flow.serverSegments);
   const frames = parseTgcpFrames(reassembled.bytes, reassembled.ranges);
+  const cacheKey = flow.cacheKey || flow.key;
   let aesKey = null;
   let decryptedFrames = 0;
   const events = [];
@@ -1166,26 +1388,76 @@ function decodeFlow(flow, flowIndex) {
     const subKind = frame[7];
     if (kind === 16 && subKind === 2 && frame.length >= 39 && frame[20] === 16) {
       aesKey = frame.slice(23, 39);
+      recentKeys.set(cacheKey, aesKey);
       return;
     }
     if (kind !== 64 || subKind !== 19 || !aesKey) return;
     const headerLength = frame[16];
     const encrypted = frame.subarray(headerLength);
     if (!encrypted.length || encrypted.length % 16) return;
-    const { legacy, business } = resolveFramePayload(encrypted, aesKey);
+    // 跨轮复用解密结果：只有新增帧才真正跑 AES（见 decryptFrameOnce）。
+    const decoded = decryptFrameOnce(cacheKey, aesKey, entry.fileOffset, frameIndex, encrypted);
     decryptedFrames += 1;
     events.push({
       flowKey: flow.key,
       flowIndex,
       frameIndex,
+      fileOffset: entry.fileOffset,
       packetIndex: Number(entry.packetIndex || flow.firstPacket || 0),
       hasKey: Boolean(aesKey),
-      profile: decodeProfile(legacy),
-      plaintext: legacy,
-      opcode: business ? business.opcode : -1,
-      homePayload: business ? business.payload : null
+      profile: profileOfFrame(decoded),
+      plaintext: decoded.legacy,
+      opcode: decoded.business ? decoded.business.opcode : -1,
+      homePayload: decoded.business ? decoded.business.payload : null
     });
   });
+  if (!aesKey && injectedKey) {
+    // 窗口里没有握手帧：用上一轮学到的 key 补上。验证不过就整轮退回全量解析（见 extractPcap）。
+    if (validateInjectedKey(frames, 0, injectedKey)) {
+      const injectedEvents = [];
+      let injectedCount = 0;
+      frames.forEach((entry, frameIndex) => {
+        const frame = entry.bytes;
+        if (frame[6] !== 64 || frame[7] !== 19) return;
+        const headerLength = frame[16];
+        const encrypted = frame.subarray(headerLength);
+        if (!encrypted.length || encrypted.length % 16) return;
+        const decoded = decryptFrameOnce(cacheKey, injectedKey, entry.fileOffset, frameIndex, encrypted);
+        injectedCount += 1;
+        injectedEvents.push({
+          flowKey: flow.key,
+          flowIndex,
+          frameIndex,
+          fileOffset: entry.fileOffset,
+          packetIndex: Number(entry.packetIndex || flow.firstPacket || 0),
+          hasKey: true,
+          profile: profileOfFrame(decoded),
+          plaintext: decoded.legacy,
+          opcode: decoded.business ? decoded.business.opcode : -1,
+          homePayload: decoded.business ? decoded.business.payload : null
+        });
+      });
+      events.push(...injectedEvents);
+      decryptedFrames = injectedCount;
+      aesKey = injectedKey;
+    } else {
+      recentKeys.delete(cacheKey);
+      return {
+        report: { flow: flow.key, frames: frames.length, decryptedFrames: 0, hasKey: false, injectedKeyRejected: true },
+        events: []
+      };
+    }
+  }
+  if (!aesKey && options.requireKey) {
+    // 冷启动 / 换了连接：窗口里既没有 key 也没有可注入的 key，交给 extractPcap 退回全量解析。
+    return {
+      report: { flow: flow.key, frames: frames.length, decryptedFrames: 0, hasKey: false, missingKey: true },
+      events: []
+    };
+  }
+  // 上行 307（自己移动）拿到的自身坐标：附到本 flow 的事件上，由 applyPlaintextToAccount 落到账号
+  const selfPosition = decodeClientSelfPosition(flow, aesKey);
+  if (selfPosition) events.forEach((event) => { event.selfPosition = selfPosition; });
   return {
     report: { flow: flow.key, frames: frames.length, decryptedFrames, hasKey: Boolean(aesKey) },
     events
@@ -1194,6 +1466,7 @@ function decodeFlow(flow, flowIndex) {
 
 function applyPlaintextToAccount(event, capture, retainRawProtocol = true) {
   const { plaintext } = event;
+  if (event.selfPosition) capture.wildSelf = event.selfPosition;
   const homeGameId = String((capture.profile && capture.profile.game_id) || "");
   if (event.homePayload && homeGameId) {
     const opcode = Number(event.opcode);
@@ -1219,6 +1492,41 @@ function applyPlaintextToAccount(event, capture, retainRawProtocol = true) {
         occurredAt: capture.capturedAt,
         data: JSON.parse(JSON.stringify(home))
       });
+    }
+    // 野外附近精灵：330 是全量（先清空再写入），1043 是增量 upsert。
+    if (opcode === 330 || opcode === 1043 || opcode === 1044) {
+      const wild = parseWildEntities(event.homePayload);
+      if (opcode === 330) capture.wildPets.clear();
+      for (const pet of wild) capture.wildPets.set(String(pet.uniqueId), pet);
+    }
+    if (opcode === 338 || opcode === 348) {
+      const scene = parseSceneInfo(event.homePayload);
+      if (scene.scene) capture.wildScene = scene.scene;
+    }
+    // 宠物记录（仓库/背包/捕获/战斗同步）带性格(field7)与性别(field8)，用于抓后回填附近精灵。
+    // 4890 / 5107 也要解析（2026-11-08 两份秒杀局抓包对比验证）：
+    // 秒杀道具直接击败守卫后，奖励精灵登场时出现在这两个战斗帧里，
+    // 且等级/身高/体重/性格/性别/声音与守卫完全一致（游戏把守卫个体直接复用为奖励个体）。
+    // 抓到后 579 才给完整捕获记录；没抓的局 579 是空帧（len=4）。
+    // 因此 4890/5107 是「本局奖励是谁、数据如何」的最早来源；玩家的出战宠也嵌在 4890 里，
+    // 但它们的数据不会与守卫一致，回填时按数据匹配自然不会误填。
+    if (opcode === 4934 || opcode === 579 || opcode === 4908 || opcode === 4900
+      || opcode === 4890 || opcode === 5107) {
+      for (const detail of parseOwnedPetDetails(event.homePayload)) {
+        capture.ownedPetDetails.set(
+          `${detail.petId}:${detail.level}:${detail.height}:${detail.weight}`,
+          detail,
+        );
+        // 形似野生单位的奇遇记录里 field15 是临时 unitId（如 9006），
+        // 真实 petId 只在捕获记录（579/4900/4908）里出现；按等级+身高+体重对齐后回填。
+        // 顺带把捕获后才下发的真实性格补到奇遇卡上（战斗帧 field7 常是 30 占位）。
+        capture.seasonEncounter = mergeEncounterDetail(capture.seasonEncounter, detail);
+      }
+    }
+    // 赛季奇遇战（4886/4890）：守卫的宠物记录带真实性格，供捕获前展示
+    if (opcode === 4886 || opcode === 4890) {
+      const units = parseSeasonEncounterUnits(event.homePayload);
+      if (units.length) capture.seasonEncounter = mergeSeasonEncounterUnit(capture.seasonEncounter, units[units.length - 1]);
     }
   }
   capture.hasKey = capture.hasKey || Boolean(event.hasKey);
@@ -1304,20 +1612,485 @@ function buildBoxPositions(boxes) {
   return positions;
 }
 
-export function extractPcap(bytesLike, options = {}) {
+/**
+ * 野外附近精灵（2026-11-05）。
+ *
+ * 数据来源：业务帧 opcode 330（场景全量）/ 1043（增量）/ 1044（移动）。
+ * 字段路径与多多工具箱 4.2 的 `ra()` 一致，已在真实野外抓包上验证
+ * （capture-1793891528222.pcap，scene=10003，27 只 cfgId 10000–19999 的实体）。
+ *
+ * 只返回协议原始字段；名称、体重百分位、稀有判定由 src/pcap/wildNearby.ts 负责。
+ */
+function wildFieldNumber(fields, field) {
+  const value = (fields.get(field) || []).find((item) => typeof item === "number" || typeof item === "string");
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  const big = BigInt(value);
+  return Number(big >= 0x8000000000000000n ? big - 0x10000000000000000n : big);
+}
+
+function wildFieldBytes(fields, field, index = 0) {
+  const value = (fields.get(field) || [])[index];
+  return value instanceof Uint8Array ? value : null;
+}
+
+/**
+ * 不在 10000–19999 野生段、但确实是「场上精灵」的特殊场景实体 cfgId。
+ *
+ * 蛋包蛋（petId 3808，2026-11-06 由 capture-1793905516970 验证）：场上 cfgId 29401、41 级，
+ * 不带身高 / 体重 / 声音；抓后宠物记录 field43 = 2920016 = 该实体 uniqueId / 100。
+ */
+const SPECIAL_ENTITY_CFG_IDS = new Set([29401]);
+
+function parseWildEntity(raw) {
+  const actor = wildFieldBytes(parseLooseProto(raw), 11);
+  if (!actor) return null;
+  const actorFields = parseLooseProto(actor);
+  const identity = wildFieldBytes(actorFields, 1);
+  const pet = wildFieldBytes(actorFields, 3);
+  if (!pet) return null;
+  const identityFields = identity ? parseLooseProto(identity) : null;
+  const petFields = parseLooseProto(pet);
+  const posWrap = identityFields ? wildFieldBytes(identityFields, 8) : null;
+  const posMessage = posWrap ? wildFieldBytes(parseLooseProto(posWrap), 1) : null;
+  const posFields = posMessage ? parseLooseProto(posMessage) : null;
+  const glassWrap = wildFieldBytes(petFields, 30);
+  const glassFields = glassWrap ? parseLooseProto(glassWrap) : null;
+
+  const cfgId = wildFieldNumber(petFields, 1);
+  const height = wildFieldNumber(petFields, 11);
+  const weight = wildFieldNumber(petFields, 12);
+  const uniqueId = wildFieldNumber(petFields, 17);
+  const special = SPECIAL_ENTITY_CFG_IDS.has(cfgId);
+  if ((!special && (cfgId < 10000 || cfgId > 19999)) || (!special && (height <= 0 || weight <= 0))
+    || uniqueId <= 0 || !posFields) return null;
+
+  return {
+    cfgId,
+    actorId: (identityFields ? wildFieldNumber(identityFields, 1) : 0) || wildFieldNumber(actorFields, 1),
+    uniqueId,
+    level: identityFields ? wildFieldNumber(identityFields, 11) : 0,
+    height,
+    weight,
+    voiceDb: wildFieldNumber(petFields, 31),
+    mutation: wildFieldNumber(petFields, 14),
+    glassType: glassFields ? wildFieldNumber(glassFields, 1) : 0,
+    glassValue: glassFields ? wildFieldNumber(glassFields, 2) : 0,
+    pos: { x: wildFieldNumber(posFields, 1), y: wildFieldNumber(posFields, 2), z: wildFieldNumber(posFields, 3) }
+  };
+}
+
+/** 330 走顶层 field 7；1043/1044 走 field 1 → 子消息 → field 1。 */
+export function parseWildEntities(payload) {
+  const root = parseLooseProto(payload);
+  const candidates = [];
+  for (const value of root.get(7) || []) if (value instanceof Uint8Array) candidates.push(value);
+  for (const wrap of root.get(1) || []) {
+    if (!(wrap instanceof Uint8Array)) continue;
+    for (const inner of parseLooseProto(wrap).get(1) || []) if (inner instanceof Uint8Array) candidates.push(inner);
+  }
+  const pets = [];
+  for (const candidate of candidates) {
+    const pet = parseWildEntity(candidate);
+    if (pet) pets.push(pet);
+  }
+  return pets;
+}
+
+/**
+ * 宠物记录（仓库 / 背包 / 战斗同步）里的性格与性别（2026-11-06 验证）。
+ *
+ * 4934 / 579 / 4908 的宠物记录结构：
+ *   field 7 = 性格 id（1–31）、field 8 = 性别（1=公，2=母）、
+ *   field 10 = 等级、field 15/42 = petId、field 26/27 = 身高/体重、
+ *   field 47 = 血脉、field 93 = 声音。
+ * 注意：战斗帧 4886 的单位详情里 field7 恒为 30，**不是**性格，不要用。
+ */
+function collectOwnedPetDetails(fields, depth, out) {
+  if (depth > 10) return;
+  const natureId = wildFieldNumber(fields, 7);
+  const genderId = wildFieldNumber(fields, 8);
+  const level = wildFieldNumber(fields, 10);
+  const petId = wildFieldNumber(fields, 15) || wildFieldNumber(fields, 42);
+  const height = wildFieldNumber(fields, 26);
+  const weight = wildFieldNumber(fields, 27);
+  const bloodId = wildFieldNumber(fields, 47);
+  if (natureId >= 1 && natureId <= 31 && genderId >= 1 && genderId <= 3
+    && level > 0 && petId >= 3000 && petId <= 99999
+    && height > 0 && weight > 0 && bloodId > 0) {
+    out.push({
+      petId, level, height, weight, natureId, genderId, bloodId,
+      voiceDb: wildFieldNumber(fields, 93),
+    });
+  }
+  for (const values of fields.values()) {
+    for (const value of values) {
+      if (value instanceof Uint8Array) collectOwnedPetDetails(parseLooseProto(value), depth + 1, out);
+    }
+  }
+}
+
+export function parseOwnedPetDetails(payload) {
+  const out = [];
+  collectOwnedPetDetails(parseLooseProto(payload), 0, out);
+  return out;
+}
+
+/**
+ * 赛季奇遇战（2026-11-06 由 capture-1793905516970 验证）。
+ *
+ * 奇遇守卫「龙棋士」在战斗帧 4886/4890 里的宠物记录已经带真实性格：
+ *   unit 9006 / 41 级 / 公 / 性格 4（勇敢）/ 身高 32 / 体重 1900 / 血脉 24。
+ * 捕获后 field15 会从临时 unitId 换成真实 petId（如 3808 / 3011），
+ * 奖励精灵是随机的（可能是蛋包蛋，也可能是恶魔狼），所以这里不写死名字，
+ * 由上层按 unitId 查图鉴。
+ *
+ * 普通野生精灵在这两帧里的 field7 恒为 30（未生成占位），抓后才分配真实性格，
+ * 所以这里只认奇遇形态（field2 = 1646），普通对战不解析。
+ */
+const SEASON_ENCOUNTER_FORMS = new Map([
+  [1646, { guardName: "龙棋士" }]
+]);
+/** 战斗帧里野生单位尚未分配性格时的占位值。 */
+const UNASSIGNED_NATURE_ID = 30;
+
+/**
+ * 把一条宠物记录（捕获记录 579 / 背包同步 4934 / 战斗同步 4900·4908·4890）合并进奇遇卡。
+ * 只在等级 + 身高 + 体重一致（同一只个体）时生效，补：
+ *   - 真实 petId（奇遇帧里常是临时 unitId，如 9006）
+ *   - 声音
+ *   - 性格：战斗帧 field7 经常是 30 占位，抓到后记录里才给真实性格
+ * 已确认的性格不会被占位值覆盖。
+ */
+export function mergeEncounterDetail(encounter, detail) {
+  if (!encounter) return encounter;
+  if (encounter.level !== detail.level
+    || encounter.height !== detail.height
+    || encounter.weight !== detail.weight) return encounter;
+  return {
+    ...encounter,
+    unitId: detail.petId,
+    voiceDb: detail.voiceDb || encounter.voiceDb,
+    natureId: encounter.natureConfirmed ? encounter.natureId : detail.natureId,
+    natureConfirmed: encounter.natureConfirmed || detail.natureId !== UNASSIGNED_NATURE_ID
+  };
+}
+
+/**
+ * 同一场奇遇战里的后一帧（4866/4890 会重复下发）合并进已有奇遇卡：
+ * 已经拿到真实性格后，不会被后来的 30 占位冲掉；换个体（等级/身高/体重不同）则直接替换。
+ */
+export function mergeSeasonEncounterUnit(previous, next) {
+  if (!previous) return next;
+  if (previous.level !== next.level
+    || previous.height !== next.height
+    || previous.weight !== next.weight) return next;
+  return {
+    ...next,
+    natureId: next.natureConfirmed ? next.natureId : previous.natureId,
+    natureConfirmed: next.natureConfirmed || previous.natureConfirmed,
+    voiceDb: next.voiceDb || previous.voiceDb
+  };
+}
+
+function collectSeasonEncounterUnits(fields, depth, out) {
+  if (depth > 12) return;
+  const formId = wildFieldNumber(fields, 2);
+  const mapping = SEASON_ENCOUNTER_FORMS.get(formId);
+  if (mapping) {
+    const natureId = wildFieldNumber(fields, 7);
+    const genderId = wildFieldNumber(fields, 8);
+    const level = wildFieldNumber(fields, 10);
+    const unitId = wildFieldNumber(fields, 15) || wildFieldNumber(fields, 42);
+    const height = wildFieldNumber(fields, 26);
+    const weight = wildFieldNumber(fields, 27);
+    const guardName = decodeUtf8(fields.get(3) && fields.get(3)[0]) || mapping.guardName;
+    if (natureId >= 1 && natureId <= 31 && genderId >= 1 && genderId <= 3
+      && level > 0 && height > 0 && weight > 0 && unitId > 0) {
+      out.push({
+        formId,
+        guardName,
+        unitId,
+        level,
+        natureId,
+        natureConfirmed: natureId !== UNASSIGNED_NATURE_ID,
+        genderId,
+        height,
+        weight,
+        bloodId: wildFieldNumber(fields, 47),
+        voiceDb: wildFieldNumber(fields, 93)
+      });
+    }
+  }
+  for (const values of fields.values()) {
+    for (const value of values) {
+      if (value instanceof Uint8Array) collectSeasonEncounterUnits(parseLooseProto(value), depth + 1, out);
+    }
+  }
+}
+
+/** 从战斗帧（4886/4890）提取赛季奇遇守卫的个体数据；普通对战返回空数组。 */
+export function parseSeasonEncounterUnits(payload) {
+  const out = [];
+  collectSeasonEncounterUnits(parseLooseProto(payload), 0, out);
+  const seen = new Set();
+  return out.filter((unit) => {
+    const key = `${unit.formId}:${unit.unitId}:${unit.level}:${unit.height}:${unit.weight}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** 338 进场景：field 3 是场景号，field 2 是场景配置号。 */
+export function parseSceneInfo(payload) {
+  const root = parseLooseProto(payload);
+  const scene = wildFieldNumber(root, 3);
+  const sceneCfgId = wildFieldNumber(root, 2);
+  return { scene: scene > 0 ? scene : null, sceneCfgId: sceneCfgId > 0 ? sceneCfgId : null };
+}
+
+/**
+ * 诊断入口：只列出已解密的业务帧（opcode + payload），不做业务字段解析。
+ *
+ * 用于真实抓包验证场景实体帧（330/1043/1044）是否真的在样本里；
+ * 与 extractPcap 共用同一套读包 / TCP 重组 / TGCP / AES 逻辑，不引入第二套协议模型。
+ */
+export function extractBusinessFrames(bytesLike, options = {}) {
   const bytes = bytesLike instanceof Uint8Array ? bytesLike : new Uint8Array(bytesLike);
   const parsed = readGameFlows(bytes, options);
-  const flowReports = [];
-  const events = [];
+  const frames = [];
   parsed.flows.forEach((flow, flowIndex) => {
     try {
       const decoded = decodeFlow(flow, flowIndex);
+      decoded.events.forEach((event) => {
+        if (event.opcode == null || event.opcode < 0) return;
+        frames.push({
+          flowIndex,
+          opcode: Number(event.opcode),
+          packetIndex: Number(event.packetIndex || 0),
+          frameIndex: Number(event.frameIndex || 0),
+          payloadHex: event.homePayload ? bytesToHex(event.homePayload) : ""
+        });
+      });
+    } catch (error) {
+      frames.push({ flowIndex, error: error.message });
+    }
+  });
+  frames.sort((left, right) => left.packetIndex - right.packetIndex || left.frameIndex - right.frameIndex);
+  return frames;
+}
+
+/**
+ * 从文件尾部按 pcap 记录边界切出 windowBytes 大小的窗口，返回第一条记录在整份文件里的绝对偏移。
+ * pcap 记录是变长的，倒推不可能，只能正向扫 16 字节记录头收集边界（只读长度，不解析包体，很快）。
+ */
+function tailWindowStart(bytes, windowBytes) {
+  const limit = Number(windowBytes) || 0;
+  if (!(limit > 0) || bytes.length <= limit + 24) return 0;
+  const { littleEndian } = pcapFormat(bytes);
+  const read32 = littleEndian ? readU32LE : readU32BE;
+  const starts = [];
+  let offset = 24;
+  while (offset + 16 <= bytes.length) {
+    const captured = read32(bytes, offset + 8);
+    const end = offset + 16 + captured;
+    if (captured > 64 * 1024 * 1024 || end > bytes.length) break;
+    starts.push(offset);
+    offset = end;
+  }
+  if (!starts.length) return 0;
+  const target = bytes.length - limit;
+  let low = 0;
+  let high = starts.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (starts[mid] < target) low = mid + 1;
+    else high = mid;
+  }
+  return low < starts.length ? starts[low] : 0;
+}
+
+/**
+ * 文件头补扫的截止位置（2026-11-08）。
+ *
+ * 尾部窗口里通常没有握手帧（key）与 profile 帧，Worker 刚启动 / 被系统回收后
+ * 直接解尾窗只会退回全量解析（20MB+ 要十几秒）。冷启动时先扫文件头一小段，
+ * 把 key 与账号基线建起来，再解尾窗，耗时从「全量」降到「头部 + 尾窗」。
+ * 按 pcap 记录边界切，返回最后一条完整记录的结束偏移。
+ */
+function headScanEnd(bytes, limit) {
+  if (!(limit > 0) || bytes.length <= limit) return 0;
+  const { littleEndian } = pcapFormat(bytes);
+  const read32 = littleEndian ? readU32LE : readU32BE;
+  let offset = 24;
+  let end = 0;
+  while (offset + 16 <= bytes.length) {
+    const captured = read32(bytes, offset + 8);
+    const next = offset + 16 + captured;
+    if (captured > 64 * 1024 * 1024 || next <= offset || next > bytes.length || next > limit) break;
+    end = next;
+    offset = next;
+  }
+  return end;
+}
+
+/** 冷启动补扫的文件头长度；真实抓包里握手帧与 profile 都在前 2MiB 内。 */
+const HEAD_SCAN_BYTES = 2 * 1024 * 1024;
+
+export function extractPcap(bytesLike, options = {}) {
+  const bytes = bytesLike instanceof Uint8Array ? bytesLike : new Uint8Array(bytesLike);
+  const windowBytes = Number(options.windowBytes) || 0;
+  if (windowBytes > 0) {
+    const sessionKey = typeof options.sessionKey === 'string' ? options.sessionKey : "";
+    const start = tailWindowStart(bytes, windowBytes);
+    if (start > 24) {
+      // 冷启动补扫：先扫文件头建立 key / 账号 / 场景基线，尾窗才能直接解密。
+      // 每个会话只扫一次：第一轮没扫到 profile 也不每轮重扫（2MiB 扫一遍不便宜）。
+      const headBytes = Number(options.headScanBytes) || HEAD_SCAN_BYTES;
+      if (sessionKey && headScannedKey !== sessionKey) {
+        headScannedKey = sessionKey;
+        const headEnd = headScanEnd(bytes, Math.min(headBytes, bytes.length - 1));
+        if (headEnd > 24) extractFlowEvents(bytes.subarray(0, headEnd), { ...options, startRecordOffset: 24, windowed: true });
+      }
+      const windowed = extractFlowEvents(bytes, { ...options, startRecordOffset: start, windowed: true });
+      // 冷启动或重连（窗口里既没握手帧、也没有可验证的 key）时退回全量解析，保证第一轮数据完整。
+      if (!windowed.needsFullParse) return windowed.result;
+    }
+  }
+  return extractFlowEvents(bytes, options).result;
+}
+
+/**
+ * 尾部窗口的「当前场景基线」（2026-11-08）。
+ *
+ * 330 场景全量帧只在进场景时发一次，长时间走动后会滑出 2MiB 窗口；只靠窗口内的帧，
+ * 雷达会只剩最近移动过的精灵。这里把上一轮的附近状态（精灵 / 场景 / 自身坐标 / 奇遇战）
+ * 作为基线喂给下一轮，330 出现时照常清空重写，1043/1044 在此基础上增量更新。
+ * 按会话隔离：换采集会话直接作废，避免上一局的精灵串到新一局。
+ */
+const nearbyBaseline = {
+  key: "",
+  pets: new Map(),
+  scene: null,
+  self: null,
+  encounter: null,
+  petDetails: new Map(),
+  /** 已识别到账号（窗口里通常没有 profile 帧，靠它继续落到同一个账号） */
+  uid: "",
+  profile: null,
+  /** 已经完整应用过的帧：大帧（场景全量 50KB+）每轮重扫是尾窗的耗时大头。 */
+  applied: new Set(),
+  /** 上一轮看到的文件长度：变小说明采集被重写，绝对偏移全部失效，基线作废。 */
+  size: 0
+};
+
+/** 已经补扫过文件头的会话（每个会话只扫一次）。 */
+let headScannedKey = "";
+/** 已经注入过恢复点的会话（避免每轮用旧快照覆盖 Worker 里的新基线）。 */
+let liveStateImportedKey = "";
+
+function resetNearbyBaseline(key) {
+  nearbyBaseline.key = key;
+  nearbyBaseline.pets = new Map();
+  nearbyBaseline.scene = null;
+  nearbyBaseline.self = null;
+  nearbyBaseline.encounter = null;
+  nearbyBaseline.petDetails = new Map();
+  nearbyBaseline.uid = "";
+  nearbyBaseline.profile = null;
+  nearbyBaseline.applied = new Set();
+  nearbyBaseline.size = 0;
+}
+
+const LIVE_STATE_VERSION = 1;
+
+/**
+ * 可序列化的实时会话状态（2026-11-08）。
+ *
+ * 采集文件会被原生滚动裁剪（只保留最近一段），文件头里的握手帧 / profile 帧随之消失。
+ * Worker 被系统回收后光靠文件已经解不开尾窗，所以把解密 key 与账号 / 附近基线
+ * 交给主线程存 localStorage，冷启动时再注入。
+ */
+export function exportLiveDecodeState() {
+  if (!nearbyBaseline.key) return null;
+  if (!nearbyBaseline.uid && !nearbyBaseline.pets.size && !recentKeys.size) return null;
+  return {
+    version: LIVE_STATE_VERSION,
+    key: nearbyBaseline.key,
+    keys: Array.from(recentKeys, ([cacheKey, value]) => [cacheKey, Array.from(value)]),
+    baseline: {
+      pets: Array.from(nearbyBaseline.pets, ([id, pet]) => [id, pet]),
+      scene: nearbyBaseline.scene,
+      self: nearbyBaseline.self,
+      encounter: nearbyBaseline.encounter,
+      petDetails: Array.from(nearbyBaseline.petDetails, ([id, detail]) => [id, detail]),
+      uid: nearbyBaseline.uid,
+      profile: nearbyBaseline.profile
+    }
+  };
+}
+
+/**
+ * 注入上一轮导出的会话状态。只在 Worker 没有本会话基线（冷启动）时恢复，
+ * 避免旧快照把 Worker 里更新的数据覆盖掉；key 按连接补齐缺失项。
+ */
+export function importLiveDecodeState(state) {
+  if (!state || state.version !== LIVE_STATE_VERSION || typeof state.key !== 'string' || !state.key) return false;
+  const baseline = state.baseline || {};
+  const keys = Array.isArray(state.keys) ? state.keys : [];
+  if ((nearbyBaseline.key !== state.key || !nearbyBaseline.uid) && liveStateImportedKey !== state.key) {
+    liveStateImportedKey = state.key;
+    nearbyBaseline.key = state.key;
+    nearbyBaseline.pets = new Map(Array.isArray(baseline.pets) ? baseline.pets : []);
+    nearbyBaseline.scene = baseline.scene ?? null;
+    nearbyBaseline.self = baseline.self ?? null;
+    nearbyBaseline.encounter = baseline.encounter ?? null;
+    nearbyBaseline.petDetails = new Map(Array.isArray(baseline.petDetails) ? baseline.petDetails : []);
+    nearbyBaseline.uid = typeof baseline.uid === 'string' ? baseline.uid : "";
+    nearbyBaseline.profile = baseline.profile ?? null;
+    nearbyBaseline.applied = new Set();
+    nearbyBaseline.size = 0;
+    // 已有 key 就不用再补扫文件头（裁剪过的文件也扫不到握手帧）
+    if (keys.length) headScannedKey = state.key;
+  }
+  keys.forEach((entry) => {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Array.isArray(entry[1])) return;
+    if (!recentKeys.has(entry[0])) recentKeys.set(entry[0], Uint8Array.from(entry[1]));
+  });
+  return true;
+}
+
+function extractFlowEvents(bytes, options = {}) {
+  const sessionKey = typeof options.sessionKey === 'string' ? options.sessionKey : "";
+  if (sessionKey && options.windowed && nearbyBaseline.key !== sessionKey) resetNearbyBaseline(sessionKey);
+  // 文件变小 = 采集被滚动裁剪：绝对偏移与包序号全部失效，但 key / 账号 / 附近基线仍然有效，
+  // 不能整份作废，否则裁剪后的第一轮会丢掉已经识别到的账号与附近精灵。
+  if (sessionKey && options.windowed && bytes.length < nearbyBaseline.size) {
+    nearbyBaseline.applied = new Set();
+    nearbyBaseline.size = 0;
+  }
+  // 只有实时巡检（带 sessionKey）参与基线：导入流程 / 性能脚本永远拿全量结果，不受影响。
+  const baseline = sessionKey && options.windowed ? nearbyBaseline : null;
+  const parsed = readGameFlows(bytes, options);
+  const flowReports = [];
+  const events = [];
+  let needsFullParse = false;
+  parsed.flows.forEach((flow, flowIndex) => {
+    try {
+      const cacheKey = flow.cacheKey || flow.key;
+      const decoded = decodeFlow(flow, flowIndex, {
+        requireKey: Boolean(options.windowed),
+        injectedKey: options.windowed ? recentKeys.get(cacheKey) : null,
+      });
       flowReports.push(decoded.report);
       events.push(...decoded.events);
+      if (decoded.report.missingKey || decoded.report.injectedKeyRejected) needsFullParse = true;
     } catch (error) {
       flowReports.push({ flow: flow.key, error: error.message });
     }
   });
+  if (needsFullParse) return { needsFullParse: true };
   events.sort((left, right) => (
     left.packetIndex - right.packetIndex
     || left.flowIndex - right.flowIndex
@@ -1328,9 +2101,20 @@ export function extractPcap(bytesLike, options = {}) {
   const accounts = new Map();
   const flowAccounts = new Map();
   const pendingEvents = new Map();
-  let activeUid = "";
+  // 窗口里通常看不到 profile 帧：沿用上一轮认到的账号，否则事件会一直挂在 pendingEvents 里丢掉。
+  let activeUid = baseline ? baseline.uid : "";
   const ensureAccount = (uid, profile = null) => {
-    if (!accounts.has(uid)) accounts.set(uid, createAccountCapture(profile));
+    if (!accounts.has(uid)) {
+      const created = createAccountCapture(profile || (baseline && baseline.uid === uid ? baseline.profile : null));
+      if (baseline) {
+        created.wildPets = new Map(baseline.pets);
+        created.wildScene = baseline.scene;
+        created.wildSelf = baseline.self;
+        created.seasonEncounter = baseline.encounter;
+        created.ownedPetDetails = new Map(baseline.petDetails);
+      }
+      accounts.set(uid, created);
+    }
     const account = accounts.get(uid);
     if (profile) account.profile = profile;
     return account;
@@ -1340,6 +2124,20 @@ export function extractPcap(bytesLike, options = {}) {
     if (event.profile) {
       account.lastProfilePacket = Math.max(account.lastProfilePacket, Number(event.packetIndex || 0));
       account.lastProfileOrder = Math.max(account.lastProfileOrder, Number(event.order || 0));
+    }
+    // 窗口化巡检：前几轮已经完整应用过的帧只补单调计数，不再重扫明文（大帧的主要开销）。
+    // 帧的效果都落在基线里（野生精灵 / 场景 / 自身坐标 / 奇遇战 / 捕获个体），
+    // 跳过重放不会丢数据。
+    if (baseline && event.fileOffset > 0) {
+      const frameKey = `${event.flowKey}#${event.fileOffset}`;
+      if (baseline.applied.has(frameKey)) {
+        account.hasKey = account.hasKey || Boolean(event.hasKey);
+        account.lastDataPacket = Math.max(account.lastDataPacket, Number(event.packetIndex || 0));
+        account.lastDataOrder = Math.max(account.lastDataOrder, Number(event.order || 0));
+        event.plaintext = null;
+        return;
+      }
+      baseline.applied.add(frameKey);
     }
     applyPlaintextToAccount(event, account, options.retainRawProtocol !== false);
     // All business fields have been extracted; do not retain every decrypted frame.
@@ -1378,13 +2176,24 @@ export function extractPcap(bytesLike, options = {}) {
     || right[1].lastProfilePacket - left[1].lastProfilePacket
   ))[0] || ["", createAccountCapture()];
   const [selectedUid, capture] = selectedEntry;
+  if (sessionKey) {
+    nearbyBaseline.key = sessionKey;
+    nearbyBaseline.pets = new Map(capture.wildPets);
+    nearbyBaseline.scene = capture.wildScene;
+    nearbyBaseline.self = capture.wildSelf;
+    nearbyBaseline.encounter = capture.seasonEncounter;
+    nearbyBaseline.petDetails = new Map(capture.ownedPetDetails);
+    nearbyBaseline.uid = selectedUid;
+    nearbyBaseline.profile = capture.profile;
+    nearbyBaseline.size = bytes.length;
+  }
   const records = capture.records;
   const positions = buildBoxPositions(capture.boxes);
   const output = Array.from(records.values()).map((record) => ({
     ...record,
     ...(positions.get(String(record.instance_id)) || { box_number: null, slot_order: null })
   })).sort((left, right) => left.instance_id - right.instance_id);
-  return {
+  const result = {
     records: output,
     profile: capture.profile,
     selectedUid,
@@ -1404,6 +2213,15 @@ export function extractPcap(bytesLike, options = {}) {
     eggInventory: capture.eggInventory,
     captureHome: capture.latestHome,
     captureNestEvents: capture.homeEvents,
+    /** 野外附近精灵（330 全量 + 1043 增量），按 uniqueId 去重 */
+    nearbyPets: Array.from(capture.wildPets.values()),
+    /** 宠物记录里的性格/性别（抓后回填附近精灵） */
+    ownedPetDetails: Array.from(capture.ownedPetDetails.values()),
+    nearbyScene: capture.wildScene,
+    /** 自身世界坐标（上行 307）；拿不到为 null */
+    nearbySelf: capture.wildSelf,
+    /** 最近一次赛季奇遇战守卫的个体数据；没有奇遇战为 null */
+    seasonEncounter: capture.seasonEncounter,
     rawProtocolMessages: capture.rawProtocolMessages,
     rawProtocolMessageCount: capture.rawProtocolMessageKeys.size,
     guluInventory: capture.guluInventory,
@@ -1425,6 +2243,7 @@ export function extractPcap(bytesLike, options = {}) {
     linkTypeName: parsed.linkTypeName,
     truncated: parsed.truncated
   };
+  return { needsFullParse: false, result };
 }
 
 export function inspectExtractedCapture(extracted) {
@@ -1450,6 +2269,9 @@ export function inspectExtractedCapture(extracted) {
     accountCandidates: Array.isArray(extracted.accountCandidates) ? extracted.accountCandidates : [],
     boxes: extracted.boxes.length,
     records: extracted.records.length,
+    nearbyPets: Array.isArray(extracted.nearbyPets) ? extracted.nearbyPets.length : 0,
+    nearbyScene: extracted.nearbyScene ?? null,
+    nearbySelf: extracted.nearbySelf ?? null,
     eggRecords: extracted.eggInventory ? extracted.eggInventory.eggs.length : 0,
     eggUnrecognizedEntries: extracted.eggInventory && Array.isArray(extracted.eggInventory.unrecognized)
       ? extracted.eggInventory.unrecognized.length

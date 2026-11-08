@@ -41,6 +41,59 @@ public class CaptureFilesTest {
         }
         assertEquals(68, file.length()); // 24 + 16 + Ethernet14 + IP14
     }
+    @Test public void battleModeTrimsToRecentRecordsOnLimit() throws Exception {
+        File file = temp.newFile();
+        byte[] ip = new byte[1000];
+        ip[0] = 0x45;
+        long time = 1000;
+        try (PcapWriter writer = new PcapWriter(file, CaptureFiles.MAX_BYTES, true)) {
+            // 每条记录 16 + 1000 + 14 = 1030 字节，8300 条约 8.5MiB
+            for (int index = 0; index < 8300; index++) assertTrue(writer.append(ip, time++));
+            long before = writer.flushSnapshot();
+            long after = writer.trimIfNeeded();
+            assertEquals(file.length(), after);
+            assertTrue("trim 后应明显变小", after < before);
+            assertTrue("只保留最近一段", after <= PcapWriter.TRIM_KEEP_BYTES + 1030 + 24);
+            assertTrue(after > 24);
+            assertPcapRecords(file);
+            assertTrue(new File(file.getPath() + ".trimmed").isFile());
+            // 裁剪后仍能继续追加，且还是合法 pcap
+            assertTrue(writer.append(ip, time));
+        }
+        assertPcapRecords(file);
+    }
+    @Test public void trimmedMarkerBlocksImportAndIsDeletedWithFile() throws Exception {
+        CaptureFiles files = new CaptureFiles(temp.newFolder());
+        File file = files.create();
+        try (PcapWriter writer = new PcapWriter(file, 1024)) { writer.append(ipv4(), 1000); }
+        files.complete(file);
+        assertFalse(files.trimmed(file));
+        CaptureFiles.markTrimmed(file);
+        assertTrue(files.trimmed(file));
+        files.delete(file.getName());
+        assertFalse(new File(file.getPath() + ".trimmed").exists());
+    }
+    /** 从文件头按记录头逐条验证长度，最后一条必须正好结束在文件末尾。 */
+    private static void assertPcapRecords(File file) throws Exception {
+        try (java.io.RandomAccessFile source = new java.io.RandomAccessFile(file, "r")) {
+            long length = source.length();
+            byte[] header = new byte[16];
+            long offset = 24;
+            int records = 0;
+            while (offset + 16 <= length) {
+                source.seek(offset);
+                source.readFully(header);
+                long captured = (header[8] & 0xffL) | ((header[9] & 0xffL) << 8)
+                    | ((header[10] & 0xffL) << 16) | ((header[11] & 0xffL) << 24);
+                long next = offset + 16 + captured;
+                assertTrue("记录不能越界", next <= length);
+                offset = next;
+                records++;
+            }
+            assertEquals("文件必须结束在记录边界", length, offset);
+            assertTrue(records > 0);
+        }
+    }
     @Test public void deletingFileAlsoRemovesInterruptionMarker() throws Exception {
         CaptureFiles files = new CaptureFiles(temp.newFolder());
         File file = files.create();

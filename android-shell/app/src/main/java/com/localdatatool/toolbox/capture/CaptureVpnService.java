@@ -58,7 +58,7 @@ public final class CaptureVpnService extends VpnService {
             files = files(this);
             capture = files.create();
             STATE.fileId = capture.getName();
-            PcapWriter output = new PcapWriter(capture, CaptureFiles.MAX_BYTES);
+            PcapWriter output = new PcapWriter(capture, CaptureFiles.MAX_BYTES, "battle".equals(STATE.mode));
             try {
                 tunnel = builder.establish();
                 if (tunnel == null) throw new IOException("未获得系统 VPN 授权，请重新开始");
@@ -112,15 +112,23 @@ public final class CaptureVpnService extends VpnService {
     private void writeLoop(PcapWriter output) {
         boolean writable = true;
         long flushed = 0;
+        long notified = 0;
         try {
             while (running || !queue.isEmpty()) {
                 Packet packet = queue.poll(300, TimeUnit.MILLISECONDS);
                 if (packet != null && writable && !output.append(packet.data, packet.time)) {
                     writable = false; requestStop("采集已达到 128MiB 上限，原文件已保留，请重新采集");
                 }
-                if (System.currentTimeMillis() - flushed > 1000) {
+                long now = System.currentTimeMillis();
+                // 落盘快一点，网页 / 悬浮窗才能更快读到新帧；通知仍按 1 秒节流，避免系统限流
+                if (now - flushed > 300) {
                     STATE.savedBytes = output.flushSnapshot();
-                    flushed = System.currentTimeMillis();
+                    // 战斗模式：超过 8MiB 就只保留最近 4MiB；返回的是裁剪后的真实大小
+                    STATE.savedBytes = output.trimIfNeeded();
+                    flushed = now;
+                }
+                if (now - notified > 1000) {
+                    notified = now;
                     String text = STATE.packets == 0 ? "等待游戏连接，请重新登录洛克王国"
                         : "已接收 " + STATE.packets + " 包 · " + String.format(Locale.ROOT, "%.2f MiB", STATE.bytes / 1048576.0)
                             + "，返回工具箱查看数据进度";

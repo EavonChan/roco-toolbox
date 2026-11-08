@@ -218,6 +218,19 @@ const freshness = (snapshot: AccountSnapshot): number | null =>
   parseTime(snapshot.exportedAt) ?? parseTime(snapshot.importedAt);
 
 /**
+ * 新数据没带家园（这次抓包没进家园场景）时，保留本机原有的家园（2026-11-01 用户反馈：
+ * 导入一次背包数据后家园整个消失）。家园只能靠进场景重新采，丢了要用户再跑一趟；
+ * 新数据带家园时仍以新的为准。
+ */
+export function mergeImportedSnapshot(
+  incoming: AccountSnapshot,
+  existing: AccountSnapshot | undefined,
+): AccountSnapshot {
+  if (incoming.home || !existing?.home) return incoming;
+  return { ...incoming, home: existing.home };
+}
+
+/**
  * 把另一台设备的备份合并进本地数据（多设备用）。
  *
  * 规则：
@@ -286,7 +299,7 @@ export function mergeSnapshots(
     }
     // 老数据（无 UID）被带 UID 的新数据顶掉时，主键会从 name: 变成 uid: → 把旧键删掉，别留两份
     if (found.key !== key) byKey.delete(found.key);
-    byKey.set(key, snapshot);
+    byKey.set(key, mergeImportedSnapshot(snapshot, found.snapshot));
     updated.push(snapshot.accountName);
   }
 

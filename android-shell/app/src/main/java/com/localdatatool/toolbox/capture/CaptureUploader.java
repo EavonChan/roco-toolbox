@@ -23,7 +23,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 /**
- * 蛋神助手 Android 采集器 1.2.6 的 V3 原包上传协议。
+ * 蛋神助手 Android 采集器 1.2.9 的 V3 原包上传协议。
  *
  * 上传端点是蛋神助手自己的云端采集服务，不是工具箱的 Cloudflare 后端。服务端会校验
  * 应用包名、版本号和发布令牌，所以这里按原版公开客户端身份发送请求头；令牌由构建时
@@ -35,8 +35,8 @@ final class CaptureUploader {
     static final long MAX_UPLOAD_BYTES = 5L * 1024L * 1024L;
     static final String API_BASE = "https://capture.danking.cn:18443/capture-api";
     static final String UPSTREAM_APP = "cn.danking.collector";
-    static final String UPSTREAM_VERSION = "1.2.6";
-    static final int UPSTREAM_VERSION_CODE = 46;
+    static final String UPSTREAM_VERSION = "1.2.9";
+    static final int UPSTREAM_VERSION_CODE = 57;
     private static final int MAX_RESPONSE_BYTES = 256 * 1024;
     private static final long POLL_DEADLINE_NANOS = 180_000_000_000L;
 

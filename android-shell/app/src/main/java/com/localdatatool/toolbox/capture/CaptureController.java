@@ -2,11 +2,18 @@ package com.localdatatool.toolbox.capture;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.net.*;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Vibrator;
 import android.webkit.*;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.FileProvider;
 import com.localdatatool.toolbox.BuildConfig;
 import org.json.*;
@@ -68,10 +75,10 @@ public final class CaptureController {
                 + JSONObject.quote("无法读取本机采集文件：" + CaptureVpnService.friendly(error)) + "}";
         }
     }
-    public String startCapture() {
+    public String startCapture(String mode) {
         if (!trusted) return "请在工具箱内使用采集";
         if (Build.VERSION.SDK_INT < 26) return "内置采集需要 Android 8 或以上，仍可手动导入文件";
-        if (!CaptureVpnService.STATE.begin()) return "采集正在进行或保存中";
+        if (!CaptureVpnService.STATE.begin(mode)) return "采集正在进行或保存中";
         activity.runOnUiThread(() -> {
             awaitingLaunch = true;
             if (!trusted || activity.isFinishing()) { CaptureVpnService.STATE.update("idle", "已取消启动采集"); return; }
@@ -153,6 +160,7 @@ public final class CaptureController {
         if (CaptureVpnService.STATE.busy()) throw new IOException("请先停止采集并等待保存完成");
         CaptureFiles files = CaptureVpnService.files(activity);
         File file = files.require(id);
+        if (importable && files.trimmed(file)) throw new IOException("该文件为战斗模式采集，只保留最近一段，不能完整导入；可导出原始文件");
         if (importable && !files.valid(file)) throw new IOException("该文件未完整保存或没有游戏数据，请重新采集；原文件可导出");
         return file;
     }
@@ -167,14 +175,60 @@ public final class CaptureController {
             return "";
         } catch (Exception error) { return CaptureVpnService.friendly(error); }
     }
+    /**
+     * 稀有精灵通知（2026-11-05）。独立渠道，10 秒后自动消失，震动 300ms。
+     * 与采集前台通知分开，避免被正在进行的采集通知覆盖。
+     */
+    public String notifyRareAlert(String title, String body) {
+        if (!trusted) return "请在工具箱内使用提醒";
+        try {
+            String safeTitle = title == null ? "" : title.trim();
+            String safeBody = body == null ? "" : body.trim();
+            if (safeTitle.length() > 80) safeTitle = safeTitle.substring(0, 80);
+            if (safeBody.length() > 500) safeBody = safeBody.substring(0, 500);
+            if (safeTitle.isEmpty()) return "提醒标题为空";
+            NotificationManager manager = activity.getSystemService(NotificationManager.class);
+            if (manager == null) return "系统通知不可用";
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel channel = new NotificationChannel("roco_rare", "稀有精灵提醒", NotificationManager.IMPORTANCE_HIGH);
+                channel.setDescription("附近刷出稀有精灵时提醒");
+                manager.createNotificationChannel(channel);
+            }
+            Intent open = new Intent(activity, com.localdatatool.toolbox.MainActivity.class);
+            PendingIntent content = PendingIntent.getActivity(activity, 0, open,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(activity, "roco_rare")
+                .setSmallIcon(com.localdatatool.toolbox.R.drawable.ic_capture)
+                .setContentTitle(safeTitle)
+                .setContentText(safeBody)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(safeBody))
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(content);
+            manager.notify(9528, builder.build());
+            new Handler(Looper.getMainLooper()).postDelayed(() -> manager.cancel(9528), 10000);
+            try {
+                Vibrator vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+                if (vibrator != null) vibrator.vibrate(300);
+            } catch (Exception ignored) { }
+            return "";
+        } catch (Exception error) {
+            return "提醒发送失败：" + CaptureVpnService.friendly(error);
+        }
+    }
     public String inspectCapture() throws Exception {
         if (!trusted) throw new IOException("请在工具箱内查看采集进度");
         CaptureState state = CaptureVpnService.STATE;
         synchronized (state) {
             if (!"capturing".equals(state.phase) || state.savedBytes <= 24 || state.fileId.isEmpty()) return "";
             File file = CaptureVpnService.files(activity).require(state.fileId);
-            CaptureSnapshot snapshot = new CaptureSnapshot(file, state.savedBytes, state.fileId);
-            if (snapshot.size > file.length() || snapshot.size > CaptureFiles.MAX_BYTES) throw new IOException("采集快照尚未保存，请稍后重试");
+            // 滚动裁剪正在 rename 时文件会短暂变小：按实际长度截断快照，本轮直接跳过，
+            // 不让网页收到「快照尚未保存」的错误（下一轮就恢复了）。
+            long size = Math.min(state.savedBytes, file.length());
+            if (size <= 24) return "";
+            CaptureSnapshot snapshot = new CaptureSnapshot(file, size, state.fileId);
+            if (snapshot.size > CaptureFiles.MAX_BYTES) throw new IOException("采集快照尚未保存，请稍后重试");
             String token = UUID.randomUUID().toString();
             if (grants.size() > 20) grants.clear();
             grants.put(token, snapshot);
@@ -215,16 +269,30 @@ public final class CaptureController {
     public WebResourceResponse intercept(Uri uri) {
         if (uri == null || !uri.toString().startsWith(FILE_PREFIX)) return null;
         try {
-            String token = uri.toString().substring(FILE_PREFIX.length());
+            // token 从 path 取，避免实时巡检的 ?from=N 增量参数被当成 token 的一部分
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            String token = path.substring(path.lastIndexOf('/') + 1);
             CaptureSnapshot grant = trusted ? grants.get(token) : null;
             if (grant == null) throw new IOException("unknown capture grant");
             if (grant.session.isEmpty()) requireFile(grant.file.getName(), true);
             else if (!grant.session.equals(CaptureVpnService.STATE.fileId)) throw new IOException("expired capture session");
             CaptureVpnService.files(activity).require(grant.file.getName());
+            // 增量读取（2026-11-08）：网页记住已读位置后只取 [from, size) 这一段，
+            // 不再每轮把几十 MB 整个文件重新搬过 WebView。
+            long from = 0;
+            try {
+                String raw = uri.getQueryParameter("from");
+                if (raw != null) from = Long.parseLong(raw);
+            } catch (Exception ignored) {
+                from = 0;
+            }
+            if (from < 0 || from > grant.size) throw new IOException("invalid capture range");
             Map<String, String> headers = new HashMap<>();
             headers.put("Access-Control-Allow-Origin", ORIGIN); headers.put("Cache-Control", "no-store");
-            headers.put("Content-Length", Long.toString(grant.size));
-            return new WebResourceResponse("application/octet-stream", null, 200, "OK", headers, grant.open());
+            headers.put("Content-Length", Long.toString(grant.size - from));
+            headers.put("X-Capture-From", Long.toString(from));
+            headers.put("X-Capture-Total", Long.toString(grant.size));
+            return new WebResourceResponse("application/octet-stream", null, 200, "OK", headers, grant.open(from));
         } catch (Exception error) {
             return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
         }

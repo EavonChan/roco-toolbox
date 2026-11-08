@@ -40,6 +40,7 @@ import java.util.Collections;
 import com.localdatatool.toolbox.capture.CaptureController;
 import com.localdatatool.toolbox.capture.CaptureBridgePolicy;
 import com.localdatatool.toolbox.capture.CaptureVpnService;
+import com.localdatatool.toolbox.capture.BattleOverlayController;
 
 /**
  * 「洛克工具箱」的原生壳。只做三件事：
@@ -92,6 +93,8 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private CaptureController collector;
+    /** 战斗采集悬浮球（系统级，浮在游戏上方；2026-11-08） */
+    private BattleOverlayController battleOverlay;
     private boolean captureBridgeInstalled;
     private String collectedCaptureUrl;
     /** 等文件选择器回结果的回调；WebView 只认一次，回完必须置空 */
@@ -124,6 +127,7 @@ public class MainActivity extends Activity {
             textPayload = null; textName = null; shareInjected = false;
             injectPendingShare();
         });
+        battleOverlay = new BattleOverlayController(this);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -277,13 +281,19 @@ public class MainActivity extends Activity {
                     String result;
                     if ("getState".equals(action)) result = collector.getState();
                     else if ("inspectCapture".equals(action)) result = collector.inspectCapture();
-                    else if ("startCapture".equals(action)) result = collector.startCapture();
+                    else if ("startCapture".equals(action)) result = collector.startCapture(request.optString("mode", "full"));
                     else if ("stopCapture".equals(action)) result = collector.stopCapture();
                     else if ("openGame".equals(action)) result = collector.openGame();
                     else if ("importCapture".equals(action)) result = collector.importCapture(id);
                     else if ("uploadCapture".equals(action)) result = collector.uploadCapture(id);
                     else if ("shareCapture".equals(action)) result = collector.shareCapture(id);
                     else if ("deleteCapture".equals(action)) result = collector.deleteCapture(id);
+                    else if ("notifyRareAlert".equals(action)) result = collector.notifyRareAlert(
+                        request.optString("title"), request.optString("body"));
+                    // 系统悬浮窗：球浮在游戏上方，网页只推状态（2026-11-08）
+                    else if ("updateBattleOverlay".equals(action)) result = battleOverlay.update(readOverlay(request));
+                    else if ("requestOverlayPermission".equals(action)) result = battleOverlay.requestPermission();
+                    else if ("canDrawOverlay".equals(action)) result = battleOverlay.canDraw() ? "true" : "false";
                     else throw new IllegalArgumentException("未知的采集操作");
                     reply.postMessage(new JSONObject().put("requestId", requestId).put("result", result).toString());
                 } catch (Exception error) {
@@ -298,6 +308,29 @@ public class MainActivity extends Activity {
             while ((length = input.read(buffer)) != -1) text.write(buffer, 0, length);
             WebViewCompat.addDocumentStartJavaScript(webView, text.toString("UTF-8"), Collections.singleton("https://" + SITE_HOST));
         } catch (Exception error) { showMessage("无法加载本机采集入口：" + CaptureVpnService.friendly(error)); }
+    }
+
+    /**
+     * 悬浮窗载荷既可能是 JSON 对象（新网页），也可能是 JSON 字符串（旧网页把 payload
+     * 二次 stringify 了）。两种都收下，避免网页缓存旧版时球彻底不显示。
+     */
+    private static JSONObject readOverlay(JSONObject request) {
+        JSONObject overlay = request.optJSONObject("overlay");
+        if (overlay != null) return overlay;
+        String raw = request.optString("overlay", "");
+        if (raw.isEmpty()) return null;
+        try {
+            return new JSONObject(raw);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 用户可能刚去系统设置里授予了悬浮窗权限：回来时把还在采集的球重新画上
+        if (battleOverlay != null) battleOverlay.onResume();
     }
 
     @Override
@@ -320,6 +353,8 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         cancelPendingFileChooser();
         if (collector != null) collector.destroy();
+        // 悬浮窗必须在这里摘掉：Activity 没了还留着窗口会泄漏
+        if (battleOverlay != null) { battleOverlay.destroy(); battleOverlay = null; }
         if (webView != null) {
             // WebView 持有 Activity 与 JS 引擎线程，不按标准序列销毁会一直泄漏。
             // 先摘掉注入的 JS 接口，再断开页面、销毁。
