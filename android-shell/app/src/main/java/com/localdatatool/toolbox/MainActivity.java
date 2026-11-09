@@ -8,6 +8,8 @@ import android.content.pm.ApplicationInfo;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.provider.OpenableColumns;
 import android.webkit.JavascriptInterface;
@@ -41,6 +43,7 @@ import com.localdatatool.toolbox.capture.CaptureController;
 import com.localdatatool.toolbox.capture.CaptureBridgePolicy;
 import com.localdatatool.toolbox.capture.CaptureVpnService;
 import com.localdatatool.toolbox.capture.BattleOverlayController;
+import com.localdatatool.toolbox.update.UpdateController;
 
 /**
  * 「洛克工具箱」的原生壳。只做三件事：
@@ -95,6 +98,13 @@ public class MainActivity extends Activity {
     private CaptureController collector;
     /** 战斗采集悬浮球（系统级，浮在游戏上方；2026-11-08） */
     private BattleOverlayController battleOverlay;
+    /** 应用内更新：启动静默检查 + 最低可用版本强制更新（2026-11-08） */
+    private UpdateController updater;
+    /** 启动后延迟几秒静默检查一次更新；无更新 / 断网都不打扰用户 */
+    private final Handler updateTick = new Handler(Looper.getMainLooper());
+    private final Runnable silentUpdateCheck = () -> {
+        if (updater != null) updater.checkSilently();
+    };
     private boolean captureBridgeInstalled;
     private String collectedCaptureUrl;
     /** 等文件选择器回结果的回调；WebView 只认一次，回完必须置空 */
@@ -128,12 +138,15 @@ public class MainActivity extends Activity {
             injectPendingShare();
         });
         battleOverlay = new BattleOverlayController(this);
+        updater = new UpdateController(this);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         webView.setBackgroundColor(PAGE_BACKGROUND);
         // 网页「导出全部数据」改为分享：壳从这里把备份文本拿出去调起系统分享面板
         webView.addJavascriptInterface(new ShareBridge(), "RocoShare");
+        // 网页「设置 / 关于」页的「检查更新」入口（网页侧调用 window.RocoUpdate.check()）
+        webView.addJavascriptInterface(new UpdateBridge(), "RocoUpdate");
         installCaptureWebMessageBridge();
         webView.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
@@ -264,6 +277,9 @@ public class MainActivity extends Activity {
         setContentView(webView);
         handleShareIntent(getIntent());
         webView.loadUrl(SITE_URL);
+        // 开屏静默检查：低于最低可用版本会弹不可取消的全屏更新页；断网 / 拿不到清单直接放行
+        updateTick.removeCallbacks(silentUpdateCheck);
+        updateTick.postDelayed(silentUpdateCheck, 3000);
     }
 
     private void installCaptureWebMessageBridge() {
@@ -331,6 +347,8 @@ public class MainActivity extends Activity {
         super.onResume();
         // 用户可能刚去系统设置里授予了悬浮窗权限：回来时把还在采集的球重新画上
         if (battleOverlay != null) battleOverlay.onResume();
+        // 从「安装未知应用」设置页回来：如果已经授权，继续安装刚才下好的包
+        if (updater != null) updater.onResume();
     }
 
     @Override
@@ -352,13 +370,17 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         cancelPendingFileChooser();
+        updateTick.removeCallbacksAndMessages(null);
         if (collector != null) collector.destroy();
         // 悬浮窗必须在这里摘掉：Activity 没了还留着窗口会泄漏
         if (battleOverlay != null) { battleOverlay.destroy(); battleOverlay = null; }
+        // 更新页 / 下载进度都属于这个 Activity，一并回收
+        if (updater != null) { updater.destroy(); updater = null; }
         if (webView != null) {
             // WebView 持有 Activity 与 JS 引擎线程，不按标准序列销毁会一直泄漏。
             // 先摘掉注入的 JS 接口，再断开页面、销毁。
             webView.removeJavascriptInterface("RocoShare");
+            webView.removeJavascriptInterface("RocoUpdate");
             if (captureBridgeInstalled) WebViewCompat.removeWebMessageListener(webView, "RocoCaptureBridge");
             webView.loadUrl("about:blank");
             webView.removeAllViews();
@@ -579,6 +601,21 @@ public class MainActivity extends Activity {
      *   FLAG_ACTIVITY_NEW_TASK（以独立 Task 弹窗，国产 ROM 的标准要求）。
      * - 文件写入仍留在当前线程（IO 不占主线程）。
      */
+    /** 网页「设置 / 关于」页的更新入口（2026-11-08）。 */
+    private class UpdateBridge {
+        @JavascriptInterface
+        public void check() {
+            runOnUiThread(() -> {
+                if (updater != null) updater.checkManually();
+            });
+        }
+
+        @JavascriptInterface
+        public String version() {
+            return BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")";
+        }
+    }
+
     private class ShareBridge {
         /** 在当前线程（后台线程）准备好 Intent 后，切主线程弹系统分享面板。 */
         private void showChooser(Intent shareIntent, String fallbackText, Exception buildError) {

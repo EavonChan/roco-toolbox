@@ -56,8 +56,10 @@ public final class BattleOverlayController {
     private static final String KEY_Y = "y";
     private static final String CARD_TITLE = "战斗采集 · 赛季奇遇";
 
-    private static final int COLOR_ORB_IDLE = 0xFF334155;
-    private static final int COLOR_ORB_HIT = 0xFFF43F5E;
+    /** 透明底：透出游戏画面，只留一圈描边（1.2.8 起） */
+    private static final int COLOR_FRAME_BG = 0x00FFFFFF;
+    private static final int COLOR_FRAME_BORDER = 0xFF059669;
+    private static final int COLOR_FRAME_HIT_BORDER = 0xFFE11D48;
     private static final int COLOR_CARD_BG = 0xFFFFFFFF;
     private static final int COLOR_TITLE = 0xFF1E293B;
     private static final int COLOR_CHIP_BG = 0xFFF1F5F9;
@@ -68,6 +70,10 @@ public final class BattleOverlayController {
     private static final int COLOR_EMPTY_TEXT = 0xFF94A3B8;
 
     private static final int ORB_DP = 52;
+    /** 图标与边框之间的留白：太小图标方角会顶出圆角，太大图标会显得小。 */
+    private static final int ORB_PADDING_DP = 4;
+    private static final int ORB_RADIUS_DP = 12;
+    private static final int ORB_BORDER_DP = 2;
     private static final int CARD_DP = 216;
     private static final int EDGE_DP = 8;
     private static final int DRAG_SLOP_DP = 8;
@@ -94,7 +100,10 @@ public final class BattleOverlayController {
 
     public BattleOverlayController(Activity activity) {
         this.activity = activity;
-        this.windowManager = (WindowManager) activity.getSystemService(Context.WINDOW_SERVICE);
+        // 必须用 Application 的 WindowManager：Activity 的 WindowManager 带着 Activity 窗口令牌，
+        // 窗口会被限制在 Activity 自己的显示区域里（竖屏宽度），横屏游戏里就表现为「只能拖到左半屏」。
+        this.windowManager = (WindowManager) activity.getApplicationContext()
+            .getSystemService(Context.WINDOW_SERVICE);
         this.prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
@@ -166,17 +175,14 @@ public final class BattleOverlayController {
         int size = dp(ORB_DP);
         ImageView view = new ImageView(activity);
         view.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        // 球里放工具箱的桌面图标，留一圈底色
-        view.setPadding(dp(10), dp(10), dp(10), dp(10));
+        // 项目图标 + 一圈描边：底色透明，游戏画面从图标四周透出来
+        view.setPadding(dp(ORB_PADDING_DP), dp(ORB_PADDING_DP), dp(ORB_PADDING_DP), dp(ORB_PADDING_DP));
         try {
             view.setImageDrawable(activity.getApplicationInfo().loadIcon(activity.getPackageManager()));
         } catch (Exception ignored) {
-            // 拿不到图标就只显示纯色球
+            // 拿不到图标就只显示边框
         }
-        GradientDrawable shape = new GradientDrawable();
-        shape.setShape(GradientDrawable.OVAL);
-        shape.setColor(COLOR_ORB_IDLE);
-        view.setBackground(shape);
+        view.setBackground(orbFrame(false));
         orb = view;
 
         orbParams = new WindowManager.LayoutParams(
@@ -400,14 +406,19 @@ public final class BattleOverlayController {
     }
 
     private void setHit(boolean next) {
-        if (orb != null) {
-            GradientDrawable shape = new GradientDrawable();
-            shape.setShape(GradientDrawable.OVAL);
-            shape.setColor(next ? COLOR_ORB_HIT : COLOR_ORB_IDLE);
-            orb.setBackground(shape);
-        }
+        if (orb != null) orb.setBackground(orbFrame(next));
         if (next) startPulse();
         else stopPulse();
+    }
+
+    /** 球的外观（1.2.5/16）：图标 + 一圈贴合的圆角边框，命中时边框转红。 */
+    private GradientDrawable orbFrame(boolean hit) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setShape(GradientDrawable.RECTANGLE);
+        shape.setCornerRadius(dp(ORB_RADIUS_DP));
+        shape.setColor(COLOR_FRAME_BG);
+        shape.setStroke(dp(ORB_BORDER_DP), hit ? COLOR_FRAME_HIT_BORDER : COLOR_FRAME_BORDER);
+        return shape;
     }
 
     private void startPulse() {
