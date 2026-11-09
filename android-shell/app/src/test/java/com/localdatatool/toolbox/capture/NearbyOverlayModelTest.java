@@ -199,5 +199,40 @@ public class NearbyOverlayModelTest {
             NearbyOverlayModel.parseMapScenes(json));
         assertEquals(new HashSet<Integer>(), NearbyOverlayModel.parseMapScenes("not json"));
     }
+
+    @Test public void mapPetsFallBackToListWhenPayloadIsOld() throws Exception {
+        JSONObject json = payload("{\"battle\":true,\"nearby\":true}");
+        NearbyOverlayModel model = NearbyOverlayModel.parse(json);
+        assertEquals(model.pets.size(), model.mapPets.size());
+        assertEquals("p0", model.mapPets.get(0).key);
+    }
+
+    @Test public void mapPetsKeepPlainPetsForRadar() throws Exception {
+        JSONObject json = payload("{\"battle\":true,\"nearby\":true}");
+        json.put("pets", pets(1));
+        json.put("mapPets", pets(6));
+        NearbyOverlayModel model = NearbyOverlayModel.parse(json);
+        assertEquals(1, model.pets.size());
+        assertEquals(6, model.mapPets.size());
+        assertEquals("p5", model.mapPets.get(5).key);
+    }
+
+    @Test public void mapPetsAreCapped() throws Exception {
+        JSONObject json = payload("{\"battle\":true,\"nearby\":true}");
+        json.put("mapPets", pets(40));
+        NearbyOverlayModel model = NearbyOverlayModel.parse(json);
+        assertEquals(NearbyOverlayModel.MAX_MAP_POINTS, model.mapPets.size());
+    }
+
+    @Test public void petReasonIsParsedAndDefaultsToEmpty() throws Exception {
+        JSONObject json = payload("{\"battle\":true,\"nearby\":true}");
+        JSONArray pets = new JSONArray();
+        pets.put(new JSONObject().put("key", "demand").put("reason", "demand"));
+        pets.put(new JSONObject().put("key", "legacy"));
+        json.put("pets", pets);
+        NearbyOverlayModel model = NearbyOverlayModel.parse(json);
+        assertEquals("demand", model.pets.get(0).reason);
+        assertEquals("", model.pets.get(1).reason);
+    }
 }
 

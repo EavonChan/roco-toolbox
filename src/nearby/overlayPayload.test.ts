@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import type { LiveNearbyPet } from '../collector/captureProgress';
 import type { NearbySnapshot } from '../collector/nearbyStore';
-import { buildNearbyOverlayPayload, OVERLAY_PET_LIMIT } from './overlayPayload';
+import type { DemandHit } from '../pcap/demandMatch';
+import {
+  buildNearbyOverlayPayload,
+  isOverlayTarget,
+  overlayHitReason,
+  OVERLAY_MAP_POINT_LIMIT,
+  OVERLAY_PET_LIMIT,
+} from './overlayPayload';
 
 const pet = (overrides: Partial<LiveNearbyPet> & { key: string }): LiveNearbyPet => ({
   cfgId: 10000, name: '未知精灵', level: 1, voiceDb: 0,
@@ -20,6 +27,26 @@ const build = (pets: LiveNearbyPet[], extra: Partial<NearbySnapshot> = {}) =>
     hasKey: true,
     snapshot: snapshot({ pets, ...extra }),
   });
+
+const demandHit = (eggGameId = 101): DemandHit => ({
+  demand: {
+    eggGameId,
+    nature: '',
+    gender: '',
+    body: '',
+    voice: '',
+    groupId: 'g1',
+    demanderAccountId: 'u1',
+    status: 'open',
+    claimerAccountId: null,
+    version: 1,
+    createdAt: 0,
+    updatedAt: 0,
+  },
+  groupName: '测试小组',
+  known: [],
+  unverified: [],
+});
 
 describe('buildNearbyOverlayPayload 基础字段', () => {
   test('采集中才可见，停止采集收起隐藏', () => {
@@ -177,6 +204,74 @@ describe('只保留命中目标的精灵', () => {
     expect(payload.pets).toEqual([]);
     expect(payload.matched).toBe(0);
     expect(payload.total).toBe(2);
+  });
+});
+
+describe('需求中心命中', () => {
+  test('命中需求的普通精灵进列表，reason 为 demand', () => {
+    const demandHits = new Map<string, DemandHit[]>([['plain', [demandHit()]]]);
+    const payload = buildNearbyOverlayPayload({
+      capturing: true,
+      hasKey: true,
+      snapshot: snapshot({
+        pets: [pet({ key: 'plain', pos: { x: 100, y: 0, z: 0 } })],
+        self: { x: 0, y: 0 },
+      }),
+      demandHits,
+    });
+    expect(payload.pets.map((item) => item.key)).toEqual(['plain']);
+    expect(payload.pets[0].reason).toBe('demand');
+    expect(payload.matched).toBe(1);
+    expect(payload.mapPets[0].reason).toBe('demand');
+  });
+
+  test('reason 优先级：需求 > 可提醒 > 稀有 > 炫彩·异色·污染', () => {
+    const all = pet({ key: 'a', alertReason: '±100dB', rare: true, kinds: ['shiny'] });
+    expect(overlayHitReason(all, 1)).toBe('demand');
+    expect(overlayHitReason(all)).toBe('alert');
+    expect(overlayHitReason(pet({ key: 'a', rare: true, kinds: ['shiny'] }))).toBe('rare');
+    expect(overlayHitReason(pet({ key: 'a', kinds: ['colorful', 'pollution'] }))).toBe('colorful');
+    expect(overlayHitReason(pet({ key: 'a', kinds: ['big'] }))).toBeNull();
+    expect(isOverlayTarget(all, 1)).toBe(true);
+    expect(isOverlayTarget(pet({ key: 'a', kinds: ['big'] }))).toBe(false);
+  });
+
+  test('命中需求的精灵排在可提醒 / 稀有之前（即使更远）', () => {
+    const demandHits = new Map<string, DemandHit[]>([['demand-far', [demandHit()]]]);
+    const payload = buildNearbyOverlayPayload({
+      capturing: true,
+      hasKey: true,
+      snapshot: snapshot({
+        pets: [
+          pet({ key: 'alert-near', alertReason: '±100dB', pos: { x: 100, y: 0, z: 0 } }),
+          pet({ key: 'demand-far', pos: { x: 10000, y: 0, z: 0 } }),
+        ],
+        self: { x: 0, y: 0 },
+      }),
+      demandHits,
+    });
+    expect(payload.pets.map((item) => item.key)).toEqual(['demand-far', 'alert-near']);
+  });
+});
+
+describe('地图 / 雷达点位', () => {
+  test('普通精灵不进列表，但进 mapPets', () => {
+    const payload = build([
+      pet({ key: 'plain', pos: { x: 100, y: 0, z: 0 } }),
+      pet({ key: 'rare', rare: true, pos: { x: 200, y: 0, z: 0 } }),
+      pet({ key: 'no-pos', rare: true }),
+    ], { self: { x: 0, y: 0 } });
+    expect(payload.pets.map((item) => item.key)).toEqual(['rare', 'no-pos']);
+    expect(payload.mapPets.map((item) => item.key)).toEqual(['plain', 'rare']);
+  });
+
+  test('mapPets 按距离截断到上限', () => {
+    const pets = Array.from({ length: OVERLAY_MAP_POINT_LIMIT + 6 }, (_, index) =>
+      pet({ key: `k${index}`, pos: { x: (index + 1) * 10, y: 0, z: 0 } }));
+    const payload = build(pets, { self: { x: 0, y: 0 } });
+    expect(payload.mapPets).toHaveLength(OVERLAY_MAP_POINT_LIMIT);
+    expect(payload.mapPets[0].key).toBe('k0');
+    expect(payload.total).toBe(OVERLAY_MAP_POINT_LIMIT + 6);
   });
 });
 

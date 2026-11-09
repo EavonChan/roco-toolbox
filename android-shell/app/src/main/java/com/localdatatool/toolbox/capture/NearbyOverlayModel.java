@@ -18,6 +18,8 @@ public final class NearbyOverlayModel {
 
     /** 列表最多渲染 8 条，其余只报数。 */
     public static final int MAX_ROWS = 8;
+    /** 地图 / 雷达最多画 24 个点（网页已按距离截断，这里再兜一层）。 */
+    public static final int MAX_MAP_POINTS = 24;
     /** 面板宽度（与屏宽无关，规格 1.1）。 */
     public static final int PANEL_WIDTH = 268;
     /** 球与屏边 / 面板与球 / 面板与屏边的间距。 */
@@ -62,6 +64,11 @@ public final class NearbyOverlayModel {
     public final Double selfY;
     public final boolean selfEstimated;
     public final List<Pet> pets;
+    /**
+     * 地图 / 雷达点位：附近所有带坐标的精灵（含未命中目标的普通精灵）。
+     * 旧网页不带 mapPets 时退回 pets，行为与之前一致。
+     */
+    public final List<Pet> mapPets;
     public final int total;
     /** 命中目标数（网页只把命中的精灵放进 pets，普通精灵只计入 total）。 */
     public final int matchedTotal;
@@ -94,6 +101,19 @@ public final class NearbyOverlayModel {
             parsed = new ArrayList<>(parsed.subList(0, MAX_ROWS));
         }
         pets = Collections.unmodifiableList(parsed);
+
+        // 地图 / 雷达点位：网页给 mapPets（含普通精灵）就用它，旧 payload 退回 pets
+        JSONArray mapArray = payload.optJSONArray("mapPets");
+        if (mapArray == null) {
+            mapPets = pets;
+        } else {
+            List<Pet> parsedMap = new ArrayList<>();
+            for (int index = 0; index < mapArray.length() && parsedMap.size() < MAX_MAP_POINTS; index++) {
+                JSONObject item = mapArray.optJSONObject(index);
+                if (item != null) parsedMap.add(new Pet(item));
+            }
+            mapPets = Collections.unmodifiableList(parsedMap);
+        }
 
         int declaredTotal = payload.has("total") ? payload.optInt("total", pets.size()) : pets.size();
         total = Math.max(declaredTotal, pets.size());
@@ -241,6 +261,8 @@ public final class NearbyOverlayModel {
         public final List<String> kinds;
         public final boolean rare;
         public final boolean alert;
+        /** 命中原因：demand / alert / rare / colorful / shiny / pollution，旧 payload 为空。 */
+        public final String reason;
         public final String nature;
         public final String gender;
         public final Double distanceM;
@@ -263,6 +285,7 @@ public final class NearbyOverlayModel {
             kinds = Collections.unmodifiableList(parsedKinds);
             rare = item.optBoolean("rare", false);
             alert = item.optBoolean("alert", false);
+            reason = item.optString("reason", "");
             nature = item.optString("nature", "");
             gender = item.optString("gender", "");
             distanceM = numberOrNull(item, "distanceM");

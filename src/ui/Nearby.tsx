@@ -14,6 +14,7 @@ import { hasNearbyOverlayShell, pushNearbyOverlayToShell } from '../nearby/overl
 import { isLastEnabledNearbyOverlayPanel, setNearbyOverlayPanel, useNearbyOverlayPanels } from '../nearby/overlayPanels';
 import { species, eggGroupNames } from '../data/catalog';
 import { demandHitsForPet, demandSpeciesIndex, type DemandHit } from '../pcap/demandMatch';
+import { demandKeyOf } from '../shared/collectionGroups';
 import { buildRadar, DEFAULT_RADAR_RADIUS_M, type RadarData } from '../pcap/nearbyRadar';
 import { worldMapForScene } from '../pcap/worldMap';
 import { createSelfEstimate, updateSelfEstimate } from '../pcap/selfOdometry';
@@ -194,6 +195,19 @@ export function Nearby({ onNavigate }: NearbyProps) {
     }
     return map;
   }, [snapshot, demands]);
+
+  /**
+   * 需求中心签名：只取影响匹配的条件（蛋 / 性格 / 性别 / 体型 / 声音）。
+   * `useDemandCenter` 每次刷新都会给新数组身份，直接依赖它会把推送钩子打成每秒一次；
+   * 用签名后，需求没变就不重推，变了才推。
+   */
+  const demandSignature = useMemo(
+    () => [...new Set(demands.map((demand) => demandKeyOf(demand)))].sort().join('|'),
+    [demands],
+  );
+  /** 推送 effect 里读最新命中表，但不把 hitByKey 当依赖（它随快照变，已由 snapshot 驱动）。 */
+  const hitByKeyRef = useRef(hitByKey);
+  hitByKeyRef.current = hitByKey;
 
   const classify = useMemo(
     () => (pet: LiveNearbyPet) => {
@@ -473,6 +487,7 @@ export function Nearby({ onNavigate }: NearbyProps) {
           capturing: false,
           hasKey: Boolean(progress?.analysis.hasKey),
           snapshot,
+          demandHits: hitByKeyRef.current,
         }));
       }
       return;
@@ -485,8 +500,9 @@ export function Nearby({ onNavigate }: NearbyProps) {
       capturing: true,
       hasKey: Boolean(progress?.analysis.hasKey),
       snapshot,
+      demandHits: hitByKeyRef.current,
     }));
-  }, [shellOverlaySupported, capturing, snapshot, progress, overlayPanels]);
+  }, [shellOverlaySupported, capturing, snapshot, progress, overlayPanels, demandSignature]);
 
   // 全屏时支持 Esc 退出
   useEffect(() => {

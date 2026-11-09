@@ -89,7 +89,6 @@ public final class NearbyPanelController {
     private final Activity activity;
     private final WindowManager windowManager;
     private final SharedPreferences prefs;
-    private final Set<Integer> mapScenes;
     private final String catalogJson;
 
     private JSONObject nearbyPayload;
@@ -136,7 +135,6 @@ public final class NearbyPanelController {
         this.lastScreenHeight = activity.getResources().getDisplayMetrics().heightPixels;
         String catalog = readAsset("maps/maps.json");
         this.catalogJson = catalog;
-        this.mapScenes = NearbyOverlayModel.parseMapScenes(catalog);
     }
 
     /** 网页推来的附近 payload（含 panels 配置）；返回给网页的结果固定是 ok。 */
@@ -545,7 +543,7 @@ public final class NearbyPanelController {
         boolean showNearby = model.nearby;
         int rows = model.shownRows();
         int hidden = model.hiddenCount();
-        boolean hasMap = showNearby && hasMap(model);
+        boolean hasMap = showNearby && showsMapArea(model);
         int hitHeight = !showBattle ? 0 : (hasHit ? NearbyOverlayModel.HIT_HEIGHT : NearbyOverlayModel.HIT_EMPTY_HEIGHT);
         int panelHeight = NearbyOverlayModel.panelHeight(
             showBattle, hasHit, showNearby, rows, hasMap, hidden);
@@ -685,12 +683,26 @@ public final class NearbyPanelController {
         return box;
     }
 
+    /**
+     * 列表右侧只留一个最短标识，按命中原因区分：
+     * 需求（绿）> 提醒（红）> 稀有（橙）> 炫彩 / 异色 / 污染（原牌子色）。
+     */
     private TextView buildTag(PanelTheme theme, NearbyOverlayModel.Pet pet) {
         String label;
         String color;
-        if (pet.alert) {
+        String reason = pet.reason;
+        if (reason.isEmpty()) {
+            reason = pet.alert ? "alert" : pet.rare ? "rare" : pet.kinds.isEmpty() ? "" : pet.kinds.get(0);
+        }
+        if ("demand".equals(reason)) {
             label = "需求";
+            color = "#16a34a";
+        } else if ("alert".equals(reason)) {
+            label = "提醒";
             color = "#f43f5e";
+        } else if ("rare".equals(reason)) {
+            label = "稀有";
+            color = "#d97706";
         } else if (!pet.kinds.isEmpty()) {
             List<String> labels = new ArrayList<>();
             for (String kind : pet.kinds) {
@@ -756,10 +768,12 @@ public final class NearbyPanelController {
         return false;
     }
 
-    private boolean hasMap(NearbyOverlayModel model) {
+    /**
+     * 有自身坐标就出「地图区」：有标定的场景画地图，没标定的场景由 WebView 切雷达模式。
+     * 以前要求 scene 必须在 maps.json 里，没标定就直接掉成纯列表，看不到方位。
+     */
+    private boolean showsMapArea(NearbyOverlayModel model) {
         return mapView != null
-            && model.scene != null
-            && mapScenes.contains(model.scene)
             && model.selfX != null
             && model.selfY != null;
     }
@@ -767,7 +781,7 @@ public final class NearbyPanelController {
     private void pushMapData() {
         if (nearbyPayload == null) return;
         NearbyOverlayModel model = NearbyOverlayModel.parse(nearbyPayload);
-        pushMapData(model, model != null && hasMap(model));
+        pushMapData(model, model != null && showsMapArea(model));
     }
 
     private void pushMapData(NearbyOverlayModel model, boolean visible) {
@@ -778,13 +792,15 @@ public final class NearbyPanelController {
             data.put("self", new JSONObject().put("x", model.selfX).put("y", model.selfY));
             data.put("estimated", model.selfEstimated);
             JSONArray pets = new JSONArray();
-            for (NearbyOverlayModel.Pet pet : model.pets) {
+            // 地图要画全部附近精灵（普通精灵也在雷达上），列表只展示命中目标
+            for (NearbyOverlayModel.Pet pet : model.mapPets) {
                 if (pet.x == null || pet.y == null) continue;
                 JSONObject item = new JSONObject();
                 item.put("x", pet.x);
                 item.put("y", pet.y);
                 item.put("rare", pet.rare);
                 item.put("alert", pet.alert);
+                item.put("reason", pet.reason);
                 item.put("kinds", new JSONArray(pet.kinds));
                 pets.put(item);
             }

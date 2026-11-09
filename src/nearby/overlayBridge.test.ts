@@ -22,6 +22,9 @@ const payload = (overrides: Partial<NearbyOverlayPayload> = {}): NearbyOverlayPa
   }],
   total: 1,
   matched: 1,
+  mapPets: [{
+    key: 'a', kinds: ['shiny'], rare: true, alert: true, reason: 'alert', x: 100, y: -100,
+  }],
   rareTotal: 1,
   alertTotal: 1,
   selfEstimated: false,

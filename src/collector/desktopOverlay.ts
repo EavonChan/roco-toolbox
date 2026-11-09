@@ -11,6 +11,8 @@ export interface DesktopOverlayPet {
   kinds: string[];
   rare: boolean;
   alert: boolean;
+  /** 命中原因：demand / alert / rare / colorful / shiny / pollution */
+  reason?: string | null;
   nature: string | null;
   gender: string | null;
   /** 相对自身（或估算中心）的距离，米 */
