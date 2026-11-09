@@ -21,6 +21,7 @@ const payload = (overrides: Partial<NearbyOverlayPayload> = {}): NearbyOverlayPa
     nature: '保守', gender: '母', distanceM: 8.8, bearingLabel: '西南', x: 100, y: -100,
   }],
   total: 1,
+  matched: 1,
   rareTotal: 1,
   alertTotal: 1,
   selfEstimated: false,

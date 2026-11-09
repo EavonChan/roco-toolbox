@@ -608,7 +608,7 @@ public final class NearbyPanelController {
     private void fillList(PanelTheme theme, NearbyOverlayModel model, int rows) {
         listBox.removeAllViews();
         if (rows == 0) {
-            listBox.addView(emptyState(theme, model.waitingLogin()));
+            listBox.addView(emptyState(theme, model));
             return;
         }
         for (int index = 0; index < rows; index++) {
@@ -657,17 +657,23 @@ public final class NearbyPanelController {
         }
     }
 
-    private View emptyState(PanelTheme theme, boolean waitingLogin) {
+    private View emptyState(PanelTheme theme, NearbyOverlayModel model) {
+        boolean waitingLogin = model.waitingLogin();
         LinearLayout box = new LinearLayout(activity);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
+        boolean noTargets = model.noTargets();
         TextView main = text(
-            waitingLogin ? NearbyOverlayModel.WAITING_LOGIN : NearbyOverlayModel.EMPTY_NEARBY_TITLE,
+            waitingLogin ? NearbyOverlayModel.WAITING_LOGIN
+                : noTargets ? NearbyOverlayModel.EMPTY_TARGET_TITLE
+                : NearbyOverlayModel.EMPTY_NEARBY_TITLE,
             10, theme.muted);
         main.setGravity(Gravity.CENTER);
         box.addView(main);
         if (!waitingLogin) {
-            TextView hint = text(NearbyOverlayModel.EMPTY_NEARBY_HINT, 9, theme.muted);
+            TextView hint = text(
+                noTargets ? NearbyOverlayModel.EMPTY_TARGET_HINT : NearbyOverlayModel.EMPTY_NEARBY_HINT,
+                9, theme.muted);
             hint.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);

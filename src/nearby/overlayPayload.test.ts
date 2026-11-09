@@ -54,7 +54,7 @@ describe('buildNearbyOverlayPayload 基础字段', () => {
 
 describe('方向与距离', () => {
   test('100 世界单位 = 1 米', () => {
-    const payload = build([pet({ key: 'a', pos: { x: 500, y: 0, z: 0 } })], { self: { x: 0, y: 0 } });
+    const payload = build([pet({ key: 'a', rare: true, pos: { x: 500, y: 0, z: 0 } })], { self: { x: 0, y: 0 } });
     expect(payload.pets[0].distanceM).toBeCloseTo(5);
     expect(payload.pets[0].bearingLabel).toBe('东');
   });
@@ -71,7 +71,7 @@ describe('方向与距离', () => {
       [-1000, 1000, '西北'],
     ];
     const pets = directions.map(([x, y], index) =>
-      pet({ key: `k${index}`, pos: { x, y, z: 0 } }));
+      pet({ key: `k${index}`, rare: true, pos: { x, y, z: 0 } }));
     const payload = build(pets, { self: { x: 0, y: 0 } });
     const labelOf = new Map(payload.pets.map((item) => [item.key, item.bearingLabel]));
     directions.forEach(([, , label], index) => {
@@ -80,14 +80,14 @@ describe('方向与距离', () => {
   });
 
   test('距离按世界坐标实测，不采用快照里的旧值', () => {
-    const payload = build([pet({ key: 'a', distanceM: 99, pos: { x: 1000, y: 0, z: 0 } })], {
+    const payload = build([pet({ key: 'a', distanceM: 99, rare: true, pos: { x: 1000, y: 0, z: 0 } })], {
       self: { x: 0, y: 0 },
     });
     expect(payload.pets[0].distanceM).toBeCloseTo(10);
   });
 
   test('没有坐标的精灵仍进列表：距离退回快照值，方向为空', () => {
-    const payload = build([pet({ key: 'a', distanceM: 42 })], { self: { x: 0, y: 0 } });
+    const payload = build([pet({ key: 'a', distanceM: 42, rare: true })], { self: { x: 0, y: 0 } });
     expect(payload.pets[0]).toMatchObject({
       key: 'a',
       distanceM: 42,
@@ -98,7 +98,7 @@ describe('方向与距离', () => {
   });
 
   test('只有 1 只且没有自身坐标：它就是中心，距离 0、方向为空', () => {
-    const payload = build([pet({ key: 'a', pos: { x: 800, y: 600, z: 0 } })]);
+    const payload = build([pet({ key: 'a', rare: true, pos: { x: 800, y: 600, z: 0 } })]);
     expect(payload.self).toEqual({ x: 800, y: 600 });
     expect(payload.selfEstimated).toBe(true);
     expect(payload.pets[0].distanceM).toBeCloseTo(0);
@@ -109,7 +109,7 @@ describe('方向与距离', () => {
 describe('排序与截断', () => {
   test('提醒 > 稀有 > 距离', () => {
     const pets = [
-      pet({ key: 'near', pos: { x: 100, y: 0, z: 0 } }),
+      pet({ key: 'near', kinds: ['shiny'], pos: { x: 100, y: 0, z: 0 } }),
       pet({ key: 'rare-far', rare: true, pos: { x: 5000, y: 0, z: 0 } }),
       pet({ key: 'alert-far', alertReason: '±100dB', pos: { x: 10000, y: 0, z: 0 } }),
       pet({ key: 'alert-near', alertReason: '体重牌', pos: { x: 500, y: 0, z: 0 } }),
@@ -131,7 +131,7 @@ describe('排序与截断', () => {
 
   test('超过 8 条截断，但总数保留', () => {
     const pets = Array.from({ length: 10 }, (_, index) =>
-      pet({ key: `k${index}`, pos: { x: (index + 1) * 100, y: 0, z: 0 } }));
+      pet({ key: `k${index}`, rare: true, pos: { x: (index + 1) * 100, y: 0, z: 0 } }));
     const payload = build(pets, { self: { x: 0, y: 0 } });
     expect(payload.pets).toHaveLength(OVERLAY_PET_LIMIT);
     expect(payload.total).toBe(10);
@@ -145,6 +145,38 @@ describe('排序与截断', () => {
     expect(payload.pets).toHaveLength(OVERLAY_PET_LIMIT);
     expect(payload.alertTotal).toBe(9);
     expect(payload.pets[OVERLAY_PET_LIMIT - 1].key).toBe('a7');
+  });
+});
+
+describe('只保留命中目标的精灵', () => {
+  test('普通精灵不进列表，但仍计入附近总数', () => {
+    const payload = build([
+      pet({ key: 'plain', pos: { x: 100, y: 0, z: 0 } }),
+      pet({ key: 'rare', rare: true, pos: { x: 200, y: 0, z: 0 } }),
+      pet({ key: 'alert', alertReason: '±100dB', pos: { x: 300, y: 0, z: 0 } }),
+      pet({ key: 'shiny', kinds: ['shiny'], pos: { x: 400, y: 0, z: 0 } }),
+    ], { self: { x: 0, y: 0 } });
+    expect(payload.pets.map((item) => item.key)).toEqual(['alert', 'rare', 'shiny']);
+    expect(payload.matched).toBe(3);
+    expect(payload.total).toBe(4);
+  });
+
+  test('炫彩 / 异色 / 污染算命中，单一大块头 / 小不点牌不算', () => {
+    const payload = build([
+      pet({ key: 'colorful', kinds: ['colorful'] }),
+      pet({ key: 'pollution', kinds: ['pollution'] }),
+      pet({ key: 'big', kinds: ['big'] }),
+      pet({ key: 'small', kinds: ['small'] }),
+    ]);
+    expect(payload.pets.map((item) => item.key).sort()).toEqual(['colorful', 'pollution']);
+    expect(payload.matched).toBe(2);
+  });
+
+  test('全部是普通精灵：列表为空、命中 0，附近总数照常保留', () => {
+    const payload = build([pet({ key: 'a' }), pet({ key: 'b' })], { self: { x: 0, y: 0 } });
+    expect(payload.pets).toEqual([]);
+    expect(payload.matched).toBe(0);
+    expect(payload.total).toBe(2);
   });
 });
 
@@ -178,7 +210,7 @@ describe('牌子与个体信息', () => {
   });
 
   test('性格性别为空字符串时给 null，面板不显示空牌子', () => {
-    const payload = build([pet({ key: 'a', nature: '', gender: '', pos: { x: 0, y: 0, z: 0 } })], {
+    const payload = build([pet({ key: 'a', nature: '', gender: '', rare: true, pos: { x: 0, y: 0, z: 0 } })], {
       self: { x: 0, y: 0 },
     });
     expect(payload.pets[0].nature).toBeNull();
@@ -188,15 +220,15 @@ describe('牌子与个体信息', () => {
 
 describe('自身坐标缺失时的估算中心', () => {
   test('有自身坐标：直接用，不标估算', () => {
-    const payload = build([pet({ key: 'a', pos: { x: 0, y: 0, z: 0 } })], { self: { x: 10, y: 20 } });
+    const payload = build([pet({ key: 'a', rare: true, pos: { x: 0, y: 0, z: 0 } })], { self: { x: 10, y: 20 } });
     expect(payload.self).toEqual({ x: 10, y: 20 });
     expect(payload.selfEstimated).toBe(false);
   });
 
   test('无自身坐标：以附近精灵几何中位数为中心，并标记估算', () => {
     const payload = build([
-      pet({ key: 'a', pos: { x: 0, y: 0, z: 0 } }),
-      pet({ key: 'b', pos: { x: 1000, y: 0, z: 0 } }),
+      pet({ key: 'a', rare: true, pos: { x: 0, y: 0, z: 0 } }),
+      pet({ key: 'b', rare: true, pos: { x: 1000, y: 0, z: 0 } }),
     ]);
     expect(payload.self).toEqual({ x: 500, y: 0 });
     expect(payload.selfEstimated).toBe(true);
@@ -204,7 +236,7 @@ describe('自身坐标缺失时的估算中心', () => {
   });
 
   test('全部没有坐标：没有中心，列表照常输出', () => {
-    const payload = build([pet({ key: 'a' }), pet({ key: 'b' })]);
+    const payload = build([pet({ key: 'a', rare: true }), pet({ key: 'b', rare: true })]);
     expect(payload.self).toBeNull();
     expect(payload.selfEstimated).toBe(true);
     expect(payload.pets).toHaveLength(2);
@@ -213,8 +245,8 @@ describe('自身坐标缺失时的估算中心', () => {
   test('自身坐标不是有限数：退回精灵几何中位数，并标估算', () => {
     const payload = build(
       [
-        pet({ key: 'a', pos: { x: 0, y: 0, z: 0 } }),
-        pet({ key: 'b', pos: { x: 1000, y: 0, z: 0 } }),
+        pet({ key: 'a', rare: true, pos: { x: 0, y: 0, z: 0 } }),
+        pet({ key: 'b', rare: true, pos: { x: 1000, y: 0, z: 0 } }),
       ],
       { self: { x: Number.NaN, y: 0 } },
     );

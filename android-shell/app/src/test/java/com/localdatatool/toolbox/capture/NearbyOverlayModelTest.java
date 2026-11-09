@@ -116,6 +116,31 @@ public class NearbyOverlayModelTest {
         assertNull(model.pets.get(1).distanceM);
     }
 
+    @Test public void plainPetsOnlyCountInNearbyTotal() throws Exception {
+        JSONObject json = payload("{\"battle\":true,\"nearby\":true}");
+        json.put("pets", pets(1));
+        json.put("total", 21);
+        json.put("matched", 1);
+        NearbyOverlayModel model = NearbyOverlayModel.parse(json);
+        assertEquals(21, model.total);
+        assertEquals(1, model.matchedTotal);
+        assertEquals(1, model.shownRows());
+        assertEquals(0, model.hiddenCount());
+        assertFalse(model.noTargets());
+        assertEquals("附近 21 · 稀有 2", model.titleText());
+    }
+
+    @Test public void noMatchedTargetsShowsTargetEmptyState() throws Exception {
+        JSONObject json = payload("{\"battle\":true,\"nearby\":true}");
+        json.put("pets", new JSONArray());
+        json.put("total", 6);
+        json.put("matched", 0);
+        NearbyOverlayModel model = NearbyOverlayModel.parse(json);
+        assertEquals(0, model.shownRows());
+        assertEquals(0, model.hiddenCount());
+        assertTrue(model.noTargets());
+    }
+
     @Test public void nullPayloadIsIgnored() {
         assertNull(NearbyOverlayModel.parse(null));
     }

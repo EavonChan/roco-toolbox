@@ -47,6 +47,8 @@ public final class NearbyOverlayModel {
     public static final String ESTIMATED_BADGE = "中心为估算";
     public static final String EMPTY_NEARBY_TITLE = "附近暂时没有精灵";
     public static final String EMPTY_NEARBY_HINT = "进入野外后自动出现";
+    public static final String EMPTY_TARGET_TITLE = "附近暂无命中目标";
+    public static final String EMPTY_TARGET_HINT = "普通精灵只在雷达显示";
     public static final String WAITING_LOGIN = "登录后显示附近精灵";
     public static final String HIT_TITLE = "战斗采集 · 赛季奇遇";
     public static final String HIT_EMPTY_TEXT = "进入赛季奇遇战后，这里会显示守卫的个体数据。";
@@ -61,6 +63,8 @@ public final class NearbyOverlayModel {
     public final boolean selfEstimated;
     public final List<Pet> pets;
     public final int total;
+    /** 命中目标数（网页只把命中的精灵放进 pets，普通精灵只计入 total）。 */
+    public final int matchedTotal;
     public final int rareTotal;
     public final int alertTotal;
     public final long updatedAt;
@@ -93,6 +97,9 @@ public final class NearbyOverlayModel {
 
         int declaredTotal = payload.has("total") ? payload.optInt("total", pets.size()) : pets.size();
         total = Math.max(declaredTotal, pets.size());
+        // 旧网页不带 matched（列表当时是全量）：退回 total，脚注表现与旧版一致
+        int declaredMatched = payload.has("matched") ? payload.optInt("matched", total) : total;
+        matchedTotal = Math.max(declaredMatched, pets.size());
         rareTotal = payload.has("rareTotal") ? payload.optInt("rareTotal", countRare()) : countRare();
         alertTotal = payload.has("alertTotal") ? payload.optInt("alertTotal", countAlert()) : countAlert();
         updatedAt = payload.optLong("updatedAt", 0L);
@@ -158,7 +165,12 @@ public final class NearbyOverlayModel {
     }
 
     public int hiddenCount() {
-        return Math.max(0, total - shownRows());
+        return Math.max(0, matchedTotal - shownRows());
+    }
+
+    /** 附近有精灵、但一条都没命中：列表改用「暂无命中目标」的文案。 */
+    public boolean noTargets() {
+        return !waitingLogin() && total > 0 && matchedTotal == 0;
     }
 
     public String orbCountText() {
