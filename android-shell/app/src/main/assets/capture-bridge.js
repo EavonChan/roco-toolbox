@@ -38,6 +38,7 @@
     notifyRareAlert: (title, body) => call('notifyRareAlert', undefined, { title, body }),
     // 系统悬浮窗：球画在其它应用上方，网页只推数据（2026-11-08）
     updateBattleOverlay: (payload) => call('updateBattleOverlay', undefined, { overlay: payload }),
+    updateNearbyOverlay: (payload) => call('updateNearbyOverlay', undefined, { nearby: payload }),
     requestOverlayPermission: () => call('requestOverlayPermission'),
     canDrawOverlay: () => call('canDrawOverlay'),
   };

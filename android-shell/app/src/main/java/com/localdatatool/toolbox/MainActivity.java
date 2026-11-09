@@ -313,7 +313,8 @@ public class MainActivity extends Activity {
                     else if ("notifyRareAlert".equals(action)) result = collector.notifyRareAlert(
                         request.optString("title"), request.optString("body"));
                     // 系统悬浮窗：球浮在游戏上方，网页只推状态（2026-11-08）
-                    else if ("updateBattleOverlay".equals(action)) result = battleOverlay.update(readOverlay(request));
+                    else if ("updateBattleOverlay".equals(action)) result = battleOverlay.update(readJson(request, "overlay"));
+                    else if ("updateNearbyOverlay".equals(action)) result = battleOverlay.updateNearby(readJson(request, "nearby"));
                     else if ("requestOverlayPermission".equals(action)) result = battleOverlay.requestPermission();
                     else if ("canDrawOverlay".equals(action)) result = battleOverlay.canDraw() ? "true" : "false";
                     else throw new IllegalArgumentException("未知的采集操作");
@@ -336,10 +337,10 @@ public class MainActivity extends Activity {
      * 悬浮窗载荷既可能是 JSON 对象（新网页），也可能是 JSON 字符串（旧网页把 payload
      * 二次 stringify 了）。两种都收下，避免网页缓存旧版时球彻底不显示。
      */
-    private static JSONObject readOverlay(JSONObject request) {
-        JSONObject overlay = request.optJSONObject("overlay");
-        if (overlay != null) return overlay;
-        String raw = request.optString("overlay", "");
+    private static JSONObject readJson(JSONObject request, String key) {
+        JSONObject value = request.optJSONObject(key);
+        if (value != null) return value;
+        String raw = request.optString(key, "");
         if (raw.isEmpty()) return null;
         try {
             return new JSONObject(raw);
