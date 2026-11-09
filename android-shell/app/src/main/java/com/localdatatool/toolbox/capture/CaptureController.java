@@ -24,8 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Small, versioned bridge. Never accepts paths or external download URLs. */
 public final class CaptureController {
     private static final int VPN_REQUEST = 8195, NOTICE_REQUEST = 8196;
-    private static final String ORIGIN = "https://roco-toolbox.pages.dev";
     private static final String FILE_PREFIX = "https://roco-share.invalid/collector/";
+    /** 当前站点 origin（内测可切换，见 com.localdatatool.toolbox.ServerConfig）；只有它算可信页面。 */
+    private volatile String origin = "https://roco-toolbox.pages.dev";
     public interface ImportReady { void ready(String name, String url); }
     private final Activity activity;
     private final ImportReady imported;
@@ -35,9 +36,13 @@ public final class CaptureController {
     private boolean permissionPending;
     private boolean awaitingLaunch;
     public CaptureController(Activity activity, ImportReady imported) { this.activity = activity; this.imported = imported; }
+    public void setOrigin(String origin) { this.origin = origin; }
     public void setPage(String url) {
         Uri uri = url == null ? Uri.EMPTY : Uri.parse(url);
-        trusted = "https".equals(uri.getScheme()) && "roco-toolbox.pages.dev".equals(uri.getHost()) && (uri.getPort() == -1 || uri.getPort() == 443);
+        String host = uri.getHost();
+        String page = host == null ? "" : "https://" + host
+            + (uri.getPort() == -1 || uri.getPort() == 443 ? "" : ":" + uri.getPort());
+        trusted = "https".equals(uri.getScheme()) && origin.equals(page);
     }
     public void invalidatePage() { trusted = false; }
     public void destroy() {
@@ -288,7 +293,7 @@ public final class CaptureController {
             }
             if (from < 0 || from > grant.size) throw new IOException("invalid capture range");
             Map<String, String> headers = new HashMap<>();
-            headers.put("Access-Control-Allow-Origin", ORIGIN); headers.put("Cache-Control", "no-store");
+            headers.put("Access-Control-Allow-Origin", origin); headers.put("Cache-Control", "no-store");
             headers.put("Content-Length", Long.toString(grant.size - from));
             headers.put("X-Capture-From", Long.toString(from));
             headers.put("X-Capture-Total", Long.toString(grant.size));

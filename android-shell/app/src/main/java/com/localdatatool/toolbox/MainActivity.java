@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.provider.OpenableColumns;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
@@ -21,6 +22,7 @@ import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
@@ -65,16 +67,16 @@ import com.localdatatool.toolbox.update.UpdateController;
  */
 public class MainActivity extends Activity {
 
-    private static final String SITE_URL = "https://roco-toolbox.pages.dev/";
-
     /**
-     * 允许留在 WebView 内导航的域名（含它的预览子域）。其余链接一律交给系统浏览器：
-     * 页脚的 Wiki / CC BY-SA 外链是 {@code target="_blank"}，壳不接管就表现成「点了没反应」。
+     * 站点地址：默认生产，内测时可在「我的」页连点版本号后切换（见 {@link ServerConfig}）。
      *
-     * 顺带收窄了 JS 桥的暴露面：主框架永远只停在自家站点上，
-     * 别的来源就没机会拿到 {@code RocoShare} 这个注入接口。
+     * <p>允许留在 WebView 内导航的域名跟着它走（含预览子域）。其余链接一律交给系统浏览器：
+     * 页脚的 Wiki / CC BY-SA 外链是 {@code target="_blank"}，壳不接管就表现成「点了没反应」。</p>
+     *
+     * <p>顺带收窄了 JS 桥的暴露面：主框架永远只停在当前配置的站点上，
+     * 别的来源就没机会拿到 {@code RocoShare} 这个注入接口。</p>
      */
-    private static final String SITE_HOST = "roco-toolbox.pages.dev";
+    private ServerConfig serverConfig;
 
     /**
      * 网页从这个地址取分享进来的抓包。这个域名是假的、永远不会真的联网 ——
@@ -132,6 +134,7 @@ public class MainActivity extends Activity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
         webView = new WebView(this);
+        serverConfig = new ServerConfig(this);
         collector = new CaptureController(this, (name, url) -> {
             captureBytes = null; captureName = name; collectedCaptureUrl = url;
             textPayload = null; textName = null; shareInjected = false;
@@ -147,6 +150,9 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new ShareBridge(), "RocoShare");
         // 网页「设置 / 关于」页的「检查更新」入口（网页侧调用 window.RocoUpdate.check()）
         webView.addJavascriptInterface(new UpdateBridge(), "RocoUpdate");
+        // 内测用：读取 / 切换 / 恢复服务器地址（网页侧 window.RocoServer）
+        webView.addJavascriptInterface(new ServerBridge(), "RocoServer");
+        collector.setOrigin(serverConfig.origin());
         installCaptureWebMessageBridge();
         webView.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
@@ -276,7 +282,7 @@ public class MainActivity extends Activity {
         });
         setContentView(webView);
         handleShareIntent(getIntent());
-        webView.loadUrl(SITE_URL);
+        webView.loadUrl(serverConfig.baseUrl() + "/");
         // 开屏静默检查：低于最低可用版本会弹不可取消的全屏更新页；断网 / 拿不到清单直接放行
         updateTick.removeCallbacks(silentUpdateCheck);
         updateTick.postDelayed(silentUpdateCheck, 3000);
@@ -286,8 +292,8 @@ public class MainActivity extends Activity {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
             || !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
         WebViewCompat.addWebMessageListener(webView, "RocoCaptureBridge",
-            Collections.singleton("https://" + SITE_HOST), (view, message, sourceOrigin, isMainFrame, reply) -> {
-                if (!CaptureBridgePolicy.allows(sourceOrigin.toString(), isMainFrame)) return;
+            Collections.singleton(serverConfig.origin()), (view, message, sourceOrigin, isMainFrame, reply) -> {
+                if (!CaptureBridgePolicy.allows(sourceOrigin.toString(), isMainFrame, serverConfig.origin())) return;
                 String requestId = "";
                 try {
                     JSONObject request = new JSONObject(message.getData());
@@ -322,7 +328,7 @@ public class MainActivity extends Activity {
             ByteArrayOutputStream text = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096]; int length;
             while ((length = input.read(buffer)) != -1) text.write(buffer, 0, length);
-            WebViewCompat.addDocumentStartJavaScript(webView, text.toString("UTF-8"), Collections.singleton("https://" + SITE_HOST));
+            WebViewCompat.addDocumentStartJavaScript(webView, text.toString("UTF-8"), Collections.singleton(serverConfig.origin()));
         } catch (Exception error) { showMessage("无法加载本机采集入口：" + CaptureVpnService.friendly(error)); }
     }
 
@@ -381,6 +387,7 @@ public class MainActivity extends Activity {
             // 先摘掉注入的 JS 接口，再断开页面、销毁。
             webView.removeJavascriptInterface("RocoShare");
             webView.removeJavascriptInterface("RocoUpdate");
+            webView.removeJavascriptInterface("RocoServer");
             if (captureBridgeInstalled) WebViewCompat.removeWebMessageListener(webView, "RocoCaptureBridge");
             webView.loadUrl("about:blank");
             webView.removeAllViews();
@@ -414,7 +421,7 @@ public class MainActivity extends Activity {
         boolean internal =
             "https".equals(scheme)
                 && host != null
-                && (host.equals(SITE_HOST) || host.endsWith("." + SITE_HOST));
+                && (host.equals(serverConfig.host()) || host.endsWith("." + serverConfig.host()));
         if (internal || "about".equals(scheme)) return false;
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, uri));
@@ -574,13 +581,67 @@ public class MainActivity extends Activity {
             + "<body style=\"margin:0;padding:24px;font-family:sans-serif;line-height:1.8;color:#334155\">"
             + "<h1 style=\"font-size:18px\">洛克工具箱</h1>"
             + "<p>" + escapeHtml(message) + "</p>"
-            + "<p><a href=\"" + SITE_URL + "\">点这里重试</a></p>"
+            + "<p><a href=\"" + serverConfig.baseUrl() + "/\">点这里重试</a></p>"
             + "</body></html>";
-        webView.loadDataWithBaseURL(SITE_URL, html, "text/html", "utf-8", null);
+        webView.loadDataWithBaseURL(serverConfig.baseUrl() + "/", html, "text/html", "utf-8", null);
     }
 
     private static String escapeHtml(String value) {
         return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /**
+     * 内测用的服务器地址接口（网页侧 window.RocoServer）。
+     *
+     * <p>探活是同步 HTTP，但 JS 桥方法跑在 WebView 的 JavaBridge 后台线程，不阻塞界面，
+     * 最多 5 秒必返回。切换成功后由壳统一清缓存并重载页面，网页不需要自己刷新。</p>
+     */
+    private final class ServerBridge {
+        @JavascriptInterface public String read() {
+            try {
+                return new JSONObject()
+                    .put("current", serverConfig.baseUrl())
+                    .put("defaultUrl", serverConfig.defaultUrl())
+                    .toString();
+            } catch (Exception error) {
+                return "{\"current\":\"\",\"defaultUrl\":\""
+                    + ServerConfig.DEFAULT_BASE_URL + "\"}";
+            }
+        }
+
+        @JavascriptInterface public String apply(String url) {
+            return applyServer(serverConfig.apply(url));
+        }
+
+        @JavascriptInterface public String reset() {
+            return applyServer(serverConfig.reset());
+        }
+    }
+
+    /** 结果原样回给网页；只有真的存下来了才清缓存重载，避免「说成功了页面却没换」。 */
+    private String applyServer(ServerConfig.Result result) {
+        if (result.ok && webView != null) {
+            // 在桥方法里直接重载会把正在执行的 JS 掐掉，挪到下一次消息循环
+            webView.post(this::reloadWithServer);
+        }
+        return result.toJson();
+    }
+
+    /** 换站点：桥的允许来源跟着换，再清 WebView 的缓存 / 存储 / Cookie，最后加载新地址。 */
+    private void reloadWithServer() {
+        if (webView == null) return;
+        collector.setOrigin(serverConfig.origin());
+        if (captureBridgeInstalled) {
+            WebViewCompat.removeWebMessageListener(webView, "RocoCaptureBridge");
+            captureBridgeInstalled = false;
+        }
+        installCaptureWebMessageBridge();
+        WebStorage.getInstance().deleteAllData();
+        CookieManager.getInstance().removeAllCookies(null);
+        CookieManager.getInstance().flush();
+        webView.clearCache(true);
+        webView.clearHistory();
+        webView.loadUrl(serverConfig.baseUrl() + "/");
     }
 
     /**
