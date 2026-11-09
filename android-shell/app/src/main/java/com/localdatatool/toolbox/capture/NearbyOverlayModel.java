@@ -16,8 +16,8 @@ import java.util.Set;
  */
 public final class NearbyOverlayModel {
 
-    /** 列表最多渲染 8 条，其余只报数。 */
-    public static final int MAX_ROWS = 8;
+    /** 列表最多渲染 24 条（高度封顶在小地图高度，超出的在框内上下滑动）。 */
+    public static final int MAX_ROWS = 24;
     /** 地图 / 雷达最多画 24 个点（网页已按距离截断，这里再兜一层）。 */
     public static final int MAX_MAP_POINTS = 24;
     /** 面板宽度（与屏宽无关，规格 1.1）。 */
@@ -34,8 +34,8 @@ public final class NearbyOverlayModel {
     public static final int BODY_TOP_GAP = 28;
     /** 小地图边长。 */
     public static final int MAP_SIZE = 120;
-    /** 列表行高与行间距。 */
-    public static final int ROW_HEIGHT = 30;
+    /** 列表行高（两行字：名称 / 等级 + 距离 / 方向 / 体型 / 声音，28dp 会把第二行裁掉）。 */
+    public static final int ROW_HEIGHT = 34;
     public static final int ROW_GAP = 2;
     /** 列表没有内容时的占位高度。 */
     public static final int EMPTY_BODY_HEIGHT = 44;
@@ -205,10 +205,16 @@ public final class NearbyOverlayModel {
         return "还有 " + hiddenCount() + " 只未显示";
     }
 
-    /** 列表内容高度：8 条封顶，空列表用占位高度。 */
+    /** 列表内容高度：行数 × 行高，空列表用占位高度。 */
     public static int listHeight(int rows) {
         int safe = Math.max(0, Math.min(rows, MAX_ROWS));
         return safe > 0 ? safe * ROW_HEIGHT + (safe - 1) * ROW_GAP : EMPTY_BODY_HEIGHT;
+    }
+
+    /** 列表可视区域高度：不超过小地图，超出的在框内滑动。 */
+    public static int bodyHeight(int rows, boolean hasMap) {
+        if (hasMap) return MAP_SIZE;
+        return Math.min(listHeight(rows), MAP_SIZE);
     }
 
     /**
@@ -226,9 +232,7 @@ public final class NearbyOverlayModel {
         int hitHeight = 0;
         if (showBattle) hitHeight = hasHit ? HIT_HEIGHT : HIT_EMPTY_HEIGHT;
         if (!showNearby) return hitHeight;
-        int bodyHeight = hasMap
-            ? Math.max(MAP_SIZE, listHeight(rows))
-            : Math.max(EMPTY_BODY_HEIGHT, listHeight(rows));
+        int bodyHeight = bodyHeight(rows, hasMap);
         int footGap = hidden > 0 ? FOOT_ROW_GAP : FOOT_GAP;
         return hitHeight + BODY_TOP_GAP + bodyHeight + footGap;
     }
@@ -267,6 +271,8 @@ public final class NearbyOverlayModel {
         public final String gender;
         public final Double distanceM;
         public final String bearingLabel;
+        /** 8 方位箭头（↑↗→↘↓↙←↖）；网页没给时为空串 */
+        public final String bearingArrow;
         public final Double x;
         public final Double y;
 
@@ -290,6 +296,7 @@ public final class NearbyOverlayModel {
             gender = item.optString("gender", "");
             distanceM = numberOrNull(item, "distanceM");
             bearingLabel = item.optString("bearingLabel", "");
+            bearingArrow = item.optString("bearingArrow", "");
             x = numberOrNull(item, "x");
             y = numberOrNull(item, "y");
         }

@@ -13,7 +13,7 @@ import java.net.URI;
 import java.net.URL;
 
 /**
- * 服务器地址（2026-11-09）：默认生产站点，内测时可切到其它 https 站点。
+ * 服务器地址（2026-11-09）：1.3 内测包默认进测试站，内测时可连点版本号在测试站 / 正式站之间互切。
  *
  * <p>这个入口藏在「我的」页连点版本号后面，只给自己用：地址填错等于把采集数据交给那个站点，
  * 所以保存前必须真的探活（{@code /api/health} 的正文里要有 {@code "ok":true}），
@@ -24,7 +24,11 @@ import java.net.URL;
  */
 public final class ServerConfig {
 
-    public static final String DEFAULT_BASE_URL = "https://roco-toolbox.pages.dev";
+    /** 1.3 内测包默认地址：测试站（装上打开就是测试服）。 */
+    public static final String DEFAULT_BASE_URL = "https://test.roco-toolbox.pages.dev";
+
+    /** 正式站地址：连点版本号时在这两个地址之间互切。 */
+    public static final String PRODUCTION_BASE_URL = "https://roco-toolbox.pages.dev";
 
     private static final String PREFS = "roco_server";
     private static final String KEY_BASE_URL = "baseUrl";
@@ -88,6 +92,29 @@ public final class ServerConfig {
         return DEFAULT_BASE_URL;
     }
 
+    /** 正式站地址：网页侧连点版本号时用来算「切到哪一边」。 */
+    public String productionUrl() {
+        return PRODUCTION_BASE_URL;
+    }
+
+    /**
+     * 连点版本号的一键互切：正式 ⇄ 默认（测试）。
+     *
+     * <p>自家两个地址直接写，不探活：手机上冷启动 / VPN 下探活经常超过 5 秒，
+     * 一旦超时网页就会弹「服务器地址」面板，看起来像要手输地址。
+     * 切错也只是页面打不开，连点一次就能切回来。</p>
+     */
+    public Result toggle() {
+        String target = PRODUCTION_BASE_URL.equals(baseUrl()) ? DEFAULT_BASE_URL : PRODUCTION_BASE_URL;
+        prefs.edit().putString(KEY_BASE_URL, target).apply();
+        return Result.success(target);
+    }
+
+    /** 自家两个站点（测试 / 正式）：可信地址，保存时不再探活。 */
+    public static boolean isFirstParty(String baseUrl) {
+        return DEFAULT_BASE_URL.equals(baseUrl) || PRODUCTION_BASE_URL.equals(baseUrl);
+    }
+
     /**
      * 探活通过才保存。失败时返回带原因的文案，网页直接显示，不做二次包装。
      */
@@ -97,6 +124,11 @@ public final class ServerConfig {
             base = normalize(raw);
         } catch (IllegalArgumentException error) {
             return Result.failure(error.getMessage());
+        }
+        // 自家两个站不需要探活：断网时也要能切回去（页面自己能显示失败原因）
+        if (isFirstParty(base)) {
+            prefs.edit().putString(KEY_BASE_URL, base).apply();
+            return Result.success(base);
         }
         try {
             String body = read(base + "/api/health");
@@ -113,8 +145,8 @@ public final class ServerConfig {
     }
 
     /**
-     * 恢复生产地址。这里不做探活：默认地址是已知可用的，用户点了就必须能回去，
-     * 不能因为当下断网把人卡在内测地址上。
+     * 恢复默认地址（1.3 内测包是测试站）。这里不做探活：默认地址是已知可用的，
+     * 用户点了就必须能回去，不能因为当下断网把人卡在自定义地址上。
      */
     public Result reset() {
         prefs.edit().remove(KEY_BASE_URL).apply();

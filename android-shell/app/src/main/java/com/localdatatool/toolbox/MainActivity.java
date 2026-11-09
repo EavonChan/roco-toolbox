@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.database.Cursor;
 import android.net.Uri;
@@ -68,7 +69,7 @@ import com.localdatatool.toolbox.update.UpdateController;
 public class MainActivity extends Activity {
 
     /**
-     * 站点地址：默认生产，内测时可在「我的」页连点版本号后切换（见 {@link ServerConfig}）。
+     * 站点地址：1.3 内测包默认测试站，连点版本号可在测试站 / 正式站之间互切（见 {@link ServerConfig}）。
      *
      * <p>允许留在 WebView 内导航的域名跟着它走（含预览子域）。其余链接一律交给系统浏览器：
      * 页脚的 Wiki / CC BY-SA 外链是 {@code target="_blank"}，壳不接管就表现成「点了没反应」。</p>
@@ -106,6 +107,20 @@ public class MainActivity extends Activity {
     private final Handler updateTick = new Handler(Looper.getMainLooper());
     private final Runnable silentUpdateCheck = () -> {
         if (updater != null) updater.checkSilently();
+    };
+    /**
+     * 后台心跳（2026-11-09）：游戏在前台时本页处于后台，WebView 会把网页里的定时器
+     * 节流到 1 分钟一次，抓包一直在涨但附近数据 / 悬浮面板不刷新。
+     * 每秒调一次网页登记的 `__rocoLiveTick`，让采集解包与悬浮窗推送照常跑。
+     */
+    private static final long LIVE_TICK_MS = 1000;
+    private final Runnable liveTick = new Runnable() {
+        @Override public void run() {
+            if (webView != null) {
+                webView.evaluateJavascript("window.__rocoLiveTick&&window.__rocoLiveTick()", null);
+            }
+            updateTick.postDelayed(this, LIVE_TICK_MS);
+        }
     };
     private boolean captureBridgeInstalled;
     private String collectedCaptureUrl;
@@ -152,8 +167,11 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new UpdateBridge(), "RocoUpdate");
         // 内测用：读取 / 切换 / 恢复服务器地址（网页侧 window.RocoServer）
         webView.addJavascriptInterface(new ServerBridge(), "RocoServer");
+        // 跨环境共享的本地偏好（网页侧 window.RocoPrefs）：切站后教程与登录态不丢
+        webView.addJavascriptInterface(new PrefsBridge(), "RocoPrefs");
         collector.setOrigin(serverConfig.origin());
         installCaptureWebMessageBridge();
+        updateTick.postDelayed(liveTick, LIVE_TICK_MS);
         webView.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
                 pageReady = false;
@@ -389,6 +407,7 @@ public class MainActivity extends Activity {
             webView.removeJavascriptInterface("RocoShare");
             webView.removeJavascriptInterface("RocoUpdate");
             webView.removeJavascriptInterface("RocoServer");
+            webView.removeJavascriptInterface("RocoPrefs");
             if (captureBridgeInstalled) WebViewCompat.removeWebMessageListener(webView, "RocoCaptureBridge");
             webView.loadUrl("about:blank");
             webView.removeAllViews();
@@ -603,10 +622,12 @@ public class MainActivity extends Activity {
                 return new JSONObject()
                     .put("current", serverConfig.baseUrl())
                     .put("defaultUrl", serverConfig.defaultUrl())
+                    .put("productionUrl", serverConfig.productionUrl())
                     .toString();
             } catch (Exception error) {
                 return "{\"current\":\"\",\"defaultUrl\":\""
-                    + ServerConfig.DEFAULT_BASE_URL + "\"}";
+                    + ServerConfig.DEFAULT_BASE_URL + "\",\"productionUrl\":\""
+                    + ServerConfig.PRODUCTION_BASE_URL + "\"}";
             }
         }
 
@@ -614,8 +635,41 @@ public class MainActivity extends Activity {
             return applyServer(serverConfig.apply(url));
         }
 
+        /** 一键互切（正式 ⇄ 测试）：自家地址直接写，不探活。 */
+        @JavascriptInterface public String toggle() {
+            return applyServer(serverConfig.toggle());
+        }
+
         @JavascriptInterface public String reset() {
             return applyServer(serverConfig.reset());
+        }
+    }
+
+    /**
+     * 跨环境共享的本地偏好（网页侧 window.RocoPrefs，2026-11-09）。
+     *
+     * <p>测试站与正式站是两个 origin，WebView 的 localStorage 天然隔离：
+     * 切站之后新手教程会重弹、账号登录态也会丢。网页把需要跨环境保留的键
+     * （教程已读、登录令牌等）写到这里，由 App 自己的 SharedPreferences
+     * 保存，两个环境读到的是同一份。</p>
+     */
+    private final class PrefsBridge {
+        private static final String PREFS_NAME = "roco_prefs";
+
+        private SharedPreferences prefs() {
+            return getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        }
+
+        @JavascriptInterface public String get(String key) {
+            return prefs().getString(key, null);
+        }
+
+        @JavascriptInterface public void set(String key, String value) {
+            prefs().edit().putString(key, value).apply();
+        }
+
+        @JavascriptInterface public void remove(String key) {
+            prefs().edit().remove(key).apply();
         }
     }
 
@@ -628,7 +682,14 @@ public class MainActivity extends Activity {
         return result.toJson();
     }
 
-    /** 换站点：桥的允许来源跟着换，再清 WebView 的缓存 / 存储 / Cookie，最后加载新地址。 */
+    /**
+     * 换站点：桥的允许来源跟着换，清 HTTP 缓存后加载新地址。
+     *
+     * <p>2026-11-09 修复：这里以前还调 {@code WebStorage.deleteAllData()} 与
+     * {@code removeAllCookies()}，等于切服时把两个站点的 localStorage / IndexedDB
+     * 全删了，登录令牌和教程已读当然会丢。现在只清 HTTP 缓存与历史记录，
+     * 页面存储留在各自 origin 里：切回原站点还是原来的登录态。</p>
+     */
     private void reloadWithServer() {
         if (webView == null) return;
         collector.setOrigin(serverConfig.origin());
@@ -637,9 +698,6 @@ public class MainActivity extends Activity {
             captureBridgeInstalled = false;
         }
         installCaptureWebMessageBridge();
-        WebStorage.getInstance().deleteAllData();
-        CookieManager.getInstance().removeAllCookies(null);
-        CookieManager.getInstance().flush();
         webView.clearCache(true);
         webView.clearHistory();
         webView.loadUrl(serverConfig.baseUrl() + "/");

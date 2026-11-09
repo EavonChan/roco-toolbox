@@ -44,10 +44,25 @@ public class NearbyOverlayModelTest {
                 .put("alert", index == 0)
                 .put("distanceM", 10 + index)
                 .put("bearingLabel", "东北")
+                .put("bearingArrow", "↗")
                 .put("x", 307500 + index * 100)
                 .put("y", 410000));
         }
         return pets;
+    }
+
+    @Test public void petParsesBearingArrow() throws Exception {
+        NearbyOverlayModel model = NearbyOverlayModel.parse(payload(null));
+        assertEquals("↗", model.pets.get(0).bearingArrow);
+        assertEquals("东北", model.pets.get(0).bearingLabel);
+
+        // 旧网页不传 bearingArrow：保持空串，列表退回方位文字
+        JSONObject legacy = payload(null);
+        JSONArray legacyPets = new JSONArray();
+        legacyPets.put(new JSONObject().put("key", "a").put("name", "旧数据").put("bearingLabel", "东"));
+        legacy.put("pets", legacyPets);
+        NearbyOverlayModel legacyModel = NearbyOverlayModel.parse(legacy);
+        assertEquals("", legacyModel.pets.get(0).bearingArrow);
     }
 
     @Test public void missingPanelsFallsBackToBothOn() throws Exception {
@@ -83,16 +98,17 @@ public class NearbyOverlayModelTest {
         assertTrue(nearbyOnly.nearby);
     }
 
-    @Test public void listKeepsEightRowsAndReportsHiddenTotal() throws Exception {
+    @Test public void listKeepsMaxRowsAndReportsHiddenTotal() throws Exception {
         JSONObject json = payload("{\"battle\":true,\"nearby\":true}");
-        json.put("pets", pets(12));
-        json.put("total", 12);
+        json.put("pets", pets(NearbyOverlayModel.MAX_ROWS + 6));
+        json.put("total", NearbyOverlayModel.MAX_ROWS + 12);
+        json.put("matched", NearbyOverlayModel.MAX_ROWS + 6);
         NearbyOverlayModel model = NearbyOverlayModel.parse(json);
         assertEquals(NearbyOverlayModel.MAX_ROWS, model.pets.size());
-        assertEquals(8, model.shownRows());
-        assertEquals(4, model.hiddenCount());
-        assertEquals("还有 4 只未显示", model.footText());
-        assertEquals("附近 12 · 稀有 2", model.titleText());
+        assertEquals(NearbyOverlayModel.MAX_ROWS, model.shownRows());
+        assertEquals(6, model.hiddenCount());
+        assertEquals("还有 6 只未显示", model.footText());
+        assertEquals("附近 " + (NearbyOverlayModel.MAX_ROWS + 12) + " · 稀有 2", model.titleText());
     }
 
     @Test public void missingPetFieldsDoNotBreakParsing() throws Exception {
@@ -146,20 +162,22 @@ public class NearbyOverlayModelTest {
     }
 
     @Test public void panelHeightMatchesSpecTable() {
-        // 命中 + 附近，5 条
-        assertEquals(258, NearbyOverlayModel.panelHeight(true, true, true, 5, true, 0));
-        // 命中 + 附近，8 条截断
-        assertEquals(366, NearbyOverlayModel.panelHeight(true, true, true, 8, true, 4));
+        // 有地图：列表区固定等于地图高度（120），行数再多也不再拉长面板
+        assertEquals(64 + 28 + 120 + 8, NearbyOverlayModel.panelHeight(true, true, true, 5, true, 0));
+        assertEquals(64 + 28 + 120 + 20, NearbyOverlayModel.panelHeight(true, true, true, 8, true, 4));
+        assertEquals(64 + 28 + 120 + 20, NearbyOverlayModel.panelHeight(true, true, true, 24, true, 4));
         // 仅命中
         assertEquals(64, NearbyOverlayModel.panelHeight(true, true, false, 0, false, 0));
         // 命中区无数据 + 附近无精灵（实测 200）
         assertEquals(200, NearbyOverlayModel.panelHeight(true, false, true, 0, true, 0));
         // 仅附近，5 条
-        assertEquals(194, NearbyOverlayModel.panelHeight(false, false, true, 5, true, 0));
+        assertEquals(28 + 120 + 8, NearbyOverlayModel.panelHeight(false, false, true, 5, true, 0));
         // 仅附近，8 条截断
-        assertEquals(302, NearbyOverlayModel.panelHeight(false, false, true, 8, true, 4));
-        // 只有列表（无地图）：短列表不压缩到 44 以下
-        assertEquals(64 + 28 + 62 + 8, NearbyOverlayModel.panelHeight(true, true, true, 2, false, 0));
+        assertEquals(28 + 120 + 20, NearbyOverlayModel.panelHeight(false, false, true, 8, true, 4));
+        // 只有列表（无地图）：短列表按行数算，超过地图高度就封顶
+        assertEquals(64 + 28 + NearbyOverlayModel.ROW_HEIGHT * 2 + NearbyOverlayModel.ROW_GAP + 8,
+            NearbyOverlayModel.panelHeight(true, true, true, 2, false, 0));
+        assertEquals(64 + 28 + 120 + 8, NearbyOverlayModel.panelHeight(true, true, true, 20, false, 0));
         // 空列表 + 无地图
         assertEquals(64 + 28 + 44 + 8, NearbyOverlayModel.panelHeight(true, true, true, 0, false, 0));
     }

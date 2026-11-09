@@ -15,6 +15,12 @@ import static org.junit.Assert.fail;
  */
 public class ServerConfigTest {
 
+    @Test public void defaultIsTestSiteAndProductionIsKept() {
+        // 1.3 内测包：装上就是测试服，正式服地址保留给连点互切
+        assertEquals("https://test.roco-toolbox.pages.dev", ServerConfig.DEFAULT_BASE_URL);
+        assertEquals("https://roco-toolbox.pages.dev", ServerConfig.PRODUCTION_BASE_URL);
+    }
+
     @Test public void trimsAndStripsTrailingSlashes() {
         assertEquals("https://internal.roco-toolbox.pages.dev",
             ServerConfig.normalize(" https://internal.roco-toolbox.pages.dev/ "));
