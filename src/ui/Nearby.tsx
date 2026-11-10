@@ -4,17 +4,15 @@ import { hideNearbyOverlay, isDesktopOverlaySupported, pushNearbyOverlay, readDe
 import { requestAutoImport, useAutoImport } from '../collector/autoImportFlow';
 import { markCaptureOrigin } from '../collector/captureOriginStore';
 import { nearbyAlertGate } from '../collector/nearbyAlert';
-import { canDrawOverlay, collectorAction, notifyRareAlert, requestOverlayPermission, startCollectorCapture } from '../collector/nativeCollector';
+import { canDrawOverlay, collectorAction, notifyRareAlert, readOrbHidden, requestOverlayPermission, setOrbHidden, startCollectorCapture } from '../collector/nativeCollector';
 import { readNearbyRetained, writeNearbyRetained } from '../collector/nearbyRetainStore';
 import { readNearbySnapshot } from '../collector/nearbyStore';
 import { useRareAlert } from '../collector/rareAlertStore';
 import { useNearbyFeed } from '../collector/useNearbyFeed';
-import { buildNearbyOverlayPayload } from '../nearby/overlayPayload';
-import { hasNearbyOverlayShell, pushNearbyOverlayToShell } from '../nearby/overlayBridge';
+import { hasNearbyOverlayShell } from '../nearby/overlayBridge';
 import { isLastEnabledNearbyOverlayPanel, setNearbyOverlayPanel, useNearbyOverlayPanels } from '../nearby/overlayPanels';
 import { species, eggGroupNames } from '../data/catalog';
 import { demandHitsForPet, demandSpeciesIndex, type DemandHit } from '../pcap/demandMatch';
-import { demandKeyOf } from '../shared/collectionGroups';
 import { buildRadar, DEFAULT_RADAR_RADIUS_M, type RadarData } from '../pcap/nearbyRadar';
 import { worldMapForScene } from '../pcap/worldMap';
 import { createSelfEstimate, updateSelfEstimate } from '../pcap/selfOdometry';
@@ -28,8 +26,8 @@ import { ModalSurface } from './primitives/ModalSurface';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { StateNotice } from './primitives/StateNotice';
 import { useDemandCenter } from './useDemandCenter';
+import { nearbyFilterAllows, setNearbyFilter, useNearbyFilter } from '../nearby/nearbyFilterStore';
 
-type NearbyFilter = 'all' | 'rare' | 'demand';
 type NearbyView = 'map' | 'list';
 
 export interface NearbyProps {
@@ -121,7 +119,7 @@ function NearbyRowItem({
     >
       <div className="flex items-center justify-between gap-2">
         <span className={`text-sm ${row.pet.rare ? `font-semibold ${dark ? 'text-white' : 'text-slate-800'}` : dark ? 'text-slate-200' : 'text-slate-700'}`}>
-          {row.pet.name} <span className="text-xs text-slate-400">Lv{row.pet.level}</span>
+          {row.pet.name} <span className="text-xs text-slate-400">{row.pet.level}级</span>
         </span>
         <span className="shrink-0 text-xs text-slate-400">
           {point ? `${point.distanceM.toFixed(1)}m ${point.bearingLabel}` : '—'}
@@ -138,17 +136,18 @@ function NearbyRowItem({
         {row.pet.gender ? (
           <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">{row.pet.gender}</span>
         ) : null}
-        {row.pet.kinds.map((kind) => (
+        {row.pet.kinds.filter((kind) => kind !== 'high' && kind !== 'low').map((kind) => (
           <span key={kind} className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
             {KIND_LABELS[kind as keyof typeof KIND_LABELS] || kind}
           </span>
         ))}
-        {row.pet.voiceDb ? (
+        {/* 声音只显示具体分贝，不再显示「婉转声 / 粗嗓门」分类词（2026-11-10） */}
+        {row.pet.voiceDb != null ? (
           <span className="text-slate-400">{row.pet.voiceDb > 0 ? '+' : ''}{row.pet.voiceDb}dB</span>
         ) : null}
         {row.pet.alertReason ? <span className="text-rose-500">可提醒 · {row.pet.alertReason}</span> : null}
       </div>
-      {demandLabel ? <p className="mt-1 text-[11px] text-amber-600">{`需求：${demandLabel} · 可叫发需求的人来抓`}</p> : null}
+      {demandLabel ? <p className="mt-1 text-[11px] text-amber-600">{`需求:${demandLabel} · 可叫发需求的人来抓`}</p> : null}
     </div>
   );
 }
@@ -169,8 +168,11 @@ export function Nearby({ onNavigate }: NearbyProps) {
   /** 手机悬浮球展开后显示哪些面板（本机记忆，只影响安卓壳，不重排本页） */
   const overlayPanels = useNearbyOverlayPanels();
   const shellOverlaySupported = hasNearbyOverlayShell();
+  /** 悬浮球是否被隐藏（1.3.6）：长按球隐藏，这里负责恢复；null = 旧壳没有这个能力 */
+  const [orbHidden, setOrbHiddenState] = useState<boolean | null>(null);
   const [view, setView] = useState<NearbyView>('map');
-  const [filter, setFilter] = useState<NearbyFilter>('all');
+  // 顶部总范围：与悬浮窗共用同一份状态（下沉到 nearbyFilterStore，切页不丢）
+  const filter = useNearbyFilter();
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenView, setFullscreenView] = useState<NearbyView>('map');
   const [rows, setRows] = useState<RetainedEntry[]>(() => readNearbyRetained());
@@ -195,19 +197,6 @@ export function Nearby({ onNavigate }: NearbyProps) {
     }
     return map;
   }, [snapshot, demands]);
-
-  /**
-   * 需求中心签名：只取影响匹配的条件（蛋 / 性格 / 性别 / 体型 / 声音）。
-   * `useDemandCenter` 每次刷新都会给新数组身份，直接依赖它会把推送钩子打成每秒一次；
-   * 用签名后，需求没变就不重推，变了才推。
-   */
-  const demandSignature = useMemo(
-    () => [...new Set(demands.map((demand) => demandKeyOf(demand)))].sort().join('|'),
-    [demands],
-  );
-  /** 推送 effect 里读最新命中表，但不把 hitByKey 当依赖（它随快照变，已由 snapshot 驱动）。 */
-  const hitByKeyRef = useRef(hitByKey);
-  hitByKeyRef.current = hitByKey;
 
   const classify = useMemo(
     () => (pet: LiveNearbyPet) => {
@@ -273,11 +262,11 @@ export function Nearby({ onNavigate }: NearbyProps) {
     const demandLines = fresh.flatMap((pet) =>
       hitOf(pet).slice(0, 1).map((hit) => {
         const caller = hit.groupName ? `可叫「${hit.groupName}」发需求的人来抓` : '可叫发需求的人来抓';
-        return `${pet.name} Lv${pet.level}${pet.nature ? ` · 性格 ${pet.nature}` : ''}${pet.gender ? ` · ${pet.gender}` : ''} · 需求：${demandHitLabel(hit)} · ${caller}`;
+        return `${pet.name} ${pet.level}级${pet.nature ? ` · 性格 ${pet.nature}` : ''}${pet.gender ? ` · ${pet.gender}` : ''} · 需求：${demandHitLabel(hit)} · ${caller}`;
       }));
     const rareLines = fresh
       .filter((pet) => pet.alertReason)
-      .map((pet) => `${pet.name} Lv${pet.level} · ${pet.alertReason}`);
+      .map((pet) => `${pet.name} ${pet.level}级 · ${pet.alertReason}`);
     const lines = [...demandLines, ...rareLines].slice(0, 3);
     if (fresh.length > 3) lines.push(`…另有 ${fresh.length - 3} 只`);
     const title = demandLines.length > 0
@@ -292,13 +281,21 @@ export function Nearby({ onNavigate }: NearbyProps) {
   const encounter = snapshot?.encounter ?? null;
   // 自身坐标优先用解码器解析出的上行 307；拿不到时退回里程计估算
   const captureSelf = snapshot?.self ?? null;
+  // 来源只用于文案：307 = 真实坐标，其它（里程计 / 沿用上一帧）= 估算
+  const selfSource = snapshot?.selfSource ?? (captureSelf ? 'packet' : 'none');
+  // 307 是稀疏帧：解码线程已经在写快照时跑过里程计，这里直接消费，
+  // 避免页面与悬浮窗各算一套导致两边不一致（2026-11-10）
+  const estimatedSelf = snapshot?.estimatedSelf ?? self;
+  // 自身坐标优先用解码器解析出的上行 307；拿不到时退回里程计估算
   const radar = useMemo(
     () => buildRadar(pets, {
-      origin: captureSelf ?? self,
+      origin: captureSelf ?? estimatedSelf,
       radiusM: DEFAULT_RADAR_RADIUS_M,
       trustOrigin: Boolean(captureSelf),
+      // 有人物朝向时，雷达/列表方位都按「面朝方向为正上方」算（2026-11-10）
+      heading: snapshot?.selfHeading ?? null,
     }),
-    [pets, self, captureSelf],
+    [pets, estimatedSelf, captureSelf, snapshot?.selfHeading],
   );
   const rareCount = pets.filter((pet) => pet.rare).length;
   const demandCount = [...hitByKey.values()].filter((hits) => hits.length > 0).length;
@@ -313,6 +310,28 @@ export function Nearby({ onNavigate }: NearbyProps) {
   useEffect(() => {
     if (progress?.stage === 'ready') requestAutoImport(progress.session);
   }, [progress]);
+
+  // 悬浮球隐藏态：进页面读一次；采集开关变化时再读一次（期间可能长按隐藏过）
+  useEffect(() => {
+    if (!shellOverlaySupported) return;
+    let alive = true;
+    void readOrbHidden().then((value) => { if (alive) setOrbHiddenState(value); });
+    return () => { alive = false; };
+  }, [shellOverlaySupported, capturing]);
+
+  const toggleOrbHidden = async () => {
+    const next = !(orbHidden ?? false);
+    if (await setOrbHidden(next)) setOrbHiddenState(next);
+  };
+
+  /** 手动刷新：失败只显示行内提示，不能让整页白屏（2026-11-10 真机反馈）。 */
+  const safeRefresh = () => {
+    try {
+      refresh();
+    } catch (cause) {
+      setCaptureError(cause instanceof Error ? cause.message : '刷新失败，请稍后再试');
+    }
+  };
 
   /** 真正的开始 / 停止动作：这里开始的采集是雷达导向（不自动停止 / 不自动导入） */
   const runCapture = async (starting: boolean) => {
@@ -380,16 +399,13 @@ export function Nearby({ onNavigate }: NearbyProps) {
     const keys = new Set<string>();
     for (const pet of pets) {
       const hits = hitByKey.get(pet.key) ?? [];
-      const allowed = filter === 'all'
-        || (filter === 'rare' ? pet.rare : hits.length > 0);
-      if (allowed) keys.add(pet.key);
+      if (nearbyFilterAllows(filter, pet, hits.length)) keys.add(pet.key);
     }
     return keys;
   }, [pets, hitByKey, filter]);
 
   const filtered = useMemo(() => {
-    const allowed = (row: RetainedEntry) => filter === 'all'
-      || (filter === 'rare' ? row.pet.rare : row.demandHits.length > 0);
+    const allowed = (row: RetainedEntry) => nearbyFilterAllows(filter, row.pet, row.demandHits.length);
     return sortRows(rows.filter(allowed), radar);
   }, [rows, radar, filter]);
 
@@ -409,7 +425,7 @@ export function Nearby({ onNavigate }: NearbyProps) {
     [pets, radarKeys],
   );
   /** 没有自身坐标时用雷达的估算中心，地图至少能落到有人区域 */
-  const mapSelf = captureSelf ?? radar?.origin ?? null;
+  const mapSelf = captureSelf ?? estimatedSelf ?? radar?.origin ?? null;
 
   // 桌面版：把附近列表推给置顶小窗；采集中自动弹出，停止后收起
   const overlaySupported = isDesktopOverlaySupported();
@@ -470,39 +486,8 @@ export function Nearby({ onNavigate }: NearbyProps) {
     }
   }, [overlaySupported, capturing, snapshot, pets, progress, mapSelf, radar]);
 
-  // 安卓壳：把「面板配置 + 附近 payload」推给原生悬浮球（节流 800ms，与 PC 同一口径）。
-  // 旧 APK 没有 updateNearbyOverlay 时 pushNearbyOverlayToShell 静默返回 false，网页不受影响。
-  const lastShellPush = useRef(0);
-  const shellPanelsSignature = useRef('');
-  useEffect(() => {
-    if (!shellOverlaySupported) return;
-    const signature = `${overlayPanels.battle}-${overlayPanels.nearby}`;
-    const panelsChanged = shellPanelsSignature.current !== signature;
-    shellPanelsSignature.current = signature;
-    if (!capturing) {
-      // 停止采集：推一次 visible=false，壳侧收起并隐藏悬浮球（没推过就不用推）
-      if (lastShellPush.current > 0) {
-        lastShellPush.current = 0;
-        void pushNearbyOverlayToShell(buildNearbyOverlayPayload({
-          capturing: false,
-          hasKey: Boolean(progress?.analysis.hasKey),
-          snapshot,
-          demandHits: hitByKeyRef.current,
-        }));
-      }
-      return;
-    }
-    const now = Date.now();
-    // 开关变化立即重推（否则用户要点开球才看到旧配置）
-    if (!panelsChanged && now - lastShellPush.current < 800) return;
-    lastShellPush.current = now;
-    void pushNearbyOverlayToShell(buildNearbyOverlayPayload({
-      capturing: true,
-      hasKey: Boolean(progress?.analysis.hasKey),
-      snapshot,
-      demandHits: hitByKeyRef.current,
-    }));
-  }, [shellOverlaySupported, capturing, snapshot, progress, overlayPanels, demandSignature]);
+  // 安卓壳悬浮面板的推送已移到应用级（src/nearby/useNearbyOverlayPush.ts）：
+  // 推送跟随采集状态，不随本页卸载，从「我的」页发起采集也照样有面板。
 
   // 全屏时支持 Esc 退出
   useEffect(() => {
@@ -555,6 +540,16 @@ export function Nearby({ onNavigate }: NearbyProps) {
                 {overlayClickThrough ? '恢复点击' : '小窗不挡点击'}
               </button>
             ) : null}
+          {orbHidden !== null ? (
+            <button
+              type="button"
+              onClick={() => { void toggleOrbHidden(); }}
+              data-testid="nearby-orb-toggle"
+              className="min-h-[28px] rounded-lg border border-slate-200 px-2 text-xs text-slate-600"
+            >
+              {orbHidden ? '显示悬浮球' : '隐藏悬浮球'}
+            </button>
+          ) : null}
           {captureSupported ? (
             <button
               type="button"
@@ -662,7 +657,7 @@ export function Nearby({ onNavigate }: NearbyProps) {
                 { value: 'rare', label: '稀有' },
                 { value: 'demand', label: '需求' },
               ]}
-              onValueChange={(value) => setFilter(value as NearbyFilter)}
+              onValueChange={(value) => setNearbyFilter(value as 'all' | 'rare' | 'demand')}
               optionTestId={(value) => `nearby-filter-${value}`}
             />
             <SegmentedControl
@@ -690,7 +685,7 @@ export function Nearby({ onNavigate }: NearbyProps) {
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={refresh}
+                    onClick={safeRefresh}
                     className="min-h-[28px] rounded-lg border border-slate-200 px-2 text-xs text-slate-500"
                     data-testid="nearby-refresh"
                   >
@@ -717,7 +712,7 @@ export function Nearby({ onNavigate }: NearbyProps) {
                 <>
                   <NearbyRadar radar={radarView} />
                   <p className="mt-1 text-center text-[11px] text-slate-400">
-                    {captureSelf
+                    {selfSource === 'packet'
                       ? '当前场景没有内置地图，先用雷达；中心为自身位置'
                       : '当前场景没有内置地图，先用雷达；中心为估算位置'}
                   </p>

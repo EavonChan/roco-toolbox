@@ -31,6 +31,12 @@ declare global {
       startCapture?: (mode?: StartCaptureMode) => string | Promise<string>;
       /** 系统悬浮窗权限查询（仅新壳）：返回 "true" / "false" */
       canDrawOverlay?: () => string | Promise<string>;
+      /**
+       * 悬浮球隐藏状态（1.3.6）：长按球 500ms 隐藏，附近页按钮恢复。
+       * `readOrbHidden` 返回 "true" / "false"；`setOrbHidden` 返回 "ok"。
+       */
+      readOrbHidden?: () => string | Promise<string>;
+      setOrbHidden?: (hidden: boolean) => string | Promise<string>;
       /** 桌面版（Electron）专用：Npcap 网卡列表与选择 */
       listDevices?: () => string | Promise<string>;
       selectDevice?: (name: string) => string | Promise<string>;
@@ -157,12 +163,12 @@ export function resetCaptureBytesCacheForTest(): void {
  * （新壳的拦截器支持 ?from=N；旧壳响应头对不上时自动回退全量），
  * 拼接后交给 worker 解码——解码仍是全量扫，但那是纯 CPU，耗时远小于搬运。
  */
-export async function readCaptureSnapshotBytes(snapshot: CaptureSnapshot): Promise<Uint8Array> {
+export async function readCaptureSnapshotBytes(snapshot: CaptureSnapshot, signal?: AbortSignal): Promise<Uint8Array> {
   const cached = liveBytes;
   if (cached && cached.id === snapshot.id && cached.bytes.length <= snapshot.size) {
     if (cached.bytes.length === snapshot.size) return cached.bytes;
     try {
-      const delta = await fetchCaptureDelta(snapshot.url, cached.bytes.length);
+      const delta = await fetchCaptureDelta(snapshot.url, cached.bytes.length, signal);
       if (cached.bytes.length + delta.length > MAX_CAPTURE_BYTES) throw new Error('抓包超过 128MiB');
       const merged = new Uint8Array(cached.bytes.length + delta.length);
       merged.set(cached.bytes, 0);
@@ -171,18 +177,20 @@ export async function readCaptureSnapshotBytes(snapshot: CaptureSnapshot): Promi
       return merged;
     } catch (error) {
       if (error instanceof Error && error.message.includes('128MiB')) throw error;
+      // 主动取消（切页 / 后台心跳重启卡死轮次）：不要再回退全量读一遍
+      if ((error as { name?: string } | null)?.name === 'AbortError') throw error;
       // 旧壳不支持 from / 响应头对不上：回退全量读取
     }
   }
-  const response = await fetch(snapshot.url, { cache: 'no-store', credentials: 'omit' });
+  const response = await fetch(snapshot.url, { cache: 'no-store', credentials: 'omit', signal });
   if (!response.ok) throw new Error('无法读取本机原包，请返回工具箱重新导入');
   const bytes = new Uint8Array(await response.arrayBuffer());
   liveBytes = { id: snapshot.id, bytes };
   return bytes;
 }
 
-async function fetchCaptureDelta(url: string, from: number): Promise<Uint8Array> {
-  const response = await fetch(`${url}?from=${from}`, { cache: 'no-store', credentials: 'omit' });
+async function fetchCaptureDelta(url: string, from: number, signal?: AbortSignal): Promise<Uint8Array> {
+  const response = await fetch(`${url}?from=${from}`, { cache: 'no-store', credentials: 'omit', signal });
   if (!response.ok) throw new Error('无法增量读取本机原包');
   // 校验拦截器确实理解了 from（旧壳会忽略 query 返回全量，那会让拼接错位，必须识别出来）
   const servedFrom = Number(response.headers.get('X-Capture-From'));
@@ -279,4 +287,21 @@ export async function canDrawOverlay(): Promise<boolean | null> {
   const check = window.RocoCapture?.canDrawOverlay;
   if (typeof check !== 'function') return null;
   try { return String(await check()) === 'true'; } catch { return null; }
+}
+
+/**
+ * 悬浮球当前是否被隐藏（1.3.6）。
+ * 返回 `null` 表示当前壳没有这个能力（旧 APK / 网页版），调用方不显示按钮。
+ */
+export async function readOrbHidden(): Promise<boolean | null> {
+  const read = window.RocoCapture?.readOrbHidden;
+  if (typeof read !== 'function') return null;
+  try { return String(await read()) === 'true'; } catch { return null; }
+}
+
+/** 隐藏 / 显示悬浮球；只摘掉窗口，采集照常继续。返回是否调用成功。 */
+export async function setOrbHidden(hidden: boolean): Promise<boolean> {
+  const write = window.RocoCapture?.setOrbHidden;
+  if (typeof write !== 'function') return false;
+  try { return String(await write(hidden)) === 'ok'; } catch { return false; }
 }

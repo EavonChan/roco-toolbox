@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { inspectBytesInWorker, inspectUrlInWorker } from '../pcap/decodeInWorker';
 import { nextCaptureProgress, type CaptureAnalysis, type CaptureProgress } from './captureProgress';
 import { clearCaptureProgressCache, readCaptureProgressCache, writeCaptureProgressCache } from './captureProgressCache';
-import { writeNearbySnapshot } from './nearbyStore';
+import { readNearbySnapshot, writeNearbySnapshot } from './nearbyStore';
+import { trackNearbySelf } from './nearbySelfTrack';
+import { recordCapturePerf } from './perfProbe';
 import { readLiveDecodeState, writeLiveDecodeState } from './liveDecodeStore';
 import { readCaptureSnapshot, readCaptureSnapshotBytes, type CollectorState } from './nativeCollector';
 
@@ -11,6 +13,39 @@ const empty: ProgressState = { progress: null, sourceBytes: 0, error: null, chec
 /** live 刷新的自适应区间：解一次很快就在 500ms 后继续，慢则最多等 1.5s，避免连续占满 CPU。 */
 const LIVE_INTERVAL_MIN_MS = 500;
 const LIVE_INTERVAL_MAX_MS = 1500;
+/** 一轮解析超过这个时间还没结束就认定卡死，由后台心跳重开（2MiB 尾窗正常 1~5s）。 */
+const LIVE_STALL_MS = 15000;
+/**
+ * 后台心跳配合的有界解析窗口（2026-11-09）：页面不可见时无论如何都用 2MiB 尾窗，
+ * 否则「我的」页发起的全量采集在后台每轮都要重解整份文件，跟不上 1s 心跳。
+ */
+const BACKGROUND_WINDOW_BYTES = 2 * 1024 * 1024;
+
+/**
+ * 后台心跳订阅（2026-11-08）。
+ *
+ * 用户切到游戏后工具箱页面不可见，WebView 会把 setTimeout / setInterval 节流到
+ * 每分钟一次甚至暂停，表现就是悬浮球「有时候一直不刷新」。安卓壳在主线程每秒
+ * 调一次 `window.__rocoLiveTick()` 来绕过定时器节流；这里登记需要被唤醒的轮询。
+ */
+declare global {
+  interface Window { __rocoLiveTick?: () => void }
+}
+const liveTicks = new Set<() => void>();
+export function registerLiveTick(tick: () => void): () => void {
+  liveTicks.add(tick);
+  if (typeof window !== 'undefined' && !window.__rocoLiveTick) {
+    window.__rocoLiveTick = () => {
+      liveTicks.forEach((fn) => {
+        try { fn(); } catch { /* 单个订阅失败不影响其它订阅 */ }
+      });
+    };
+  }
+  return () => {
+    liveTicks.delete(tick);
+    if (liveTicks.size === 0 && typeof window !== 'undefined') delete window.__rocoLiveTick;
+  };
+}
 export interface CaptureProgressOptions {
   /** 持续获取模式：进度走满也不停止轮询，继续按固定间隔刷新实时计数。 */
   live?: boolean;
@@ -37,10 +72,18 @@ export interface CaptureProgressOptions {
 
 export function useCaptureProgress(state: CollectorState | null, options: CaptureProgressOptions = {}): ProgressState {
   const live = Boolean(options.live);
-  const windowBytes = Number(options.windowBytes) || 0;
+  const requestedWindowBytes = Number(options.windowBytes) || 0;
+  // background 打开时强制有界窗口：后台心跳每秒都会重开一轮，全量重解会直接卡死
+  const backgroundWindowBytes = options.background ? BACKGROUND_WINDOW_BYTES : 0;
+  const windowBytes = requestedWindowBytes || backgroundWindowBytes;
   // 窗口化解析结果不完整，绝不能写进进度缓存（否则采集页会拿它当作已收齐）
   const persistCache = options.persist !== false && windowBytes === 0;
   const refreshKey = options.refreshKey ?? 0;
+  /**
+   * 手动刷新不重建整个 effect：重建会在旧一轮解码还没结束时再排一次解码，
+   * WebView 里容易叠加内存把页面打白。这里只让当前轮立即重读快照。
+   */
+  const restartRef = useRef<(() => void) | null>(null);
   const background = Boolean(options.background);
   const enabled = state?.phase === 'capturing' && state.progressVersion === 1;
   const session = state?.fileId;
@@ -81,6 +124,12 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
       ? { size: cached.sourceBytes, analysis: cached.analysis }
       : null;
     const active = (run: number) => !disposed && (background || !document.hidden) && run === epoch;
+    /** 当前是否有一轮在跑 + 开始时间：后台心跳据此判断「卡死」并重开。 */
+    let running = false;
+    let runningSince = 0;
+    /** 上一次解出的朝向与自身坐标：静止时沿用朝向、307 缺失时按位移补朝向。 */
+    let lastHeading: number | null = null;
+    let lastSelfPoint: { x: number; y: number } | null = null;
 
     const persist = (next: ProgressState, analysis: CaptureAnalysis | null) => {
       if (!persistCache || !analysis || !next.progress) return;
@@ -94,8 +143,7 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
       });
     };
 
-    const check = async (run: number) => {
-      if (!active(run) || settled) return;
+    const runCheck = async (run: number) => {
       const startedAt = performance.now();
       try {
         const snapshot = await readCaptureSnapshot();
@@ -114,10 +162,24 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
             if (live) {
               // 增量读取（2026-11-08）：只搬新增的一段，拼接后送 worker。
               // run() 会 transfer 走传入的 buffer，slice 一份保住主线程的增量缓存。
-              const bytes = await readCaptureSnapshotBytes(snapshot);
+              const readStart = performance.now();
+              const bytes = await readCaptureSnapshotBytes(snapshot, controller.signal);
+              const readMs = performance.now() - readStart;
               // 冷启动恢复点：Worker 被回收后靠它继续解裁剪过的文件（见 liveDecodeStore）
               const resume = windowBytes ? readLiveDecodeState(snapshot.id) : null;
+              const decodeStart = performance.now();
               analysis = await inspectBytesInWorker(bytes.slice(), snapshot.id, controller.signal, undefined, windowBytes, resume ?? undefined);
+              recordCapturePerf({
+                session,
+                readMs,
+                decodeMs: performance.now() - decodeStart,
+                bytes: bytes.length,
+                windowBytes,
+                selfRaw: analysis.nearbySelf != null,
+                selfX: analysis.nearbySelf?.x ?? null,
+                selfY: analysis.nearbySelf?.y ?? null,
+                pets: analysis.nearby?.length ?? 0,
+              });
             } else {
               analysis = await inspectUrlInWorker(snapshot.url, snapshot.id, controller.signal, undefined, windowBytes);
             }
@@ -125,12 +187,47 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
           if (!active(run)) return;
           if (live && windowBytes && analysis.liveState) writeLiveDecodeState(snapshot.id, analysis.liveState);
           analysisCache = { size: snapshot.size, analysis };
+          const scene = analysis.nearbyScene ?? null;
+          const rawSelf = analysis.nearbySelf ?? null;
+          // 307 是稀疏帧：本轮没解到就沿用同场景上一帧，再不行用里程计，
+          // 否则自身坐标一秒变 null，地图会整块消失（2026-11-10）
+          const tracked = trackNearbySelf(session, scene, analysis.nearby ?? [], rawSelf);
+          const previousSnapshot = readNearbySnapshot();
+          const carried = previousSnapshot
+            && previousSnapshot.session === session
+            && previousSnapshot.scene === scene
+            ? previousSnapshot.self
+            : null;
+          // 自身坐标来源：壳端 RocoPerf 要看它判断「是 307 没变还是在用旧值」
+          const selfSource = rawSelf ? 'packet' : tracked.self ? 'odometry' : carried ? 'stale' : 'none';
+          // 自身朝向：包内没有独立朝向字段，取同一帧的速度方向（见 parseUpstreamSelfPosition）；
+          // 静止时速度是 0，沿用上一次朝向，避免箭头乱指（2026-11-10 真机 pcap 验证）。
+          const resolvedSelf = rawSelf ?? tracked.self ?? carried;
+          let selfHeading = rawSelf?.heading ?? null;
+          if (selfHeading == null && resolvedSelf && lastSelfPoint) {
+            const dx = resolvedSelf.x - lastSelfPoint.x;
+            const dy = resolvedSelf.y - lastSelfPoint.y;
+            if (Math.hypot(dx, dy) / 100 >= 3) {
+              selfHeading = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+            }
+          }
+          if (selfHeading == null) selfHeading = lastHeading ?? previousSnapshot?.selfHeading ?? null;
+          lastHeading = selfHeading;
+          if (resolvedSelf) lastSelfPoint = { x: resolvedSelf.x, y: resolvedSelf.y };
           writeNearbySnapshot({
             session,
-            scene: analysis.nearbyScene ?? null,
+            scene,
             pets: analysis.nearby ?? [],
-            self: analysis.nearbySelf ?? null,
+            // 307 是稀疏帧：本轮没解到就先用里程计估算；估算也没有才沿用上一帧，
+            // 否则自身坐标一秒变 null，地图会整块消失（2026-11-10）。
+            // 注意顺序：carried 是旧坐标，不能盖掉正在更新的估算值，否则走远了地图不动。
+            self: resolvedSelf,
+            selfHeading,
+            estimatedSelf: tracked.self,
+            selfSource,
+            selfAt: rawSelf || tracked.self ? Date.now() : previousSnapshot?.selfAt,
             encounter: analysis.encounter ?? null,
+            hasKey: Boolean(analysis.hasKey),
             updatedAt: Date.now(),
           });
           previous = nextCaptureProgress(previous, analysis, performance.now(), session);
@@ -177,6 +274,33 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
       }
     };
 
+    /** 包一层只为记录「这一轮是否还在跑」，不影响原有逻辑。 */
+    const check = async (run: number) => {
+      if (!active(run) || settled) return;
+      running = true;
+      runningSince = performance.now();
+      try {
+        await runCheck(run);
+      } finally {
+        // 被心跳重开后旧轮次才结束：别把新轮次的 running 清掉
+        if (run === epoch) running = false;
+      }
+    };
+
+    // 后台心跳：页面不可见时由安卓壳唤醒；卡死超过阈值就中止旧轮次重开
+    let unregisterTick: (() => void) | null = null;
+    if (background) {
+      unregisterTick = registerLiveTick(() => {
+        if (disposed || settled) return;
+        const stalled = running && performance.now() - runningSince > LIVE_STALL_MS;
+        if (running && !stalled) return;
+        const run = ++epoch;
+        window.clearTimeout(timer);
+        controller?.abort();
+        void check(run);
+      });
+    }
+
     const visibility = () => {
       if (settled) return;
       const run = ++epoch;
@@ -185,11 +309,23 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
     };
     visibility();
     document.addEventListener('visibilitychange', visibility);
+    // 手动刷新：当前没有在解析就立刻重读，正在解析就等这一轮结束，避免叠加解码
+    restartRef.current = () => {
+      if (running || settled) return;
+      window.clearTimeout(timer);
+      void check(epoch);
+    };
+
     return () => {
       disposed = true; epoch++; window.clearTimeout(timer); controller?.abort();
+      if (unregisterTick) unregisterTick();
       document.removeEventListener('visibilitychange', visibility);
+      restartRef.current = null;
     };
-  }, [enabled, session, live, refreshKey, background, windowBytes]);
+  }, [enabled, session, live, background, windowBytes]);
+  useEffect(() => {
+    if (refreshKey > 0) restartRef.current?.();
+  }, [refreshKey]);
   if (!enabled || result.progress?.session !== session) return { ...empty, error: enabled ? result.error : null };
   return result;
 }

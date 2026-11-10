@@ -14,9 +14,48 @@ export interface NearbySnapshot {
   pets: LiveNearbyPet[];
   /** 自身世界坐标（上行 307）；缺失时雷达退回里程计估算 */
   self: { x: number; y: number } | null;
+  /** 自身朝向（0=正北、顺时针，度）；静止时沿用上一次，没有朝向数据为 null */
+  selfHeading?: number | null;
+  /**
+   * 里程计估算的自身坐标（2026-11-10）：307 稀疏时地图与雷达改用它，
+   * 保证走动时点位会跟着移动；换场景 / 换会话时重新初始化。
+   */
+  estimatedSelf?: { x: number; y: number } | null;
+  /** 真实 307 的解码时间；没有真实坐标时为 undefined（用于判断是否已过期） */
+  selfAt?: number;
+  /**
+   * `self` 的来源（2026-11-10 真机排障）：
+   * packet = 本轮解到上行 307；odometry = 里程计估算；stale = 沿用上一帧；
+   * none = 还没有自身坐标。壳端 RocoPerf 靠它区分「数据没变」与「视图没平移」。
+   */
+  selfSource?: 'packet' | 'odometry' | 'stale' | 'none';
   /** 最近一次赛季奇遇战守卫的个体数据；没有奇遇战为 null */
   encounter: SeasonEncounter | null;
+  /** 这段采集里抓到登录密钥没有（悬浮面板据此提示「还没拿到密钥」） */
+  hasKey?: boolean;
   updatedAt: number;
+}
+
+/** 快照多久没更新就按「等待数据」处理；同一次采集里 live 解码约每秒刷新一次。 */
+export const NEARBY_SNAPSHOT_TTL_MS = 3 * 60_000;
+
+/**
+ * 附近快照的新鲜度门限（2026-11-08，O-9）。
+ *
+ * 快照是模块级、跨页共享的，「停止采集后保留最后一帧」是有意的；但换一局采集后
+ * 旧 session 的精灵/场景不能继续显示，也不能再推给悬浮窗。当前采集会话还没读到
+ * （state 未就绪）时不清屏，避免刚进页面闪一下。
+ */
+export function freshNearbySnapshot(
+  snapshot: NearbySnapshot | null,
+  session: string | null | undefined,
+  now = Date.now(),
+  ttlMs = NEARBY_SNAPSHOT_TTL_MS,
+): NearbySnapshot | null {
+  if (!snapshot) return null;
+  if (session != null && snapshot.session !== session) return null;
+  if (now - snapshot.updatedAt > ttlMs) return null;
+  return snapshot;
 }
 
 const store = createModuleStore<NearbySnapshot | null>(null);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LiveNearbyPet } from '../collector/captureProgress';
-import { metersPerPixel, projectToPixel, worldMapForScene, worldMapImageUrl } from '../pcap/worldMap';
+import { metersPerPixel, projectToPixel, worldMapForScene, worldMapImageUrl, type WorldMap } from '../pcap/worldMap';
 
 /** 牌子 → 标记颜色；与列表/雷达同一套语义 */
 const KIND_COLOR: Record<string, string> = {
@@ -52,28 +52,51 @@ export interface NearbyMapProps {
   className?: string;
 }
 
-interface ViewState {
+export interface ViewState {
   scale: number;
   tx: number;
   ty: number;
 }
 
 /**
- * 大世界地图（2026-11-08）。
- *
- * 和雷达的区别：雷达是「以估算中心为圆心的相对方位」，地图是真实世界坐标直接落点，
- * 可以缩放/拖动，能直接看到精灵在卡洛西亚大陆的位置，不会再出现「知道在旁边但找不到」。
- * 标定与坐标换算见 `src/pcap/worldMap.ts`（100 世界单位 = 1 米）。
+ * 自身位置变化 → 新的视图偏移：按同一位移平移地图，保留用户的缩放与拖动偏移。
+ * 抽成纯函数，便于单测「自身移动时地图确实跟着走」（2026-11-10）。
  */
+export function panForSelfMove(
+  map: WorldMap,
+  previous: { x: number; y: number },
+  next: { x: number; y: number },
+  view: ViewState,
+): ViewState {
+  const before = projectToPixel(map, previous);
+  const after = projectToPixel(map, next);
+  if (before.px === after.px && before.py === after.py) return view;
+  return {
+    ...view,
+    tx: view.tx - (after.px - before.px) * view.scale,
+    ty: view.ty - (after.py - before.py) * view.scale,
+  };
+}
+
 export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
   const map = worldMapForScene(scene);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [view, setView] = useState<ViewState>({ scale: 0.6, tx: 0, ty: 0 });
   const [selected, setSelected] = useState<string | null>(null);
-  const interacted = useRef(false);
   /** 用户缩放倍率（1 = 默认 150m）；存在 localStorage，下次打开沿用 */
   const zoom = useRef(readSavedZoom());
+
+  /** 自身位置：有 307 用它，没有就取精灵里离地图中心最近的一只（保持画面在有人区域） */
+  const self = useMemo(() => {
+    if (origin) return origin;
+    if (pets.length === 0) return null;
+    return pets.reduce((best, pet) => {
+      if (!pet.pos) return best;
+      if (!best) return { x: pet.pos.x, y: pet.pos.y };
+      return best;
+    }, null as { x: number; y: number } | null);
+  }, [origin, pets]);
 
   const baseScale = useCallback((width: number) => {
     if (!map || width === 0) return 1;
@@ -105,17 +128,6 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
     return () => observer.disconnect();
   }, []);
 
-  /** 自身位置：有 307 用它，没有就取精灵里离地图中心最近的一只（保持画面在有人区域） */
-  const self = useMemo(() => {
-    if (origin) return origin;
-    if (pets.length === 0) return null;
-    return pets.reduce((best, pet) => {
-      if (!pet.pos) return best;
-      if (!best) return { x: pet.pos.x, y: pet.pos.y };
-      return best;
-    }, null as { x: number; y: number } | null);
-  }, [origin, pets]);
-
   const centerOnSelf = useCallback(() => {
     if (!map || size.width === 0) return;
     const point = self ?? { x: map.originX + map.sideUnits / 2, y: map.originY + map.sideUnits / 2 };
@@ -128,14 +140,26 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
     });
   }, [map, self, size.width, size.height, baseScale]);
 
-  // 首屏 / 换场景 / 面板尺寸变化时自动对到自身；用户手动拖动过就不再抢镜头
+  // 首屏 / 换场景 / 面板尺寸变化时对到自身；之后自身移动按同一位移平移视图，
+  // 保留用户的缩放与拖动偏移，地图始终跟着人走（2026-11-10 修复「地图不动」）
+  const lastFocus = useRef<{ x: number; y: number } | null>(null);
+  const lastFit = useRef<{ map: WorldMap | null; width: number; height: number } | null>(null);
   useEffect(() => {
-    if (size.width === 0 || interacted.current) return;
-    centerOnSelf();
-  }, [centerOnSelf, size.width]);
+    if (!map || size.width === 0) return;
+    const fitChanged = lastFit.current?.map !== map
+      || lastFit.current?.width !== size.width
+      || lastFit.current?.height !== size.height;
+    lastFit.current = { map, width: size.width, height: size.height };
+    const previous = lastFocus.current;
+    lastFocus.current = self;
+    if (fitChanged || !previous || !self) {
+      centerOnSelf();
+      return;
+    }
+    setView((current) => panForSelfMove(map, previous, self, current));
+  }, [map, self, size.width, size.height, centerOnSelf]);
 
   const zoomAt = useCallback((factor: number, focusX: number, focusY: number) => {
-    interacted.current = true;
     setView((current) => {
       const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current.scale * factor));
       const ratio = scale / current.scale;
@@ -171,7 +195,6 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
       const [a, b] = [...pinch.current.values()];
       const distance = Math.hypot(a.x - b.x, a.y - b.y);
       if (distance > 0) {
-        interacted.current = true;
         setView((current) => {
           const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, pinchStart.current!.scale * (distance / pinchStart.current!.distance)));
           const ratio = scale / current.scale;
@@ -183,7 +206,6 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
     }
     const current = drag.current;
     if (!current || current.id !== event.pointerId) return;
-    interacted.current = true;
     const dx = event.clientX - current.x;
     const dy = event.clientY - current.y;
     drag.current = { ...current, x: event.clientX, y: event.clientY };
@@ -271,7 +293,7 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
             }}
             className="absolute -translate-x-1/2 -translate-y-1/2"
             style={{ left: screen.x, top: screen.y }}
-            title={`${pet.name} Lv${pet.level}${distance != null ? ` · ${distance.toFixed(0)}m` : ''}`}
+            title={`${pet.name} ${pet.level}级${distance != null ? ` · ${distance.toFixed(0)}m` : ''}`}
           >
             {pet.alertReason ? (
               <span className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-rose-500" />
@@ -305,7 +327,7 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
           className="h-7 w-7 rounded-lg bg-white/90 text-sm font-semibold text-slate-700 shadow">+</button>
         <button type="button" aria-label="缩小" onClick={() => zoomAt(1 / 1.35, size.width / 2, size.height / 2)}
           className="h-7 w-7 rounded-lg bg-white/90 text-sm font-semibold text-slate-700 shadow">−</button>
-        <button type="button" aria-label="回到自身" title="回到自身" onClick={() => { interacted.current = false; centerOnSelf(); }}
+        <button type="button" aria-label="回到自身" title="回到自身" onClick={centerOnSelf}
           className="h-7 w-7 rounded-lg bg-white/90 text-[10px] font-medium text-slate-700 shadow">我</button>
       </div>
 
@@ -322,7 +344,7 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate text-xs font-semibold">
-                {selectedPet.name} · Lv{selectedPet.level}
+                {selectedPet.name} · {selectedPet.level}级
                 {selectedPet.gender ? ` · ${selectedPet.gender}` : ''}
               </p>
               <p className="text-[10px] text-slate-300">

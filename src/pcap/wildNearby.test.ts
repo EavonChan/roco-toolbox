@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { decorateWildPet, sortNearby, withDistance, type WildPet } from './wildNearby';
-import { parseWildEntities, parseOwnedPetDetails, parseSeasonEncounterUnits, type WildEntityRaw } from '../pcap-decoder/tools/pcap-json-app/src/core';
+import { parseSceneInfo, parseWildEntities, parseOwnedPetDetails, parseSeasonEncounterUnits, parseUpstreamSelfPosition, removeCapturedWildPets, type WildEntityRaw } from '../pcap-decoder/tools/pcap-json-app/src/core';
 
 /** 真实野外抓包 capture-1793891528222.pcap 里出现过的实体（脱敏：只保留协议字段）。 */
 const HUSKY: WildEntityRaw = {
@@ -33,7 +33,7 @@ describe('野外实体补全', () => {
 
   test('±100dB 才触发主动提醒', () => {
     const pet = decorateWildPet({ ...IBERRY, voiceDb: -100 });
-    expect(pet.alertReason).toBe('-100dB 粗嗓门');
+    expect(pet.alertReason).toBe('-100dB');
   });
 
   test('宠物记录回填性格与性别：7 = 天真，1 = 公', () => {
@@ -154,6 +154,37 @@ describe('赛季奇遇战（龙棋士）', () => {
   });
 });
 
+describe('抓到后从附近实体里剔除', () => {
+  const captureOf = (pets: WildEntityRaw[]) => ({
+    wildPets: new Map(pets.map((pet) => [String(pet.uniqueId), pet])),
+    capturedWild: new Set<string>(),
+  });
+  const detailOf = (overrides: Record<string, unknown> = {}) => ({
+    petId: 3070, level: 37, height: 78, weight: 15513,
+    natureId: 1, genderId: 1, bloodId: 0, voiceDb: -99, ...overrides,
+  });
+
+  test('579 捕获记录按 种族+等级+身高+体重 命中后删除对应实体', () => {
+    const capture = captureOf([HUSKY, IBERRY]);
+    removeCapturedWildPets(capture, [detailOf()]);
+    expect([...capture.wildPets.keys()]).toEqual(['260360003']);
+    // 记入墓碑：后续 330/1043 再下发同一只也不会回到列表
+    expect([...capture.capturedWild]).toEqual(['12011305']);
+  });
+
+  test('体重/等级对不上不删：避免误删同种族的另一只', () => {
+    const capture = captureOf([HUSKY]);
+    removeCapturedWildPets(capture, [detailOf({ weight: 15514 })]);
+    expect(capture.wildPets.size).toBe(1);
+  });
+
+  test('空记录（丢球 / 捕捉失败）不删任何实体', () => {
+    const capture = captureOf([HUSKY, IBERRY]);
+    removeCapturedWildPets(capture, []);
+    expect(capture.wildPets.size).toBe(2);
+  });
+});
+
 /** 拼一个战斗帧（4886/4890）里的奇遇守卫记录：record 带形态、名字、性格等。 */
 function encounterFrame(natureId: number, formId = 1646): Uint8Array {
   const record = [
@@ -164,6 +195,71 @@ function encounterFrame(natureId: number, formId = 1646): Uint8Array {
   ];
   return new Uint8Array(message(3, message(1, message(2, record))));
 }
+
+describe('场景号解析', () => {
+  const frame = (fields: number[][]) => new Uint8Array(fields.flat());
+
+  test('338 进场景读 field 3', () => {
+    expect(parseSceneInfo(frame([scalar(3, 10003), scalar(2, 12)]), 338))
+      .toEqual({ scene: 10003, sceneCfgId: 12 });
+  });
+
+  test('348 传送读 field 12，不能把 field 3 当场景号', () => {
+    // 真实反馈：传送后界面停在「场景 1」——旧代码对 348 也读 field 3，
+    // 那里是传送类型/序号，不是场景号。
+    expect(parseSceneInfo(frame([scalar(3, 1), scalar(12, 10003)]), 348))
+      .toEqual({ scene: 10003, sceneCfgId: null });
+  });
+
+  test('348 没有 field 12 时不覆盖现有场景', () => {
+    expect(parseSceneInfo(frame([scalar(3, 1)]), 348).scene).toBeNull();
+  });
+});
+
+describe('上行自身坐标（2026-11-10 真机 pcap 对账）', () => {
+  // 真机上行为 `[前缀] + protobuf{1:时间戳, 2:{1:x,2:y,3:z}}`，不是 0x55aa 业务帧。
+  const frame = (body: number[]) => new Uint8Array([...new Array(30).fill(0xff), ...body]);
+
+  test('从「时间戳 + field 2 坐标」结构读出自身世界坐标', () => {
+    const plaintext = frame([
+      ...scalar(1, 1794253017526),
+      ...message(2, [...scalar(1, 420876), ...scalar(2, 653992), ...scalar(3, 2029)]),
+    ]);
+    expect(parseUpstreamSelfPosition(plaintext)).toEqual({ x: 420876, y: 653992, heading: null });
+  });
+
+  test('同一帧的速度向量给出移动朝向（0=正北、顺时针）', () => {
+    const plaintext = frame([
+      ...scalar(1, 1794253017526),
+      ...message(2, [...scalar(1, 420876), ...scalar(2, 653992), ...scalar(3, 2029)]),
+      // 向东走：vx>0、vy=0 → 正东 = 90°
+      ...message(4, [...scalar(1, 590), ...scalar(2, 0)]),
+    ]);
+    expect(parseUpstreamSelfPosition(plaintext)?.heading).toBeCloseTo(90, 1);
+  });
+
+  test('静止（速度为 0）时不编造朝向', () => {
+    const plaintext = frame([
+      ...scalar(1, 1794253017526),
+      ...message(2, [...scalar(1, 420876), ...scalar(2, 653992)]),
+      ...message(4, [...scalar(1, 0), ...scalar(2, 0)]),
+    ]);
+    expect(parseUpstreamSelfPosition(plaintext)?.heading).toBeNull();
+  });
+
+  test('没有毫秒时间戳的帧不当作自身坐标', () => {
+    const plaintext = frame(message(2, [...scalar(1, 420876), ...scalar(2, 653992)]));
+    expect(parseUpstreamSelfPosition(plaintext)).toBeNull();
+  });
+
+  test('坐标越界不当作自身坐标', () => {
+    const plaintext = frame([
+      ...scalar(1, 1794253017526),
+      ...message(2, [...scalar(1, 99), ...scalar(2, 99)]),
+    ]);
+    expect(parseUpstreamSelfPosition(plaintext)).toBeNull();
+  });
+});
 
 describe('附近排序', () => {
   test('稀有优先，其次距离', () => {

@@ -1,6 +1,7 @@
-import CryptoJS from "crypto-js";
+﻿import CryptoJS from "crypto-js";
 import { Deflate, ungzip } from "pako";
 import catalog from "./generated/catalog.json";
+import cfgPetMap from "./generated/cfgPetMap.json";
 import petProtocolIdMap from "../../../miniprogram/utils/petProtocolIdMap";
 import colorfulProtocol from "../../../miniprogram/utils/colorfulProtocol";
 import petSpeciality from "../../../miniprogram/utils/petSpeciality";
@@ -646,6 +647,8 @@ function createAccountCapture(profile = null) {
     wildSelf: null,
     /** uniqueId → 野外实体（330 全量 + 1043 增量） */
     wildPets: new Map(),
+    /** 已抓到的 uniqueId：后续 330/1043 再提到也不放回列表（2026-11-10） */
+    capturedWild: new Set(),
     /** `petId:level:height:weight` → 宠物记录里的性格/性别（4934/579/4908，2026-11-06 验证） */
     ownedPetDetails: new Map(),
     /** 最近一次赛季奇遇战（4886/4890）里守卫的个体数据 */
@@ -1299,6 +1302,66 @@ export function __resetFrameCacheForTest() {
 const recentKeys = new Map();
 
 /**
+ * 上行移动帧的自身坐标（2026-11-10 真机对账）。
+ *
+ * 真机 pcap 里上行帧不是 0x55aa 业务帧：整帧用下行同一个 AES key、零 IV 解出来后是
+ * 「若干字节前缀 + protobuf」，消息结构为：
+ *
+ *   field 1 = 毫秒时间戳
+ *   field 2 = { 1: x, 2: y, 3: z }   ← 自身世界坐标
+ *
+ * 前缀长度会随帧类型变化，所以这里从 0 开始逐字节尝试，用「时间戳 + 合法世界坐标」
+ * 双重校验定位，避免误把别的消息当成自身坐标。
+ */
+export function parseUpstreamSelfPosition(plaintext) {
+  if (!plaintext || plaintext.length < 24) return null;
+  const limit = Math.min(40, plaintext.length - 8);
+  for (let offset = 0; offset <= limit; offset += 1) {
+    let fields;
+    try { fields = parseLooseProto(plaintext.subarray(offset)); } catch { continue; }
+    if (!fields) continue;
+    const stamp = wildFieldNumber(fields, 1);
+    if (!(stamp > 1e12 && stamp < 2.2e12)) continue;
+    const wrap = (fields.get(2) || []).find((value) => value instanceof Uint8Array);
+    if (!wrap) continue;
+    let pos;
+    try { pos = parseLooseProto(wrap); } catch { continue; }
+    if (!pos) continue;
+    const x = wildFieldNumber(pos, 1);
+    const y = wildFieldNumber(pos, 2);
+    if (x < 100000 || x > 2000000 || y < 100000 || y > 2000000) continue;
+    return { x, y, heading: readUpstreamHeading(fields) };
+  }
+  return null;
+}
+
+/**
+ * 同一帧里的朝向（2026-11-10 真机 pcap 交叉验证）。
+ *
+ * 包内**没有**独立的朝向字段：field 3 的值在 0–2000 间跳变但与移动方向不符，
+ * 其余帧只有心跳。真正可用的方向信号是速度向量：
+ *   field 4 = { 1: vx, 2: vy }（field 5 是同一方向的另一组缩放，兜底用）
+ * 连续两帧位移方向与 atan2(vy, vx) 的偏差实测 ≤ 3°，因此用它的方向作为「移动朝向」；
+ * 静止时 vx=vy=0，返回 null，由调用方沿用上一次朝向（不伪造）。
+ */
+function readUpstreamHeading(fields) {
+  for (const field of [4, 5]) {
+    const wrap = (fields.get(field) || []).find((value) => value instanceof Uint8Array);
+    if (!wrap) continue;
+    let sub;
+    try { sub = parseLooseProto(wrap); } catch { continue; }
+    const vx = wildFieldNumber(sub, 1);
+    const vy = wildFieldNumber(sub, 2);
+    if (!Number.isFinite(vx) || !Number.isFinite(vy)) continue;
+    if (Math.abs(vx) + Math.abs(vy) < 10) continue;
+    // 世界 y 轴向南，方位角 0 = 正北、顺时针增大，与地图箭头口径一致
+    const degrees = (Math.atan2(vx, -vy) * 180 / Math.PI + 360) % 360;
+    return Math.round(degrees * 10) / 10;
+  }
+  return null;
+}
+
+/**
  * 307 自己移动（c2s）：跳过前 14 字节，field 2 是坐标。
  *
  * 参考多多的 `parse_player_position_307`：坐标有效范围 100000–2000000（世界坐标）。
@@ -1328,25 +1391,37 @@ function decodeClientSelfPosition(flow, aesKey) {
     frames = parseTgcpFrames(stream.bytes, stream.ranges);
   } catch { return null; }
   let latest = null;
+  let latestHeading = null;
   for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
     const frame = frames[frameIndex].bytes;
-    if (frame[6] !== 64 || frame[7] !== 19) continue;
+    // 握手帧（16）里没有业务数据；其余上行帧都可能是移动帧（2026-11-10 真机对账）
+    if (frame[6] === 16) continue;
     const headerLength = frame[16];
     const encrypted = frame.subarray(headerLength);
-    const bodies = [];
-    if (aesKey && encrypted.length && encrypted.length % 16 === 0) {
+    if (!encrypted.length) continue;
+    if (aesKey && encrypted.length % 16 === 0) {
       // 上行帧同样走跨轮缓存（方向前缀 :c，避免与下行帧的绝对偏移相撞）
       try {
-        bodies.push(decryptFrameOnce(`${cacheKey}:c`, aesKey, frames[frameIndex].fileOffset, frameIndex, encrypted).business);
-      } catch { /* 上行格式不同就跳过 */ }
+        const resolved = decryptFrameOnce(`${cacheKey}:c`, aesKey, frames[frameIndex].fileOffset, frameIndex, encrypted);
+        const self = parseUpstreamSelfPosition(resolved.legacy)
+          || (resolved.business && resolved.business.opcode === 307
+            ? parsePlayerPosition307(resolved.business.payload)
+            : null);
+        if (self) {
+          if (self.heading != null) latestHeading = self.heading;
+          latest = self;
+        }
+        continue;
+      } catch { /* 上行格式不同就退回明文尝试 */ }
     }
-    bodies.push(businessPayload(encrypted));
-    for (const business of bodies) {
-      if (!business || business.opcode !== 307) continue;
+    const business = businessPayload(encrypted);
+    if (business && business.opcode === 307) {
       const self = parsePlayerPosition307(business.payload);
       if (self) latest = self;
     }
   }
+  // 停下来时速度是 0，沿用本窗口内最后一次移动朝向；跨窗口由调用方沿用
+  if (latest && latest.heading == null && latestHeading != null) return { ...latest, heading: latestHeading };
   return latest;
 }
 
@@ -1497,10 +1572,14 @@ function applyPlaintextToAccount(event, capture, retainRawProtocol = true) {
     if (opcode === 330 || opcode === 1043 || opcode === 1044) {
       const wild = parseWildEntities(event.homePayload);
       if (opcode === 330) capture.wildPets.clear();
-      for (const pet of wild) capture.wildPets.set(String(pet.uniqueId), pet);
+      for (const pet of wild) {
+        // 抓到过的实体即使后续帧还在下发，也不再回到地图 / 列表
+        if (capture.capturedWild.has(String(pet.uniqueId))) continue;
+        capture.wildPets.set(String(pet.uniqueId), pet);
+      }
     }
     if (opcode === 338 || opcode === 348) {
-      const scene = parseSceneInfo(event.homePayload);
+      const scene = parseSceneInfo(event.homePayload, opcode);
       if (scene.scene) capture.wildScene = scene.scene;
     }
     // 宠物记录（仓库/背包/捕获/战斗同步）带性格(field7)与性别(field8)，用于抓后回填附近精灵。
@@ -1512,7 +1591,8 @@ function applyPlaintextToAccount(event, capture, retainRawProtocol = true) {
     // 但它们的数据不会与守卫一致，回填时按数据匹配自然不会误填。
     if (opcode === 4934 || opcode === 579 || opcode === 4908 || opcode === 4900
       || opcode === 4890 || opcode === 5107) {
-      for (const detail of parseOwnedPetDetails(event.homePayload)) {
+      const details = parseOwnedPetDetails(event.homePayload);
+      for (const detail of details) {
         capture.ownedPetDetails.set(
           `${detail.petId}:${detail.level}:${detail.height}:${detail.weight}`,
           detail,
@@ -1522,6 +1602,9 @@ function applyPlaintextToAccount(event, capture, retainRawProtocol = true) {
         // 顺带把捕获后才下发的真实性格补到奇遇卡上（战斗帧 field7 常是 30 占位）。
         capture.seasonEncounter = mergeEncounterDetail(capture.seasonEncounter, detail);
       }
+      // 捕获成功才下发非空 579（失败/丢球是空帧），按 种族+等级+身高+体重 对齐
+      // 附近实体后立刻剔除，别让抓到的精灵继续留在地图和列表上（2026-11-10 真机反馈）。
+      if (opcode === 579) removeCapturedWildPets(capture, details);
     }
     // 赛季奇遇战（4886/4890）：守卫的宠物记录带真实性格，供捕获前展示
     if (opcode === 4886 || opcode === 4890) {
@@ -1678,6 +1761,26 @@ function parseWildEntity(raw) {
     glassValue: glassFields ? wildFieldNumber(glassFields, 2) : 0,
     pos: { x: wildFieldNumber(posFields, 1), y: wildFieldNumber(posFields, 2), z: wildFieldNumber(posFields, 3) }
   };
+}
+
+/**
+ * 捕获成功后把对应野生实体从附近列表里剔除（2026-11-10 真机反馈）。
+ *
+ * 579 的捕获记录只有 种族+等级+身高+体重，没有实体 uniqueId；野生实体带 cfgId，
+ * 换算成 petId 后按这四个字段对齐即可。身高/体重是精确值，几乎不会撞到别的个体。
+ * 只认 579（捕获成功才非空），战斗/背包帧不参与，避免抓失败、丢弃时误删。
+ */
+export function removeCapturedWildPets(capture, details) {
+  if (!details.length) return;
+  for (const detail of details) {
+    for (const [key, pet] of capture.wildPets) {
+      const petId = cfgPetMap[String(pet.cfgId)];
+      if (!petId || petId !== detail.petId) continue;
+      if (pet.level !== detail.level || pet.height !== detail.height || pet.weight !== detail.weight) continue;
+      capture.wildPets.delete(key);
+      capture.capturedWild.add(key);
+    }
+  }
 }
 
 /** 330 走顶层 field 7；1043/1044 走 field 1 → 子消息 → field 1。 */
@@ -1842,11 +1945,15 @@ export function parseSeasonEncounterUnits(payload) {
   });
 }
 
-/** 338 进场景：field 3 是场景号，field 2 是场景配置号。 */
-export function parseSceneInfo(payload) {
+/**
+ * 场景号：338 进场景读 field 3（field 2 是场景配置号）；
+ * 348 传送读 field 12（与 decodeHomeScene 一致），field 3 是传送类型/序号，不是场景号。
+ * 2026-11-10 修：以前 348 也读 field 3，传送后被写成「场景 1」且一直不恢复。
+ */
+export function parseSceneInfo(payload, opcode = 338) {
   const root = parseLooseProto(payload);
-  const scene = wildFieldNumber(root, 3);
-  const sceneCfgId = wildFieldNumber(root, 2);
+  const scene = wildFieldNumber(root, opcode === 348 ? 12 : 3);
+  const sceneCfgId = opcode === 348 ? null : wildFieldNumber(root, 2);
   return { scene: scene > 0 ? scene : null, sceneCfgId: sceneCfgId > 0 ? sceneCfgId : null };
 }
 
@@ -1972,6 +2079,8 @@ export function extractPcap(bytesLike, options = {}) {
 const nearbyBaseline = {
   key: "",
   pets: new Map(),
+  /** 已抓到的 uniqueId 墓碑：跨窗口 / 重开页面都保持剔除 */
+  capturedWild: new Set(),
   scene: null,
   self: null,
   encounter: null,
@@ -1993,6 +2102,7 @@ let liveStateImportedKey = "";
 function resetNearbyBaseline(key) {
   nearbyBaseline.key = key;
   nearbyBaseline.pets = new Map();
+  nearbyBaseline.capturedWild = new Set();
   nearbyBaseline.scene = null;
   nearbyBaseline.self = null;
   nearbyBaseline.encounter = null;
@@ -2021,6 +2131,7 @@ export function exportLiveDecodeState() {
     keys: Array.from(recentKeys, ([cacheKey, value]) => [cacheKey, Array.from(value)]),
     baseline: {
       pets: Array.from(nearbyBaseline.pets, ([id, pet]) => [id, pet]),
+      capturedWild: Array.from(nearbyBaseline.capturedWild),
       scene: nearbyBaseline.scene,
       self: nearbyBaseline.self,
       encounter: nearbyBaseline.encounter,
@@ -2043,6 +2154,7 @@ export function importLiveDecodeState(state) {
     liveStateImportedKey = state.key;
     nearbyBaseline.key = state.key;
     nearbyBaseline.pets = new Map(Array.isArray(baseline.pets) ? baseline.pets : []);
+    nearbyBaseline.capturedWild = new Set(Array.isArray(baseline.capturedWild) ? baseline.capturedWild : []);
     nearbyBaseline.scene = baseline.scene ?? null;
     nearbyBaseline.self = baseline.self ?? null;
     nearbyBaseline.encounter = baseline.encounter ?? null;
@@ -2108,6 +2220,7 @@ function extractFlowEvents(bytes, options = {}) {
       const created = createAccountCapture(profile || (baseline && baseline.uid === uid ? baseline.profile : null));
       if (baseline) {
         created.wildPets = new Map(baseline.pets);
+        created.capturedWild = new Set(baseline.capturedWild || []);
         created.wildScene = baseline.scene;
         created.wildSelf = baseline.self;
         created.seasonEncounter = baseline.encounter;
@@ -2179,6 +2292,7 @@ function extractFlowEvents(bytes, options = {}) {
   if (sessionKey) {
     nearbyBaseline.key = sessionKey;
     nearbyBaseline.pets = new Map(capture.wildPets);
+    nearbyBaseline.capturedWild = new Set(capture.capturedWild);
     nearbyBaseline.scene = capture.wildScene;
     nearbyBaseline.self = capture.wildSelf;
     nearbyBaseline.encounter = capture.seasonEncounter;

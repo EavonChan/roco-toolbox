@@ -76,11 +76,13 @@ export interface AlertInput {
  */
 export function rareAlertReason({ voiceDb, kinds }: AlertInput): string | null {
   const reasons: string[] = [];
-  if (voiceDb >= 100) reasons.push('+100dB 婉转声');
-  else if (voiceDb <= -100) reasons.push('-100dB 粗嗓门');
+  // 提醒文案里也只写分贝数，不再用「婉转声 / 粗嗓门」这种分类词（2026-11-10）
+  const db = `${voiceDb > 0 ? '+' : ''}${Math.round(voiceDb)}dB`;
+  if (voiceDb >= 100) reasons.push(db);
+  else if (voiceDb <= -100) reasons.push(db);
   const body = kinds.includes('big') ? 'big' : kinds.includes('small') ? 'small' : null;
   const voice = kinds.includes('high') ? 'high' : kinds.includes('low') ? 'low' : null;
-  if (body && voice) reasons.push(`${KIND_LABELS[body]}·${KIND_LABELS[voice]}`);
+  if (body && voice && voiceDb > -100 && voiceDb < 100) reasons.push(`${KIND_LABELS[body]} · ${db}`);
   return reasons.length > 0 ? reasons.join(' · ') : null;
 }
 

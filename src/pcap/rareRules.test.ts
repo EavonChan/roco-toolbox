@@ -43,22 +43,22 @@ describe('牌子判定', () => {
 });
 
 describe('主动提醒判定', () => {
-  test('±100dB 单独成立', () => {
-    expect(rareAlertReason({ voiceDb: 100, kinds: kind({ voiceDb: 100 }) })).toBe('+100dB 婉转声');
-    expect(rareAlertReason({ voiceDb: -100, kinds: kind({ voiceDb: -100 }) })).toBe('-100dB 粗嗓门');
+  test('±100dB 单独成立，文案只写分贝', () => {
+    expect(rareAlertReason({ voiceDb: 100, kinds: kind({ voiceDb: 100 }) })).toBe('+100dB');
+    expect(rareAlertReason({ voiceDb: -100, kinds: kind({ voiceDb: -100 }) })).toBe('-100dB');
   });
   test('96~99dB 必须叠加体重牌', () => {
     expect(rareAlertReason({ voiceDb: 99, kinds: kind({ voiceDb: 99 }) })).toBeNull();
-    expect(rareAlertReason({ voiceDb: 99, kinds: kind({ voiceDb: 99, weightPct: 98 }) })).toBe('大块头·婉转声');
-    expect(rareAlertReason({ voiceDb: -99, kinds: kind({ voiceDb: -99, weightPct: 2 }) })).toBe('小不点·粗嗓门');
+    expect(rareAlertReason({ voiceDb: 99, kinds: kind({ voiceDb: 99, weightPct: 98 }) })).toBe('大块头 · +99dB');
+    expect(rareAlertReason({ voiceDb: -99, kinds: kind({ voiceDb: -99, weightPct: 2 }) })).toBe('小不点 · -99dB');
   });
   test('只有体重牌或只有声音牌都不提醒', () => {
     expect(rareAlertReason({ voiceDb: 0, kinds: kind({ weightPct: 99 }) })).toBeNull();
     expect(rareAlertReason({ voiceDb: 97, kinds: kind({ voiceDb: 97 }) })).toBeNull();
   });
-  test('±100dB 同时有体重牌时两条原因都保留', () => {
+  test('±100dB 已经单独成立，不再重复叠加体重牌', () => {
     expect(rareAlertReason({ voiceDb: 100, kinds: kind({ voiceDb: 100, weightPct: 100 }) }))
-      .toBe('+100dB 婉转声 · 大块头·婉转声');
+      .toBe('+100dB');
   });
   test('多只时标题带数量', () => {
     expect(rareAlertTitle(1)).toBe('稀有精灵出现！');
