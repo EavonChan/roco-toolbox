@@ -139,6 +139,22 @@ describe('实时巡检尾部窗口', () => {
     expect(round2.profile).toBe(round1.profile);
   });
 
+  test('文件还没超过窗口大小时也走增量：第二轮不再重放整份文件', () => {
+    const { linkHeader, payload } = fixtureParts();
+    const first = frameOf(linkHeader, payload, 1000);
+    const second = frameOf(linkHeader, payload, 1000 + payload.length);
+    const { bytes } = pcapOf([first, second]);
+    const full = summarize(bytes);
+
+    // 2MiB 窗口远大于文件：修复前这里直接退回全量解析，每轮把两份记录都重放一遍。
+    const round1 = summarize(bytes, { windowBytes: 2 * 1024 * 1024, sessionKey: 'small1' });
+    const round2 = summarize(bytes, { windowBytes: 2 * 1024 * 1024, sessionKey: 'small1' });
+
+    expect(round1.records).toBe(full.records);
+    expect(round2.records).toBe(0);
+    expect(round2.profile).toBe(round1.profile);
+  });
+
   test('换采集会话后基线作废，重新完整解析窗口', () => {
     const { linkHeader, payload } = fixtureParts();
     const first = frameOf(linkHeader, payload, 1000);

@@ -1,7 +1,7 @@
 {
-  "versionName": "1.2.8",
-  "versionCode": 19,
+  "versionName": "1.5.2",
+  "versionCode": 36,
   "apkUrl": "https://roco-toolbox-downloads.pages.dev/android/roco-toolbox-latest.apk",
-  "notes": "悬浮球支持透明底与展开面板，修复上一版问题；低于 1.2.7 需更新后继续使用。",
-  "minSupportedVersionCode": 18
+  "notes": "悬浮球缩到 0.85 倍、松手自动吸边，停手 3 秒变半透明，按下立刻恢复；面板跟随球的位置展开，球贴右边时向左弹，不会再出屏。采集解析改为单一解码源，后台更省电，悬浮窗与地图刷新更跟手。",
+  "minSupportedVersionCode": 0
 }

@@ -2,6 +2,8 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
+  /** 兜底卡片的布局（全屏地图用 h-full w-full，正常页用正方形） */
+  className?: string;
 }
 
 interface State {
@@ -41,6 +43,46 @@ export class NearbyErrorBoundary extends Component<Props, State> {
           </button>
         </section>
       </main>
+    );
+  }
+}
+
+/**
+ * 地图局部兜底（2026-11-10 真机反馈：在附近页缩放地图会弹整页错误）。
+ *
+ * 只替换地图这一块，列表 / 刷新 / 全屏按钮照常可用；并把错误信息直接显示出来，
+ * 方便真机上直接读出是哪一步抛的（不用连电脑看控制台）。
+ */
+export class MapErrorBoundary extends Component<Props, State> {
+  state: State = { error: null };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('附近地图渲染出错', error, info.componentStack);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div
+        role="alert"
+        className={`flex flex-col items-center justify-center gap-2 overflow-hidden rounded-xl bg-slate-800 p-3 text-center ${this.props.className ?? 'aspect-square w-full'}`}
+      >
+        <p className="text-xs font-medium text-white">地图暂时画不出来</p>
+        <p className="max-h-16 overflow-auto break-all text-[10px] leading-3 text-slate-300">
+          {this.state.error.message || '未知错误'}
+        </p>
+        <button
+          type="button"
+          onClick={() => this.setState({ error: null })}
+          className="min-h-[32px] rounded-lg bg-white/90 px-3 text-[11px] font-medium text-slate-700"
+        >
+          重试地图
+        </button>
+      </div>
     );
   }
 }

@@ -10,9 +10,15 @@ import { readCaptureSnapshot, readCaptureSnapshotBytes, type CollectorState } fr
 
 interface ProgressState { progress: CaptureProgress | null; sourceBytes: number; error: string | null; checking: boolean }
 const empty: ProgressState = { progress: null, sourceBytes: 0, error: null, checking: false };
-/** live 刷新的自适应区间：解一次很快就在 500ms 后继续，慢则最多等 1.5s，避免连续占满 CPU。 */
-const LIVE_INTERVAL_MIN_MS = 500;
+/**
+ * live 刷新的自适应区间（2026-11-10 下限 500 → 250）：
+ * 上行自身坐标帧的中位间隔只有 106ms，500ms 一轮等于主动丢掉 4/5 的位移；
+ * 解一轮很快时 250ms 就开下一轮，解一轮就慢的机器按实测耗时 + 呼吸间隔排下一轮，最多 1.5s。
+ */
+const LIVE_INTERVAL_MIN_MS = 250;
 const LIVE_INTERVAL_MAX_MS = 1500;
+/** 两轮之间留的呼吸时间：解完立刻再解会把 JS 线程排满，反而拖慢渲染与推送。 */
+const LIVE_INTERVAL_HEADROOM_MS = 80;
 /** 一轮解析超过这个时间还没结束就认定卡死，由后台心跳重开（2MiB 尾窗正常 1~5s）。 */
 const LIVE_STALL_MS = 15000;
 /**
@@ -46,6 +52,32 @@ export function registerLiveTick(tick: () => void): () => void {
     if (liveTicks.size === 0 && typeof window !== 'undefined') delete window.__rocoLiveTick;
   };
 }
+/**
+ * 单一解码源（2026-11-10）。
+ *
+ * 附近页、悬浮球、悬浮窗推送都会挂 live 轮询；各自起循环会同时抢同一个 worker，
+ * 一轮的耗时被摊成两份、`gap` 也翻倍，表现是球/面板都更不跟手。
+ * 这里让同一时刻只有一个实例真正去读快照 + 解码，其余实例只等结果被写进
+ * nearbyStore / captureProgressCache（也就是「订阅同一份快照」）。
+ *
+ * 交接规则：
+ * - 一轮进行中绝不换手，也不 abort worker（避免半途丢弃）；
+ * - 优先级：全量解析（windowBytes=0）> 尾窗解析，前台 > 后台；
+ * - 同分不抢，先占着的继续跑，避免两个消费者每轮来回顶；
+ * - 抢不到的实例按 `LIVE_INTERVAL_MIN_MS` 重试，所以对方卸载 / 退后台后最多 250ms 就有人接手。
+ */
+let liveLoopOwner: symbol | null = null;
+let liveLoopScore = -1;
+let liveLoopSeenAt = 0;
+let liveRoundOwner: symbol | null = null;
+/** 测试用：清空模块级解码源所有权，避免用例之间互相影响。 */
+export function resetLiveLoopForTest() {
+  liveLoopOwner = null;
+  liveLoopScore = -1;
+  liveLoopSeenAt = 0;
+  liveRoundOwner = null;
+}
+
 export interface CaptureProgressOptions {
   /** 持续获取模式：进度走满也不停止轮询，继续按固定间隔刷新实时计数。 */
   live?: boolean;
@@ -130,6 +162,33 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
     /** 上一次解出的朝向与自身坐标：静止时沿用朝向、307 缺失时按位移补朝向。 */
     let lastHeading: number | null = null;
     let lastSelfPoint: { x: number; y: number } | null = null;
+
+    // 单一解码源：本实例的身份与优先级（全量 > 尾窗，前台 > 后台）
+    const owner = Symbol('rocoLiveLoop');
+    const loopScore = () => (windowBytes === 0 ? 2 : 0) + (document.hidden ? 0 : 1);
+    const takeLoop = () => {
+      liveLoopOwner = owner;
+      liveLoopScore = loopScore();
+      liveLoopSeenAt = performance.now();
+    };
+    const claimLoop = (force = false) => {
+      if (liveLoopOwner === owner) {
+        liveLoopScore = loopScore();
+        liveLoopSeenAt = performance.now();
+        return true;
+      }
+      // 一轮还没跑完：等它跑完再交接，绝不中途 abort（worker 被打断等于白跑一轮）
+      if (liveRoundOwner !== null) return false;
+      if (liveLoopOwner === null || force) { takeLoop(); return true; }
+      // 对方长时间没开新轮（被节流 / 定时器被杀）：视作失效，直接接手
+      const stale = performance.now() - liveLoopSeenAt > LIVE_INTERVAL_MAX_MS * 2;
+      if (stale || loopScore() > liveLoopScore) { takeLoop(); return true; }
+      return false;
+    };
+    const releaseLoop = () => {
+      if (liveLoopOwner === owner) { liveLoopOwner = null; liveLoopScore = -1; }
+      if (liveRoundOwner === owner) liveRoundOwner = null;
+    };
 
     const persist = (next: ProgressState, analysis: CaptureAnalysis | null) => {
       if (!persistCache || !analysis || !next.progress) return;
@@ -264,19 +323,28 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
           });
         }
       }
-      // live 模式要尽可能跟上游戏：按上一轮解码耗时自适应，解码快就 400ms 一轮，
-      // 解码慢（低端机 / 大文件）就等它跑完再排下一轮，避免把 CPU 一直压满反而更卡。
+      // live 模式要尽可能跟上游戏：按上一轮实测耗时自适应（快则 250ms，慢则按耗时 +80ms 排），
+      // 避免把 CPU 一直压满反而更卡。
       if (active(run)) {
+        const elapsed = performance.now() - startedAt;
         const interval = live
-          ? Math.max(LIVE_INTERVAL_MIN_MS, Math.min(LIVE_INTERVAL_MAX_MS, performance.now() - startedAt))
+          ? Math.max(LIVE_INTERVAL_MIN_MS,
+              Math.min(LIVE_INTERVAL_MAX_MS, elapsed + LIVE_INTERVAL_HEADROOM_MS))
           : 3000;
         timer = window.setTimeout(() => { void check(run); }, interval);
       }
     };
 
-    /** 包一层只为记录「这一轮是否还在跑」，不影响原有逻辑。 */
-    const check = async (run: number) => {
+    /** 包一层只为记录「这一轮是否还在跑」，并按单一解码源决定这一轮由谁解。 */
+    const check = async (run: number, force = false) => {
       if (!active(run) || settled) return;
+      if (!claimLoop(force)) {
+        // 抢不到：这一轮只重排定时器，不读快照、不碰 worker，等对方这一轮结束再接管
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => { void check(run); }, LIVE_INTERVAL_MIN_MS);
+        return;
+      }
+      liveRoundOwner = owner;
       running = true;
       runningSince = performance.now();
       try {
@@ -284,6 +352,9 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
       } finally {
         // 被心跳重开后旧轮次才结束：别把新轮次的 running 清掉
         if (run === epoch) running = false;
+        if (liveRoundOwner === owner) liveRoundOwner = null;
+        // 退到后台且自己不负责后台：让出所有权，交给还活着的实例（悬浮窗心跳那条）
+        if (disposed || (!background && document.hidden)) releaseLoop();
       }
     };
 
@@ -303,9 +374,17 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
 
     const visibility = () => {
       if (settled) return;
-      const run = ++epoch;
-      window.clearTimeout(timer); controller?.abort();
-      if (background || !document.hidden) void check(run);
+      // 一轮正在解时不打断：换 epoch 会丢弃这一轮 worker 的结果，两个消费者还会互相顶
+      if (running) return;
+      if (background || !document.hidden) {
+        const run = ++epoch;
+        window.clearTimeout(timer);
+        void check(run);
+      } else {
+        // 退到后台且自己不负责后台：让出解码源，另一条（悬浮窗心跳）下一轮就能接手
+        releaseLoop();
+        window.clearTimeout(timer);
+      }
     };
     visibility();
     document.addEventListener('visibilitychange', visibility);
@@ -313,11 +392,13 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
     restartRef.current = () => {
       if (running || settled) return;
       window.clearTimeout(timer);
-      void check(epoch);
+      // 用户手动刷新优先级最高：可以直接从别的消费者手里接管
+      void check(epoch, true);
     };
 
     return () => {
       disposed = true; epoch++; window.clearTimeout(timer); controller?.abort();
+      releaseLoop();
       if (unregisterTick) unregisterTick();
       document.removeEventListener('visibilitychange', visibility);
       restartRef.current = null;

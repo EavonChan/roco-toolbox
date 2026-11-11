@@ -130,6 +130,12 @@ export interface WildEntityRaw {
   glassType: number; glassValue: number; pos: { x: number; y: number; z: number };
 }
 export function parseWildEntities(payload: Uint8Array): WildEntityRaw[];
+/** 把一帧实体数据写进采集状态：330 全量覆盖，1043/1044 按 uniqueId 增量 upsert；墓碑不复活。 */
+export function applyWildEntityFrame(
+  capture: { wildPets: Map<string, WildEntityRaw>; capturedWild: Set<string> },
+  opcode: number,
+  payload: Uint8Array,
+): number;
 export function parseSceneInfo(payload: Uint8Array, opcode?: number): { scene: number | null; sceneCfgId: number | null };
 /** 上行移动帧的自身坐标：明文里「时间戳 + field 2 坐标」结构（2026-11-10 真机对账）。
  *  heading 取同一帧的速度方向（0=正北、顺时针）；静止时为 null。 */
@@ -158,3 +164,8 @@ export interface BusinessFrame {
   flowIndex: number; opcode: number; packetIndex: number; frameIndex: number; payloadHex: string;
 }
 export function extractBusinessFrames(bytes: Uint8Array, options?: { allowTruncated?: boolean }): BusinessFrame[];
+/** 诊断用：逐条列出上行帧里解析出的自身坐标（需先跑过 extractBusinessFrames / extractPcap 以缓存 AES key）。 */
+export function extractUpstreamSelfFrames(bytes: Uint8Array): Array<{
+  flowIndex: number; frameIndex: number; packetIndex: number; opcode: number | null;
+  x: number; y: number; heading: number | null;
+}>;

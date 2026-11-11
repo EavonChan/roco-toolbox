@@ -8,6 +8,8 @@
  *
  * 已读按**分段 + 版本号**记：以后某段步骤大改，把 `TOUR_VERSION` +1 即可让该段再弹一次。
  */
+import { readShared, syncShared, writeShared } from '../api/sharedPrefs';
+
 /** 旧版（固定 15 步）的已读键，只用于老用户迁移，不再写入 */
 const LEGACY_TOUR_SEEN_KEY = 'roco.tourSeen';
 const TOUR_SEEN_PREFIX = 'roco.tourSeen.';
@@ -55,7 +57,7 @@ export interface TourStep {
   hint?: boolean;
 }
 
-/** 收尾步：高亮顶部「教程」，告诉用户随时可以重看引导。 */
+/** 收尾步：高亮顶部「教程」，告诉用户随时可以重看引导（只在 start 段保留，其余分段不再重复）。 */
 const hintStep = (body: string): TourStep => ({
   id: TOUR_HINT_STEP_ID,
   title: '随时能重看引导',
@@ -107,7 +109,6 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       body: '按账号给出 11 个窝怎么摆、谁和谁配、每条线在补什么。摆位按游戏的窝尺寸与配对距离画。',
       anchor: 'dashboard-nest',
     },
-    hintStep('随时点顶部「教程」，能重看这一页的引导。'),
   ],
   collection: [
     {
@@ -131,7 +132,6 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       collection: { kind: 'mothers', status: 'missing' },
       anchor: 'collection-mothers',
     },
-    hintStep('随时点顶部「教程」，能重看这一页的引导。'),
   ],
   nearby: [
     {
@@ -147,7 +147,6 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       body: '「稀有」筛掉普通精灵；「可提醒」只留 ±100dB 或体重牌 + 声音牌；「需求」只留需求中心在找的种族。普通精灵离开视野即清理，高价值会保留 10 分钟。',
       anchor: 'nearby-filters',
     },
-    hintStep('随时点顶部「教程」，能重看这一页的引导。'),
   ],
   groups: [
     {
@@ -169,7 +168,6 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       body: '「我缺的」发需求，「需求中心」接别人的单，「共同寻找」一起认领全组都没有的缺口。',
       anchor: 'group-demands',
     },
-    hintStep('随时点顶部「教程」，能重看这一页的引导。'),
   ],
   home: [
     {
@@ -187,7 +185,6 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       homeView: 'demands',
       anchor: 'home-placement',
     },
-    hintStep('随时点顶部「教程」，能重看这一页的引导。'),
   ],
   profile: [
     {
@@ -204,7 +201,6 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       profileSection: 'identity',
       anchor: 'profile-account',
     },
-    hintStep('随时点顶部「教程」，能重看这一页的引导。'),
   ],
 };
 
@@ -226,20 +222,13 @@ export function segmentOfPage(page: TourPage): TourSegment {
 
 function readSeen(segment: TourSegment): string | null {
   if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(TOUR_SEEN_PREFIX + segment);
-  } catch {
-    return null;
-  }
+  // 经共享层读取：测试站与正式站各自一个 origin，切服后不该重弹教程
+  return readShared(TOUR_SEEN_PREFIX + segment);
 }
 
 function writeSeen(segment: TourSegment): void {
   if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(TOUR_SEEN_PREFIX + segment, TOUR_VERSION);
-  } catch {
-    // 隐私模式写不了：这次看过就算了，下次再弹
-  }
+  writeShared(TOUR_SEEN_PREFIX + segment, TOUR_VERSION);
 }
 
 /** 这一段是否还没看过（版本号变了也算没看过）。 */
@@ -251,9 +240,25 @@ export function markSegmentSeen(segment: TourSegment): void {
   writeSeen(segment);
 }
 
+/** 把本环境已有的「已读」同步进壳，切服后不再重弹（首次装新版时调用一次即可）。 */
+export function syncTourSeen(): void {
+  for (const segment of TOUR_SEGMENT_ORDER) syncShared(TOUR_SEEN_PREFIX + segment);
+}
+
 /** 首启主线是否还没走（只有它会在打开应用时自动弹）。 */
 export function startTourPending(): boolean {
   return segmentPending('start');
+}
+
+/**
+ * 测试版不自动弹新手引导（2026-11-09 用户口径）。
+ *
+ * `test.` / `internal.` 子域是给自己验收用的，每个页签都弹一次很打断；
+ * 只关自动弹，顶部「教程」入口保留，仍可手动重播。正式域名与本地开发不受影响。
+ */
+export function tourSuppressed(hostname?: string): boolean {
+  const host = hostname ?? (typeof window === 'undefined' ? '' : window.location.hostname);
+  return host.startsWith('test.') || host.startsWith('internal.');
 }
 
 /** 是否还有任一分段待看（更新弹窗据此让路，避免两层浮层叠加）。 */

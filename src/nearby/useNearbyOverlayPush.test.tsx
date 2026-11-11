@@ -64,6 +64,7 @@ describe('useNearbyOverlayPush（应用级悬浮面板推送）', () => {
   });
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     delete (window as unknown as { RocoCapture?: unknown }).RocoCapture;
   });
 
@@ -119,6 +120,27 @@ describe('useNearbyOverlayPush（应用级悬浮面板推送）', () => {
     });
 
     await waitFor(() => expect(lastPayload(update).panels).toEqual({ battle: true, nearby: false }));
+  });
+
+  test('节流窗口内到达的新坐标不丢：窗口结束时尾随补推最新一帧', async () => {
+    vi.useFakeTimers();
+    const update = installShell(() => 'capturing');
+    writeNearbySnapshot(snapshot);
+    render(<Harness />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(update).toHaveBeenCalledTimes(1);
+
+    // 窗口内又来一帧：立即推被节流挡住，但不能像以前那样直接丢掉
+    act(() => {
+      writeNearbySnapshot({ ...snapshot, self: { x: 100, y: 200 } });
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(update).toHaveBeenCalledTimes(1);
+
+    // 窗口（250ms）一结束补推，且补的是最新快照
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(lastPayload(update).self).toEqual({ x: 100, y: 200 });
   });
 
   test('需求中心命中的精灵排在列表最前（全部档下普通精灵也进列表）', async () => {

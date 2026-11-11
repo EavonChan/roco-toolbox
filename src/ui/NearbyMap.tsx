@@ -78,6 +78,26 @@ export function panForSelfMove(
   };
 }
 
+/**
+ * 以 (focusX, focusY) 为锚点缩放（2026-11-10）。
+ *
+ * 抽成纯函数并统一兜底：任何一步算出 NaN / Infinity 都原样返回旧视图。
+ * 之前缩放直接在 setView 的 updater 里算，一旦上一帧的 scale 被污染成 NaN，
+ * 后面每次 Math.min/max 都还是 NaN，地图会整块消失且再也回不来。
+ */
+export function zoomView(view: ViewState, factor: number, focusX: number, focusY: number): ViewState {
+  // 非法手势直接不动作：宁可这一下不缩放，也不要算出 NaN 把地图顶没。
+  if (!Number.isFinite(factor) || factor <= 0) return view;
+  if (!Number.isFinite(focusX) || !Number.isFinite(focusY)) return view;
+  const current = Number.isFinite(view.scale) && view.scale > 0 ? view.scale : 1;
+  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current * factor));
+  const ratio = scale / current;
+  const tx = focusX - (focusX - view.tx) * ratio;
+  const ty = focusY - (focusY - view.ty) * ratio;
+  if (!Number.isFinite(scale) || !Number.isFinite(tx) || !Number.isFinite(ty)) return view;
+  return { scale, tx, ty };
+}
+
 export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
   const map = worldMapForScene(scene);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -132,7 +152,8 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
     if (!map || size.width === 0) return;
     const point = self ?? { x: map.originX + map.sideUnits / 2, y: map.originY + map.sideUnits / 2 };
     const { px, py } = projectToPixel(map, point);
-    const scale = baseScale(size.width) * zoom.current;
+    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, baseScale(size.width) * zoom.current));
+    if (!Number.isFinite(scale) || !Number.isFinite(px) || !Number.isFinite(py)) return;
     setView({
       scale,
       tx: size.width / 2 - px * scale,
@@ -161,14 +182,9 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
 
   const zoomAt = useCallback((factor: number, focusX: number, focusY: number) => {
     setView((current) => {
-      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current.scale * factor));
-      const ratio = scale / current.scale;
-      saveZoom(scale, size.width);
-      return {
-        scale,
-        tx: focusX - (focusX - current.tx) * ratio,
-        ty: focusY - (focusY - current.ty) * ratio,
-      };
+      const next = zoomView(current, factor, focusX, focusY);
+      if (next !== current) saveZoom(next.scale, size.width);
+      return next;
     });
   }, [saveZoom, size.width]);
 
@@ -186,20 +202,29 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
       return;
     }
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // 指针已被系统回收时 setPointerCapture 会抛 InvalidPointerId；不影响后续拖动
+    }
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (pinch.current.has(event.pointerId)) pinch.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pinchStart.current && pinch.current.size === 2) {
+    // 先把起手值取出来：pointerup 会把 pinchStart.current 清空，而 setView 的 updater
+    // 可能延后执行，原来在 updater 里写 `pinchStart.current!.distance` 会在这个窗口期
+    // 抛 TypeError（2026-11-10 真机「缩放地图弹错误」）。取出来后 updater 就是纯函数。
+    const start = pinchStart.current;
+    if (start && pinch.current.size === 2) {
       const [a, b] = [...pinch.current.values()];
       const distance = Math.hypot(a.x - b.x, a.y - b.y);
-      if (distance > 0) {
+      // 两指落点重合时 ratio 会是 Infinity / NaN，直接跳过这一步
+      if (distance > 0 && start.distance > 0) {
+        const factor = distance / start.distance;
         setView((current) => {
-          const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, pinchStart.current!.scale * (distance / pinchStart.current!.distance)));
-          const ratio = scale / current.scale;
-          saveZoom(scale, size.width);
-          return { scale, tx: size.width / 2 - (size.width / 2 - current.tx) * ratio, ty: size.height / 2 - (size.height / 2 - current.ty) * ratio };
+          const next = zoomView(current, factor, size.width / 2, size.height / 2);
+          if (next !== current) saveZoom(next.scale, size.width);
+          return next;
         });
       }
       return;
@@ -208,6 +233,7 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
     if (!current || current.id !== event.pointerId) return;
     const dx = event.clientX - current.x;
     const dy = event.clientY - current.y;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
     drag.current = { ...current, x: event.clientX, y: event.clientY };
     setView((value) => ({ ...value, tx: value.tx + dx, ty: value.ty + dy }));
   };
@@ -220,7 +246,10 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
 
   if (!map) return null;
 
-  const { scale, tx, ty } = view;
+  // 渲染前再兜一道：任何一项不是有限值都退回安全默认，避免 NaN 写进 style 让整块地图消失。
+  const scale = Number.isFinite(view.scale) && view.scale > 0 ? view.scale : 1;
+  const tx = Number.isFinite(view.tx) ? view.tx : 0;
+  const ty = Number.isFinite(view.ty) ? view.ty : 0;
   const selectedPet = selected ? pets.find((pet) => pet.key === selected) ?? null : null;
   const toScreen = (point: { x: number; y: number }) => {
     const { px, py } = projectToPixel(map, point);
@@ -238,9 +267,14 @@ export function NearbyMap({ pets, origin, scene, className }: NearbyMapProps) {
       onPointerUp={endPointer}
       onPointerCancel={endPointer}
       onWheel={(event) => {
-        event.preventDefault();
-        const rect = event.currentTarget.getBoundingClientRect();
-        zoomAt(event.deltaY < 0 ? 1.18 : 1 / 1.18, event.clientX - rect.left, event.clientY - rect.top);
+        try {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          zoomAt(event.deltaY < 0 ? 1.18 : 1 / 1.18, event.clientX - rect.left, event.clientY - rect.top);
+        } catch (error) {
+          // 缩放本身不该把整页顶掉：事件处理器里的异常错误边界接不到，就地吞掉并留日志。
+          console.error('地图缩放失败', error);
+        }
       }}
     >
       <img

@@ -33,6 +33,7 @@ const payload = (overrides: Partial<NearbyOverlayPayload> = {}): NearbyOverlayPa
   selfSource: 'packet' as const,
   selfAt: 1234,
   selfHeading: 90,
+  perf: { readAvg: 4, readMax: 9, decodeAvg: 30, decodeMax: 70, bytes: 8192, gapAvg: 260, rounds: 40 },
   updatedAt: 1234,
   ...overrides,
 });

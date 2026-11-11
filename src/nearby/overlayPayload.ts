@@ -5,7 +5,7 @@ import type { NearbySnapshot } from '../collector/nearbyStore';
 import { battleTargetAllows, getBattleTarget, type BattleTarget } from '../collector/battleTargetStore';
 import { buildRadar } from '../pcap/nearbyRadar';
 import { getNearbyFilter, nearbyFilterAllows, type NearbyFilter } from './nearbyFilterStore';
-import { countPayloadBuild } from '../collector/perfProbe';
+import { countPayloadBuild, capturePerfSummary } from '../collector/perfProbe';
 
 /**
  * 手机端悬浮面板 payload 组装（2026-11-08，口径 2026-11-09 改为「用户感兴趣」）。
@@ -109,6 +109,28 @@ export interface NearbyOverlayPayload extends DesktopOverlayPayload {
   selfAt: number | null;
   /** 自身朝向（0 = 正北、顺时针，度）：列表方位与地图箭头都以它为基准；null = 没有朝向数据 */
   selfHeading: number | null;
+  /**
+   * 解码轮询实测（2026-11-10，随 payload 带给壳端 RocoPerf）：
+   * 每轮「取增量字节」与「worker 解码」的耗时、每轮字节数、相邻两轮间隔。
+   * 真机上只有这样才能判断轮询到底卡在哪一段，而不是只能靠页面控制台。
+   */
+  perf: NearbyOverlayPerf;
+}
+
+/** 一轮解码的实测耗时（壳端只打印，不参与渲染）。 */
+export interface NearbyOverlayPerf {
+  /** 取增量字节平均 / 最大耗时（ms） */
+  readAvg: number;
+  readMax: number;
+  /** Worker 解码平均 / 最大耗时（ms） */
+  decodeAvg: number;
+  decodeMax: number;
+  /** 每轮平均送入 worker 的字节数 */
+  bytes: number;
+  /** 相邻两轮的平均间隔（ms） */
+  gapAvg: number;
+  /** 统计到的轮数（0 = 还没跑过一轮） */
+  rounds: number;
 }
 
 /** 自身坐标来源：真实 307 / 里程计 / 沿用上一帧 / 没有。 */
@@ -248,6 +270,21 @@ export function buildNearbyOverlayPayload(source: NearbyOverlaySource): NearbyOv
     selfSource,
     selfAt: snapshot?.selfAt ?? null,
     selfHeading: snapshot?.selfHeading ?? null,
+    perf: perfOf(),
     updatedAt: source.now ?? snapshot?.updatedAt ?? Date.now(),
+  };
+}
+
+/** 解码轮询实测（页面内存里的最新 60 轮）→ payload 里的一行小字段。 */
+function perfOf(): NearbyOverlayPerf {
+  const perf = capturePerfSummary();
+  return {
+    readAvg: perf.readMsAvg,
+    readMax: perf.readMsMax,
+    decodeAvg: perf.decodeMsAvg,
+    decodeMax: perf.decodeMsMax,
+    bytes: perf.bytesAvg,
+    gapAvg: perf.gapMsAvg,
+    rounds: perf.rounds,
   };
 }

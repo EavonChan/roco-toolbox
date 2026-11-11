@@ -32,10 +32,15 @@ export interface NearbyFeed {
 /** 附近页轮询间隔：解码是增量的（尾部 2MiB + 跨轮 resume），实测解析 <1ms，可加密到 800ms（2026-11-10） */
 const POLL_MS = 800;
 /**
- * 附近页发起的采集只服务雷达：只解文件尾部 2MiB，刷新间隔从 ~10s 降到 ~1s（2026-11-08）。
+ * 附近页发起的采集只服务雷达：只解文件尾部窗口，刷新间隔从 ~10s 降到 ~1s（2026-11-08）。
  * 「我的」页发起的采集仍走全量解析 —— 那里要靠完整结果判断「已收齐」并自动停止导入。
+ *
+ * 2026-11-10 真机反馈后用真 pcap 实测：同一份 1.64MiB 抓包下，256KiB / 512KiB / 1MiB
+ * 三种窗口的附近结果（60 只精灵、自身坐标）与全量解析完全一致；窗口只影响「Worker 重启
+ * 后第一轮要补多少」，稳态每轮只看新增帧。这里取 1MiB：比实测最小窗口留 4 倍余量，
+ * 同时把重启/后台回来时的补解量从 2MiB 减半（场景 330 帧另有文件头补扫兜底）。
  */
-const NEARBY_WINDOW_BYTES = 2 * 1024 * 1024;
+const NEARBY_WINDOW_BYTES = 1 * 1024 * 1024;
 
 export function useNearbyFeed(): NearbyFeed {
   const [state, setState] = useState<CollectorState | null>(null);

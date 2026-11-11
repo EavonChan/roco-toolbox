@@ -111,10 +111,12 @@ export function decorateWildPet(raw: WildEntityRaw, detail: WildDetail | null = 
   const weightPct = low != null && high != null && raw.weight > 0
     ? weightPercentile({ weightKg, lowKg: low, highKg: high })
     : null;
-  const kinds = kindsOf({ mutation: raw.mutation, glassType: raw.glassType, weightPct, voiceDb: raw.voiceDb });
   const heightPct = petId != null && raw.height > 0
     ? heightPercentOf(heightSizeByGameId.get(petId), raw.height)
     : null;
+  const kinds = kindsOf({
+    mutation: raw.mutation, glassType: raw.glassType, weightPct, heightPct, voiceDb: raw.voiceDb,
+  });
   return {
     ...raw,
     petId,

@@ -13,8 +13,14 @@ import { hasNearbyOverlayShell, pushNearbyOverlayToShell } from './overlayBridge
 import { buildNearbyOverlayPayload } from './overlayPayload';
 import { useNearbyOverlayPanels } from './overlayPanels';
 
-/** 推送节流，与 PC 小窗同一口径（2026-11-10 从 800 降到 500：用户反馈刷新率偏低） */
-const PUSH_INTERVAL_MS = 500;
+/**
+ * 推送节流（2026-11-10：800 → 500 → 250）。
+ *
+ * 节流窗口内不再直接丢帧：命中节流时记一个尾随补发，窗口一结束就推「最新」快照。
+ * 所以最坏延迟 = 一轮解码 + 一个窗口，而不是随机丢掉几帧、让画面停在旧坐标上。
+ * 250ms 与解码下限（useCaptureProgress 的 250ms）对齐，两边不会互相干等。
+ */
+const PUSH_INTERVAL_MS = 250;
 /** 采集状态轮询间隔（页面可见时；不可见时由安卓壳的心跳唤醒）；解码是增量的，实测解析 <1ms */
 const STATE_POLL_MS = 800;
 
@@ -92,9 +98,16 @@ export function useNearbyOverlayPush(): void {
   const capturing = state?.phase === 'capturing';
   const latest = useRef({ snapshot, hasKey: Boolean(snapshot?.hasKey) });
   latest.current = { snapshot, hasKey: Boolean(snapshot?.hasKey) };
+  /** 尾随补发读的都是 ref：定时器触发时补推的一定是最新一帧，而不是排期那一刻的旧数据。 */
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+  const targetRef = useRef(target);
+  targetRef.current = target;
   const pushed = useRef(false);
   const lastPushAt = useRef(0);
   const panelsSignature = useRef('');
+  /** 尾随补发的定时器：同一时刻只排一个，重复排期没有意义。 */
+  const pendingPush = useRef<number | null>(null);
 
   // 跟随采集状态推送（与页面是否挂载无关）
   useEffect(() => {
@@ -104,6 +117,10 @@ export function useNearbyOverlayPush(): void {
     panelsSignature.current = signature;
 
     const push = (visible: boolean) => {
+      if (pendingPush.current != null) {
+        window.clearTimeout(pendingPush.current);
+        pendingPush.current = null;
+      }
       pushed.current = visible;
       lastPushAt.current = Date.now();
       void pushNearbyOverlayToShell(buildNearbyOverlayPayload({
@@ -111,9 +128,25 @@ export function useNearbyOverlayPush(): void {
         hasKey: latest.current.hasKey,
         snapshot: latest.current.snapshot,
         demandHits: hitByKeyRef.current,
-        filter,
-        target,
+        filter: filterRef.current,
+        target: targetRef.current,
       }));
+    };
+
+    /**
+     * 尾随补发（2026-11-10）：节流窗口内又来新帧时不丢，排一个「窗口结束」的补推。
+     * 补推走 push()、读最新 ref，等于把窗口内所有帧压成最后一帧——最坏多等一个窗口，
+     * 但绝不会出现「这一帧被丢掉、画面停在旧坐标」。
+     */
+    const scheduleTrailing = () => {
+      if (pendingPush.current != null) return;
+      const wait = Math.max(0, PUSH_INTERVAL_MS - (Date.now() - lastPushAt.current));
+      pendingPush.current = window.setTimeout(() => {
+        pendingPush.current = null;
+        // 期间已停止采集 / 页面卸载：不要再把面板推回来
+        if (!pushed.current) return;
+        push(true);
+      }, wait);
     };
 
     if (!capturing) {
@@ -121,8 +154,13 @@ export function useNearbyOverlayPush(): void {
       if (pushed.current) push(false);
       return;
     }
-    // 第一次推、或开关变化立即推；其余按节流
-    if (pushed.current && !panelsChanged && Date.now() - lastPushAt.current < PUSH_INTERVAL_MS) return;
+    // 第一次推、或开关变化立即推；其余按节流（命中节流时排尾随补发，不丢帧）
+    if (pushed.current && !panelsChanged) {
+      if (Date.now() - lastPushAt.current < PUSH_INTERVAL_MS) {
+        scheduleTrailing();
+        return;
+      }
+    }
     push(true);
   }, [supported, capturing, snapshot, panels, demandSignature, filter, target]);
 
@@ -143,6 +181,11 @@ export function useNearbyOverlayPush(): void {
     return () => {
       window.removeEventListener('pagehide', hide);
       hide();
+      // 卸载后尾随补发不能再把面板推回来
+      if (pendingPush.current != null) {
+        window.clearTimeout(pendingPush.current);
+        pendingPush.current = null;
+      }
     };
   }, [supported]);
 }

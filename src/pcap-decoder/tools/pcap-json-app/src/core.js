@@ -1426,6 +1426,59 @@ function decodeClientSelfPosition(flow, aesKey) {
 }
 
 /**
+ * 诊断入口：逐条列出上行帧里能读出自身世界坐标的记录（2026-11-10 真机 pcap 对账）。
+ *
+ * 与 decodeClientSelfPosition 共用同一套 TCP 重组 / 解密逻辑，只是把每条命中都返回，
+ * 用于回答「自身坐标有没有、多久一帧、是哪类帧」。调用前需先对同一份字节跑过
+ * extractBusinessFrames / extractPcap，让握手帧里的 AES key 进入缓存。
+ */
+export function extractUpstreamSelfFrames(bytesLike) {
+  const bytes = bytesLike instanceof Uint8Array ? bytesLike : new Uint8Array(bytesLike);
+  const parsed = readGameFlows(bytes, {});
+  const out = [];
+  parsed.flows.forEach((flow, flowIndex) => {
+    if (!flow.clientSegments || !flow.clientSegments.length) return;
+    const cacheKey = flow.cacheKey || flow.key;
+    const aesKey = recentKeys.get(cacheKey) || null;
+    let frames;
+    try {
+      const stream = reassemble(flow.clientSegments);
+      frames = parseTgcpFrames(stream.bytes, stream.ranges);
+    } catch { return; }
+    for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
+      const frame = frames[frameIndex].bytes;
+      if (frame[6] === 16) continue;
+      const encrypted = frame.subarray(frame[16]);
+      if (!encrypted.length) continue;
+      const packetIndex = Number(frames[frameIndex].packetIndex || 0);
+      if (aesKey && encrypted.length % 16 === 0) {
+        try {
+          const resolved = decryptFrameOnce(`${cacheKey}:c`, aesKey, frames[frameIndex].fileOffset, frameIndex, encrypted);
+          const self = parseUpstreamSelfPosition(resolved.legacy)
+            || (resolved.business && resolved.business.opcode === 307
+              ? parsePlayerPosition307(resolved.business.payload)
+              : null);
+          if (self) {
+            out.push({
+              flowIndex, frameIndex, packetIndex,
+              opcode: resolved.business ? resolved.business.opcode : null,
+              ...self
+            });
+          }
+          continue;
+        } catch { /* 上行格式不同就退回明文尝试 */ }
+      }
+      const business = businessPayload(encrypted);
+      if (business && business.opcode === 307) {
+        const self = parsePlayerPosition307(business.payload);
+        if (self) out.push({ flowIndex, frameIndex, packetIndex, opcode: 307, ...self });
+      }
+    }
+  });
+  return out;
+}
+
+/**
  * 注入 key 的验证：解 1~2 帧，能看到 0x55aa 业务帧头或合法的 profile 帧才认。
  *
  * 窗口里看不到握手帧时只能用上一轮学到的 key；重连换了 key 就会解出乱码，
@@ -1568,15 +1621,9 @@ function applyPlaintextToAccount(event, capture, retainRawProtocol = true) {
         data: JSON.parse(JSON.stringify(home))
       });
     }
-    // 野外附近精灵：330 是全量（先清空再写入），1043 是增量 upsert。
+    // 野外附近精灵：330 是全量（先清空再写入），1043/1044 是增量 upsert。
     if (opcode === 330 || opcode === 1043 || opcode === 1044) {
-      const wild = parseWildEntities(event.homePayload);
-      if (opcode === 330) capture.wildPets.clear();
-      for (const pet of wild) {
-        // 抓到过的实体即使后续帧还在下发，也不再回到地图 / 列表
-        if (capture.capturedWild.has(String(pet.uniqueId))) continue;
-        capture.wildPets.set(String(pet.uniqueId), pet);
-      }
+      applyWildEntityFrame(capture, opcode, event.homePayload);
     }
     if (opcode === 338 || opcode === 348) {
       const scene = parseSceneInfo(event.homePayload, opcode);
@@ -1783,21 +1830,60 @@ export function removeCapturedWildPets(capture, details) {
   }
 }
 
-/** 330 走顶层 field 7；1043/1044 走 field 1 → 子消息 → field 1。 */
+/** 330 / 1043 / 1044 的实体包裹深度不固定，统一交给 {@link collectWildCandidates} 递归找。 */
 export function parseWildEntities(payload) {
-  const root = parseLooseProto(payload);
+  let root;
+  try { root = parseLooseProto(payload); } catch { return []; }
   const candidates = [];
-  for (const value of root.get(7) || []) if (value instanceof Uint8Array) candidates.push(value);
-  for (const wrap of root.get(1) || []) {
-    if (!(wrap instanceof Uint8Array)) continue;
-    for (const inner of parseLooseProto(wrap).get(1) || []) if (inner instanceof Uint8Array) candidates.push(inner);
-  }
+  collectWildCandidates(root, 6, candidates);
   const pets = [];
   for (const candidate of candidates) {
     const pet = parseWildEntity(candidate);
     if (pet) pets.push(pet);
   }
   return pets;
+}
+
+/**
+ * 把一帧实体数据写进采集状态：330 是全量（先清空），1043/1044 是按 uniqueId 增量 upsert。
+ *
+ * 抓过的实体记在 capture.capturedWild（墓碑），后续帧即使再下发也不放回地图 / 列表。
+ * 返回本帧真正写入的实体数（诊断与单测用）。
+ */
+export function applyWildEntityFrame(capture, opcode, payload) {
+  const wild = parseWildEntities(payload);
+  if (opcode === 330) capture.wildPets.clear();
+  let applied = 0;
+  for (const pet of wild) {
+    if (capture.capturedWild.has(String(pet.uniqueId))) continue;
+    capture.wildPets.set(String(pet.uniqueId), pet);
+    applied += 1;
+  }
+  return applied;
+}
+
+/**
+ * 递归收集实体包裹（2026-11-10 真机 pcap 对账）。
+ *
+ * 330 的实体在顶层 field 7；1043/1044 的单实体记录**不是固定两层**：
+ * capture-1794318431209.pcap 里出现 root.f1 → f1 → f1 → { f1: 类型, f11: 角色 }
+ * 三层嵌套，旧的「固定两层」只解出 62 条实体帧里的 4 条（其余 58 条全丢）。
+ * 这里改成递归找「带 field 11 演员子消息」的包裹，命中即停，不再往实体内部钻，
+ * 避免同一实体被重复解析。
+ */
+function collectWildCandidates(fields, depth, out) {
+  if (depth <= 0) return;
+  for (const values of fields.values()) {
+    for (const value of values) {
+      if (!(value instanceof Uint8Array) || value.length < 8) continue;
+      let sub;
+      try { sub = parseLooseProto(value); } catch { continue; }
+      if (!sub) continue;
+      const actor = (sub.get(11) || []).find((item) => item instanceof Uint8Array);
+      if (actor) { out.push(value); continue; }
+      collectWildCandidates(sub, depth - 1, out);
+    }
+  }
 }
 
 /**
@@ -2050,7 +2136,12 @@ export function extractPcap(bytesLike, options = {}) {
   const windowBytes = Number(options.windowBytes) || 0;
   if (windowBytes > 0) {
     const sessionKey = typeof options.sessionKey === 'string' ? options.sessionKey : "";
-    const start = tailWindowStart(bytes, windowBytes);
+    // 2026-11-10 真机反馈：一轮采集刚起步时文件只有 1MB 出头，比 2MiB 窗口小，
+    // 以前这里判断 `start > 24` 不成立就直接退回全量解析，而「已应用帧」跳过只在
+    // 窗口化路径生效，于是每轮把整份文件重放一遍（decodeAvg 随文件变大 0.6s→1.5s）。
+    // 现在只要调用方给了窗口参数就一律走窗口化路径：start=24 表示整份文件，
+    // 第一轮建立基线，之后每轮只真正应用新增字节。
+    const start = Math.max(24, tailWindowStart(bytes, windowBytes));
     if (start > 24) {
       // 冷启动补扫：先扫文件头建立 key / 账号 / 场景基线，尾窗才能直接解密。
       // 每个会话只扫一次：第一轮没扫到 profile 也不每轮重扫（2MiB 扫一遍不便宜）。
@@ -2060,10 +2151,10 @@ export function extractPcap(bytesLike, options = {}) {
         const headEnd = headScanEnd(bytes, Math.min(headBytes, bytes.length - 1));
         if (headEnd > 24) extractFlowEvents(bytes.subarray(0, headEnd), { ...options, startRecordOffset: 24, windowed: true });
       }
-      const windowed = extractFlowEvents(bytes, { ...options, startRecordOffset: start, windowed: true });
-      // 冷启动或重连（窗口里既没握手帧、也没有可验证的 key）时退回全量解析，保证第一轮数据完整。
-      if (!windowed.needsFullParse) return windowed.result;
     }
+    const windowed = extractFlowEvents(bytes, { ...options, startRecordOffset: start, windowed: true });
+    // 冷启动或重连（窗口里既没握手帧、也没有可验证的 key）时退回全量解析，保证第一轮数据完整。
+    if (!windowed.needsFullParse) return windowed.result;
   }
   return extractFlowEvents(bytes, options).result;
 }
@@ -2088,8 +2179,8 @@ const nearbyBaseline = {
   /** 已识别到账号（窗口里通常没有 profile 帧，靠它继续落到同一个账号） */
   uid: "",
   profile: null,
-  /** 已经完整应用过的帧：大帧（场景全量 50KB+）每轮重扫是尾窗的耗时大头。 */
-  applied: new Set(),
+  /** 已经完整应用过的帧（key → 绝对偏移）：大帧（场景全量 50KB+）每轮重扫是尾窗的耗时大头。 */
+  applied: new Map(),
   /** 上一轮看到的文件长度：变小说明采集被重写，绝对偏移全部失效，基线作废。 */
   size: 0
 };
@@ -2109,7 +2200,7 @@ function resetNearbyBaseline(key) {
   nearbyBaseline.petDetails = new Map();
   nearbyBaseline.uid = "";
   nearbyBaseline.profile = null;
-  nearbyBaseline.applied = new Set();
+  nearbyBaseline.applied = new Map();
   nearbyBaseline.size = 0;
 }
 
@@ -2161,7 +2252,7 @@ export function importLiveDecodeState(state) {
     nearbyBaseline.petDetails = new Map(Array.isArray(baseline.petDetails) ? baseline.petDetails : []);
     nearbyBaseline.uid = typeof baseline.uid === 'string' ? baseline.uid : "";
     nearbyBaseline.profile = baseline.profile ?? null;
-    nearbyBaseline.applied = new Set();
+    nearbyBaseline.applied = new Map();
     nearbyBaseline.size = 0;
     // 已有 key 就不用再补扫文件头（裁剪过的文件也扫不到握手帧）
     if (keys.length) headScannedKey = state.key;
@@ -2179,11 +2270,19 @@ function extractFlowEvents(bytes, options = {}) {
   // 文件变小 = 采集被滚动裁剪：绝对偏移与包序号全部失效，但 key / 账号 / 附近基线仍然有效，
   // 不能整份作废，否则裁剪后的第一轮会丢掉已经识别到的账号与附近精灵。
   if (sessionKey && options.windowed && bytes.length < nearbyBaseline.size) {
-    nearbyBaseline.applied = new Set();
+    nearbyBaseline.applied = new Map();
     nearbyBaseline.size = 0;
   }
   // 只有实时巡检（带 sessionKey）参与基线：导入流程 / 性能脚本永远拿全量结果，不受影响。
   const baseline = sessionKey && options.windowed ? nearbyBaseline : null;
+  // 「已应用帧」按绝对偏移记录，尾窗滑走后旧条目永远不会再命中。
+  // 不裁剪的话它会随会话长度一直涨（每帧一条字符串），长时间巡检白占内存。
+  if (baseline && Number(options.startRecordOffset) > 24 && baseline.applied.size > 4096) {
+    const startOffset = Number(options.startRecordOffset);
+    for (const [key, offset] of baseline.applied) {
+      if (offset < startOffset) baseline.applied.delete(key);
+    }
+  }
   const parsed = readGameFlows(bytes, options);
   const flowReports = [];
   const events = [];
@@ -2250,7 +2349,7 @@ function extractFlowEvents(bytes, options = {}) {
         event.plaintext = null;
         return;
       }
-      baseline.applied.add(frameKey);
+      baseline.applied.set(frameKey, event.fileOffset);
     }
     applyPlaintextToAccount(event, account, options.retainRawProtocol !== false);
     // All business fields have been extracted; do not retain every decrypted frame.

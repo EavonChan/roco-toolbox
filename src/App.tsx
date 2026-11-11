@@ -20,7 +20,9 @@ import { HomeLand, saveHomeView } from './ui/Home';
 import { Collection } from './ui/Collection';
 import { CollectionGroups } from './ui/CollectionGroups';
 import { Nearby } from './ui/Nearby';
+import { NearbyErrorBoundary } from './ui/NearbyErrorBoundary';
 import { BattleHudOrb } from './ui/BattleHudOrb';
+import { useNearbyOverlayPush } from './nearby/useNearbyOverlayPush';
 import { Profile } from './ui/Profile';
 import { TabNav } from './ui/TabNav';
 import {
@@ -63,6 +65,8 @@ export default function App() {
     }
   }, [confirmLeave, groupsDraftDirty]);
   const importOutcome = useImportOutcome();
+  // 安卓壳悬浮面板推送：应用级，跟随采集状态而不是跟随「附近」页
+  useNearbyOverlayPush();
   const activeTab = navigation.page;
   /** 手动刷新按钮的忙碌态（真正刷新会让页面重载，这里只防连点） */
   const [refreshing, setRefreshing] = useState(false);
@@ -250,7 +254,9 @@ export default function App() {
           }
         />
       ) : navigation.page === 'nearby' ? (
-        <Nearby onNavigate={navigate} />
+        <NearbyErrorBoundary>
+          <Nearby onNavigate={navigate} />
+        </NearbyErrorBoundary>
       ) : (
         <Collection
           location={collection}

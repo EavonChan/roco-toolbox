@@ -11,6 +11,7 @@ import { useRareAlert } from '../collector/rareAlertStore';
 import { useNearbyFeed } from '../collector/useNearbyFeed';
 import { hasNearbyOverlayShell } from '../nearby/overlayBridge';
 import { isLastEnabledNearbyOverlayPanel, setNearbyOverlayPanel, useNearbyOverlayPanels } from '../nearby/overlayPanels';
+import { buildNearbyOverlayPayload } from '../nearby/overlayPayload';
 import { species, eggGroupNames } from '../data/catalog';
 import { demandHitsForPet, demandSpeciesIndex, type DemandHit } from '../pcap/demandMatch';
 import { buildRadar, DEFAULT_RADAR_RADIUS_M, type RadarData } from '../pcap/nearbyRadar';
@@ -20,6 +21,7 @@ import { pruneRetained, isHighValuePet, type RetainedEntry } from '../pcap/nearb
 import { KIND_LABELS, rareAlertTitle } from '../pcap/rareRules';
 import type { NavigationIntent } from './navigation';
 import { NearbyBattleCard } from './NearbyBattleCard';
+import { MapErrorBoundary } from './NearbyErrorBoundary';
 import { NearbyMap } from './NearbyMap';
 import { NearbyRadar } from './NearbyRadar';
 import { ModalSurface } from './primitives/ModalSurface';
@@ -35,6 +37,12 @@ export interface NearbyProps {
 }
 
 const DEMAND_INDEX = demandSpeciesIndex(species);
+
+/**
+ * 桌面小窗推送节流（2026-11-11，与手机悬浮面板对齐 250ms）。
+ * 命中节流时排尾随补发而不是直接丢帧，最坏延迟 = 一轮解码 + 一个窗口。
+ */
+const OVERLAY_PUSH_INTERVAL_MS = 250;
 
 /** 需求中心条目在 UI 上的一句话说明：蛋 / 蛋组 + 已选条件 + 待确认项。 */
 export function demandHitLabel(hit: DemandHit): string {
@@ -434,6 +442,28 @@ export function Nearby({ onNavigate }: NearbyProps) {
   /** 高级选项：鼠标直接落到游戏（点不到小窗），Ctrl+Alt+O 恢复 */
   const [overlayClickThrough, setOverlayClickThroughState] = useState(false);
   const lastOverlayPush = useRef(0);
+  /** 尾随补发的定时器：同一时刻只排一个（与手机悬浮窗推送同一套 2026-11-10 口径） */
+  const overlayPending = useRef<number | null>(null);
+  /** 补发读的都是 ref：定时器触发时推的一定是最新一帧，而不是排期那一刻的旧数据 */
+  const overlaySource = useRef({ snapshot, hasKey: false, hitByKey });
+  overlaySource.current = { snapshot, hasKey: Boolean(progress?.analysis.hasKey), hitByKey };
+
+  const pushOverlay = () => {
+    const latest = overlaySource.current;
+    // 与手机悬浮面板共用同一个 payload 组装：分贝、方位箭头、身高/体重、自身朝向同一份口径
+    void pushNearbyOverlay(buildNearbyOverlayPayload({
+      capturing: true,
+      hasKey: latest.hasKey,
+      snapshot: latest.snapshot,
+      demandHits: latest.hitByKey,
+    }));
+    if (!overlayShown.current) {
+      overlayShown.current = true;
+      setOverlayVisible(true);
+      void showNearbyOverlay();
+    }
+  };
+
   useEffect(() => {
     if (!overlaySupported || !overlayVisible) return;
     void readDesktopOverlayState().then((value) => setOverlayClickThroughState(Boolean(value?.clickThrough)));
@@ -446,6 +476,10 @@ export function Nearby({ onNavigate }: NearbyProps) {
   useEffect(() => {
     if (!overlaySupported) return;
     if (!capturing) {
+      if (overlayPending.current != null) {
+        window.clearTimeout(overlayPending.current);
+        overlayPending.current = null;
+      }
       if (overlayShown.current) {
         overlayShown.current = false;
         setOverlayVisible(false);
@@ -454,37 +488,25 @@ export function Nearby({ onNavigate }: NearbyProps) {
       lastOverlayPush.current = 0;
       return;
     }
-    const now = Date.now();
-    if (now - lastOverlayPush.current < 800) return;
-    lastOverlayPush.current = now;
-    const bearingByKey = new Map(radar.points.map((point) => [point.key, point.bearingLabel]));
-    void pushNearbyOverlay({
-      capturing: true,
-      hasKey: Boolean(progress?.analysis.hasKey),
-      scene: snapshot?.scene ?? null,
-      self: mapSelf,
-      updatedAt: snapshot?.updatedAt ?? Date.now(),
-      pets: pets.map((pet) => ({
-        key: pet.key,
-        name: pet.name,
-        level: pet.level,
-        kinds: pet.kinds,
-        rare: pet.rare,
-        alert: Boolean(pet.alertReason),
-        nature: pet.nature ?? null,
-        gender: pet.gender ?? null,
-        distanceM: pet.distanceM ?? null,
-        bearingLabel: bearingByKey.get(pet.key) ?? null,
-        x: pet.pos?.x ?? null,
-        y: pet.pos?.y ?? null,
-      })),
-    });
-    if (!overlayShown.current) {
-      overlayShown.current = true;
-      setOverlayVisible(true);
-      void showNearbyOverlay();
+    // 节流窗口内不丢帧：排一个窗口结束的尾随补发，读最新快照重推（最坏多等一个窗口）
+    if (overlayPending.current != null) return;
+    const wait = Math.max(0, OVERLAY_PUSH_INTERVAL_MS - (Date.now() - lastOverlayPush.current));
+    if (wait > 0) {
+      overlayPending.current = window.setTimeout(() => {
+        overlayPending.current = null;
+        lastOverlayPush.current = Date.now();
+        pushOverlay();
+      }, wait);
+      return;
     }
-  }, [overlaySupported, capturing, snapshot, pets, progress, mapSelf, radar]);
+    lastOverlayPush.current = Date.now();
+    pushOverlay();
+  }, [overlaySupported, capturing, snapshot, progress]);
+
+  // 页面卸载：清掉尾随补发，别在组件没了以后还把旧数据推给小窗
+  useEffect(() => () => {
+    if (overlayPending.current != null) window.clearTimeout(overlayPending.current);
+  }, []);
 
   // 安卓壳悬浮面板的推送已移到应用级（src/nearby/useNearbyOverlayPush.ts）：
   // 推送跟随采集状态，不随本页卸载，从「我的」页发起采集也照样有面板。
@@ -703,7 +725,9 @@ export function Nearby({ onNavigate }: NearbyProps) {
               </div>
               {worldMap ? (
                 <>
-                  <NearbyMap pets={mapPets} origin={mapSelf} scene={snapshot?.scene ?? null} />
+                  <MapErrorBoundary>
+                    <NearbyMap pets={mapPets} origin={mapSelf} scene={snapshot?.scene ?? null} />
+                  </MapErrorBoundary>
                   <p className="mt-1 text-center text-[11px] text-slate-400">
                     拖动 / 滚轮缩放；点位是世界坐标实测位置，不随视野裁剪
                   </p>
@@ -819,7 +843,11 @@ export function Nearby({ onNavigate }: NearbyProps) {
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-950 p-1">
               <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl bg-white">
                 {worldMap
-                  ? <NearbyMap pets={mapPets} origin={mapSelf} scene={snapshot?.scene ?? null} className="h-full w-full" />
+                  ? (
+                    <MapErrorBoundary className="h-full w-full">
+                      <NearbyMap pets={mapPets} origin={mapSelf} scene={snapshot?.scene ?? null} className="h-full w-full" />
+                    </MapErrorBoundary>
+                  )
                   : <NearbyRadar radar={radarView} className="h-full w-full scale-[1.3]" />}
               </div>
             </div>

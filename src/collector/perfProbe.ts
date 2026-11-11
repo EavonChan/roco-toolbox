@@ -47,6 +47,8 @@ export function capturePerfSummary(): {
   decodeMsAvg: number; decodeMsMax: number;
   bytesAvg: number; windowBytes: number;
   selfRawRate: number; petsAvg: number;
+  /** 相邻两轮的平均间隔（ms）：直接回答「自适应轮询到底多久跑一轮」 */
+  gapMsAvg: number;
   payloadBuilds: number;
 } {
   const rounds = samples.length;
@@ -64,6 +66,9 @@ export function capturePerfSummary(): {
     windowBytes: rounds ? samples[rounds - 1].windowBytes : 0,
     selfRawRate: rounds ? Math.round((sum((item) => (item.selfRaw ? 1 : 0)) / rounds) * 100) : 0,
     petsAvg: rounds ? Math.round(sum((item) => item.pets) / rounds) : 0,
+    gapMsAvg: rounds > 1
+      ? Math.round((samples[rounds - 1].at - samples[0].at) / (rounds - 1))
+      : 0,
     payloadBuilds,
   };
 }
