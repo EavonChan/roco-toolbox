@@ -144,7 +144,7 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
     {
       id: 'nearby-filters',
       title: '只看你要找的',
-      body: '「稀有」筛掉普通精灵；「可提醒」只留 ±100dB 或体重牌 + 声音牌；「需求」只留需求中心在找的种族。普通精灵离开视野即清理，高价值会保留 10 分钟。',
+      body: '顶部「稀有」只看稀有精灵，「需求」只看需求中心在找的种族，「目标」只蹲你点名勾选的那几只。普通精灵离开视野即清理，高价值会保留 10 分钟。',
       anchor: 'nearby-filters',
     },
   ],

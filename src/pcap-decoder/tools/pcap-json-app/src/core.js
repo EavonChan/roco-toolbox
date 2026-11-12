@@ -21,6 +21,13 @@ const DECODER_VERSION = "1.1.7";
 const RAW_SCHEMA_VERSION = "protocol-raw-v1";
 const { decodePetAdventure } = petAdventureProtocol;
 
+/** 野外实体 9 秒无任何更新即释放（覆盖别人抓走 / 走远 / 消失，2026-11-12） */
+const WILD_TTL_MS = 9000;
+/** 野外实体总容量上限（2026-11-12） */
+const WILD_MAX_ENTITIES = 80;
+/** 抓宠墓碑保留时长：30 秒内同一 uniqueId 不再放回列表（2026-11-12） */
+const CAPTURE_TOMBSTONE_MS = 30000;
+
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
 const textEncoder = new TextEncoder();
 const INDIVIDUAL_STAT_NAMES = ["生命", "物攻", "魔攻", "物防", "魔防", "速度"];
@@ -649,6 +656,12 @@ function createAccountCapture(profile = null) {
     wildPets: new Map(),
     /** 已抓到的 uniqueId：后续 330/1043 再提到也不放回列表（2026-11-10） */
     capturedWild: new Set(),
+    /** uniqueId → 墓碑写入时间，30 秒后允许重新出现（2026-11-12） */
+    capturedWildAt: new Map(),
+    /** 最近一次 330 全量帧时间，用于诊断「多久没重建基线」 */
+    last330At: 0,
+    /** 被 TTL / 容量淘汰的实体累计数（诊断用） */
+    wildEvicted: 0,
     /** `petId:level:height:weight` → 宠物记录里的性格/性别（4934/579/4908，2026-11-06 验证） */
     ownedPetDetails: new Map(),
     /** 最近一次赛季奇遇战（4886/4890）里守卫的个体数据 */
@@ -1819,16 +1832,97 @@ function parseWildEntity(raw) {
  */
 export function removeCapturedWildPets(capture, details) {
   if (!details.length) return;
+  const now = Date.now();
   for (const detail of details) {
+    let removed = false;
+    // 1) 精确匹配：种族 + 等级 + 身高 + 体重（原有口径）
     for (const [key, pet] of capture.wildPets) {
       const petId = cfgPetMap[String(pet.cfgId)];
       if (!petId || petId !== detail.petId) continue;
       if (pet.level !== detail.level || pet.height !== detail.height || pet.weight !== detail.weight) continue;
       capture.wildPets.delete(key);
-      capture.capturedWild.add(key);
+      tombstone(capture, key, now);
+      removed = true;
+      break;
+    }
+    if (removed) continue;
+    // 2) 模糊兜底：种族相同 + 坐标最近（捕获帧带坐标时），解决取整/单位差异导致的漏删
+    let bestKey = null;
+    let bestDistance = Infinity;
+    for (const [key, pet] of capture.wildPets) {
+      const petId = cfgPetMap[String(pet.cfgId)];
+      if (!petId || petId !== detail.petId) continue;
+      const distance = coordinateDistance(pet, detail);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestKey = key;
+      }
+    }
+    if (bestKey && bestDistance <= 30) {
+      capture.wildPets.delete(bestKey);
+      tombstone(capture, bestKey, now);
     }
   }
 }
+
+/** 写 30 秒墓碑：期间同一 uniqueId 再下发也不放回列表。 */
+function tombstone(capture, key, now) {
+  if (!capture.capturedWild) capture.capturedWild = new Set();
+  if (!capture.capturedWildAt) capture.capturedWildAt = new Map();
+  capture.capturedWild.add(key);
+  capture.capturedWildAt.set(key, now);
+}
+
+/** 两个实体的平面距离；任一缺坐标时返回 Infinity（不做模糊删除，避免误伤同种族另一只）。 */
+function coordinateDistance(pet, detail) {
+  const px = Number(pet.x);
+  const py = Number(pet.y);
+  const dx = Number(detail.x);
+  const dy = Number(detail.y);
+  if (![px, py, dx, dy].every(Number.isFinite)) return Infinity;
+  return Math.hypot(px - dx, py - dy);
+}
+
+/** 实体保留优先级：0 普通有坐标（先淘汰）→ 1 无坐标 → 2 稀有 → 3 需求/告警（尽量不淘汰）。 */
+function wildKeepScore(pet) {
+  if (pet.alert || pet.demand) return 3;
+  if (pet.rare) return 2;
+  const hasPosition = Number.isFinite(Number(pet.x)) && Number.isFinite(Number(pet.y));
+  return hasPosition ? 0 : 1;
+}
+
+/**
+ * 清理野外实体（2026-11-12）：
+ * - 9 秒没有任何 330/1043/1044 更新即释放，覆盖「被其他玩家抓走 / 走远 / 消失」；
+ * - 总容量 80，超限按「普通 → 无坐标 → 稀有 → 需求/告警」顺序淘汰，需求/告警最后动。
+ */
+export function pruneWildPets(capture, now = Date.now()) {
+  let evicted = 0;
+  const seenAt = capture.wildSeenAt || new Map();
+  if (!capture.wildSeenAt) capture.wildSeenAt = seenAt;
+  for (const key of capture.wildPets.keys()) {
+    const lastSeen = Number(seenAt.get(key));
+    if (Number.isFinite(lastSeen) && now - lastSeen > WILD_TTL_MS) {
+      capture.wildPets.delete(key);
+      seenAt.delete(key);
+      evicted += 1;
+    }
+  }
+  if (capture.wildPets.size > WILD_MAX_ENTITIES) {
+    const candidates = [...capture.wildPets.entries()]
+      .map(([key, pet]) => ({ key, score: wildKeepScore(pet), lastSeen: Number(seenAt.get(key)) || 0 }))
+      .sort((a, b) => a.score - b.score || a.lastSeen - b.lastSeen);
+    for (const item of candidates) {
+      if (capture.wildPets.size <= WILD_MAX_ENTITIES) break;
+      capture.wildPets.delete(item.key);
+      seenAt.delete(item.key);
+      evicted += 1;
+    }
+  }
+  if (evicted) capture.wildEvicted = (capture.wildEvicted || 0) + evicted;
+  return evicted;
+}
+
 
 /** 330 / 1043 / 1044 的实体包裹深度不固定，统一交给 {@link collectWildCandidates} 递归找。 */
 export function parseWildEntities(payload) {
@@ -1852,14 +1946,42 @@ export function parseWildEntities(payload) {
  */
 export function applyWildEntityFrame(capture, opcode, payload) {
   const wild = parseWildEntities(payload);
-  if (opcode === 330) capture.wildPets.clear();
+  const now = Date.now();
+  if (!capture.capturedWild) capture.capturedWild = new Set();
+  if (!capture.capturedWildAt) capture.capturedWildAt = new Map();
+  if (!capture.wildSeenAt) capture.wildSeenAt = new Map();
+  if (opcode === 330) {
+    capture.wildPets.clear();
+    capture.wildSeenAt.clear();
+    capture.last330At = now;
+  }
   let applied = 0;
   for (const pet of wild) {
-    if (capture.capturedWild.has(String(pet.uniqueId))) continue;
-    capture.wildPets.set(String(pet.uniqueId), pet);
+    const key = String(pet.uniqueId);
+    const capturedAt = capture.capturedWildAt.get(key);
+    if (capturedAt && now - capturedAt <= CAPTURE_TOMBSTONE_MS) continue;
+    // 旧墓碑（只有 Set 没有时间）保持原语义：不复活
+    if (!capturedAt && capture.capturedWild.has(key)) continue;
+    if (capturedAt) {
+      // 墓碑过期：同一 uniqueId 允许重新出现（例如另一只同名个体刷新）
+      capture.capturedWildAt.delete(key);
+      capture.capturedWild.delete(key);
+    }
+    capture.wildSeenAt.set(key, now);
+    capture.wildPets.set(key, pet);
     applied += 1;
   }
+  pruneWildPets(capture, now);
   return applied;
+}
+
+/** 附近实体的现状指标（诊断 / RocoPerf 用）：数量、累计淘汰、距上次 330 的秒数。 */
+export function nearbyWildDiagnostics(capture, now = Date.now()) {
+  return {
+    size: capture.wildPets.size,
+    evicted: capture.wildEvicted || 0,
+    since330s: capture.last330At ? Math.round((now - capture.last330At) / 1000) : -1,
+  };
 }
 
 /**
@@ -2426,8 +2548,8 @@ function extractFlowEvents(bytes, options = {}) {
     eggInventory: capture.eggInventory,
     captureHome: capture.latestHome,
     captureNestEvents: capture.homeEvents,
-    /** 野外附近精灵（330 全量 + 1043 增量），按 uniqueId 去重 */
-    nearbyPets: Array.from(capture.wildPets.values()),
+    /** 野外附近精灵（330 全量 + 1043/1044 增量），按 uniqueId 去重；导出前再按 TTL 收缩一次 */
+    nearbyPets: (pruneWildPets(capture), Array.from(capture.wildPets.values())),
     /** 宠物记录里的性格/性别（抓后回填附近精灵） */
     ownedPetDetails: Array.from(capture.ownedPetDetails.values()),
     nearbyScene: capture.wildScene,

@@ -9,6 +9,7 @@ import { demandHitsForPet, demandSpeciesIndex, type DemandHit } from '../pcap/de
 import { demandKeyOf } from '../shared/collectionGroups';
 import { useDemandCenter } from '../ui/useDemandCenter';
 import { useNearbyFilter } from './nearbyFilterStore';
+import { useNearbyTargets } from './nearbyTargetStore';
 import { hasNearbyOverlayShell, pushNearbyOverlayToShell } from './overlayBridge';
 import { buildNearbyOverlayPayload } from './overlayPayload';
 import { useNearbyOverlayPanels } from './overlayPanels';
@@ -44,9 +45,10 @@ export function useNearbyOverlayPush(): void {
   const snapshot = freshNearbySnapshot(useNearbySnapshot(), state?.fileId);
   const panels = useNearbyOverlayPanels();
   const { items: demands } = useDemandCenter(supported);
-  // 列表口径与附近页共用同一份状态：顶部三档 + 战斗目标的维度筛选
+  // 列表口径与附近页共用同一份状态：顶部三档（含目标档）+ 战斗目标的维度筛选 + 蹲守名单
   const filter = useNearbyFilter();
   const target = useBattleTarget();
+  const targets = useNearbyTargets();
 
   /**
    * 需求中心签名：只取影响匹配的条件，避免每次刷新都拿到新数组身份把推送打成每秒一次。
@@ -103,8 +105,14 @@ export function useNearbyOverlayPush(): void {
   filterRef.current = filter;
   const targetRef = useRef(target);
   targetRef.current = target;
+  const targetsRef = useRef(targets);
+  targetsRef.current = targets;
   const pushed = useRef(false);
   const lastPushAt = useRef(0);
+  /** 上一次真正推给壳的稳定内容签名（不含 perf / updatedAt），用于跳过无变化推送 */
+  const lastPayloadSignature = useRef('');
+  /** 面板开关变化时强制补推一次配置（内容没变也要发） */
+  const configNonce = useRef(0);
   const panelsSignature = useRef('');
   /** 尾随补发的定时器：同一时刻只排一个，重复排期没有意义。 */
   const pendingPush = useRef<number | null>(null);
@@ -115,6 +123,7 @@ export function useNearbyOverlayPush(): void {
     const signature = `${panels.battle}-${panels.nearby}`;
     const panelsChanged = panelsSignature.current !== signature;
     panelsSignature.current = signature;
+    if (panelsChanged) configNonce.current += 1;
 
     const push = (visible: boolean) => {
       if (pendingPush.current != null) {
@@ -123,14 +132,23 @@ export function useNearbyOverlayPush(): void {
       }
       pushed.current = visible;
       lastPushAt.current = Date.now();
-      void pushNearbyOverlayToShell(buildNearbyOverlayPayload({
+      const payload = buildNearbyOverlayPayload({
         capturing: visible,
         hasKey: latest.current.hasKey,
         snapshot: latest.current.snapshot,
         demandHits: hitByKeyRef.current,
         filter: filterRef.current,
         target: targetRef.current,
-      }));
+        targets: targetsRef.current,
+      });
+      // 数据没变化就不推：以前 250ms 无条件推，实体堆积时每次都让壳重建地图（2026-11-12）
+      const signature = JSON.stringify([
+        visible, configNonce.current, payload.pets, payload.mapPets, payload.self, payload.scene,
+        payload.total, payload.matched, payload.alertTotal, payload.rareTotal,
+      ]);
+      if (signature === lastPayloadSignature.current) return;
+      lastPayloadSignature.current = signature;
+      void pushNearbyOverlayToShell(payload);
     };
 
     /**
@@ -162,7 +180,7 @@ export function useNearbyOverlayPush(): void {
       }
     }
     push(true);
-  }, [supported, capturing, snapshot, panels, demandSignature, filter, target]);
+  }, [supported, capturing, snapshot, panels, demandSignature, filter, target, targets]);
 
   // 页面卸载 / 重载兜底收起，避免壳停在最后一帧
   useEffect(() => {

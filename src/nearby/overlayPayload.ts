@@ -5,6 +5,7 @@ import type { NearbySnapshot } from '../collector/nearbyStore';
 import { battleTargetAllows, getBattleTarget, type BattleTarget } from '../collector/battleTargetStore';
 import { buildRadar } from '../pcap/nearbyRadar';
 import { getNearbyFilter, nearbyFilterAllows, type NearbyFilter } from './nearbyFilterStore';
+import { getNearbyTargets, nearbyRangeAllows, nearbyTargetAllows } from './nearbyTargetStore';
 import { countPayloadBuild, capturePerfSummary } from '../collector/perfProbe';
 
 /**
@@ -20,6 +21,9 @@ import { countPayloadBuild, capturePerfSummary } from '../collector/perfProbe';
  * - `mapPets` 仍给出附近所有带坐标的精灵（最多 24 只），地图 / 雷达照常画全部；
  * - 方向为 8 方位标签 + 箭头，距离 100 世界单位 = 1 米；
  * - 没有自身坐标时以附近精灵几何中位数为中心，并标记 `selfEstimated`。
+ *
+ * 2026-11-13 目标精灵：范围选到 `'target'` 时是**替换**语义——列表与 `mapPets` 都只留
+ * 蹲守名单里的精灵，跳过三档 / 维度 / 需求放行（蹲守时别的精灵都是干扰）。
  */
 
 /**
@@ -36,8 +40,8 @@ export const OVERLAY_MAP_POINT_LIMIT = 24;
 const TARGET_KINDS = new Set(['colorful', 'shiny', 'pollution']);
 
 /**
- * 精灵是否进悬浮窗列表（2026-11-09 新口径）：
- * 命中需求中心恒放行；否则先过附近页总范围（全部 / 稀有 / 需求），
+ * 精灵是否进悬浮窗列表（2026-11-09 新口径；2026-11-13 加目标档）：
+ * 目标档只看蹲守名单；其余档命中需求中心恒放行，否则先过附近页总范围（全部 / 稀有 / 需求），
  * 再过战斗目标那组维度筛选（没设维度 = 全部通过）。
  */
 export function isOverlayTarget(
@@ -45,7 +49,9 @@ export function isOverlayTarget(
   demandHits: readonly DemandHit[] = [],
   filter: NearbyFilter = getNearbyFilter(),
   target: BattleTarget = getBattleTarget(),
+  targets: readonly number[] = getNearbyTargets(),
 ): boolean {
+  if (filter === 'target') return nearbyRangeAllows(filter, pet, demandHits.length, targets);
   if (demandHits.length > 0) return true;
   if (!nearbyFilterAllows(filter, pet, 0)) return false;
   return battleTargetAllows(target, {
@@ -165,6 +171,8 @@ export interface NearbyOverlaySource {
   filter?: NearbyFilter;
   /** 战斗目标维度筛选（性格 / 公母 / 声音 / 体型）；不传时读共享状态 */
   target?: BattleTarget;
+  /** 目标精灵蹲守名单（图鉴 gameId）；不传时读共享状态 */
+  targets?: readonly number[];
 }
 
 /** 命中需求 > 提醒 > 稀有 > 距离近 > key 稳定排序。 */
@@ -186,10 +194,11 @@ export function buildNearbyOverlayPayload(source: NearbyOverlaySource): NearbyOv
   const { capturing, hasKey, snapshot, demandHits } = source;
   const filter = source.filter ?? getNearbyFilter();
   const target = source.target ?? getBattleTarget();
+  const targets = source.targets ?? getNearbyTargets();
   const pets = snapshot?.pets ?? [];
   const hitsOf = (pet: LiveNearbyPet): readonly DemandHit[] => demandHits?.get(pet.key) ?? [];
-  // 地图仍画全部附近精灵；列表按「总范围 + 维度筛选」，命中需求恒放行
-  const targets = pets.filter((pet) => isOverlayTarget(pet, hitsOf(pet), filter, target));
+  // 地图默认画全部附近精灵；目标档下与列表一致，只留蹲守名单
+  const listed = pets.filter((pet) => isOverlayTarget(pet, hitsOf(pet), filter, target, targets));
   // 307 是稀疏帧：真实坐标缺失时用里程计估算，保证地图 / 雷达随走动更新（2026-11-10）
   const rawSelf = snapshot?.self ?? null;
   const self = rawSelf ?? snapshot?.estimatedSelf ?? null;
@@ -209,8 +218,12 @@ export function buildNearbyOverlayPayload(source: NearbyOverlaySource): NearbyOv
   const distanceOf = (pet: LiveNearbyPet) =>
     pointByKey.get(pet.key)?.distanceM ?? pet.distanceM ?? Number.POSITIVE_INFINITY;
 
-  // 地图 / 雷达点位：附近所有带坐标的精灵（普通精灵也画），按距离截断
-  const mapPets = [...pets]
+  // 地图 / 雷达点位：附近所有带坐标的精灵（普通精灵也画），按距离截断；
+  // 目标档只画蹲守名单里的（其它精灵就是干扰）
+  const mapSource = filter === 'target'
+    ? pets.filter((pet) => nearbyTargetAllows(targets, pet))
+    : pets;
+  const mapPets = [...mapSource]
     .filter((pet) => pet.pos != null && Number.isFinite(pet.pos.x) && Number.isFinite(pet.pos.y))
     .sort((left, right) => distanceOf(left) - distanceOf(right) || left.key.localeCompare(right.key))
     .slice(0, OVERLAY_MAP_POINT_LIMIT)
@@ -229,7 +242,7 @@ export function buildNearbyOverlayPayload(source: NearbyOverlaySource): NearbyOv
       }];
     });
 
-  const items = targets.map<NearbyOverlayPet>((item) => {
+  const items = listed.map<NearbyOverlayPet>((item) => {
     const point = pointByKey.get(item.key);
     const distanceM = point?.distanceM ?? item.distanceM ?? null;
     const hasBearing = point != null && point.distanceM >= MIN_BEARING_DISTANCE_M;

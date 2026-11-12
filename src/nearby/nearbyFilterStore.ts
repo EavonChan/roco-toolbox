@@ -6,16 +6,20 @@ import { useEffect, useState } from 'react';
  * 悬浮窗列表要和 App 内附近页看同一档筛选，所以提成模块级状态并持久化；
  * 判定函数 {@link nearbyFilterAllows} 两边共用，不各写一套近似逻辑。
  *
- * 注意：这里只管**总范围**（全部 / 稀有 / 需求）。声音 / 体型 / 性格 / 公母
+ * 注意：这里只管**总范围**（全部 / 稀有 / 需求 / 目标）。声音 / 体型 / 性格 / 公母
  * 那组维度筛选属于战斗目标（`battleTargetStore`），在悬浮窗里与总范围叠加。
+ *
+ * 2026-11-13 新增 `'target'`（蹲守名单）：名单本身存在 `nearbyTargetStore`，这里只记
+ * 「当前范围选的是目标档」。目标档是**替换**语义，判定走 `nearbyRangeAllows`，
+ * 不再经过 {@link nearbyFilterAllows}（三档的既有语义不变）。
  */
-export type NearbyFilter = 'all' | 'rare' | 'demand';
+export type NearbyFilter = 'all' | 'rare' | 'demand' | 'target';
 
 const STORAGE_KEY = 'roco.nearbyFilter';
 const listeners = new Set<() => void>();
 
 const normalize = (value: unknown): NearbyFilter =>
-  value === 'rare' || value === 'demand' ? value : 'all';
+  value === 'rare' || value === 'demand' || value === 'target' ? value : 'all';
 
 function read(): NearbyFilter {
   if (typeof window === 'undefined') return 'all';

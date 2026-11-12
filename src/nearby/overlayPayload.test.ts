@@ -30,7 +30,12 @@ const snapshot = (overrides: Partial<NearbySnapshot> & { pets: LiveNearbyPet[] }
 const build = (
   pets: LiveNearbyPet[],
   extra: Partial<NearbySnapshot> = {},
-  options: { filter?: NearbyFilter; target?: BattleTarget; demandHits?: Map<string, DemandHit[]> } = {},
+  options: {
+    filter?: NearbyFilter;
+    target?: BattleTarget;
+    targets?: readonly number[];
+    demandHits?: Map<string, DemandHit[]>;
+  } = {},
 ) =>
   buildNearbyOverlayPayload({
     capturing: true,
@@ -506,6 +511,46 @@ describe('自身坐标缺失时的估算中心', () => {
       self: { x: 800, y: 0 },
     });
     expect(payload.mapPets[0].distanceM).toBe(2);
+  });
+});
+
+describe('目标精灵（蹲守名单）', () => {
+  test('目标档：列表与地图都只留蹲守的目标，需求命中也不放行', () => {
+    const demandHits = new Map<string, DemandHit[]>([['wanted', [demandHit()]]]);
+    const payload = build([
+      pet({ key: 'target', petId: 3001, pos: { x: 0, y: 0, z: 0 } }),
+      pet({ key: 'rare', petId: 3002, rare: true, pos: { x: 100, y: 0, z: 0 } }),
+      pet({ key: 'wanted', petId: 3003, pos: { x: 200, y: 0, z: 0 } }),
+    ], { self: { x: 0, y: 0 } }, { filter: 'target', targets: [3001], demandHits });
+
+    expect(payload.pets.map((item) => item.key)).toEqual(['target']);
+    expect(payload.mapPets.map((item) => item.key)).toEqual(['target']);
+  });
+
+  test('目标档不叠加战斗维度：目标不满足维度也照常显示', () => {
+    const payload = build([
+      pet({ key: 'target', petId: 3001, weightPct: 50, pos: { x: 0, y: 0, z: 0 } }),
+    ], {}, { filter: 'target', targets: [3001], target: target({ bodies: ['big'] }) });
+
+    expect(payload.pets.map((item) => item.key)).toEqual(['target']);
+  });
+
+  test('名单为空时目标档不放行任何精灵', () => {
+    const payload = build([
+      pet({ key: 'a', petId: 3001, rare: true, pos: { x: 0, y: 0, z: 0 } }),
+    ], {}, { filter: 'target', targets: [] });
+
+    expect(payload.pets).toEqual([]);
+    expect(payload.mapPets).toEqual([]);
+  });
+
+  test('非目标档不受名单影响：地图仍画全部附近精灵', () => {
+    const payload = build([
+      pet({ key: 'a', petId: 3001, pos: { x: 0, y: 0, z: 0 } }),
+      pet({ key: 'b', petId: 3002, pos: { x: 100, y: 0, z: 0 } }),
+    ], {}, { filter: 'all', targets: [3001] });
+
+    expect(payload.mapPets.map((item) => item.key).sort()).toEqual(['a', 'b']);
   });
 });
 

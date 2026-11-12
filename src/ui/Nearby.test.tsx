@@ -10,7 +10,8 @@ import type { SeasonEncounter } from '../collector/captureProgress';
 import { useRareAlert } from '../collector/rareAlertStore';
 import { useNearbyFeed } from '../collector/useNearbyFeed';
 import { readNearbyOverlayPanels, resetNearbyOverlayPanelsForTest } from '../nearby/overlayPanels';
-import { resetNearbyFilterForTest } from '../nearby/nearbyFilterStore';
+import { resetNearbyFilterForTest, setNearbyFilter } from '../nearby/nearbyFilterStore';
+import { resetNearbyTargetsForTest, setNearbyTargets } from '../nearby/nearbyTargetStore';
 import type { DemandCenterItem } from './useDemandCenter';
 import { useDemandCenter } from './useDemandCenter';
 import { Nearby } from './Nearby';
@@ -105,6 +106,7 @@ beforeEach(() => {
   resetCaptureOriginForTest();
   resetNearbyOverlayPanelsForTest();
   resetNearbyFilterForTest();
+  resetNearbyTargetsForTest();
   window.localStorage.clear();
   vi.mocked(useRareAlert).mockReturnValue(false);
   vi.mocked(useAutoImport).mockReturnValue({ session: null, stage: 'idle', completion: null, completionError: null, error: null });
@@ -173,6 +175,39 @@ describe('附近页', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].textContent).toContain('喵喵');
     expect(rows[0].textContent).toContain('需求中心');
+  });
+
+  test('目标档：搜索 + 勾选后只留蹲守目标（普通精灵也算高价值进列表）', () => {
+    feed();
+    render(<Nearby onNavigate={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('nearby-filter-target'));
+    fireEvent.change(screen.getByTestId('nearby-target-search'), { target: { value: '喵' } });
+    fireEvent.click(screen.getByTestId('nearby-target-option-3001'));
+    fireEvent.click(screen.getByTestId('nearby-target-done'));
+
+    expect(screen.getByTestId('nearby-target-row').textContent).toContain('喵喵');
+    openList();
+    const rows = screen.getAllByTestId('nearby-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('喵喵');
+    expect(screen.queryByText(/护主犬/)).toBeNull();
+    expect(screen.getByTestId('nearby-target-status').textContent).toContain('目标 1 只');
+  });
+
+  test('目标都不在视野时只给等待提示，不列别的精灵', () => {
+    feed();
+    act(() => {
+      setNearbyTargets([9999]);
+      setNearbyFilter('target');
+    });
+    render(<Nearby onNavigate={vi.fn()} />);
+
+    const status = screen.getByTestId('nearby-target-status');
+    expect(status.textContent).toContain('目标的 1 只都不在视野内');
+    expect(status.textContent).toContain('已等待');
+    openList();
+    expect(screen.queryAllByTestId('nearby-row')).toHaveLength(0);
+    expect(screen.getByText('目标的 1 只都不在视野内')).toBeTruthy();
   });
 
   test('命中需求中心时弹强提示与系统通知', async () => {

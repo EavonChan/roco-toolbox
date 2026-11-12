@@ -25,10 +25,18 @@ import { MapErrorBoundary } from './NearbyErrorBoundary';
 import { NearbyMap } from './NearbyMap';
 import { NearbyRadar } from './NearbyRadar';
 import { ModalSurface } from './primitives/ModalSurface';
+import { SearchField } from './primitives/SearchField';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { StateNotice } from './primitives/StateNotice';
 import { useDemandCenter } from './useDemandCenter';
-import { nearbyFilterAllows, setNearbyFilter, useNearbyFilter } from '../nearby/nearbyFilterStore';
+import { setNearbyFilter, useNearbyFilter, type NearbyFilter } from '../nearby/nearbyFilterStore';
+import {
+  clearNearbyTargets,
+  nearbyRangeAllows,
+  nearbyTargetAllows,
+  toggleNearbyTarget,
+  useNearbyTargets,
+} from '../nearby/nearbyTargetStore';
 
 type NearbyView = 'map' | 'list';
 
@@ -37,6 +45,16 @@ export interface NearbyProps {
 }
 
 const DEMAND_INDEX = demandSpeciesIndex(species);
+
+/** 目标精灵名单 / 选择面板用的图鉴名（gameId → 名称）。 */
+const SPECIES_NAME = new Map(species.map((entry) => [entry.gameId, entry.name]));
+/** 搜索结果上限：图鉴 600+ 条，全量渲染在手机上太卡，超过就提示继续输入。 */
+const TARGET_SEARCH_LIMIT = 60;
+
+const mmss = (totalSeconds: number): string => {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+};
 
 /**
  * 桌面小窗推送节流（2026-11-11，与手机悬浮面板对齐 250ms）。
@@ -181,6 +199,13 @@ export function Nearby({ onNavigate }: NearbyProps) {
   const [view, setView] = useState<NearbyView>('map');
   // 顶部总范围：与悬浮窗共用同一份状态（下沉到 nearbyFilterStore，切页不丢）
   const filter = useNearbyFilter();
+  /** 蹲守名单（目标档）：空数组即关闭，与三档共用同一份「范围」语义 */
+  const targets = useNearbyTargets();
+  const [targetsOpen, setTargetsOpen] = useState(false);
+  const [targetQuery, setTargetQuery] = useState('');
+  /** 目标档下「都不在视野」的等待计时：进入等待时记开始时刻，目标出现即清零 */
+  const targetWaitSince = useRef<number | null>(null);
+  const [waitTick, setWaitTick] = useState(() => Date.now());
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenView, setFullscreenView] = useState<NearbyView>('map');
   const [rows, setRows] = useState<RetainedEntry[]>(() => readNearbyRetained());
@@ -209,10 +234,16 @@ export function Nearby({ onNavigate }: NearbyProps) {
   const classify = useMemo(
     () => (pet: LiveNearbyPet) => {
       const hits = demandHitsForPet(pet, demands, DEMAND_INDEX);
-      return { highValue: isHighValuePet(pet, hits), demandHits: hits };
+      // 蹲守目标也算高价值：离开视野后按同样 10 分钟保留在常驻列表里
+      return { highValue: isHighValuePet(pet, hits) || nearbyTargetAllows(targets, pet), demandHits: hits };
     },
-    [demands],
+    [demands, targets],
   );
+
+  // 名单被清空（如面板里「清除全部」）时，范围不能停在目标档：退回「全部」
+  useEffect(() => {
+    if (filter === 'target' && targets.length === 0) setNearbyFilter('all');
+  }, [filter, targets.length]);
 
   // 每次快照到达就更新估算自身位置（精灵整体移动 = 玩家反向移动）
   useEffect(() => {
@@ -257,12 +288,16 @@ export function Nearby({ onNavigate }: NearbyProps) {
     return () => window.clearInterval(timer);
   }, [classify]);
 
-  // 强提示：稀有（±100dB / 体重牌+声音牌）或命中需求中心；同一只只响一次
+  // 强提示：稀有（±100dB / 体重牌+声音牌）或命中需求中心；同一只只响一次。
+  // 目标档下只看蹲守的那几只，别的精灵不打扰（2026-11-13）
   useEffect(() => {
     if (!rareAlertOn || !snapshot) return;
     const hitOf = (pet: LiveNearbyPet) => hitByKey.get(pet.key) ?? [];
+    const candidates = filter === 'target'
+      ? snapshot.pets.filter((pet) => nearbyTargetAllows(targets, pet))
+      : snapshot.pets;
     const fresh = nearbyAlertGate.scan(
-      snapshot.pets,
+      candidates,
       (pet) => pet.key,
       (pet) => Boolean(pet.alertReason) || hitOf(pet).length > 0,
     );
@@ -282,7 +317,7 @@ export function Nearby({ onNavigate }: NearbyProps) {
       : rareAlertTitle(rareLines.length);
     setAlert({ title, lines });
     void notifyRareAlert(title, lines.join('\n')).catch(() => {});
-  }, [snapshot, hitByKey, rareAlertOn]);
+  }, [snapshot, hitByKey, rareAlertOn, filter, targets]);
 
   const pets = snapshot?.pets ?? [];
   // 最近一次赛季奇遇战（龙棋士 → 蛋包蛋），战斗中已带真实性格
@@ -307,11 +342,46 @@ export function Nearby({ onNavigate }: NearbyProps) {
   );
   const rareCount = pets.filter((pet) => pet.rare).length;
   const demandCount = [...hitByKey.values()].filter((hits) => hits.length > 0).length;
+  /** 目标档下：当前视野内的目标数量（决定要不要显示「都不在视野内」） */
+  const targetPresent = pets.filter((pet) => nearbyTargetAllows(targets, pet)).length;
+  const targetWaiting = filter === 'target' && targets.length > 0 && targetPresent === 0;
   const capturing = state?.phase === 'capturing';
   const captureBusy = state != null && ['starting', 'capturing', 'stopping'].includes(state.phase);
   /** 有采集桥（安卓壳）才给本页开关；网页版只能去「我的 · 游戏数据」导入文件 */
   const captureSupported = checked && state != null;
-  const hasAny = rows.length > 0 || pets.length > 0;
+  // 目标档即使暂时没有精灵数据也要显示筛选区：否则「编辑 / 清除」入口会消失
+  const hasAny = rows.length > 0 || pets.length > 0 || filter === 'target';
+
+  // 目标都不在视野时开始计时（只在页面里显示等待时长，不发通知、不打断）
+  useEffect(() => {
+    if (!targetWaiting) {
+      targetWaitSince.current = null;
+      return;
+    }
+    if (targetWaitSince.current == null) {
+      targetWaitSince.current = Date.now();
+      setWaitTick(Date.now());
+    }
+  }, [targetWaiting]);
+
+  useEffect(() => {
+    if (!targetWaiting) return;
+    const timer = window.setInterval(() => setWaitTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [targetWaiting]);
+
+  const waitedText = targetWaiting && targetWaitSince.current != null
+    ? mmss((waitTick - targetWaitSince.current) / 1000)
+    : '0:00';
+
+  /** 选择面板的搜索结果：空关键词不铺全量图鉴，避免几百行卡顿 */
+  const targetMatches = useMemo(() => {
+    const keyword = targetQuery.trim();
+    if (!keyword) return [];
+    return species
+      .filter((entry) => entry.name.includes(keyword) || (entry.officialName ?? '').includes(keyword))
+      .slice(0, TARGET_SEARCH_LIMIT);
+  }, [targetQuery]);
 
   // 「数据已收齐」时触发全局自动导入：附近页发起的（雷达导向）会在流程里直接跳过，
   // 我的页发起的不管停在哪页，都会自动停止并导入（见 autoImportFlow / captureOriginStore）。
@@ -407,18 +477,24 @@ export function Nearby({ onNavigate }: NearbyProps) {
     const keys = new Set<string>();
     for (const pet of pets) {
       const hits = hitByKey.get(pet.key) ?? [];
-      if (nearbyFilterAllows(filter, pet, hits.length)) keys.add(pet.key);
+      if (nearbyRangeAllows(filter, pet, hits.length, targets)) keys.add(pet.key);
     }
     return keys;
-  }, [pets, hitByKey, filter]);
+  }, [pets, hitByKey, filter, targets]);
 
   const filtered = useMemo(() => {
-    const allowed = (row: RetainedEntry) => nearbyFilterAllows(filter, row.pet, row.demandHits.length);
+    const allowed = (row: RetainedEntry) =>
+      nearbyRangeAllows(filter, row.pet, row.demandHits.length, targets);
     return sortRows(rows.filter(allowed), radar);
-  }, [rows, radar, filter]);
+  }, [rows, radar, filter, targets]);
 
-  // 全屏列表：不筛选，只按价值从高到低
-  const fullscreenRows = useMemo(() => sortRowsByValue(rows, radar), [rows, radar]);
+  // 全屏列表：平时不筛选、只按价值排序；目标档下与主视图一致，只列蹲守目标
+  const fullscreenRows = useMemo(() => {
+    const source = filter === 'target'
+      ? rows.filter((row) => nearbyTargetAllows(targets, row.pet))
+      : rows;
+    return sortRowsByValue(source, radar);
+  }, [rows, radar, filter, targets]);
 
   const radarView = useMemo(
     () => ({ ...radar, points: radar.points.filter((point) => radarKeys.has(point.key)) }),
@@ -428,10 +504,13 @@ export function Nearby({ onNavigate }: NearbyProps) {
   /** 当前场景有没有内置地图（目前只有野外 10003）；没有就退回雷达 */
   const worldMap = useMemo(() => worldMapForScene(snapshot?.scene ?? null), [snapshot?.scene]);
   /** 地图显示按筛选后的全部有坐标精灵（不再受 115m 视野限制） */
-  const mapPets = useMemo(
-    () => pets.filter((pet) => pet.pos && radarKeys.has(pet.key)),
-    [pets, radarKeys],
-  );
+  const mapPets = useMemo(() => {
+    const list = pets.filter((pet) => pet.pos && radarKeys.has(pet.key));
+    if (list.length <= 40) return list;
+    // 实体堆积时不再全量画点：需求/稀有优先，最多 40 个（2026-11-12）
+    const score = (pet: (typeof list)[number]) => (pet.alertReason ? 2 : pet.rare ? 1 : 0);
+    return [...list].sort((a, b) => score(b) - score(a)).slice(0, 40);
+  }, [pets, radarKeys]);
   /** 没有自身坐标时用雷达的估算中心，地图至少能落到有人区域 */
   const mapSelf = captureSelf ?? estimatedSelf ?? radar?.origin ?? null;
 
@@ -678,8 +757,16 @@ export function Nearby({ onNavigate }: NearbyProps) {
                 { value: 'all', label: '全部' },
                 { value: 'rare', label: '稀有' },
                 { value: 'demand', label: '需求' },
+                { value: 'target', label: targets.length > 0 ? `目标 · ${targets.length}` : '目标' },
               ]}
-              onValueChange={(value) => setNearbyFilter(value as 'all' | 'rare' | 'demand')}
+              onValueChange={(value) => {
+                // 还没选精灵时点「目标」先开选择面板，不把范围切到空名单
+                if (value === 'target' && targets.length === 0) {
+                  setTargetsOpen(true);
+                  return;
+                }
+                setNearbyFilter(value as NearbyFilter);
+              }}
               optionTestId={(value) => `nearby-filter-${value}`}
             />
             <SegmentedControl
@@ -692,7 +779,47 @@ export function Nearby({ onNavigate }: NearbyProps) {
               onValueChange={(value) => setView(value as NearbyView)}
               optionTestId={(value) => `nearby-view-${value}`}
             />
+            {filter === 'target' ? (
+              <div className="flex flex-wrap items-center gap-1 pt-0.5" data-testid="nearby-target-row">
+                <span className="text-[11px] text-slate-400">蹲守</span>
+                {targets.map((gameId) => (
+                  <span
+                    key={gameId}
+                    className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700"
+                  >
+                    {SPECIES_NAME.get(gameId) ?? `#${gameId}`}
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setTargetsOpen(true)}
+                  data-testid="nearby-target-edit"
+                  className="min-h-[26px] rounded-lg border border-slate-200 px-2 text-[11px] text-slate-600"
+                >
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { clearNearbyTargets(); setNearbyFilter('all'); }}
+                  data-testid="nearby-target-clear"
+                  className="min-h-[26px] rounded-lg border border-slate-200 px-2 text-[11px] text-slate-600"
+                >
+                  清除
+                </button>
+              </div>
+            ) : null}
           </div>
+
+          {filter === 'target' ? (
+            <div
+              className="rounded-xl bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800 ring-1 ring-emerald-200"
+              data-testid="nearby-target-status"
+            >
+              {targetWaiting
+                ? `目标的 ${targets.length} 只都不在视野内 · 已等待 ${waitedText}`
+                : `目标 ${targets.length} 只 · 视野内 ${targetPresent} 只 · 已隐藏 ${Math.max(0, pets.length - targetPresent)} 只非目标精灵`}
+            </div>
+          ) : null}
 
           {view === 'map' ? (
             <section
@@ -740,7 +867,7 @@ export function Nearby({ onNavigate }: NearbyProps) {
                       ? '当前场景没有内置地图，先用雷达；中心为自身位置'
                       : '当前场景没有内置地图，先用雷达；中心为估算位置'}
                   </p>
-                  {radar.outsideRadius > 0 ? (
+                  {filter !== 'target' && radar.outsideRadius > 0 ? (
                     <p className="mt-0.5 text-center text-[11px] text-slate-400">
                       {`另有 ${radar.outsideRadius} 只超出 115m，未画到雷达`}
                     </p>
@@ -748,6 +875,16 @@ export function Nearby({ onNavigate }: NearbyProps) {
                 </>
               )}
             </section>
+          ) : filter === 'target' && filtered.length === 0 ? (
+            <StateNotice
+              kind="empty-query"
+              title={`目标的 ${targets.length} 只都不在视野内`}
+              description={
+                targetWaiting
+                  ? `已等待 ${waitedText} · 目标进入附近后会自动出现在这里`
+                  : '目标进入附近后会自动出现在这里；也可以回地图看看。'
+              }
+            />
           ) : rows.length === 0 ? (
             <StateNotice
               kind="empty-data"
@@ -763,7 +900,9 @@ export function Nearby({ onNavigate }: NearbyProps) {
           ) : (
             <section className="space-y-1" aria-label="附近精灵常驻列表">
               <p className="px-1 text-[11px] text-slate-400">
-                {`常驻 ${rows.length} 只 · 仅高价值（可提醒 / 炫彩异色污染 / 需求命中），离开后保留 10 分钟`}
+                {filter === 'target'
+                  ? `蹲守 ${targets.length} 只 · 离开视野后保留 10 分钟`
+                  : `常驻 ${rows.length} 只 · 仅高价值（可提醒 / 炫彩异色污染 / 需求命中），离开后保留 10 分钟`}
               </p>
               {filtered.map((row) => (
                 <NearbyRowItem
@@ -854,10 +993,14 @@ export function Nearby({ onNavigate }: NearbyProps) {
           ) : (
             <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2" data-testid="nearby-fullscreen-list">
               <p className="px-1 text-[11px] text-slate-400">
-                {`按价值排序 · 共 ${fullscreenRows.length} 只（不筛选）`}
+                {filter === 'target'
+                  ? `按价值排序 · 蹲守 ${targets.length} 只`
+                  : `按价值排序 · 共 ${fullscreenRows.length} 只（不筛选）`}
               </p>
               {fullscreenRows.length === 0 ? (
-                <p className="rounded-xl bg-slate-900 px-3 py-2 text-xs text-slate-300">还没有高价值精灵</p>
+                <p className="rounded-xl bg-slate-900 px-3 py-2 text-xs text-slate-300">
+                  {filter === 'target' ? `目标的 ${targets.length} 只都不在视野内` : '还没有高价值精灵'}
+                </p>
               ) : fullscreenRows.map((row) => (
                 <NearbyRowItem
                   key={row.key}
@@ -870,6 +1013,98 @@ export function Nearby({ onNavigate }: NearbyProps) {
           )}
         </div>
       ) : null}
+
+      <ModalSurface
+        open={targetsOpen}
+        title="目标精灵"
+        placement="sheet"
+        onClose={() => setTargetsOpen(false)}
+        testId="nearby-target-sheet"
+        closeTestId="nearby-target-sheet-close"
+        footer={(
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => clearNearbyTargets()}
+              data-testid="nearby-target-clear-all"
+              className="min-h-[40px] rounded-xl bg-slate-100 px-4 text-sm font-medium text-slate-600"
+            >
+              清除全部
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTargetsOpen(false);
+                if (targets.length > 0) setNearbyFilter('target');
+              }}
+              disabled={targets.length === 0}
+              data-testid="nearby-target-done"
+              className="min-h-[40px] flex-1 rounded-xl bg-emerald-600 text-sm font-medium text-white disabled:bg-emerald-300"
+            >
+              {targets.length > 0 ? `完成 · 蹲守 ${targets.length} 只` : '先勾选精灵'}
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-2 px-4 py-3">
+          <p className="text-xs text-slate-500">输入名字搜索，勾选想蹲的那几只（可多选）。开启后地图与列表只显示它们。</p>
+          <SearchField
+            label="搜索精灵"
+            value={targetQuery}
+            onValueChange={setTargetQuery}
+            placeholder="输入精灵名搜索"
+            testId="nearby-target-search"
+          />
+          {targets.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1" data-testid="nearby-target-selected">
+              <span className="text-[11px] text-slate-400">{`已选 ${targets.length} 只`}</span>
+              {targets.map((gameId) => (
+                <button
+                  key={gameId}
+                  type="button"
+                  onClick={() => toggleNearbyTarget(gameId)}
+                  aria-label={`移除 ${SPECIES_NAME.get(gameId) ?? gameId}`}
+                  className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700"
+                >
+                  {SPECIES_NAME.get(gameId) ?? `#${gameId}`} ×
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="divide-y divide-slate-100">
+            {targetQuery.trim() === '' ? (
+              <p className="py-6 text-center text-xs text-slate-400">输入精灵名后从结果里勾选</p>
+            ) : targetMatches.length === 0 ? (
+              <p className="py-6 text-center text-xs text-slate-400">没有匹配的精灵，换个关键词试试</p>
+            ) : targetMatches.map((entry) => {
+              const on = targets.includes(entry.gameId);
+              return (
+                <button
+                  key={entry.gameId}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleNearbyTarget(entry.gameId)}
+                  data-testid={`nearby-target-option-${entry.gameId}`}
+                  className="flex min-h-[44px] w-full items-center gap-2.5 py-2 text-left"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-[5px] border text-[11px] leading-none ${
+                      on ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 text-transparent'
+                    }`}
+                  >
+                    ✓
+                  </span>
+                  <span className="text-sm text-slate-800">{entry.name}</span>
+                  <span className="text-[11px] text-slate-400">
+                    {entry.eggGroups.length > 0 ? eggGroupNames[entry.eggGroups[0]!] ?? '' : ''}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </ModalSurface>
 
       <ModalSurface
         open={overlayPrompt}
