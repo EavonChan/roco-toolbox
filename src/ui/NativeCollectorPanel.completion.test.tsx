@@ -46,7 +46,6 @@ function setup() {
     startCapture: vi.fn(() => ''),
     openGame: vi.fn(() => ''),
     deleteCapture: vi.fn(() => ''),
-    uploadCapture: vi.fn(() => ''),
   };
   window.RocoCapture = bridge;
   render(<NativeCollectorPanel />);
@@ -54,7 +53,7 @@ function setup() {
 }
 
 describe('采集完成自动停止与自动导入', () => {
-  test('导入结束后才弹「导入完成」；按钮只给取消 / 上传', async () => {
+  test('导入结束后才弹「导入完成」；只保留取消', async () => {
     const bridge = setup();
     const ready = await screen.findByRole('button', { name: '模拟进度走满' });
     fireEvent.click(ready);
@@ -67,9 +66,6 @@ describe('采集完成自动停止与自动导入', () => {
     expect(dialog).toHaveTextContent('游戏数据已保存到本机');
     expect(within(dialog).getByRole('button', { name: '取消' })).toBeTruthy();
     expect(within(dialog).queryByRole('button', { name: '解析并导入' })).toBeNull();
-
-    fireEvent.click(within(dialog).getByRole('button', { name: '上传蛋神助手' }));
-    await waitFor(() => expect(bridge.uploadCapture).toHaveBeenCalledWith(file.id));
   });
 
   test('同一个采集会话只自动停止、自动导入一次', async () => {
@@ -134,7 +130,6 @@ describe('采集完成自动停止与自动导入', () => {
       startCapture: vi.fn(() => ''),
       openGame: vi.fn(() => ''),
       deleteCapture: vi.fn(() => ''),
-      uploadCapture: vi.fn(() => ''),
     };
     window.RocoCapture = bridge;
     const view = render(<NativeCollectorPanel />);

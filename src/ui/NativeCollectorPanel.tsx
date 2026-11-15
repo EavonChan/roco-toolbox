@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CAPTURE_UPLOAD_MAX_BYTES, collectorAction, isDesktopShell, readCaptureDevices, readCollectorState, selectCaptureDevice, type CaptureDeviceList, type CaptureUpload, type CollectorAction, type CollectorState } from '../collector/nativeCollector';
+import { collectorAction, isDesktopShell, readCaptureDevices, readCollectorState, selectCaptureDevice, type CaptureDeviceList, type CollectorAction, type CollectorState } from '../collector/nativeCollector';
 import { clearAutoImportCompletion, requestAutoImport, useAutoImport, type AutoImportStage } from '../collector/autoImportFlow';
 import { markCaptureOrigin, observeCollectorState, useCaptureOrigin } from '../collector/captureOriginStore';
 import { Button } from './primitives/Button';
@@ -27,20 +27,6 @@ const CLOUD_LABEL: Record<ImportOutcome['cloud'], string> = {
   failed: '私有云同步失败（本机数据已保存）',
   conflict: '私有云有另一份更新，到「我的 · 私有同步」处理',
 };
-const uploadStatus = (upload: CaptureUpload) => {
-  const uid = upload.gameId ? ` · 游戏 UID ${upload.gameId}` : '';
-  const detail = upload.message && upload.message !== '正在上传原始抓包' ? `：${upload.message}` : '';
-  switch (upload.state) {
-    case 'uploading': return `正在上传 ${upload.progress}%`;
-    case 'processing': return `蛋神助手云端处理中${detail}`;
-    case 'pending': return `等待云端确认，可稍后继续查询${detail}`;
-    case 'persisted': return upload.deduplicated ? `已上传蛋神助手（云端已有相同数据）${uid}` : `已上传蛋神助手${uid}`;
-    case 'failed': return `上传失败：${upload.message}`;
-  }
-};
-const uploadTone = (upload: CaptureUpload) => upload.state === 'persisted' ? 'text-emerald-700'
-  : upload.state === 'failed' ? 'text-rose-600' : 'text-slate-500';
-
 export function NativeCollectorPanel() {
   const [state, setState] = useState<CollectorState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -191,8 +177,6 @@ export function NativeCollectorPanel() {
     );
   }
   const busy = state != null && ['starting', 'capturing', 'stopping'].includes(state.phase);
-  const uploadSupported = typeof window.RocoCapture?.uploadCapture === 'function';
-  const completedFile = completed ? state?.files.find((file) => file.id === completed.session) : undefined;
   // 采集中创建的当前文件还带着 .incomplete 标记，不能当成「残缺文件」提示。
   // 旧版壳仍会把它放进 files，这里在忙碌时先不展示，停止保存后再自然出现。
   const activeFileId = busy ? state?.fileId : undefined;
@@ -209,7 +193,7 @@ export function NativeCollectorPanel() {
       <p className="text-xs text-slate-500">
         {desktop
           ? '在你自己的电脑上用 Npcap 抓取游戏流量，只在本地保存与解析，不上传任何数据。'
-          : '仅在手机本地保存与解析；点「上传蛋神助手」才会把原包发送到蛋神助手云端。'}
+          : '仅在手机本地保存与解析，不上传任何数据。'}
       </p>
       {error ? <StateNotice kind="error" title={error} action={<Button variant="secondary" onClick={refresh}>重试读取状态</Button>} /> : null}
       {actionError ? <StateNotice kind="error" title={actionError} /> : null}
@@ -295,7 +279,6 @@ export function NativeCollectorPanel() {
         ) : null}
         {busy ? <p className="text-xs text-slate-500">已记录 {state.packets} 包 · {sizeLabel(state.bytes)}。数量不代表数据已收齐。</p> : null}
         <p className="text-xs text-slate-500">最多保留 10 个原包，每次上限 128 MiB；导入后仍保留，不会自动清理。</p>
-        {!uploadSupported && !desktop ? <p className="text-xs text-slate-500">更新安卓安装包后可直接上传蛋神助手。</p> : null}
         {visibleFiles.length === 0 ? <p className="text-sm text-slate-500">还没有本机采集文件</p> : <>
           <div className="flex flex-wrap items-center justify-between gap-2" data-testid="capture-file-bulk">
             <label className="flex min-h-[32px] items-center gap-1.5 text-xs text-slate-600">
@@ -311,7 +294,7 @@ export function NativeCollectorPanel() {
             <Button
               size="sm"
               variant="danger"
-              disabled={busy || importing || batchDeleting || !!state.uploadBusy || selectedFiles.size === 0}
+              disabled={busy || importing || batchDeleting || selectedFiles.size === 0}
               busy={batchDeleting}
               onClick={() => setConfirmBatchDelete(true)}
               data-testid="capture-file-delete-selected"
@@ -337,22 +320,10 @@ export function NativeCollectorPanel() {
               </div>
             </div>
             {!file.valid ? <p className="text-xs text-amber-800">未完整保存或没有可用数据，请重新采集；仍可导出原包。</p> : null}
-            {file.upload ? <p className={`text-xs ${uploadTone(file.upload)}`}>{uploadStatus(file.upload)}</p> : null}
-            {uploadSupported && file.size > CAPTURE_UPLOAD_MAX_BYTES
-              ? <p className="text-xs text-amber-800">超过蛋神助手云端 5 MiB 上限，请重新采集较短的一次。</p> : null}
             <div className="flex flex-wrap gap-1.5">
               <Button size="sm" disabled={busy || importing || !!error || !file.valid} onClick={() => action('importCapture', file.id)}>解析并导入</Button>
-              {uploadSupported ? <Button size="sm" variant="secondary"
-                busy={file.upload?.state === 'uploading'}
-                disabled={busy || importing || !!error || !!state.uploadBusy || !file.valid || file.size > CAPTURE_UPLOAD_MAX_BYTES
-                  || file.upload?.state === 'persisted'}
-                onClick={() => action('uploadCapture', file.id)}>
-                {file.upload?.state === 'persisted' ? '已上传'
-                  : file.upload?.state === 'pending' || file.upload?.state === 'processing' ? '继续查询'
-                    : file.upload?.state === 'failed' ? '重新上传' : '上传蛋神助手'}
-              </Button> : null}
-              <Button size="sm" variant="secondary" disabled={busy || importing || !!error || !!state.uploadBusy} onClick={() => action('shareCapture', file.id)}>导出原包</Button>
-              <Button size="sm" variant="danger" disabled={busy || importing || !!error || !!state.uploadBusy} onClick={() => setDeleting(file.id)}>删除</Button>
+              <Button size="sm" variant="secondary" disabled={busy || importing || !!error} onClick={() => action('shareCapture', file.id)}>导出原包</Button>
+              <Button size="sm" variant="danger" disabled={busy || importing || !!error} onClick={() => setDeleting(file.id)}>删除</Button>
             </div>
           </li>)}
           </ul>
@@ -366,22 +337,6 @@ export function NativeCollectorPanel() {
       <ModalSurface open={completed != null} title={popupTitle} onClose={() => clearAutoImportCompletion()} testId="capture-complete" footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => clearAutoImportCompletion()}>取消</Button>
-          <Button
-            disabled={
-              !uploadSupported ||
-              !completedFile?.valid ||
-              completedFile.size > CAPTURE_UPLOAD_MAX_BYTES ||
-              !!state?.uploadBusy ||
-              !!error
-            }
-            onClick={() => {
-              const id = completed?.session;
-              clearAutoImportCompletion();
-              if (id) void action('uploadCapture', id);
-            }}
-          >
-            上传蛋神助手
-          </Button>
         </div>
       }>
         <div className="space-y-1 p-4" data-testid="capture-complete-status">
@@ -407,7 +362,7 @@ export function NativeCollectorPanel() {
           ) : null}
           <p className="text-xs text-slate-400">
             {importFailed
-              ? '原包仍保留在文件列表里，可手动重试或直接上传蛋神助手。'
+              ? '原包仍保留在文件列表里，可手动重试。'
               : '原包仍会保留；刷新页面或切回本页不会重复导入。'}
           </p>
         </div>

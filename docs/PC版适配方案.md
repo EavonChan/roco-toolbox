@@ -83,7 +83,6 @@ PC 端实时采集走 **Npcap 抓本机网卡** 路线：
 | `shareCapture(id)` | 系统分享面板 | 另存为对话框 |
 | `deleteCapture(id)` | 删除本机原包 | 同 |
 | `notifyRareAlert()` | 系统通知 | Electron 系统通知 |
-| `uploadCapture()` | 蛋神助手直传 | **不提供**（按钮自动隐藏） |
 | `updateBattleOverlay()` | 系统悬浮窗 | 返回 `unsupported`，回落到应用内悬浮球 |
 | `listDevices / selectDevice` | 无 | 桌面专属：网卡列表与选择；默认 `auto`（除回环外全部），回环会被拒绝 |
 
@@ -104,7 +103,7 @@ PC 端实时采集走 **Npcap 抓本机网卡** 路线：
 - 自动多网卡采集（排除回环）+ 手动指定网卡；
 - 固定本地端口 5178：教程已读、导入数据、界面偏好等按源保存的内容不再每次丢失；
 - preload 暴露 `window.RocoCapture` / `window.rocoDesktop`；
-- 采集面板 PC 文案 + 网卡选择 + Npcap 缺失引导；隐藏安卓专属入口（打开游戏、蛋神助手直传）；
+- 采集面板 PC 文案 + 网卡选择 + Npcap 缺失引导；隐藏安卓专属入口（打开游戏）；
 - 删除网页端「从蛋神助手电脑版导入」（PC 已有原生采集，不再需要一层中转）。
 
 ### 5.1 地图与悬浮小窗（2026-11-08）

@@ -18,7 +18,7 @@ describe('petIcons', () => {
     expect(bodyMedalIcon(undefined)).toBeNull();
   });
 
-  test('体型目标的满分档换蛋神 MAX / MIN 图（2026-11-01）', () => {
+  test('体型目标的满分档换 MAX / MIN 图（2026-11-01）', () => {
     expect(bodyMedalIconByLabel('满体重')).toBe('/ui/medals/1001-max.png');
     expect(bodyMedalIconByLabel('零体重')).toBe('/ui/medals/1002-min.png');
     expect(bodyMedalIconByLabel('大块头')).toBe('/ui/medals/1001.png');
@@ -44,7 +44,7 @@ describe('petIcons', () => {
     expect(voiceMedalIconByLabel('不挑')).toBeNull();
   });
 
-  test('精灵本体的奖牌：满体重 / 零体重 / 满声音换蛋神 MAX / MIN 图（2026-11-01）', () => {
+  test('精灵本体的奖牌：满体重 / 零体重 / 满声音换 MAX / MIN 图（2026-11-01）', () => {
     expect(petBodyMedalIcon('大块头', 100)).toBe('/ui/medals/1001-max.png');
     expect(petBodyMedalIcon('大块头', 99.5)).toBe('/ui/medals/1001.png');
     expect(petBodyMedalIcon('小不点', 0)).toBe('/ui/medals/1002-min.png');

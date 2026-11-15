@@ -159,7 +159,6 @@ class CaptureManager {
       packets: this.packets,
       bytes: this.bytes,
       files,
-      uploadBusy: false,
     };
     // 让「采集进度 / 自动导入」能像安卓壳一样拿到增量读取所需的信息
     const session = this.activeId || (this.phase === 'idle' ? last?.id : undefined);

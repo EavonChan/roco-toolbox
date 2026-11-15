@@ -22,7 +22,7 @@ export const CATALOG_VERSION = data.dataVersion;
 
 /**
  * 蛋组显示名的玩家习惯叫法覆盖。
- * wiki 与 data/pvp-natures.json 里叫「飞龙组」，但玩家（以及蛋神助手）都叫「龙组」，
+ * wiki 与 data/pvp-natures.json 里叫「飞龙组」，但玩家习惯都叫「龙组」，
  * 所以只改显示名，数据键（group id）不动。
  */
 const EGG_GROUP_DISPLAY_OVERRIDES: Record<string, string> = { 飞龙组: '龙组' };

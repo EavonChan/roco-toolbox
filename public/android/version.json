@@ -1,7 +1,7 @@
 {
-  "versionName": "1.5.5",
-  "versionCode": 39,
+  "versionName": "1.5.6",
+  "versionCode": 40,
   "apkUrl": "https://roco-toolbox-downloads.pages.dev/android/roco-toolbox-latest.apk",
-  "notes": "附近页新增目标精灵筛选；悬浮窗两行卡片与 214 面板；野外实体 9 秒释放、80 上限与抓宠兜底；渲染进程自愈；战斗采集卡放大。",
+  "notes": "移除蛋神助手上传入口与相关凭据，采集数据只在本地保存与解析。",
   "minSupportedVersionCode": 0
 }

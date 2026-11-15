@@ -19,7 +19,7 @@ export function voiceMedalIcon(voiceDb: number | null | undefined): string | nul
 }
 
 /**
- * 精灵本体的体型 / 声音奖牌（2026-11-01 用户口径：满体重 / 满声音要用蛋神的 MAX / MIN 版）。
+ * 精灵本体的体型 / 声音奖牌（2026-11-01 用户口径：满体重 / 满声音要用带 MAX / MIN 缎带的版本）。
  *
  * - 体型：`大块头` 且体重正好 100% → `1001-max`；`小不点` 且体重正好 0% → `1002-min`；
  *   其余仍是普通奖牌（98% / 2% 的档位）。
@@ -51,7 +51,7 @@ export function voiceMedalName(voiceDb: number | null | undefined): string | nul
 }
 
 /**
- * 需求 / 目标里的声音取图（2026-11-01 用户口径：满分档换蛋神 extreme-medal 图）：
+ * 需求 / 目标里的声音取图（2026-11-01 用户口径：满分档换带 MAX 缎带的图）：
  * - `+100` / `-100` = 满声音 / 满粗嗓门 → 带 MAX 缎带的图；
  * - `婉转声` / `粗嗓门` = 双牌档（≥96 / ≤-96，不保证满分）→ 普通奖牌图。
  * 空字符串、「不挑」等返回 null。

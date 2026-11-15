@@ -202,7 +202,7 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
           {/* 新用户第一次进来给一次极简说明（3 条），点「知道了」后不再出现 */}
           <CoverageIntroCard />
 
-          {/* 种公阵列（2026-10-28，参考蛋神）：蛋组 × 目标性格，档位做 tab；
+          {/* 种公阵列（2026-10-28）：蛋组 × 目标性格，档位做 tab；
               筛选收进卡片右上角（2026-10-29 用户要求），下方保留按蛋组缺口明细 */}
           <StudMatrix
             slots={slots}

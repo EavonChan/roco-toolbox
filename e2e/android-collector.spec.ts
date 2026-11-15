@@ -8,8 +8,7 @@ async function mockCollector(page: Page, progressSize?: number) {
   await page.addInitScript(({ captureUrl, progressSize }) => {
     localStorage.setItem('roco.analyticsOff', '1');
     const file = { id: 'capture-123.pcap', name: 'capture-123.pcap', size: 1234, createdAt: 1792800000000, valid: true };
-    type MockFile = typeof file & { upload?: Record<string, unknown> };
-    const state: { version: number; supported: boolean; phase: string; message: string; packets: number; bytes: number; files: MockFile[]; progressVersion?: number; fileId?: string; savedBytes?: number } = {
+    const state: { version: number; supported: boolean; phase: string; message: string; packets: number; bytes: number; files: (typeof file)[]; progressVersion?: number; fileId?: string; savedBytes?: number } = {
       version: 1, supported: true, phase: 'idle', message: '准备采集', packets: 0, bytes: 0, files: [file],
       ...(progressSize ? { progressVersion: 1, fileId: file.id, savedBytes: progressSize } : {}) };
     const actions: Record<string, (id?: string) => string> = {
@@ -21,10 +20,6 @@ async function mockCollector(page: Page, progressSize?: number) {
       importCapture: () => {
         (window as unknown as { __rocoPendingShare: unknown }).__rocoPendingShare = { kind: 'capture', name: file.name, url: captureUrl };
         window.dispatchEvent(new Event('roco-share'));
-        return '';
-      },
-      uploadCapture: () => {
-        state.files = [{ ...file, upload: { state: 'persisted', message: '角色数据已完整保存到云端', progress: 100, gameId: '293143', deduplicated: true } }];
         return '';
       },
       deleteCapture: () => { state.files = []; return ''; },
@@ -79,25 +74,6 @@ test('新版安卓入口从采集保存到真实 Worker 解析、账号持久化
   expect(errors).toEqual([]);
 });
 
-test('上传蛋神助手显示入库 UID，去重按成功展示', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  await mockCollector(page);
-  await page.goto('/');
-  const card = page.getByTestId('native-collector');
-  await card.getByRole('button', { name: '上传蛋神助手', exact: true }).click();
-  await expect(card.getByText(/已上传蛋神助手（云端已有相同数据）/)).toBeVisible();
-  await expect(card.getByText(/游戏 UID 293143/)).toBeVisible();
-  // 上传成功的文件不能再重复上传，按钮保留但禁用
-  const uploaded = card.getByRole('button', { name: '已上传', exact: true });
-  await expect(uploaded).toBeVisible();
-  await expect(uploaded).toBeDisabled();
-  for (const width of [375, 390, 1280]) {
-    await page.setViewportSize({ width, height: 844 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
-  }
-  expect(errors).toEqual([]);
-});
 
 test('实时进度通过真实 Worker 识别数据，缺少蛋仓时不因流量稳定而成功', async ({ page }) => {
   await mockCollector(page, fixture.length);
@@ -135,13 +111,12 @@ test('角色精灵和分页蛋仓收齐后，内容连续稳定后自动停止�
   const done = page.getByTestId('capture-complete');
   await expect(done).toBeVisible({ timeout: 35000 });
   await expect(done).toContainText('已自动停止并保存本次采集');
-  // 自动导入（2026-10-25）：弹窗等本机导入与云同步结束后才出现，按钮只剩「取消 / 上传蛋神助手」
+  // 自动导入（2026-10-25）：弹窗等本机导入与云同步结束后才出现，按钮只剩「取消」
   await expect(done.getByTestId('capture-complete-outcome')).toContainText('导入完成');
   await expect(done.getByTestId('capture-complete-cloud')).toContainText('私有同步未开启');
   await expect(done.getByTestId('capture-complete-group')).toContainText('小组资源');
   await expect(page.getByTestId('capture-progress')).toHaveCount(0);
   await expect(card.getByRole('button', { name: '开始采集', exact: true })).toBeVisible();
-  await expect(done.getByRole('button', { name: '上传蛋神助手', exact: true })).toBeVisible();
   await done.getByRole('button', { name: '取消', exact: true }).click();
   await expect(done).toHaveCount(0);
   expect(errors).toEqual([]);

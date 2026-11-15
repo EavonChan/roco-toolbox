@@ -325,7 +325,7 @@ export type DemandGender = (typeof DEMAND_GENDERS)[number];
 /**
  * 体型档位（2026-11-01 新增极端档）：
  * - 大块头 / 小不点：奖牌档（体重 98% / 2%）；
- * - 满体重 / 零体重：极端档，体重正好 100% / 0%，卡片上换蛋神的 MAX / MIN 奖牌图。
+ * - 满体重 / 零体重：极端档，体重正好 100% / 0%，卡片上换带 MAX / MIN 缎带的奖牌图。
  */
 export const DEMAND_BODIES = ['大块头', '小不点', '满体重', '零体重', ''] as const;
 export type DemandBody = (typeof DEMAND_BODIES)[number];
