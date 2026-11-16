@@ -5,9 +5,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'vite';
 
 const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
-let settings, bridge, patrol;
+let settings, bridge, patrol, matching;
 try {
   ({ handleEggBotSettings: settings, handleEggBotBridge: bridge } = await vite.ssrLoadModule('/functions/_lib/eggBotBridge.ts'));
+  ({ handleEggMatching: matching } = await vite.ssrLoadModule('/functions/_lib/eggMatching.ts'));
   ({ runEggPatrol: patrol } = await vite.ssrLoadModule('/functions/_lib/eggPatrol.ts'));
 } finally { await vite.close(); }
 
@@ -200,5 +201,65 @@ test('pending upstream queries stop after cancellation and task facts remain pri
   state.trades[0].status='cancelled';db.sql.prepare('UPDATE egg_matching_groups SET state_json=?').run(JSON.stringify(state));
   let calls=0;await patrol(db.env,time+60000,async()=>{calls++;return Response.json(scene([]));});
   assert.equal(calls,0);
+  db.sql.close();
+});
+
+
+async function reminder(db, account='a', now=time) {
+  const version=db.sql.prepare('SELECT version FROM egg_matching_groups WHERE group_id=?').get('g').version;
+  const response=await matching(new Request('https://local/api/collection-groups/g/egg-matching',{method:'POST',body:JSON.stringify({baseVersion:version,action:{type:'remind',id:'trade'}})}),db.env,null,account,'g',now);
+  return {status:response.status,...await response.json()};
+}
+function remindable(db) {
+  tasks(db);
+  const state=JSON.parse(db.sql.prepare('SELECT state_json FROM egg_matching_groups').get().state_json);
+  state.demands=[{id:'d',groupId:'g',demanderAccountId:'a',eggGameId:3062,natures:[],body:'',voice:'',quantity:1,fulfilled:0,status:'open'}];
+  db.sql.prepare('UPDATE egg_matching_groups SET state_json=?').run(JSON.stringify(state));
+  for(const [owner,uid] of [['a','345678'],['b','293143']]) db.sql.prepare('INSERT INTO mother_group_accounts(group_id,game_account_key,member_account_id,account_name,source_exported_at,egg_game_ids) VALUES(?,?,?,?,?,?)').run('g','uid:'+uid,owner,owner,'2026-11-17','[]');
+}
+test('a manual reminder queues once at night without patrol quota and permits another click only after 30 minutes',async()=>{
+  const db=database();await connect(db);remindable(db);
+  const night=Date.parse('2026-11-17T01:00:00+08:00');
+  const first=await reminder(db,'a',night);assert.equal(first.status,200);
+  assert.equal(db.sql.prepare('SELECT count(*) n FROM egg_patrol_notifications').get().n,1);
+  assert.equal(db.sql.prepare('SELECT count(*) n FROM egg_patrol_quota').get().n,0);
+  const claimed=await bot(db,'claim',{botId:'654321',qqGroupId:'123456'},night);
+  assert.equal(claimed.events.length,1);assert.equal(claimed.events[0].kind,'reminder');
+  assert.equal(claimed.events[0].uid,'293143');assert.equal(claimed.events[0].requesterName,'a');
+  const event=claimed.events[0];
+  assert.equal((await bot(db,'validate',{id:event.id,leaseToken:event.leaseToken,botId:'654321',qqGroupId:'123456'},night+1)).valid,true);
+  assert.equal((await reminder(db,'a',night+1799999)).status,400);
+  await bot(db,'ack',{id:event.id,leaseToken:event.leaseToken,outcome:'sent'},night+2);
+  assert.equal((await bot(db,'claim',{botId:'654321',qqGroupId:'123456'},night+1800000)).events.length,0);
+  assert.equal((await reminder(db,'b',night+1800000)).status,200);
+  assert.equal(db.sql.prepare('SELECT count(*) n FROM egg_patrol_notifications').get().n,2);
+  const other=await bot(db,'claim',{botId:'654321',qqGroupId:'123456'},night+1800000);
+  assert.equal(other.events[0].uid,'345678');
+  db.sql.close();
+});
+test('manual reminder failures and expired send leases never auto-send again; a cancelled task revokes delivery',async()=>{
+  for(const outcome of ['failed','unbound','expired','cancelled']) {
+    const db=database();await connect(db);remindable(db);
+    await reminder(db);
+    const claim=await bot(db,'claim',{botId:'654321',qqGroupId:'123456'});
+    assert.equal(claim.events.length,1);const event=claim.events[0];
+    if(outcome==='cancelled') {
+      const state=JSON.parse(db.sql.prepare('SELECT state_json FROM egg_matching_groups').get().state_json);
+      state.trades[0].status='cancelled';db.sql.prepare('UPDATE egg_matching_groups SET state_json=?').run(JSON.stringify(state));
+      assert.equal((await bot(db,'validate',{id:event.id,leaseToken:event.leaseToken,botId:'654321',qqGroupId:'123456'},time+1)).valid,false);
+    } else if(outcome!=='expired') await bot(db,'ack',{id:event.id,leaseToken:event.leaseToken,outcome});
+    assert.equal((await bot(db,'claim',{botId:'654321',qqGroupId:'123456'},time+3600000)).events.length,0);
+    db.sql.close();
+  }
+});
+test('disconnected group and missing recipient UID do not consume manual reminder cooldown',async()=>{
+  const db=database();remindable(db);
+  const first=await reminder(db);assert.equal(first.status,400);assert.match(first.error,/群|机器人/);
+  await connect(db);
+  db.sql.exec("DELETE FROM mother_group_accounts;");
+  const state=JSON.parse(db.sql.prepare('SELECT state_json FROM egg_matching_groups').get().state_json);delete state.trades[0].line;state.trades[0].legacy=true;
+  db.sql.prepare('UPDATE egg_matching_groups SET state_json=?').run(JSON.stringify(state));
+  const missing=await reminder(db);assert.equal(missing.status,400);assert.match(missing.error,/UID|账号/);
+  assert.equal(JSON.parse(db.sql.prepare('SELECT state_json FROM egg_matching_groups').get().state_json).trades[0].reminderAt,undefined);
   db.sql.close();
 });
