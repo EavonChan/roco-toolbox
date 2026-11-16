@@ -47,12 +47,22 @@ const MEDAL_DB = 96;
  */
 export type PetGrade = '大婉' | '小婉' | '大粗' | '小粗';
 
-/** 每个档位对应的体型（判定用）。 */
-export const GRADE_BODY: Record<PetGrade, string> = {
+export type TargetBody = '大块头' | '小不点';
+export type TargetVoice = '婉转声' | '粗嗓门';
+
+/** 每个档位对应的体型与声音方向（判定 / 目标编辑用）。 */
+export const GRADE_BODY: Record<PetGrade, TargetBody> = {
   大婉: BIG_BODY,
   小婉: SMALL_BODY,
   大粗: BIG_BODY,
   小粗: SMALL_BODY,
+};
+
+export const GRADE_VOICE: Record<PetGrade, TargetVoice> = {
+  大婉: '婉转声',
+  小婉: '婉转声',
+  大粗: '粗嗓门',
+  小粗: '粗嗓门',
 };
 
 /** 档位在界面上的写法：追满分带「满分」前缀，追双牌直接用简名。 */
@@ -89,9 +99,7 @@ export function betterMotherClass(
 export function classifyGrade(pet: OwnedPet, mode: TargetMode): PetGrade | null {
   const threshold = mode === 'perfect' ? PERFECT_DB : MEDAL_DB;
   if (Math.abs(pet.voiceDb) < threshold) return null;
-  // 体型：奖牌（体重 98% / 2%）优先；没有奖牌时要求身高 100% / 0%
-  // **且**体重 ≥95% / ≤5% 同时满足（2026-10-28 用户确认）。
-  // 奖牌本身仍按体重 98% / 2% 判定并展示。
+  // 体型：奖牌（体重 98% / 2%）优先；无奖牌时身高 100% / 0% 等效大块头 / 小不点。
   const body = bodyGradeOf(pet);
   const big = body === BIG_BODY;
   const small = body === SMALL_BODY;

@@ -24,6 +24,17 @@ const species: SpeciesEntry = {
 };
 
 describe('PetCard 头像', () => {
+  test('使用统一卡片尺寸、头像尺寸和顶部元数据布局，不显示已收集徽标', () => {
+    render(<PetCard pet={pet} species={species} eggGroupNames={{ 6: '动物组', 9: '植物组' }} />);
+    const card = screen.getByRole('article');
+    expect(card.className).toContain('h-[98px]');
+    expect(screen.getByTestId('pet-avatar').className).toContain('h-11');
+    expect(screen.getByTestId('pet-avatar').parentElement).toHaveClass('items-center', 'justify-center');
+    expect(screen.getByTestId('pet-card-egg-groups')).toHaveClass('flex-col');
+    expect(screen.getByTestId('pet-card-natures')).toHaveClass('flex-col', 'items-end');
+    expect(card).not.toHaveTextContent('已收集');
+  });
+
   test('有图鉴条目时按 gameId 显示官方头像', () => {
     render(<PetCard pet={pet} species={species} eggGroupNames={{}} />);
     const img = screen.getByTestId('pet-avatar') as HTMLImageElement;

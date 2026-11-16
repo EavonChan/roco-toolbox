@@ -86,6 +86,131 @@ describe('家园配窝图（摆位图画法）', () => {
     expect(xOf('可立鸡')).toBeLessThan(xOf('锤头鹅'));
   });
 
+  test('一公一母的配对簇优先显示，其他簇保持原顺序', () => {
+    const residents = [
+      resident({ actorId: 'f2', name: '复杂母', gender: '母' }),
+      resident({ actorId: 'm2a', name: '复杂公甲', gender: '公' }),
+      resident({ actorId: 'm2b', name: '复杂公乙', gender: '公' }),
+      resident({ actorId: 'f1', name: '单配母', gender: '母' }),
+      resident({ actorId: 'm1', name: '单配公', gender: '公' }),
+    ];
+    const couples: HomePair[] = [
+      { femaleActorId: 'f2', maleActorIds: ['m2a', 'm2b'] },
+      { femaleActorId: 'f1', maleActorIds: ['m1'] },
+    ];
+    render(<HomePairDiagram couples={couples} residents={residents} pets={new Map()} />);
+
+    const clusters = screen.getAllByTestId('home-pair-cluster');
+    const clusterTitles = clusters.map((cluster) =>
+      Array.from(cluster.querySelectorAll('[data-testid="home-pair-node"]')).map((node) =>
+        node.getAttribute('title'),
+      ),
+    );
+    expect(clusterTitles).toEqual([
+      ['单配母', '单配公'],
+      ['复杂母', '复杂公甲', '复杂公乙'],
+    ]);
+  });
+
+  test('二公一母按公-母-公横向排列', () => {
+    const residents = [
+      resident({ actorId: 'f1', name: '母本', gender: '母' }),
+      resident({ actorId: 'm1', name: '公本甲', gender: '公' }),
+      resident({ actorId: 'm2', name: '公本乙', gender: '公' }),
+    ];
+    render(
+      <HomePairDiagram
+        couples={[{ femaleActorId: 'f1', maleActorIds: ['m1', 'm2'] }]}
+        residents={residents}
+        pets={new Map()}
+      />,
+    );
+
+    expect(screen.getByTitle('公本甲').style.left).toBe('0px');
+    expect(screen.getByTitle('母本').style.left).toBe('68px');
+    expect(screen.getByTitle('公本乙').style.left).toBe('136px');
+  });
+
+  test('一公二母按母-公-母横向排列', () => {
+    const residents = [
+      resident({ actorId: 'f1', name: '母本甲', gender: '母' }),
+      resident({ actorId: 'm1', name: '公本', gender: '公' }),
+      resident({ actorId: 'f2', name: '母本乙', gender: '母' }),
+    ];
+    const couples: HomePair[] = [
+      { femaleActorId: 'f1', maleActorIds: ['m1'] },
+      { femaleActorId: 'f2', maleActorIds: ['m1'] },
+    ];
+    render(<HomePairDiagram couples={couples} residents={residents} pets={new Map()} />);
+
+    expect(screen.getByTitle('母本甲').style.left).toBe('0px');
+    expect(screen.getByTitle('公本').style.left).toBe('68px');
+    expect(screen.getByTitle('母本乙').style.left).toBe('136px');
+    expect(screen.getByTitle('母本甲').style.top).toBe('0px');
+    expect(screen.getByTitle('公本').style.top).toBe('0px');
+    expect(screen.getByTitle('母本乙').style.top).toBe('0px');
+  });
+
+  test('二公三母：两公分居两侧，三母居中纵向排列', () => {
+    const femaleActorIds = ['f1', 'f2', 'f3'];
+    const maleActorIds = ['m1', 'm2'];
+    const residents = [
+      ...femaleActorIds.map((actorId, index) =>
+        resident({ actorId, name: `母本${index + 1}`, gender: '母' }),
+      ),
+      ...maleActorIds.map((actorId, index) =>
+        resident({ actorId, name: `公本${index + 1}`, gender: '公' }),
+      ),
+    ];
+    const couples = femaleActorIds.map((femaleActorId) => ({ femaleActorId, maleActorIds }));
+    render(<HomePairDiagram couples={couples} residents={residents} pets={new Map()} />);
+
+    expect(screen.getByTitle('公本1').style.left).toBe('0px');
+    expect(screen.getByTitle('公本1').style.top).toBe('68px');
+    expect(screen.getByTitle('公本2').style.left).toBe('136px');
+    expect(screen.getByTitle('母本1').style.left).toBe('68px');
+    expect(screen.getByTitle('母本1').style.top).toBe('0px');
+    expect(screen.getByTitle('母本2').style.top).toBe('68px');
+    expect(screen.getByTitle('母本3').style.top).toBe('136px');
+  });
+
+  test('三公八母：三公倒三角，八母围在周围', () => {
+    const femaleActorIds = Array.from({ length: 8 }, (_, index) => `f${index + 1}`);
+    const maleActorIds = ['m1', 'm2', 'm3'];
+    const residents = [
+      ...femaleActorIds.map((actorId, index) =>
+        resident({ actorId, name: `母本${index + 1}`, gender: '母' }),
+      ),
+      ...maleActorIds.map((actorId, index) =>
+        resident({ actorId, name: `公本${index + 1}`, gender: '公' }),
+      ),
+    ];
+    const couples = femaleActorIds.map((femaleActorId) => ({ femaleActorId, maleActorIds }));
+    render(<HomePairDiagram couples={couples} residents={residents} pets={new Map()} />);
+
+    expect(screen.getByTitle('公本1').style.left).toBe('68px');
+    expect(screen.getByTitle('公本1').style.top).toBe('68px');
+    expect(screen.getByTitle('公本2').style.left).toBe('204px');
+    expect(screen.getByTitle('公本2').style.top).toBe('68px');
+    expect(screen.getByTitle('公本3').style.left).toBe('136px');
+    expect(screen.getByTitle('公本3').style.top).toBe('136px');
+
+    const femalePositions = femaleActorIds.map((_, index) => {
+      const node = screen.getByTitle(`母本${index + 1}`);
+      return [node.style.left, node.style.top];
+    });
+    expect(femalePositions).toEqual([
+      ['0px', '0px'],
+      ['136px', '0px'],
+      ['272px', '0px'],
+      ['0px', '68px'],
+      ['136px', '68px'],
+      ['272px', '68px'],
+      ['0px', '136px'],
+      ['272px', '136px'],
+    ]);
+  });
+
   test('配对里的公本不在快照里时，用虚线占位块写「公本未知」', () => {
     const residents = [resident({ actorId: 'f1', name: '火花', gender: '母' })];
 

@@ -1,17 +1,15 @@
-import { buildClusterOffsets } from '../domain/nestGeometry';
+import { buildClusterOffsets, NEST_SIZE } from '../domain/nestGeometry';
 import type { HomePair, HomeResident, OwnedPet } from '../domain/types';
 import { NestLayoutSvg, type NestSvgLine, type NestSvgSlot } from './NestLayoutSvg';
 import { pairingColor, pairingDashed } from './pairingColors';
 
 /**
- * 家园现状的「配窝卡片」（2026-11-01 用户口径：**严格按看板「配窝建议」那张摆位图**）。
+ * 家园现状的「配窝卡片」（2026-11-01 用户口径：用看板「配窝建议」里那张摆位图的画法）。
  *
  * 和配窝建议的区别：那边画的是**建议**排位（`buildNestPlans` 算出来的坐标），
  * 这边画的是**游戏里实际成立的配对**（`layEggCouples`）。抓包里的窝坐标大多为空，
- * 所以两边都不按真实坐标：同一簇内的窝用 `buildClusterOffsets` 排位。
- *
- * 排法（2026-11-01 用户口径）：一簇一张图、一行放两张，每张铺满自己的半格；不套灰底卡片
- * （一对只有两个方块，卡片底色只会显得空）。四周留白也比配窝建议小，方块才够大。
+ * 所以两边都不按真实坐标、只按配对关系紧凑排：同一簇内的窝用 `buildClusterOffsets`
+ * 排成「能连上的三角形/并排」，簇与簇之间留空隙、各用一种线色。
  *
  * 方块里只写名字（最多 4 字，完整名放 title）+ 性别；学院小窝那只是绿底白字。
  */
@@ -39,6 +37,89 @@ function positionsOf(cluster: HomePairCluster): Array<{ x: number; y: number }> 
   order.forEach((nodeIndex, slot) => {
     positions[nodeIndex] = offsets[slot];
   });
+  return positions;
+}
+
+interface PairPosition {
+  x: number;
+  y: number;
+}
+
+/** 按公母分布排卡；坐标仍用家园地板单元，保持卡片间距与摆位图一致。 */
+function layoutPairNodes(nodes: readonly HomePairNode[]): PairPosition[] {
+  const males: number[] = [];
+  const females: number[] = [];
+  const unknown: number[] = [];
+  nodes.forEach((node, index) => {
+    if (node.gender === '公') males.push(index);
+    else if (node.gender === '母') females.push(index);
+    else unknown.push(index);
+  });
+
+  const positions = new Array<PairPosition>(nodes.length);
+  const place = (index: number, column: number, row: number) => {
+    positions[index] = { x: column * NEST_SIZE, y: row * NEST_SIZE };
+  };
+  const placeColumn = (indices: number[], column: number, totalRows = indices.length) => {
+    indices.forEach((index, row) => place(index, column, row + (totalRows - indices.length) / 2));
+  };
+
+  if (males.length === 3 && females.length === 8 && unknown.length === 0) {
+    const femaleCells = [
+      [0, 0],
+      [2, 0],
+      [4, 0],
+      [0, 1],
+      [2, 1],
+      [4, 1],
+      [0, 2],
+      [4, 2],
+    ];
+    females.forEach((index, order) => place(index, femaleCells[order][0], femaleCells[order][1]));
+    place(males[0], 1, 1);
+    place(males[1], 3, 1);
+    place(males[2], 2, 2);
+    return positions;
+  }
+
+  if (males.length === 2 && females.length === 1 && unknown.length === 0) {
+    place(males[0], 0, 0);
+    place(females[0], 1, 0);
+    place(males[1], 2, 0);
+    return positions;
+  }
+
+  if (males.length === 1 && females.length === 2 && unknown.length === 0) {
+    place(females[0], 0, 0);
+    place(males[0], 1, 0);
+    place(females[1], 2, 0);
+    return positions;
+  }
+
+  if (males.length === 2 && females.length > 1 && unknown.length === 0) {
+    placeColumn(females, 1);
+    const middleRow = (females.length - 1) / 2;
+    place(males[0], 0, middleRow);
+    place(males[1], 2, middleRow);
+    return positions;
+  }
+
+  if (males.length > 0 && females.length > 0) {
+    const leftColumn = [...males, ...unknown];
+    const rowCount = Math.max(leftColumn.length, females.length);
+    placeColumn(leftColumn, 0, rowCount);
+    placeColumn(females, 1, rowCount);
+    return positions;
+  }
+
+  if (unknown.length > 0 && females.length > 0) {
+    const rowCount = Math.max(unknown.length, females.length);
+    placeColumn(unknown, 0, rowCount);
+    placeColumn(females, 1, rowCount);
+    return positions;
+  }
+
+  placeColumn(nodes.map((_, index) => index), 0);
   return positions;
 }
 
@@ -155,27 +236,36 @@ export interface HomePairDiagramProps {
 export function HomePairDiagram({ couples, residents, pets }: HomePairDiagramProps) {
   const clusters = buildHomePairClusters(couples, residents, pets);
   if (clusters.length === 0) return null;
+  const orderedClusters = clusters
+    .map((cluster, index) => ({
+      cluster,
+      index,
+      oneToOne:
+        cluster.nodes.filter((node) => node.gender === '公').length === 1 &&
+        cluster.nodes.filter((node) => node.gender === '母').length === 1 &&
+        cluster.nodes.every((node) => node.gender !== '未知'),
+    }))
+    .sort((left, right) => Number(right.oneToOne) - Number(left.oneToOne) || left.index - right.index)
+    .map(({ cluster }) => cluster);
 
   return (
-    <div className="flex flex-wrap justify-center gap-x-2 gap-y-1" data-testid="home-pair-diagram">
-      {clusters.map((cluster, clusterIndex) => {
-        const positions = positionsOf(cluster);
-        const slots: NestSvgSlot[] = cluster.nodes.map((node, nodeIndex) => ({
-          key: node.actorId,
-          name: node.name,
-          gender: node.gender,
-          academy: node.academy,
-          missing: node.missing,
-          position: positions[nodeIndex],
-        }));
-        const lines: NestSvgLine[] = cluster.edges.map(([from, to], edgeIndex) => ({
-          key: `${cluster.key}-${edgeIndex}`,
-          from: positions[from],
-          to: positions[to],
-          color: pairingColor(clusterIndex),
-          dashed: pairingDashed(clusterIndex),
-        }));
-        // 一行两张、每张铺满半格；不套灰底卡片（一对只有两个方块，卡片底色只会显得空）
+    <div className="flex flex-wrap items-start gap-3" data-testid="home-pair-diagram">
+      {clusters.map((cluster, index) => {
+        const color = pairingColor(index);
+        const dashed = index >= PAIRING_COLORS.length;
+        // 同一簇内紧凑排位（与配窝建议同一个几何：1 窝 = 8 单元）
+        const raw = buildClusterOffsets(cluster.nodes.length);
+        // 贪心是从左侧找位，算出来母本可能落在右边：整体镜像一下，统一「母本在左」更好读
+        const maxX = Math.max(...raw.map((position) => position.x));
+        const minX = Math.min(...raw.map((position) => position.x));
+        const positions =
+          raw[0].x === minX ? raw : raw.map((position) => ({ x: maxX - position.x, y: position.y }));
+        const width = Math.max(...positions.map((position) => position.x)) * UNIT + BOX;
+        const height = Math.max(...positions.map((position) => position.y)) * UNIT + BOX;
+        const centerOf = (nodeIndex: number) => ({
+          x: positions[nodeIndex].x * UNIT + BOX / 2,
+          y: positions[nodeIndex].y * UNIT + BOX / 2,
+        });
         return (
           <div
             key={cluster.key}
