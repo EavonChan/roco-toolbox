@@ -206,3 +206,16 @@ test('fulfilling a linked return demand cancels its obsolete proposals',()=>{
   state=applyEggAction(state,'g','a',{type:'receive',id:'t1'},5);
   expect(state.trades.find(t=>t.id==='t2')?.status).toBe('cancelled');
 });
+
+
+test('manual reminders allow exactly the half-hour boundary and never renew themselves', () => {
+  let state = sync(sync(initial(), 'a', 'back', 3436), 'b', 'give', 3227);
+  state = applyEggAction(state, 'g', 'a', { type: 'list', id: 'back', listed: true }, 2);
+  state = applyEggAction(state, 'g', 'b', { type: 'propose', id: 't', demandId: 'd', giveId: 'give', receiveId: 'back' }, 3);
+  state = applyEggAction(state, 'g', 'a', { type: 'remind', id: 't' }, 1000);
+  expect(() => applyEggAction(state, 'g', 'b', { type: 'remind', id: 't' }, 1800999)).toThrow(/已经催过/);
+  const next = applyEggAction(state, 'g', 'b', { type: 'remind', id: 't' }, 1801000);
+  expect(next.trades[0].reminderAt).toBe(1801000);
+  expect(next.trades[0].reminderBy).toBe('b');
+  expect(state.trades[0].reminderAt).toBe(1000);
+});

@@ -35,6 +35,7 @@ export interface EggWorkflowState {
   lines?:PublishedEggLine[];
   legacyHistory?:LegacyEggHistory[];
   patrol?:PatrolTaskStatus[];
+  reminders?:{tradeId:string;reminderAt:number;status:'pending'|'sent'|'failed'|'unbound'}[];
 }
 export const emptyEggWorkflow = (): EggWorkflowState => ({ demands: [], eggs: [], trades: [], watermarks: {}, orders: {} });
 
@@ -257,7 +258,7 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
   const demand = getDemand(trade.demandId);
   if (action.type === 'remind') {
     if (['done', 'cancelled'].includes(trade.status)) throw new Error('任务已结束');
-    if (trade.reminderAt != null && now - trade.reminderAt < 3_600_000) throw new Error('已经催过，稍后再试');
+    if (trade.reminderAt != null && now - trade.reminderAt < 1_800_000) throw new Error('已经催过，半小时后再试');
     trade.reminderAt = now; trade.reminderBy = actor;
   } else if (action.type === 'accept') {
     if (actor !== (trade.initiatorAccountId === trade.demanderAccountId ? trade.supplierAccountId : trade.demanderAccountId)) throw new Error('仅对方可以接受');

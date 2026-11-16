@@ -5,6 +5,7 @@ import { failCode, okJson } from './collectionGroupsHttp';
 import { rateLimit, type Env } from './util';
 import type { CollectionDemand, CollectionDemandFeed } from '../../src/shared/collectionGroups';
 import { readPatrolStatus } from './eggPatrolStore';
+import { prepareReminder, readReminderStatus } from './eggReminders';
 
 interface StateRow { version: number; state_json: string }
 
@@ -75,7 +76,7 @@ function visibleState(state: EggWorkflowState, accountId: string, members: Set<s
 }
 
 /** Caller authenticates once; membership is checked inside every conditional write too. */
-export async function handleEggMatching(request: Request, env: Env, origin: string | null, accountId: string, groupId: string): Promise<Response> {
+export async function handleEggMatching(request: Request, env: Env, origin: string | null, accountId: string, groupId: string, now = Date.now()): Promise<Response> {
   if (!(await isMember(env.DB, groupId, accountId))) return failCode(origin, 403, 'NOT_MEMBER', '不是该组成员');
   const method = request.method.toUpperCase();
   if (!['GET', 'POST'].includes(method)) return failCode(origin, 405, 'METHOD_NOT_ALLOWED', '不支持的请求');
@@ -84,7 +85,10 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
     const current = await readState(env.DB, groupId);
     const memberRows = await env.DB.prepare('SELECT account_id FROM mother_group_members WHERE group_id=?').bind(groupId).all<{ account_id: string }>();
     const members = new Set(memberRows.results.map(m => m.account_id));
-    if (method === 'GET') return okJson(origin, { version: current.version, state: {...visibleState(current.state, accountId, members),patrol:await readPatrolStatus(env.DB,groupId,accountId,Date.now())} });
+    if (method === 'GET') {
+      const state = visibleState(current.state, accountId, members);
+      return okJson(origin, { version: current.version, state: {...state,patrol:await readPatrolStatus(env.DB,groupId,accountId,now),reminders:await readReminderStatus(env.DB,groupId,state)} });
+    }
     const raw = await request.text();
     if (raw.length > 1_000_000) return failCode(origin, 413, 'PAYLOAD_TOO_LARGE', '数据过大');
     let body: { baseVersion?: unknown; action?: unknown };
@@ -98,14 +102,15 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
     const parties=action.type==='propose'?[accountId,touchedDemand?.demanderAccountId]:action.type==='request'?[accountId,action.supplierAccountId]:
       ['accept','place','allocate','receive','remind'].includes(action.type??'')&&touchedTrade?[touchedTrade.demanderAccountId,touchedTrade.supplierAccountId]:[];
     if(parties.some(id=>!id||!members.has(id)))return failCode(origin,409,'NOT_MEMBER','换蛋成员已退出小组');
-    const next = applyEggAction(current.state, groupId, accountId, body.action, Date.now());
+    const next = applyEggAction(current.state, groupId, accountId, body.action, now);
     const stateJson=JSON.stringify(next);
     if(new TextEncoder().encode(stateJson).byteLength>1_500_000)return failCode(origin,413,'STATE_CAPACITY','小组换蛋记录已达容量，请联系管理员扩容；原记录未改变');
     const version = current.version + 1;
     const mutation = crypto.randomUUID();
+    const reminder = action.type === 'remind' ? await prepareReminder(env.DB, groupId, next, next.trades.find(t => t.id === action.id)!, accountId, mutation) : null;
     const statements = [env.DB.prepare(`UPDATE egg_matching_groups SET state_json=?,version=?,mutation_id=?,updated_at=?
       WHERE group_id=? AND version=? AND EXISTS (SELECT 1 FROM mother_group_members WHERE group_id=? AND account_id=?)`)
-      .bind(stateJson, version, mutation, Date.now(), groupId, current.version, groupId, accountId),
+      .bind(stateJson, version, mutation, now, groupId, current.version, groupId, accountId),
       env.DB.prepare(`DELETE FROM egg_matching_locks WHERE group_id=? AND status='reserved' AND EXISTS
         (SELECT 1 FROM egg_matching_groups WHERE group_id=? AND mutation_id=?)`).bind(groupId, groupId, mutation)];
     const locks = new Map<string, { accountId: string; resourceId: string; tradeId: string; status: string }>();
@@ -133,9 +138,11 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
         WHERE EXISTS(SELECT 1 FROM egg_matching_groups WHERE group_id=? AND mutation_id=?) AND NOT EXISTS(
           SELECT 1 FROM egg_matching_locks l WHERE l.account_id=json_extract(value,'$.accountId') AND l.resource_id=json_extract(value,'$.resourceId') AND l.group_id=? AND l.trade_id=json_extract(value,'$.tradeId'))`).bind(groupId,JSON.stringify(lockRows),groupId,mutation,groupId));
     }
+    if (reminder) statements.push(reminder);
     const result = await env.DB.batch(statements);
     if (!result[0].meta.changes) return failCode(origin, 409, 'REVISION_CONFLICT', '小组数据已变化或成员权限失效，请刷新');
-    return okJson(origin, { version, state: visibleState(next, accountId, members) });
+    const visible = visibleState(next, accountId, members);
+    return okJson(origin, { version, state: {...visible,reminders:await readReminderStatus(env.DB,groupId,visible)} });
   } catch (error) {
     const message = error instanceof Error ? error.message : '操作失败';
     if (/constraint|UNIQUE|NOT NULL/i.test(message)) return failCode(origin, 409, 'STOCK_TAKEN', '蛋或亲本已被其他任务占用，请刷新');

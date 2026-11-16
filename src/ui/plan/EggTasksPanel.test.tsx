@@ -1,7 +1,21 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { EggTasksPanel } from './EggTasksPanel';
 import { emptyEggWorkflow, type WorkflowTrade } from '../../shared/eggWorkflow';
+
+afterEach(()=>vi.useRealTimers());
+
+test('manual reminder unlocks at 30 minutes without claiming pending messages were sent',()=>{
+  vi.useFakeTimers();vi.setSystemTime(2_000_000);
+  const egg={id:'e',accountId:'b',eggGameId:3227,nature:'固执',body:'' as const,voice:'' as const,provenance:'unknown' as const,confidence:'manual' as const,status:'reserved' as const};
+  const trade:WorkflowTrade={id:'t',groupId:'g',demandId:'d',supplierAccountId:'b',demanderAccountId:'a',give:egg,receive:null,type:'spot',status:'accepted',placed:false,createdAt:1,reminderAt:200_000,reminderBy:'a'};
+  const props={me:'a',members:[],species:[],busy:false,mutate:vi.fn().mockResolvedValue(undefined)};
+  const view=render(<EggTasksPanel {...props} state={{...emptyEggWorkflow(),trades:[trade]}}/>);
+  expect((screen.getByRole('button',{name:'催进度'}) as HTMLButtonElement).disabled).toBe(false);
+  view.rerender(<EggTasksPanel {...props} state={{...emptyEggWorkflow(),trades:[{...trade,reminderAt:2_000_000}],reminders:[{tradeId:'t',reminderAt:2_000_000,status:'pending'}]}}/>);
+  expect(screen.getByRole('button',{name:'催促待发送'})).toBeTruthy();
+  view.unmount();vi.useRealTimers();
+});
 
 test('cancelled legacy obligations remain in private history without invented species or actions',()=>{
   render(<EggTasksPanel state={{...emptyEggWorkflow(),legacyHistory:[{id:'old',groupId:'g',demanderAccountId:'a',supplierAccountId:'b',eggGroupId:4,nature:'开朗',body:'',voice:'',status:'cancelled',createdAt:1}]}} me="a" members={[]} species={[]} busy={false} mutate={vi.fn()}/>);

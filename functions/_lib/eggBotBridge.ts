@@ -1,5 +1,6 @@
 import { activePatrolTasks, patrolTaskKey, readPatrolStatus, type ActivePatrolTask } from './eggPatrolStore';
 import { runEggPatrol } from './eggPatrol';
+import { reminderCurrent, type ReminderPayload } from './eggReminders';
 import { type Env, json, newToken, newRecoveryCode, sha256Hex, rateLimit } from './util';
 
 type Row = Record<string, unknown>;
@@ -41,8 +42,9 @@ export async function handleEggBotSettings(request: Request, env: Env, origin: s
 }
 
 interface NotificationRow { id: string; group_id: string; binding_version: string; trade_id: string; side: string; payload_json: string; attempts: number; lease_token: string; lease_until: number; status: string }
-function currentNotification(row: NotificationRow, tasks: ActivePatrolTask[]): boolean {
+async function currentNotification(db: D1Database, row: NotificationRow, tasks: ActivePatrolTask[]): Promise<boolean> {
   const payload = JSON.parse(row.payload_json) as Row;
+  if (payload.kind === 'reminder') return reminderCurrent(db, row.group_id, row.trade_id, payload as unknown as ReminderPayload);
   return tasks.some(task => task.groupId === row.group_id && task.tradeId === row.trade_id && task.side === row.side &&
     task.bindingVersion === row.binding_version && patrolTaskKey(task) === payload.taskKey);
 }
@@ -91,7 +93,8 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
     for (const row of rows.results) {
       if (typeof input.groupId === 'string' && row.group_id !== input.groupId) continue;
       if (typeof input.bindingVersion === 'string' && row.binding_version !== input.bindingVersion) continue;
-      if (!currentNotification(row, tasks)) continue;
+      if (row.side === 'reminder' && row.status !== 'pending') continue;
+      if (!(await currentNotification(env.DB, row, tasks))) continue;
       const lease = newToken();
       const result = await env.DB.prepare(`UPDATE egg_patrol_notifications SET status='leased',lease_token=?,lease_until=?
         WHERE id=? AND status IN ('pending','leased') AND lease_until<=?`).bind(lease, now + 120000, row.id, now).run();
@@ -106,7 +109,7 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
       WHERE n.id=? AND n.lease_token=? AND n.status='leased' AND n.lease_until>? AND b.bot_id=? AND b.qq_group_id=?`)
       .bind(input.id, input.leaseToken, now, input.botId, input.qqGroupId).first<NotificationRow>();
     const tasks = row ? await activePatrolTasks(env.DB) : [];
-    const valid = !!row && currentNotification(row, tasks);
+    const valid = !!row && await currentNotification(env.DB, row, tasks);
     return json({ ok: true, valid }, 200, null);
   }
   if (action === 'ack') {
@@ -115,8 +118,14 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
     if (!row) return invalid(409, '提醒租约已失效');
     if (row.status === 'sent') return json({ ok: true }, 200, null);
     const tasks = await activePatrolTasks(env.DB);
-    if (!currentNotification(row, tasks)) return invalid(409, '任务或群关联已变化');
+    if (!(await currentNotification(env.DB, row, tasks))) return invalid(409, '任务或群关联已变化');
     const sent = input.outcome === 'sent';
+    if (row.side === 'reminder') {
+      if (row.status !== 'leased') return json({ ok: true }, 200, null);
+      await env.DB.prepare("UPDATE egg_patrol_notifications SET status=?,attempts=attempts+1,lease_until=0,sent_at=?,error_code=? WHERE id=? AND lease_token=? AND status='leased'")
+        .bind(sent ? 'sent' : 'failed', sent ? now : null, sent ? null : input.outcome, row.id, input.leaseToken).run();
+      return json({ ok: true }, 200, null);
+    }
     await env.DB.prepare(`UPDATE egg_patrol_notifications SET status=?,attempts=attempts+1,next_at=?,lease_until=0,sent_at=?,error_code=? WHERE id=? AND lease_token=?`)
       .bind(sent ? 'sent' : 'pending', now + Math.min(3600000, 60000 * 2 ** Math.min(row.attempts, 6)), sent ? now : null, sent ? null : input.outcome, row.id, input.leaseToken).run();
     return json({ ok: true }, 200, null);
