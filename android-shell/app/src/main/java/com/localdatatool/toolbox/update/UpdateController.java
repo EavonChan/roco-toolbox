@@ -56,25 +56,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class UpdateController {
 
     /**
-     * 唯一配置点：远端版本清单地址。
+     * 唯一配置点：远端版本清单地址，由构建通道在 build.gradle 里注入
+     * （production = 主站 version-18；internal = 独立内测清单）。
      *
-     * <p>主站 {@code /android/version.json} 被 Cloudflare 边缘缓存咬住（7 天 TTL、账号无 zone
-     * 无法 purge），1.2.6 客户端读到的是旧副本，所以新版本改读带版本号的 {@code version-18.json}。
-     * 这个新路径拿到的清单是**可信**的，可以触发强制更新。</p>
+     * <p>主站 {@code /android/version.json} 曾被 Cloudflare 边缘缓存咬住（7 天 TTL），
+     * 1.2.6 客户端读到旧副本，所以新版本改读带版本号的 {@code version-18.json}。
+     * 正式通道下这个地址是**可信**的，可以触发强制更新；内测通道只读内测清单，
+     * 不会因为公开清单把人推到公开版本。</p>
      */
-    public static final String MANIFEST_URL =
-        "https://roco-toolbox.pages.dev/android/version-18.json";
+    public static final String MANIFEST_URL = BuildConfig.MANIFEST_URL;
 
-    /** 兜底地址：都可能被边缘缓存咬住，只做「提示更新」，不做强更。 */
-    private static final String LEGACY_MANIFEST_URL =
-        "https://roco-toolbox.pages.dev/android/version.json";
-    private static final String DOWNLOADS_MANIFEST_URL =
-        "https://roco-toolbox-downloads.pages.dev/android/version.json";
+    /** 兜底地址：都可能被边缘缓存咬住，只做「提示更新」，不做强更；内测通道为空。 */
+    private static final String LEGACY_MANIFEST_URL = BuildConfig.LEGACY_MANIFEST_URL;
+    private static final String DOWNLOADS_MANIFEST_URL = BuildConfig.DOWNLOADS_MANIFEST_URL;
 
     private static final String PREFS = "roco_update";
     private static final String KEY_SKIPPED = "skippedVersionCode";
     private static final String APK_NAME = "roco-toolbox-latest.apk";
-    private static final String AUTHORITY = "com.localdatatool.toolbox.fileprovider";
+    private static final String AUTHORITY = BuildConfig.APPLICATION_ID + ".fileprovider";
 
     /** 全屏强制更新页的底色与文字色 */
     private static final int COLOR_PAGE = 0xFFF8FAFC;
@@ -103,14 +102,19 @@ public final class UpdateController {
     public UpdateController(Activity activity) {
         this.activity = activity;
         this.prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        java.util.List<UpdateManager.ManifestSource> sources = new java.util.ArrayList<>();
+        // 主清单：正式通道 = 主站 version-18（可信，可强更）；内测通道 = 独立内测清单
+        sources.add(() -> readManifest(MANIFEST_URL));
+        // 兜底：只提示更新，避免一份旧缓存把人卡在更新页；内测通道不混入公开清单
+        if (!LEGACY_MANIFEST_URL.isEmpty()) {
+            sources.add(() -> UpdateManager.asNoticeOnly(readManifest(LEGACY_MANIFEST_URL)));
+        }
+        if (!DOWNLOADS_MANIFEST_URL.isEmpty()) {
+            sources.add(() -> UpdateManager.asNoticeOnly(readManifest(DOWNLOADS_MANIFEST_URL)));
+        }
         this.manager = new UpdateManager(
             BuildConfig.VERSION_CODE, apkFile(),
-            UpdateManager.firstValid(
-                // 新路径：可信清单，低于 minSupportedVersionCode 会进全屏强制更新页
-                () -> readManifest(MANIFEST_URL),
-                // 旧路径 / 下载站：只提示更新，避免一份旧缓存把人卡在更新页
-                () -> UpdateManager.asNoticeOnly(readManifest(LEGACY_MANIFEST_URL)),
-                () -> UpdateManager.asNoticeOnly(readManifest(DOWNLOADS_MANIFEST_URL))),
+            UpdateManager.firstValid(sources.toArray(new UpdateManager.ManifestSource[0])),
             this::downloadApk, this::canInstallPackage);
     }
 

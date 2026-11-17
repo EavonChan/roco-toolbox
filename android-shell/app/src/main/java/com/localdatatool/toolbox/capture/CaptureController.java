@@ -31,7 +31,6 @@ public final class CaptureController {
     private final Activity activity;
     private final ImportReady imported;
     private final Map<String, CaptureSnapshot> grants = new ConcurrentHashMap<>();
-    private CaptureUploadManager uploads;
     private volatile boolean trusted;
     private boolean permissionPending;
     private boolean awaitingLaunch;
@@ -57,7 +56,6 @@ public final class CaptureController {
         try {
             JSONArray rows = new JSONArray();
             CaptureFiles files = CaptureVpnService.files(activity);
-            CaptureUploadManager uploadManager = uploads();
             // 正在写的文件带 .incomplete 标记，属正常状态；忙碌时不要把它当成「残缺文件」返回，
             // 否则刚点开始采集就会出现「未完整保存或没有可用数据」。
             boolean writing = "starting".equals(state.phase) || "capturing".equals(state.phase)
@@ -67,14 +65,11 @@ public final class CaptureController {
                 JSONObject row = new JSONObject().put("id", file.getName()).put("name", file.getName())
                     .put("size", file.length()).put("createdAt", Long.parseLong(file.getName().substring(8, file.getName().length() - 5)))
                     .put("valid", files.valid(file));
-                JSONObject upload = uploadManager.get(file.getName());
-                if (!upload.optString("state").isEmpty()) row.put("upload", upload);
                 rows.put(row);
             }
             return new JSONObject().put("version", 1).put("supported", Build.VERSION.SDK_INT >= 26)
                 .put("phase", state.phase).put("message", state.message).put("packets", state.packets).put("bytes", state.bytes).put("files", rows)
-                .put("progressVersion", 1).put("fileId", state.fileId).put("savedBytes", state.savedBytes)
-                .put("uploadBusy", uploadManager.busy()).toString();
+                .put("progressVersion", 1).put("fileId", state.fileId).put("savedBytes", state.savedBytes).toString();
         } catch (Exception error) {
             return "{\"version\":1,\"supported\":" + (Build.VERSION.SDK_INT >= 26) + ",\"phase\":\"failed\",\"packets\":0,\"bytes\":0,\"files\":[],\"message\":"
                 + JSONObject.quote("无法读取本机采集文件：" + CaptureVpnService.friendly(error)) + "}";
@@ -149,16 +144,6 @@ public final class CaptureController {
             }
         });
         return "";
-    }
-    private CaptureUploadManager uploads() throws IOException {
-        synchronized (this) {
-            if (uploads == null) {
-                File directory = new File(activity.getFilesDir(), "captures");
-                if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("无法创建本机采集目录");
-                uploads = CaptureUploadManager.get(directory, BuildConfig.CAPTURE_TOKEN);
-            }
-            return uploads;
-        }
     }
     private File requireFile(String id, boolean importable) throws IOException {
         if (!trusted) throw new IOException("请在工具箱内使用采集文件");
@@ -243,7 +228,7 @@ public final class CaptureController {
     public String shareCapture(String id) {
         try {
             File file = requireFile(id, false);
-            Uri uri = FileProvider.getUriForFile(activity, "com.localdatatool.toolbox.fileprovider", file);
+            Uri uri = FileProvider.getUriForFile(activity, BuildConfig.APPLICATION_ID + ".fileprovider", file);
             activity.runOnUiThread(() -> {
                 if (!trusted) return;
                 Intent send = new Intent(Intent.ACTION_SEND).setType("application/vnd.tcpdump.pcap")
@@ -256,18 +241,10 @@ public final class CaptureController {
             return "";
         } catch (Exception error) { return CaptureVpnService.friendly(error); }
     }
-    public String uploadCapture(String id) {
-        try {
-            File file = requireFile(id, true);
-            return uploads().upload(file);
-        } catch (Exception error) { return CaptureVpnService.friendly(error); }
-    }
     public String deleteCapture(String id) {
         try {
             requireFile(id, false);
-            if (uploads().busy(id)) throw new IOException("文件正在上传，请等待完成后再删除");
             CaptureVpnService.files(activity).delete(id);
-            uploads().remove(id);
             return "";
         } catch (Exception error) { return CaptureVpnService.friendly(error); }
     }
