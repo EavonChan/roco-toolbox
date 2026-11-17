@@ -27,8 +27,8 @@ function sceneResult(raw: unknown): unknown {
   return raw;
 }
 
-export async function runEggPatrol(env: Env, now: number, fetcher: typeof fetch = fetch, force = false): Promise<{ queried: number; queued: number }> {
-  const count = { queried: 0, queued: 0 };
+export async function runEggPatrol(env: Env, now: number, fetcher: typeof fetch = fetch, force = false): Promise<{ queried: number; queued: number; error?: string }> {
+  const count: { queried: number; queued: number; error?: string } = { queried: 0, queued: 0 };
   // force 只给内测强刷用：跳过夜间窗口与 30 分钟缓存，但配额、租约、去重照旧
   if ((!force && !patrolWindowOpen(now)) || !env.ROCOM_PATROL_API_KEY) return count;
   const tasks = await activePatrolTasks(env.DB);
@@ -56,8 +56,9 @@ export async function runEggPatrol(env: Env, now: number, fetcher: typeof fetch 
     try {
       const url = cache.pending_task_id ? ENDPOINT + 'tasks/' + encodeURIComponent(cache.pending_task_id)
         : ENDPOINT + 'home/scene-info?uid=' + encodeURIComponent(cache.uid) + '&wait_ms=0';
-      const response = await fetcher(url, { headers: { 'X-API-Key': env.ROCOM_PATROL_API_KEY }, signal: AbortSignal.timeout(10000), redirect: 'error' });
-      if (!response.ok) throw new Error('UPSTREAM');
+      // Workers 运行时只接受 follow / manual（redirect:'error' 会直接抛错）
+      const response = await fetcher(url, { headers: { 'X-API-Key': env.ROCOM_PATROL_API_KEY }, signal: AbortSignal.timeout(10000), redirect: 'manual' });
+      if (!response.ok) throw new Error('UPSTREAM_' + response.status);
       const raw: unknown = await response.json();
       if (response.status === 202 || queued(raw)) {
         const taskId = pendingTask(raw) ?? cache.pending_task_id;
@@ -96,7 +97,9 @@ export async function runEggPatrol(env: Env, now: number, fetcher: typeof fetch 
         WHERE uid=? AND lease_token=?`).bind(JSON.stringify(scene), JSON.stringify(latestTasks.map(patrolTaskKey)), now, now + INTERVAL, cache.uid, lease));
       const results = await env.DB.batch(statements);
       count.queued += notificationIndexes.reduce((sum, index) => sum + results[index].meta.changes, 0);
-    } catch {
+    } catch (error) {
+      // 强刷时把失败原因带回响应，方便内测排查（正式 tick 不返回，避免泄露上游细节）
+      if (force) count.error = error instanceof Error ? error.message : 'UPSTREAM';
       await env.DB.prepare("UPDATE egg_patrol_cache SET next_at=?,lease_until=0,pending_task_id=NULL,status='error' WHERE uid=? AND lease_token=?")
         .bind(now + INTERVAL, cache.uid, lease).run();
     }
