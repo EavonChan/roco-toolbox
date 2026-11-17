@@ -42,8 +42,9 @@ describe('安卓壳的导出分享（1.1.4）', () => {
   test('分享走文件（EXTRA_STREAM + FileProvider），大备份不被文本截断', () => {
     expect(activity).toContain('Intent.ACTION_SEND');
     expect(activity).toContain('Intent.EXTRA_STREAM');
-    expect(activity).toContain('com.localdatatool.toolbox.fileprovider');
+    // authority 跟着 applicationId 走：内测包是 com.localdatatool.toolbox.internal，不能写死正式包名
+    expect(activity).toContain('BuildConfig.APPLICATION_ID + ".fileprovider"');
     expect(manifest).toContain('androidx.core.content.FileProvider');
-    expect(manifest).toContain('com.localdatatool.toolbox.fileprovider');
+    expect(manifest).toContain('${applicationId}.fileprovider');
   });
 });
