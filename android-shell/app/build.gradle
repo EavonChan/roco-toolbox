@@ -35,7 +35,7 @@ android {
         versionCode 41
         versionName "1.5.6"
         // 应用名按通道区分，内测包在桌面上能和正式包一眼分开
-        manifestPlaceholders = [appLabel: testBuild ? '洛克工具箱·内测' : '洛克工具箱']
+        manifestPlaceholders = [appLabel: testBuild ? '小布助手·内测' : '小布助手']
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
         externalNativeBuild { cmake { arguments '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON' } }
         // 通道与默认站：包默认站必须等于通道参数，构建期会再校验生成的 BuildConfig
