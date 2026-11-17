@@ -41,7 +41,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const [actionPanel, setActionPanel] = useState<'mothers' | 'studs'>('studs');
   const [accountSelectorOpen, setAccountSelectorOpen] = useState(false);
 
-  const { owned, motherGroups, mode, mother, stud, plans, recommendations } = useCollectionSummary();
+  const { owned, motherGroups, mode, stud, plans, recommendations } = useCollectionSummary();
   const { accounts } = useOwnedPets();
   const { excluded } = useAccountFilter();
   const selectedAccountNames = accounts.filter((name) => !excluded.has(name));
@@ -58,7 +58,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const effectiveCriteria: MotherCriteria = {
     bodies: motherCriteria.bodies,
     voices: effectiveMotherVoices(motherCriteria.voices, mode),
-    grades: motherCriteria.grades,
+    grades: selectedGrade ? [selectedGrade] : motherCriteria.grades,
     targetMode: mode,
     recommendedNatures: motherCriteria.recommendedNatures === true,
   };
@@ -74,6 +74,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     () => motherGroups.filter((group) => !isChainCollected(group, owned, effectiveCriteria, naturesOf)),
     [motherGroups, owned, effectiveCriteria, naturesOf],
   );
+  const collectedMothers = motherGroups.length - missingMothers.length;
 
   const remainingTargets = stud.cells.filter((cell) => cell.state !== 'covered').length;
   const iterableTargets = stud.cells.filter((cell) => cell.state === 'breedable').length;
@@ -245,8 +246,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         />
         <ProgressCard
           title="母本全收集"
-          numerator={mother.collected}
-          denominator={mother.total}
+          numerator={collectedMothers}
+          denominator={motherGroups.length}
           hint="已收集 = 有达标母本的蛋；达标条件可自定义"
           onClick={() =>
             onNavigate({ type: 'open-collection', location: { kind: 'mothers', status: 'missing' } })

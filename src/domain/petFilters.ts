@@ -5,6 +5,26 @@ import { bodyGradeOf, heightBodyOf } from '../shared/bodySize.js';
 
 export type TagKind = 'account' | 'body' | 'voice' | 'gender' | 'shiny' | 'eggGroup' | 'nature';
 
+export interface HeightRange {
+  min: number;
+  max: number;
+}
+
+export const DEFAULT_HEIGHT_RANGE: HeightRange = { min: 0, max: 100 };
+
+export function matchesHeightRange(
+  heightPercent: number | null | undefined,
+  range: HeightRange,
+): boolean {
+  if (range.min === 0 && range.max === 100) return true;
+  return (
+    typeof heightPercent === 'number' &&
+    Number.isFinite(heightPercent) &&
+    heightPercent >= range.min &&
+    heightPercent <= range.max
+  );
+}
+
 export interface PetTag {
   id: string;
   kind: TagKind;
@@ -118,6 +138,8 @@ export function classifyMother(pet: OwnedPet, mode: TargetMode): MotherClass | n
 const FIXED_TAGS: Array<{ id: string; kind: TagKind; label: string }> = [
   { id: 'body:大块头', kind: 'body', label: '大块头' },
   { id: 'body:小不点', kind: 'body', label: '小不点' },
+  { id: 'body:满体重', kind: 'body', label: '满体重' },
+  { id: 'body:零体重', kind: 'body', label: '零体重' },
   // 身高到顶 / 到底单独两档（2026-10-29 用户要求）：奖牌按体重判，这两档按身高判
   { id: 'body:满身高', kind: 'body', label: '满身高' },
   { id: 'body:零身高', kind: 'body', label: '零身高' },
@@ -128,7 +150,9 @@ const FIXED_TAGS: Array<{ id: string; kind: TagKind; label: string }> = [
   { id: 'voice:粗嗓门', kind: 'voice', label: '粗嗓门' },
   { id: 'gender:公', kind: 'gender', label: '公' },
   { id: 'gender:母', kind: 'gender', label: '母' },
+  { id: 'shiny:炫彩', kind: 'shiny', label: '炫彩' },
   { id: 'shiny:异色', kind: 'shiny', label: '异色' },
+  { id: 'shiny:异色炫彩', kind: 'shiny', label: '异色炫彩' },
 ];
 
 const KIND_ORDER: Record<TagKind, number> = {
@@ -185,6 +209,17 @@ export function buildTagIndex(
 
     if (pet.medalBody === '大块头') addTag('body:大块头', 'body', '大块头', i);
     else if (pet.medalBody === '小不点') addTag('body:小不点', 'body', '小不点', i);
+    if (
+      (pet.medalBody === '大块头' && (pet.weightPercent ?? -Infinity) >= 100) ||
+      (pet.medalBody === '小不点' && (pet.weightPercent ?? Infinity) <= 0)
+    ) {
+      addTag(
+        pet.medalBody === '大块头' ? 'body:满体重' : 'body:零体重',
+        'body',
+        pet.medalBody === '大块头' ? '满体重' : '零体重',
+        i,
+      );
+    }
 
     // 身高正好到顶 / 到底（与合格口径同一个判定，100% / 0% 才算）
     const heightExtreme = heightBodyOf(pet.heightPercent);
@@ -267,13 +302,14 @@ export function filterByTags(index: BuildResult['index'], selectedTagIds: string
 export function computeFacetCounts(
   index: BuildResult['index'],
   selectedTagIds: string[],
+  withinIndices?: readonly number[],
 ): Record<string, number> {
   const byKind = groupSelectedByKind(selectedTagIds);
   const baseCache = new Map<string, Set<number> | null>();
 
   const baseFor = (excludeKind: string): Set<number> | null => {
     if (baseCache.has(excludeKind)) return baseCache.get(excludeKind) ?? null;
-    let base: Set<number> | null = null;
+    let base: Set<number> | null = withinIndices === undefined ? null : new Set(withinIndices);
     for (const [kind, ids] of byKind) {
       if (kind === excludeKind) continue;
       const union = unionOf(index, ids);

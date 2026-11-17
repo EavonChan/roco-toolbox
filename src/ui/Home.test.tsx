@@ -132,8 +132,8 @@ describe('家园页', () => {
     expect(screen.getAllByTestId('home-pet-card')).toHaveLength(2);
     // 配窝卡片改成摆位图画法，不再带小头像：头像只有上面两张精灵卡
     expect(screen.getAllByTestId('pet-avatar')).toHaveLength(2);
-    expect(screen.getByTestId('home-residents')).toHaveTextContent('50.00%');
-    expect(screen.getByTestId('home-residents')).toHaveTextContent('99.00%');
+    expect(screen.getByTestId('home-residents')).toHaveTextContent('50%');
+    expect(screen.getByTestId('home-residents')).toHaveTextContent('99%');
     expect(screen.getByTestId('home-pair-cards')).toHaveTextContent('公本乙');
     expect(screen.getByTestId('home-pair-cards')).toHaveTextContent('母本甲');
     expect(screen.getAllByTestId('home-pair-node')).toHaveLength(2);

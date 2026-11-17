@@ -5,6 +5,8 @@ export interface PetCardLayoutProps {
   number?: string;
   eggGroups?: readonly string[];
   natures?: readonly string[];
+  naturePrefix?: ReactNode;
+  natureAdornment?: ReactNode;
   avatar: ReactNode;
   details?: ReactNode;
   footer?: ReactNode;
@@ -25,6 +27,8 @@ export function PetCardLayout({
   number,
   eggGroups = [],
   natures = [],
+  naturePrefix,
+  natureAdornment,
   avatar,
   details,
   footer,
@@ -78,41 +82,48 @@ export function PetCardLayout({
             ))}
           </span>
         </div>
-        <div className="col-start-2 row-start-1 mt-1 flex h-11 w-11 items-center justify-center">
-          {avatar}
-        </div>
-        <span
-          className="col-start-3 row-start-1 flex min-w-0 flex-col items-end gap-px"
-          data-testid={naturesTestId}
-        >
-          {natures.map((nature) => (
-            <span
-              key={nature}
-              className="max-w-full truncate rounded bg-amber-100 px-0.5 py-0 font-medium text-amber-900"
-              title={nature}
-            >
-              {nature}
+        <div className="col-start-3 row-start-1 flex min-w-0 flex-col items-end gap-px">
+          <div className="flex min-w-0 items-center justify-end gap-px">
+            {naturePrefix}
+            <span className="flex min-w-0 flex-col items-end gap-px" data-testid={naturesTestId}>
+              {natures.map((nature) => (
+                <span
+                  key={nature}
+                  className="inline-flex h-3 max-w-full items-center truncate rounded bg-amber-100 px-0.5 py-0 font-medium text-amber-900"
+                  title={nature}
+                >
+                  {nature}
+                </span>
+              ))}
             </span>
-          ))}
-        </span>
+          </div>
+          {natureAdornment}
+        </div>
       </header>
 
+      <div
+        className="absolute left-1/2 top-1/2 z-0 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+        data-testid="pet-card-avatar"
+      >
+        {avatar}
+      </div>
+
       <h3
-        className="absolute inset-x-1 top-[52px] flex h-[18px] items-center justify-center overflow-hidden text-center text-[9px] font-bold leading-[10px] text-slate-900 line-clamp-2"
+        className="absolute inset-x-1 top-[70px] flex h-2 items-center justify-center truncate text-center text-[6px] font-bold leading-2 text-slate-900"
         title={title ?? name}
       >
         {name}
       </h3>
 
       {showDetails ? (
-        <div className="absolute inset-x-1 top-[70px] flex h-3 items-center justify-center overflow-hidden text-center">
+        <div className="absolute inset-x-1 top-[80px] flex h-2 items-center justify-center overflow-hidden text-center">
           {details}
         </div>
       ) : null}
 
       {showFooter ? (
         <div
-          className="absolute inset-x-1 bottom-1 flex h-3 items-center justify-center"
+          className="absolute inset-x-1 bottom-1 flex h-1.5 items-center justify-center"
         >
           {footer}
         </div>

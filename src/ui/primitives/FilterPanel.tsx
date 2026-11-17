@@ -72,7 +72,7 @@ export function FilterPanel({
           {summary}
         </p>
       ) : null}
-      {open ? <div className="mt-2 space-y-2.5">{children}</div> : null}
+      {open ? <div className={`mt-2 ${dense ? 'space-y-1.5' : 'space-y-2.5'}`}>{children}</div> : null}
     </section>
   );
 }

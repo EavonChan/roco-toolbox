@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { Dashboard } from './Dashboard';
 import type { CollectionSummary } from './useCollectionSummary';
@@ -6,6 +6,8 @@ import type { NestPet, NestPlan } from '../domain/nestPlan';
 import { toggleAllAccounts } from './accountFilterStore';
 import { getCoverageFilter, setTargetGrade, toggleFilterGrade } from './coverageFilterStore';
 import { setTargetMode } from './targetModeStore';
+import { DEFAULT_MOTHER_CRITERIA } from '../domain/motherCriteria';
+import { setMotherCriteria } from './motherCriteriaStore';
 
 const h = vi.hoisted(() => ({
   summary: null as unknown as CollectionSummary,
@@ -236,6 +238,70 @@ describe('Dashboard（看板）', () => {
     expect(screen.getByTestId('dashboard-target-voice-note')).toHaveTextContent(
       '婉转声 ≥96、粗嗓门 ≤-96',
     );
+  });
+
+  test('看板选择奖牌会同步筛选母本全收集进度和缺口', () => {
+    setTargetMode('perfect');
+    setTargetGrade('大婉');
+    setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA });
+    h.summary = {
+      ...h.summary,
+      owned: [
+        {
+          gameId: 3200,
+          name: '大婉母本甲',
+          gender: '母',
+          nature: '固执',
+          voiceDb: 100,
+          medalBody: '大块头',
+          isShiny: false,
+          account: '测试甲',
+        },
+        {
+          gameId: 3201,
+          name: '大婉母本乙',
+          gender: '母',
+          nature: '固执',
+          voiceDb: 100,
+          medalBody: '大块头',
+          isShiny: false,
+          account: '测试甲',
+        },
+        {
+          gameId: 3202,
+          name: '大粗母本',
+          gender: '母',
+          nature: '固执',
+          voiceDb: -100,
+          medalBody: '大块头',
+          isShiny: false,
+          account: '测试甲',
+        },
+      ] as never[],
+      motherGroups: Array.from({ length: 3 }, (_, index) => ({
+        chainKey: `c${index}`,
+        formLabel: `母本${index}`,
+        memberIndexes: [index],
+        eggGroups: [2],
+        motherClass: null,
+        eggGameId: 100 + index,
+      }) as never),
+      mother: { collected: 0, total: 3 },
+    };
+    render(<Dashboard onNavigate={vi.fn()} />);
+
+    const progress = screen.getByTestId('progress-card-action-mother');
+    expect(progress).toHaveTextContent('2 / 3');
+    fireEvent.click(screen.getByTestId('dashboard-target-grade-大粗'));
+    expect(progress).toHaveTextContent('1 / 3');
+
+    fireEvent.click(screen.getByTestId('dashboard-action-mothers'));
+    expect(screen.getAllByTestId('mother-action-item')).toHaveLength(2);
+
+    act(() => {
+      setTargetGrade('大婉');
+      setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA });
+    });
   });
 
   test('看板用账号摘要替代蛋组与性格设置入口', () => {

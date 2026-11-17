@@ -17,8 +17,10 @@ describe('紧凑精灵卡', () => {
     const home = screen.getByTestId('pet-compact-card');
     expect(home.className).toContain('w-[160px]');
     expect(home.className).toContain('h-[98px]');
+    expect(screen.getByTestId('pet-card-avatar')).toHaveClass('left-1/2', 'top-1/2');
     expect(screen.getByTestId('pet-avatar').className).toContain('h-11');
     expect(screen.getByTestId('pet-avatar').parentElement).toHaveClass('items-center', 'justify-center');
+    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('text-[6px]');
 
     cleanup();
     render(<PetCompactCard {...base} variant="demand" />);
@@ -68,10 +70,10 @@ describe('紧凑精灵卡', () => {
     expect(card.className).toContain('bg-emerald-50');
   });
 
-  test('身高 / 体重保留两位小数，缺数据写 —', () => {
+  test('身高 / 体重去掉多余的末尾零，缺数据写 —', () => {
     render(<PetCompactCard {...base} heightPercent={50} weightPercent={99.5} />);
-    expect(screen.getByTestId('pet-compact-card')).toHaveTextContent('50.00%');
-    expect(screen.getByTestId('pet-compact-card')).toHaveTextContent('99.50%');
+    expect(screen.getByTestId('pet-compact-card')).toHaveTextContent('50%');
+    expect(screen.getByTestId('pet-compact-card')).toHaveTextContent('99.5%');
 
     cleanup();
     render(<PetCompactCard {...base} voiceDb={100} heightPercent={null} weightPercent={undefined} />);

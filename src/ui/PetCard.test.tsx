@@ -28,8 +28,16 @@ describe('PetCard 头像', () => {
     render(<PetCard pet={pet} species={species} eggGroupNames={{ 6: '动物组', 9: '植物组' }} />);
     const card = screen.getByRole('article');
     expect(card.className).toContain('h-[98px]');
+    expect(screen.getByTestId('pet-card-avatar')).toHaveClass(
+      'absolute',
+      'left-1/2',
+      'top-1/2',
+      '-translate-x-1/2',
+      '-translate-y-1/2',
+    );
     expect(screen.getByTestId('pet-avatar').className).toContain('h-11');
     expect(screen.getByTestId('pet-avatar').parentElement).toHaveClass('items-center', 'justify-center');
+    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('top-[70px]', 'text-[6px]');
     expect(screen.getByTestId('pet-card-egg-groups')).toHaveClass('flex-col');
     expect(screen.getByTestId('pet-card-natures')).toHaveClass('flex-col', 'items-end');
     expect(card).not.toHaveTextContent('已收集');
@@ -46,6 +54,35 @@ describe('PetCard 头像', () => {
     fireEvent.error(screen.getByTestId('pet-avatar'));
     expect(screen.queryByTestId('pet-avatar')).toBeNull();
     expect(screen.getByTestId('pet-avatar-fallback').textContent).toBe('喵');
+  });
+
+  test('性别显示在性格前，体型和声音显示双奖牌，稀有图标覆盖头像角落', () => {
+    render(
+      <PetCard
+        pet={{ ...pet, isColorful: true, heightPercent: 0, weightPercent: 12.5 }}
+        species={species}
+        eggGroupNames={{}}
+      />,
+    );
+    const rarity = screen.getByAltText('炫彩');
+    const nature = screen.getByTestId('pet-card-natures');
+    const gender = screen.getByTestId('pet-card-gender');
+    const medals = screen.getByTestId('pet-card-medals');
+    const rarityBadge = screen.getByTestId('pet-card-rarity');
+    expect(nature.parentElement).toContainElement(gender);
+    expect(nature.parentElement).toHaveClass('items-center');
+    expect(gender.firstElementChild).toHaveClass('h-3', 'w-3');
+    expect(nature.firstElementChild).toHaveClass('inline-flex', 'h-3', 'items-center');
+    expect(gender.nextElementSibling).toBe(nature);
+    expect(nature.parentElement?.parentElement).toContainElement(medals);
+    expect(screen.getByTestId('pet-card-avatar')).toContainElement(rarityBadge);
+    expect(Array.from(medals.querySelectorAll('img')).map((image) => image.alt)).toEqual([
+      '大块头',
+      '婉转声',
+    ]);
+    expect(medals.querySelectorAll('img')).toHaveLength(2);
+    expect(rarityBadge).toBe(rarity);
+    expect(screen.getByText('0% · 12.5% · 100dB')).toBeInTheDocument();
   });
 
   test('异色精灵用异色头像；炫彩仍用原色头像（官方没有炫彩立绘）', () => {

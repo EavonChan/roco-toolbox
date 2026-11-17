@@ -6,9 +6,11 @@ import {
   classifyGrade,
   classifyMother,
   computeFacetCounts,
+  DEFAULT_HEIGHT_RANGE,
   filterByTags,
   gradeLabel,
   groupMothersByEgg,
+  matchesHeightRange,
 } from './petFilters';
 import { species as realSpecies } from '../data/catalog';
 import type { OwnedPet, SpeciesEntry } from './types';
@@ -60,6 +62,8 @@ describe('buildTagIndex', () => {
     expect(result.index['gender:母']).toEqual([1]);
     expect(result.index['gender:未知']).toBeUndefined(); // 2026-10-04 去掉「未知」性别标签
     expect(result.index['shiny:异色']).toEqual([]); // 无命中但标签仍存在
+    expect(result.index['shiny:炫彩']).toEqual([]);
+    expect(result.index['shiny:异色炫彩']).toEqual([]);
   });
 
   test('粗嗓门标签命中 ≤-96 分贝，且 -100 单独成一档（2026-10-05 修正过宽）', () => {
@@ -83,7 +87,21 @@ describe('buildTagIndex', () => {
     // 没到顶 / 到底的不进这两个标签，避免把「接近满身高」也当成满身高
     expect(result.index['body:满身高']).not.toContain(5);
     const bodyLabels = result.tags.filter((tag) => tag.kind === 'body').map((tag) => tag.label);
-    expect(new Set(bodyLabels)).toEqual(new Set(['大块头', '小不点', '满身高', '零身高']));
+    expect(new Set(bodyLabels)).toEqual(
+      new Set(['大块头', '小不点', '满体重', '零体重', '满身高', '零身高']),
+    );
+  });
+
+  test('体型和声音的极限标签只命中对应最大 / 最小值', () => {
+    const bigMax = pet({ gender: '公', medalBody: '大块头', weightPercent: 100, voiceDb: 100 });
+    const smallMin = pet({ gender: '母', medalBody: '小不点', weightPercent: 0, voiceDb: -100 });
+    const near = pet({ gender: '母', medalBody: '大块头', weightPercent: 99.99, voiceDb: 99 });
+    const result = buildTagIndex([...owned, bigMax, smallMin, near], speciesByGameId, eggGroupNames);
+
+    expect(result.index['body:满体重']).toEqual([3]);
+    expect(result.index['body:零体重']).toEqual([4]);
+    expect(result.index['voice:+100']).toEqual([0, 3]);
+    expect(result.index['voice:-100']).toEqual([4]);
   });
 
   test('双蛋组精灵在两个蛋组标签都命中', () => {
@@ -164,6 +182,26 @@ describe('computeFacetCounts（动态标签数量）', () => {
     const counts = computeFacetCounts(result.index, ['account:账号A', 'account:账号B']);
     expect(counts['gender:母']).toBe(1);
     expect(counts['body:小不点']).toBe(1);
+  });
+
+  test('身高范围限制其他筛选项的计数', () => {
+    const counts = computeFacetCounts(result.index, [], [0, 2]);
+    expect(counts['gender:公']).toBe(1);
+    expect(counts['gender:母']).toBe(0);
+    expect(counts['body:小不点']).toBe(1);
+  });
+});
+
+describe('matchesHeightRange', () => {
+  test('默认范围不排除缺少身高数据的精灵', () => {
+    expect(matchesHeightRange(undefined, DEFAULT_HEIGHT_RANGE)).toBe(true);
+  });
+
+  test('限制范围时按上下界包含匹配', () => {
+    expect(matchesHeightRange(0, { min: 0, max: 0 })).toBe(true);
+    expect(matchesHeightRange(0.01, { min: 0, max: 0 })).toBe(false);
+    expect(matchesHeightRange(75, { min: 25, max: 75 })).toBe(true);
+    expect(matchesHeightRange(undefined, { min: 25, max: 75 })).toBe(false);
   });
 });
 

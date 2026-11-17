@@ -4,6 +4,7 @@ import { speciesDisplayName } from '../domain/speciesName';
 import { GenderMark } from './GenderMark';
 import { PetAvatar } from './PetAvatar';
 import { PetCardLayout } from './PetCardLayout';
+import { formatPercent } from './formatPercent';
 
 /** 稀有度名字：图标的 title / alt 用。 */
 const RARITY_TEXT: Record<string, string> = {
@@ -49,6 +50,33 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
       number={species?.number}
       eggGroups={eggGroups}
       natures={pet.nature ? [pet.nature] : []}
+      naturePrefix={
+        <span className="shrink-0" data-testid="pet-card-gender">
+          <GenderMark gender={pet.gender} />
+        </span>
+      }
+      natureAdornment={
+        bodyIcon || voiceIcon ? (
+          <span className="flex flex-col items-end gap-px" data-testid="pet-card-medals">
+            {bodyIcon ? (
+              <img
+                src={bodyIcon}
+                alt={pet.medalBody}
+                title={pet.medalBody}
+                className="h-3 w-3 drop-shadow-sm"
+              />
+            ) : null}
+            {voiceIcon ? (
+              <img
+                src={voiceIcon}
+                alt={voiceName ?? ''}
+                title={voiceName ?? ''}
+                className="h-3 w-3 drop-shadow-sm"
+              />
+            ) : null}
+          </span>
+        ) : null
+      }
       avatar={
         <span className="relative inline-flex h-11 w-11 items-center justify-center">
           <PetAvatar
@@ -63,23 +91,15 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
               alt={rarityName ?? ''}
               title={rarityName ?? ''}
               className="absolute -right-1 -top-1 h-3 w-3 drop-shadow-sm"
+              data-testid="pet-card-rarity"
             />
           ) : null}
         </span>
       }
       details={
         <div className="flex min-w-0 items-center justify-center gap-px whitespace-nowrap text-[6px] leading-[8px] text-slate-600">
-          <span className="flex shrink-0 items-center gap-px">
-            <GenderMark gender={pet.gender} />
-            {bodyIcon ? (
-              <img src={bodyIcon} alt={pet.medalBody} title={pet.medalBody} className="h-2.5 w-2.5" />
-            ) : null}
-            {voiceIcon ? (
-              <img src={voiceIcon} alt={voiceName ?? ''} title={voiceName ?? ''} className="h-2.5 w-2.5" />
-            ) : null}
-          </span>
           <span className="min-w-0 truncate">
-            {pet.weightPercent != null ? `${pet.weightPercent.toFixed(2)}%` : '—'} · {pet.voiceDb}dB
+            {formatPercent(pet.heightPercent)} · {formatPercent(pet.weightPercent)} · {pet.voiceDb}dB
           </span>
         </div>
       }

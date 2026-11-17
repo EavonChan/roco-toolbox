@@ -4,6 +4,7 @@ import { petBodyMedalIcon, petVoiceMedalIcon, rarityIcon, voiceMedalName } from 
 import { GenderMark } from './GenderMark';
 import { PetAvatar } from './PetAvatar';
 import { PetCardLayout } from './PetCardLayout';
+import { formatPercent } from './formatPercent';
 
 export interface PetCompactCardProps {
   gameId?: number | null;
@@ -29,9 +30,6 @@ export interface PetCompactCardProps {
   variant?: 'home' | 'demand';
   testId?: string;
 }
-
-const percentText = (value: number | null | undefined): string =>
-  typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(2)}%` : '—';
 
 export function PetCompactCard({
   gameId,
@@ -100,7 +98,7 @@ export function PetCompactCard({
             ) : null}
           </span>
           <span className="min-w-0 truncate">
-            {voiceDb != null ? `${voiceDb}dB` : '—'} · {percentText(heightPercent)} · {percentText(weightPercent)}
+            {voiceDb != null ? `${voiceDb}dB` : '—'} · {formatPercent(heightPercent)} · {formatPercent(weightPercent)}
           </span>
         </div>
       }
