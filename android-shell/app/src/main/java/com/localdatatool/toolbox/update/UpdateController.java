@@ -98,6 +98,17 @@ public final class UpdateController {
     private TextView progressText;
     /** 低于最低可用版本时挂着的全屏更新页（不可取消） */
     private Dialog forceDialog;
+    /** 检查结果回推给网页（「我的」页更新入口按它切「检查 / 更新」文案） */
+    private StatusListener statusListener;
+
+    /** 检查结果回调：state = latest / available / failed。 */
+    public interface StatusListener {
+        void onStatus(String state, String versionName, String message);
+    }
+
+    public void setStatusListener(StatusListener listener) {
+        this.statusListener = listener;
+    }
 
     public UpdateController(Activity activity) {
         this.activity = activity;
@@ -152,17 +163,20 @@ public final class UpdateController {
         if (destroyed) return;
         worker.execute(() -> manager.check(new UpdateManager.Listener() {
             @Override public void onUpToDate() {
+                report("latest", BuildConfig.VERSION_NAME, null);
                 if (!silent) main.post(() -> dialog("已是最新版本",
                     "当前已是最新版本 v" + BuildConfig.VERSION_NAME + "。"));
             }
 
             @Override public void onAvailable(UpdateManifest manifest, boolean required) {
+                report("available", manifest.versionName, null);
                 int skipped = prefs.getInt(KEY_SKIPPED, -1);
                 if (silent && !required && skipped == manifest.versionCode) return;
                 main.post(() -> showAvailable(manifest, required));
             }
 
             @Override public void onCheckFailed(String message) {
+                report("failed", null, message);
                 if (silent) return;
                 main.post(() -> dialog("检查更新失败", message));
             }
@@ -173,6 +187,13 @@ public final class UpdateController {
 
             @Override public void onDownloadFailed(String message) { }
         }));
+    }
+
+    /** 把检查结果回推给网页（主线程回调，网页不在也不影响原生弹窗）。 */
+    private void report(String state, String versionName, String message) {
+        StatusListener listener = statusListener;
+        if (listener == null) return;
+        main.post(() -> listener.onStatus(state, versionName, message));
     }
 
     private void showAvailable(UpdateManifest manifest, boolean required) {
