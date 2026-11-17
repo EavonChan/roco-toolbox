@@ -27,18 +27,24 @@ function sceneResult(raw: unknown): unknown {
   return raw;
 }
 
-export async function runEggPatrol(env: Env, now: number, fetcher: typeof fetch = fetch): Promise<{ queried: number; queued: number }> {
+export async function runEggPatrol(env: Env, now: number, fetcher: typeof fetch = fetch, force = false): Promise<{ queried: number; queued: number }> {
   const count = { queried: 0, queued: 0 };
-  if (!patrolWindowOpen(now) || !env.ROCOM_PATROL_API_KEY) return count;
+  // force 只给内测强刷用：跳过夜间窗口与 30 分钟缓存，但配额、租约、去重照旧
+  if ((!force && !patrolWindowOpen(now)) || !env.ROCOM_PATROL_API_KEY) return count;
   const tasks = await activePatrolTasks(env.DB);
   const uids = [...new Set(tasks.map(task => task.uid))];
   for (const uid of uids) await env.DB.prepare('INSERT INTO egg_patrol_cache(uid) VALUES(?) ON CONFLICT(uid) DO NOTHING').bind(uid).run();
-  const due = await env.DB.prepare('SELECT * FROM egg_patrol_cache WHERE next_at<=? AND lease_until<=? ORDER BY next_at,uid').bind(now, now).all<CacheRow>();
+  const due = force
+    ? await env.DB.prepare('SELECT * FROM egg_patrol_cache WHERE lease_until<=? ORDER BY next_at,uid').bind(now).all<CacheRow>()
+    : await env.DB.prepare('SELECT * FROM egg_patrol_cache WHERE next_at<=? AND lease_until<=? ORDER BY next_at,uid').bind(now, now).all<CacheRow>();
   const day = new Date(now + 28800000).toISOString().slice(0, 10);
   for (const cache of due.results.filter(row => uids.includes(row.uid)).slice(0, 3)) {
     const lease = newToken();
-    const taken = await env.DB.prepare('UPDATE egg_patrol_cache SET lease_token=?,lease_until=? WHERE uid=? AND next_at<=? AND lease_until<=?')
-      .bind(lease, now + 60000, cache.uid, now, now).run();
+    const taken = force
+      ? await env.DB.prepare('UPDATE egg_patrol_cache SET lease_token=?,lease_until=? WHERE uid=? AND lease_until<=?')
+        .bind(lease, now + 60000, cache.uid, now).run()
+      : await env.DB.prepare('UPDATE egg_patrol_cache SET lease_token=?,lease_until=? WHERE uid=? AND next_at<=? AND lease_until<=?')
+        .bind(lease, now + 60000, cache.uid, now, now).run();
     if (!taken.meta.changes) continue;
     const quota = await env.DB.prepare(`INSERT INTO egg_patrol_quota(day,used) VALUES(?,1)
       ON CONFLICT(day) DO UPDATE SET used=used+1 WHERE used<100`).bind(day).run();

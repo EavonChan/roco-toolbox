@@ -36,8 +36,8 @@ async function setting(db,account='a',method='POST',group='g',now=time){
   const response=await settings(new Request('https://local/api/collection-groups/'+group+'/egg-bot',{method}),db.env,null,account,group,now);
   return {status:response.status,...await response.json()};
 }
-async function bot(db,action,body={},now=time,token=db.env.EGG_BOT_BRIDGE_TOKEN){
-  const response=await bridge(new Request('https://local/api/egg-bot/'+action,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)}),db.env,now);
+async function bot(db,action,body={},now=time,token=db.env.EGG_BOT_BRIDGE_TOKEN,fetcher=undefined){
+  const response=await bridge(new Request('https://local/api/egg-bot/'+action,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)}),db.env,now,fetcher??fetch);
   return {status:response.status,...await response.json()};
 }
 async function connect(db,group='g'){
@@ -84,6 +84,23 @@ test('quiet hours make no request; first baseline, 30 minute cache, actual new e
   assert.equal((await bot(db,'ack',{id:event.id,leaseToken:event.leaseToken,outcome:'sent'},time+30*60000)).status,200);
   await patrol(db.env,time+60*60000,fetcher);
   assert.equal(db.sql.prepare('SELECT count(*) n FROM egg_patrol_notifications').get().n,1);
+  db.sql.close();
+});
+test('force tick only works on the test deployment and skips the night window and 30 minute cache',async()=>{
+  const db=database();await connect(db);tasks(db);
+  let calls=0;const fetcher=async()=>{calls++;return Response.json(scene([]));};
+  const night=Date.parse('2026-11-16T02:00:00+08:00');
+  // 正式部署（CF_PAGES_BRANCH 不是 test）不接受强刷
+  const denied=await bot(db,'tick',{force:true},night);
+  assert.equal(denied.status,403);
+  db.env.CF_PAGES_BRANCH='test';
+  const first=await bot(db,'tick',{force:'1'},night,db.env.EGG_BOT_BRIDGE_TOKEN,fetcher);
+  assert.equal(first.status,200);assert.equal(first.queried,1);assert.equal(calls,1);
+  // 30 分钟缓存对强刷无效：同一 uid 立刻可以再刷
+  const again=await bot(db,'tick',{force:true},night+60000,db.env.EGG_BOT_BRIDGE_TOKEN,fetcher);
+  assert.equal(again.queried,1);assert.equal(calls,2);
+  // 普通 tick 在窗口外仍然不动
+  await bot(db,'tick',{},night+120000,db.env.EGG_BOT_BRIDGE_TOKEN,fetcher);assert.equal(calls,2);
   db.sql.close();
 });
 test('failed queries count quota, cancellation suppresses queued notification and disabling revokes lease',async()=>{

@@ -5,6 +5,8 @@ export interface Env {
   STATS_TOKEN: string;
   EGG_BOT_BRIDGE_TOKEN?: string;
   ROCOM_PATROL_API_KEY?: string;
+  /** Cloudflare Pages 注入：当前部署所属分支（test / main），用于区分内测与正式 */
+  CF_PAGES_BRANCH?: string;
 }
 
 /** 允许跨域的前端来源；预检与实际请求都走这里 */
