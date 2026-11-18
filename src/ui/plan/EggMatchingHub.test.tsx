@@ -81,6 +81,25 @@ test('square cards show whether I can supply and can be filtered to affordable o
   data.eggs=[];state.demands.length=1;
 });
 
+test('demander picks my own egg for the peer and confirms before the trade is sent',()=>{
+  mutate.mockClear();
+  state.demands.push(createDemand({id:'d2',groupId:'g',demanderAccountId:'b',eggGameId:3227,natures:['固执'],body:'',voice:'',quantity:1}));
+  const base={eggGameId:3227,nature:'固执',body:'大块头' as const,voice:'婉转声' as const,
+    kind:'ordinary' as const,status:'available' as const,listed:true,provenance:'unknown' as const,confidence:'manual' as const,labelSource:'unknown' as const};
+  const data=state as typeof state & {eggs:(typeof base & {id:string;accountId:string;gameAccountKey:string})[]};
+  data.eggs=[{...base,id:'mine',accountId:'a',gameAccountKey:'uid:1'},{...base,id:'theirs',accountId:'b',gameAccountKey:'uid:2'}];
+  render(<EggMatchingHub {...props} members={[...props.members,{accountId:'b',displayName:'乙'}]}/>);
+  fireEvent.click(screen.getByRole('button',{name:/菊花梨/}));
+  fireEvent.click(screen.getByRole('button',{name:'看他的需求'}));
+  expect(screen.getByRole('dialog',{name:'我能满足他的需求'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'选这颗'}));
+  expect(screen.getByRole('dialog',{name:'发起换蛋'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'确认发起'}));
+  expect(mutate).toHaveBeenCalledTimes(1);
+  expect(mutate.mock.calls[0][0]).toMatchObject({type:'request',supplierAccountId:'b'});
+  data.eggs=[];state.demands.length=1;
+});
+
 test('completed collections remain accessible in a collapsed history',()=>{
   state.demands.push({...state.demands[0],id:'done',quantity:1,fulfilled:1,status:'fulfilled'});
   const view=render(<EggMatchingHub {...props}/>);
