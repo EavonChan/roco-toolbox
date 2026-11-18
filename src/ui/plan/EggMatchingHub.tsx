@@ -16,6 +16,7 @@ import { EggDemandEditor } from './EggDemandEditor';
 import { useEggMatching } from './useEggMatching';
 import { EggStockPanel, EggMedals } from './EggStockPanel';
 import { emptyEggStock, reconcileEggStock, type EggStockState, type StockEgg } from './eggStockModel';
+import { newUuid } from '../../shared/uuid';
 import { homeStockFromSnapshot } from './homeEggAdapter';
 import { EggTasksPanel } from './EggTasksPanel';
 import { EggLineSummary } from './EggLineSummary';
@@ -152,7 +153,7 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   const propose = (back: WorkflowEgg | {line:EggLine;id?:string}, returnDemandId?: string) => {
     if (!proposal || !demand) return;
     const backAction='line' in back?(mine?{returnLine:back.line}:{returnLineId:back.id}):{receiveId:back.id};
-    run({ type: mine ? 'request' : 'propose', id: crypto.randomUUID(), demandId: demand.id,
+    run({ type: mine ? 'request' : 'propose', id: newUuid(), demandId: demand.id,
       supplierAccountId: proposal.supplier, giveId: proposal.give?.id, line: proposal.line,lineId:proposal.lineId,...backAction,returnDemandId },
     () => { setProposal(null); setDetailId(null); setPage('tasks'); setNotice('已提出换蛋'); });
   };

@@ -197,7 +197,7 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
     {
       id: 'profile-account',
       title: '云同步（可选）',
-      body: '开启后换手机不丢数据，也能在小组里认出是同一人。恢复码只显示一次，记得截图保存。',
+      body: '开启后换手机不丢数据，也能在小组里认出是同一人。用用户名和密码登录，忘记密码找管理员重置。',
       profileSection: 'identity',
       anchor: 'profile-account',
     },
