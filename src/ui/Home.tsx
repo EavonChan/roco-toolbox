@@ -4,7 +4,8 @@ import type { AccountSnapshot } from '../domain/parseBackup';
 import type { HomeResident, HomeSnapshot, OwnedPet } from '../domain/types';
 import { EmptyState } from './EmptyState';
 import { HomeDemandPlacements } from './HomeDemandPlacements';
-import { HomePairDiagram, buildHomePairClusters } from './HomePairDiagram';
+import { buildHomePairClusters } from './HomePairDiagram';
+import { HomePairCards } from './HomePairCards';
 import { PetCompactCard } from './PetCompactCard';
 import { BODY, CARD, HINT, INSET, PAGE, TITLE } from './primitives/styles';
 import { useSnapshots } from './useSnapshots';
@@ -284,7 +285,7 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
           </p>
         ) : (
           <div className="mt-1.5">
-            <HomePairDiagram couples={home.layEggCouples} residents={home.residents} pets={pets} />
+            <HomePairCards couples={home.layEggCouples} residents={home.residents} pets={pets} />
           </div>
         )}
       </div>

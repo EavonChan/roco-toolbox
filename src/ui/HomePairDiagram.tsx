@@ -113,6 +113,14 @@ export interface HomePairNode {
   academy: boolean;
   /** 配对里提到、但这次快照里找不到住户 */
   missing: boolean;
+  /** 住户所在小窝的显示名（大卡的卡底小字） */
+  nest?: string;
+  /** 住户自己的性格：背包里没找到这只时也能显示 */
+  nature?: string;
+  /** 实例基础 id：背包里没找到时用它取头像 */
+  baseId?: string;
+  /** 背包里对应的那只：有就带分贝 / 身高 / 体重 / 奖牌 */
+  pet?: OwnedPet;
 }
 
 export interface HomePairCluster {
@@ -152,6 +160,9 @@ export function buildHomePairClusters(
       return { actorId, name: '公本未知', gender: '未知', academy: false, missing: true };
     }
     const pet = petOf(resident);
+    const nestName = resident.nest
+      ? resident.nest.nestName || (resident.nest.nestType === 'academy' ? '学院小窝' : '普通小窝')
+      : '';
     return {
       actorId,
       name: resident.name || pet?.name || `精灵 ${actorId}`,
@@ -163,6 +174,10 @@ export function buildHomePairClusters(
             : '未知',
       academy: resident.nest?.nestType === 'academy',
       missing: false,
+      nest: resident.nest?.roomName ? `${nestName} · ${resident.nest.roomName}` : nestName,
+      nature: resident.nature || pet?.nature,
+      baseId: resident.baseId,
+      pet,
     };
   };
 
