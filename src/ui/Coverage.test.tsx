@@ -79,13 +79,17 @@ describe('覆盖度页（筛选项收进种公阵列右上角）', () => {
     expect(screen.queryByTestId('coverage-filter-reset')).toBeNull();
   });
 
-  test('奖牌目标使用母本同款模式与组合筛选，并更新种公档位', () => {
+  test('奖牌目标使用母本同款模式且强制单选，并更新种公档位', () => {
     render(<Coverage />);
     openFilter();
 
     fireEvent.click(screen.getByTestId('coverage-target-grade-小婉'));
-    expect(getCoverageFilter().grades).toEqual(['大婉', '小婉']);
+    expect(getCoverageFilter().grades).toEqual(['小婉']);
     expect(screen.getByTestId('coverage-target-grade-小婉')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('coverage-target-grade-大婉')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
 
     fireEvent.click(screen.getByTestId('coverage-target-mode-medal'));
     expect(getTargetMode()).toBe('medal');

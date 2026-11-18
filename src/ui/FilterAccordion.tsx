@@ -18,6 +18,8 @@ export interface AccordionDimension<V extends string> {
   onToggle: (value: V) => void;
   onClear: () => void;
   headerActions?: ReactNode;
+  /** 独占一行的附加控件（如蛋组筛选的「多选 / 双组」），排在选项网格上方 */
+  actionsRow?: ReactNode;
   content?: ReactNode;
   centerOptions?: boolean;
   columns?: 3 | 4 | 5;
@@ -64,7 +66,7 @@ export function FilterAccordion({
                 centered ? 'justify-center' : 'justify-between'
               } rounded-lg border text-left transition ${
                 inline
-                  ? 'min-h-[30px] gap-1 px-2 py-1'
+                  ? 'min-h-[28px] gap-1 px-2 py-1'
                   : 'min-h-[36px] gap-1.5 px-2.5 py-1.5'
               } ${
                 open
@@ -73,7 +75,7 @@ export function FilterAccordion({
               } ${d.fullWidth ? (inline ? 'col-span-2' : 'col-span-3') : ''}`}
             >
               <span
-                className={`${inline ? 'text-[11px]' : 'text-xs'} ${
+                className={`${inline ? 'text-[10px]' : 'text-xs'} ${
                   open ? 'font-semibold text-emerald-600' : 'font-medium text-slate-600'
                 }`}
               >
@@ -81,7 +83,7 @@ export function FilterAccordion({
               </span>
               <span className="flex items-center gap-1">
                 {d.selected.length === 0 ? (
-                  <span className="text-[11px] font-normal text-slate-300">{emptyHint}</span>
+                  <span className="text-[9px] font-normal text-slate-300">{emptyHint}</span>
                 ) : (
                   <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-semibold text-white">
                     {d.selected.length}
@@ -142,6 +144,11 @@ export function FilterAccordion({
               ) : null}
             </div>
           ) : null}
+          {active.actionsRow ? (
+            <div className="mb-2 w-full" data-testid={`filter-actions-${active.id}`}>
+              {active.actionsRow}
+            </div>
+          ) : null}
           {active.content ?? (
             <div
               className={
@@ -166,7 +173,7 @@ export function FilterAccordion({
                     data-testid={`filter-opt-${active.id}-${opt.value}`}
                     className={`min-w-0 rounded-md border transition active:scale-95 disabled:cursor-not-allowed ${
                       inline
-                        ? 'min-h-[24px] px-1.5 py-0.5 text-[11px]'
+                        ? 'min-h-[26px] px-2 py-1 text-[10px]'
                         : 'min-h-[28px] px-2 py-1 text-xs'
                     } ${
                       active.columns ? 'flex items-center justify-center gap-1 truncate px-1' : ''

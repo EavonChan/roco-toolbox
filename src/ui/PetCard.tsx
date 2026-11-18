@@ -1,10 +1,12 @@
 import type { OwnedPet, SpeciesEntry } from '../domain/types';
+import { heightMetersOf, weightKgOf } from '../domain/petFilters';
 import { petBodyMedalIcon, petVoiceMedalIcon, rarityIcon, voiceMedalName } from '../domain/petIcons';
 import { speciesDisplayName } from '../domain/speciesName';
 import { GenderMark } from './GenderMark';
 import { PetAvatar } from './PetAvatar';
 import { PetCardLayout } from './PetCardLayout';
 import { formatPercent } from './formatPercent';
+import { getMyPetsSizeUnit } from './myPetsFilterStore';
 
 /** 稀有度名字：图标的 title / alt 用。 */
 const RARITY_TEXT: Record<string, string> = {
@@ -44,9 +46,19 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
   const voiceIcon = petVoiceMedalIcon(pet.voiceDb);
   const voiceName = voiceMedalName(pet.voiceDb);
 
+  // 筛选区的显示开关：身高和体重一起换成「数值」（米 / 公斤），缺图鉴区间时退回百分位
+  const sizeValue = getMyPetsSizeUnit() === 'value';
+  const meters = heightMetersOf(species?.heightSize, pet.heightPercent);
+  const kilograms = weightKgOf(species?.bodySize, pet.weightPercent);
+  const heightText =
+    sizeValue && meters !== null ? `${meters.toFixed(2)}m` : formatPercent(pet.heightPercent);
+  const weightText =
+    sizeValue && kilograms !== null ? `${kilograms.toFixed(1)}kg` : formatPercent(pet.weightPercent);
+
   return (
     <PetCardLayout
       name={displayName}
+      size="tall"
       number={species?.number}
       eggGroups={eggGroups}
       natures={pet.nature ? [pet.nature] : []}
@@ -55,9 +67,10 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
           <GenderMark gender={pet.gender} />
         </span>
       }
+      // 奖牌块：mr-0.5 + min-w-max，两枚奖牌比右侧网格列宽，留 2px 才不会被 header 的 overflow 裁掉右缘
       natureAdornment={
-        bodyIcon || voiceIcon ? (
-          <span className="flex flex-col items-end gap-px" data-testid="pet-card-medals">
+        <span className="mr-0.5 flex flex-col items-end gap-px" data-testid="pet-card-medals">
+          <span className="flex min-w-max flex-row items-center gap-px">
             {bodyIcon ? (
               <img
                 src={bodyIcon}
@@ -75,6 +88,24 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
               />
             ) : null}
           </span>
+          <span
+            className="whitespace-nowrap text-[7px] leading-[8px] text-slate-500"
+            data-testid="pet-card-voice"
+            title={`声音 ${pet.voiceDb}dB`}
+          >
+            {pet.voiceDb}dB
+          </span>
+        </span>
+      }
+      badge={
+        raritySrc ? (
+          <img
+            src={raritySrc}
+            alt={rarityName ?? ''}
+            title={rarityName ?? ''}
+            className="h-3 w-3 drop-shadow-sm"
+            data-testid="pet-card-rarity"
+          />
         ) : null
       }
       avatar={
@@ -85,26 +116,17 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
             shiny={Boolean(pet.isShiny)}
             size={44}
           />
-          {raritySrc ? (
-            <img
-              src={raritySrc}
-              alt={rarityName ?? ''}
-              title={rarityName ?? ''}
-              className="absolute -right-1 -top-1 h-3 w-3 drop-shadow-sm"
-              data-testid="pet-card-rarity"
-            />
-          ) : null}
         </span>
       }
       details={
-        <div className="flex min-w-0 items-center justify-center gap-px whitespace-nowrap text-[6px] leading-[8px] text-slate-600">
+        <div className="flex min-w-0 items-center justify-center gap-px whitespace-nowrap text-[8px] leading-[10px] text-slate-600">
           <span className="min-w-0 truncate">
-            {formatPercent(pet.heightPercent)} · {formatPercent(pet.weightPercent)} · {pet.voiceDb}dB
+            高{heightText} · 重{weightText}
           </span>
         </div>
       }
       footer={
-        <span className="w-full truncate text-center text-[6px] leading-[8px] text-slate-400" title={position}>
+        <span className="w-full truncate text-center text-[8px] leading-[10px] text-slate-400" title={position}>
           {position}
         </span>
       }

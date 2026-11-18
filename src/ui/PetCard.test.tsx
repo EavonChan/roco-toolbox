@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import type { OwnedPet, SpeciesEntry } from '../domain/types';
+import { setMyPetsSizeUnit } from './myPetsFilterStore';
 import { PetCard } from './PetCard';
 
 const pet: OwnedPet = {
@@ -27,17 +28,16 @@ describe('PetCard 头像', () => {
   test('使用统一卡片尺寸、头像尺寸和顶部元数据布局，不显示已收集徽标', () => {
     render(<PetCard pet={pet} species={species} eggGroupNames={{ 6: '动物组', 9: '植物组' }} />);
     const card = screen.getByRole('article');
-    expect(card.className).toContain('h-[98px]');
+    expect(card.className).toContain('h-[104px]');
     expect(screen.getByTestId('pet-card-avatar')).toHaveClass(
       'absolute',
       'left-1/2',
-      'top-1/2',
+      'top-[16px]',
       '-translate-x-1/2',
-      '-translate-y-1/2',
     );
     expect(screen.getByTestId('pet-avatar').className).toContain('h-11');
     expect(screen.getByTestId('pet-avatar').parentElement).toHaveClass('items-center', 'justify-center');
-    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('top-[70px]', 'text-[6px]');
+    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('top-[62px]', 'text-[8px]');
     expect(screen.getByTestId('pet-card-egg-groups')).toHaveClass('flex-col');
     expect(screen.getByTestId('pet-card-natures')).toHaveClass('flex-col', 'items-end');
     expect(card).not.toHaveTextContent('已收集');
@@ -75,14 +75,20 @@ describe('PetCard 头像', () => {
     expect(nature.firstElementChild).toHaveClass('inline-flex', 'h-3', 'items-center');
     expect(gender.nextElementSibling).toBe(nature);
     expect(nature.parentElement?.parentElement).toContainElement(medals);
-    expect(screen.getByTestId('pet-card-avatar')).toContainElement(rarityBadge);
+    // 稀有徽标挪到蛋组下方（2026-11-17 用户口径），不再压在头像角上
+    const eggGroups = screen.getByTestId('pet-card-egg-groups');
+    expect(eggGroups.parentElement).toContainElement(rarityBadge);
+    expect(screen.getByTestId('pet-card-avatar')).not.toContainElement(rarityBadge);
     expect(Array.from(medals.querySelectorAll('img')).map((image) => image.alt)).toEqual([
       '大块头',
       '婉转声',
     ]);
     expect(medals.querySelectorAll('img')).toHaveLength(2);
     expect(rarityBadge).toBe(rarity);
-    expect(screen.getByText('0% · 12.5% · 100dB')).toBeInTheDocument();
+    // 声音数值跟在奖牌下面（2026-11-17 用户口径），成长数据行带「高 / 重」前缀
+    expect(screen.getByText('高0% · 重12.5%')).toBeInTheDocument();
+    expect(screen.getByTestId('pet-card-voice')).toHaveTextContent('100dB');
+    expect(medals).toContainElement(screen.getByTestId('pet-card-voice'));
   });
 
   test('异色精灵用异色头像；炫彩仍用原色头像（官方没有炫彩立绘）', () => {
@@ -105,5 +111,23 @@ describe('PetCard 头像', () => {
     );
     fireEvent.error(screen.getByTestId('pet-avatar'));
     expect(screen.getByTestId('pet-avatar-fallback').textContent).toBe('喵');
+  });
+
+  test('显示开关切到「数值」时，身高和体重一起换成米 / 公斤', () => {
+    setMyPetsSizeUnit('value');
+    render(
+      <PetCard
+        pet={{ ...pet, heightPercent: 100, weightPercent: 0 }}
+        species={{
+          ...species,
+          heightSize: { min: 0.38, max: 0.65 },
+          bodySize: { small: 9.12, big: 14.88 },
+        }}
+        eggGroupNames={{}}
+      />,
+    );
+    // 一个开关管两个值：身高转米、体重转公斤
+    expect(screen.getByText('高0.65m · 重9.1kg')).toBeInTheDocument();
+    setMyPetsSizeUnit('percent');
   });
 });

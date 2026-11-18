@@ -16,11 +16,14 @@ import { TargetGradeSelector } from './TargetGradeSelector';
 
 const GRADES: PetGrade[] = ['大婉', '大粗', '小婉', '小粗'];
 
+/** 默认档位：与种公 / 看板一致，只勾「大婉」（大块头 + 婉转声）。 */
+const DEFAULT_GRADE: PetGrade = '大婉';
+
 export interface MotherCriteriaMedalsProps {
   testIdPrefix: string;
 }
 
-/** 母本按体型 + 声音组合选择达标奖牌，允许多选。 */
+/** 母本按体型 + 声音组合选择达标奖牌，**强制单选**：点一个换一个，不累加、也不会清空。 */
 export function MotherCriteriaMedals({ testIdPrefix }: MotherCriteriaMedalsProps) {
   const mode = useTargetMode();
   const criteria = useMotherCriteria();
@@ -44,13 +47,11 @@ export function MotherCriteriaMedals({ testIdPrefix }: MotherCriteriaMedalsProps
     setTargetMode(nextMode);
   };
 
-  const toggleGrade = (grade: PetGrade) => {
+  const selectGrade = (grade: PetGrade) => {
     const current = getMotherCriteria();
     const selected = selectedGradesFor(current, mode);
-    const next = selected.includes(grade)
-      ? selected.filter((item) => item !== grade)
-      : [...selected, grade];
-    saveGrades(current, next, mode);
+    if (selected.length === 1 && selected[0] === grade) return; // 已经是它：保持选中，不清空
+    saveGrades(current, [grade], mode);
   };
 
   return (
@@ -68,7 +69,7 @@ export function MotherCriteriaMedals({ testIdPrefix }: MotherCriteriaMedalsProps
       <TargetGradeSelector
         mode={mode}
         selectedGrades={selectedGrades}
-        onSelect={toggleGrade}
+        onSelect={selectGrade}
         label="母本达标奖牌组合"
         testIdPrefix={testIdPrefix}
       />
@@ -76,17 +77,21 @@ export function MotherCriteriaMedals({ testIdPrefix }: MotherCriteriaMedalsProps
   );
 }
 
+/** 当前选中的档位：永远只返回一个（强制单选），旧数据里的多选值只取第一个。 */
 function selectedGradesFor(criteria: MotherCriteria, mode: TargetMode): PetGrade[] {
-  if (criteria.grades !== undefined) return criteria.grades;
+  if (criteria.grades !== undefined) {
+    return [criteria.grades[0] ?? DEFAULT_GRADE];
+  }
 
   const voices = effectiveMotherVoices(criteria.voices, mode);
-  return GRADES.filter((grade) => {
+  const matched = GRADES.filter((grade) => {
     const bodySelected =
       criteria.bodies.length === 0 || criteria.bodies.includes(GRADE_BODY[grade]);
     const voice = voiceOptionFor(GRADE_VOICE[grade], mode);
     const voiceSelected = voices.length === 0 || voices.includes(voice);
     return bodySelected && voiceSelected;
   });
+  return [matched[0] ?? DEFAULT_GRADE];
 }
 
 function voiceOptionFor(

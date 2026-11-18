@@ -5,6 +5,15 @@ import { buildHomePairClusters, HomePairDiagram } from './HomePairDiagram';
 
 afterEach(cleanup);
 
+/** 取某个方块名字文字的坐标（SVG 坐标：x 越小越靠左、y 越小越靠上）。 */
+const xyOf = (name: string): { x: number; y: number } => {
+  const node = screen
+    .getAllByTestId('home-pair-node')
+    .find((item) => item.getAttribute('data-name') === name);
+  const text = node?.querySelector('text');
+  return { x: Number(text?.getAttribute('x')), y: Number(text?.getAttribute('y')) };
+};
+
 const resident = (over: Partial<HomeResident> & Pick<HomeResident, 'actorId' | 'name'>): HomeResident => ({
   instanceId: `ins_${over.actorId}`,
   baseId: '3001',
@@ -101,12 +110,12 @@ describe('家园配窝图（摆位图画法）', () => {
     render(<HomePairDiagram couples={couples} residents={residents} pets={new Map()} />);
 
     const clusters = screen.getAllByTestId('home-pair-cluster');
-    const clusterTitles = clusters.map((cluster) =>
+    const clusterNames = clusters.map((cluster) =>
       Array.from(cluster.querySelectorAll('[data-testid="home-pair-node"]')).map((node) =>
-        node.getAttribute('title'),
+        node.getAttribute('data-name'),
       ),
     );
-    expect(clusterTitles).toEqual([
+    expect(clusterNames).toEqual([
       ['单配母', '单配公'],
       ['复杂母', '复杂公甲', '复杂公乙'],
     ]);
@@ -126,9 +135,10 @@ describe('家园配窝图（摆位图画法）', () => {
       />,
     );
 
-    expect(screen.getByTitle('公本甲').style.left).toBe('0px');
-    expect(screen.getByTitle('母本').style.left).toBe('68px');
-    expect(screen.getByTitle('公本乙').style.left).toBe('136px');
+    expect(xyOf('公本甲').x).toBeLessThan(xyOf('母本').x);
+    expect(xyOf('母本').x).toBeLessThan(xyOf('公本乙').x);
+    expect(xyOf('公本甲').y).toBe(xyOf('母本').y);
+    expect(xyOf('公本乙').y).toBe(xyOf('母本').y);
   });
 
   test('一公二母按母-公-母横向排列', () => {
@@ -143,12 +153,10 @@ describe('家园配窝图（摆位图画法）', () => {
     ];
     render(<HomePairDiagram couples={couples} residents={residents} pets={new Map()} />);
 
-    expect(screen.getByTitle('母本甲').style.left).toBe('0px');
-    expect(screen.getByTitle('公本').style.left).toBe('68px');
-    expect(screen.getByTitle('母本乙').style.left).toBe('136px');
-    expect(screen.getByTitle('母本甲').style.top).toBe('0px');
-    expect(screen.getByTitle('公本').style.top).toBe('0px');
-    expect(screen.getByTitle('母本乙').style.top).toBe('0px');
+    expect(xyOf('母本甲').x).toBeLessThan(xyOf('公本').x);
+    expect(xyOf('公本').x).toBeLessThan(xyOf('母本乙').x);
+    expect(xyOf('母本甲').y).toBe(xyOf('公本').y);
+    expect(xyOf('公本').y).toBe(xyOf('母本乙').y);
   });
 
   test('二公三母：两公分居两侧，三母居中纵向排列', () => {
@@ -165,13 +173,17 @@ describe('家园配窝图（摆位图画法）', () => {
     const couples = femaleActorIds.map((femaleActorId) => ({ femaleActorId, maleActorIds }));
     render(<HomePairDiagram couples={couples} residents={residents} pets={new Map()} />);
 
-    expect(screen.getByTitle('公本1').style.left).toBe('0px');
-    expect(screen.getByTitle('公本1').style.top).toBe('68px');
-    expect(screen.getByTitle('公本2').style.left).toBe('136px');
-    expect(screen.getByTitle('母本1').style.left).toBe('68px');
-    expect(screen.getByTitle('母本1').style.top).toBe('0px');
-    expect(screen.getByTitle('母本2').style.top).toBe('68px');
-    expect(screen.getByTitle('母本3').style.top).toBe('136px');
+    const females = ['母本1', '母本2', '母本3'].map(xyOf);
+    // 三母同一列、从上到下排
+    expect(females[0].x).toBe(females[1].x);
+    expect(females[1].x).toBe(females[2].x);
+    expect(females[0].y).toBeLessThan(females[1].y);
+    expect(females[1].y).toBeLessThan(females[2].y);
+    // 两公分居两侧，与中间那只母本同一行
+    expect(xyOf('公本1').x).toBeLessThan(females[1].x);
+    expect(females[1].x).toBeLessThan(xyOf('公本2').x);
+    expect(xyOf('公本1').y).toBe(females[1].y);
+    expect(xyOf('公本2').y).toBe(females[1].y);
   });
 
   test('三公八母：三公倒三角，八母围在周围', () => {
@@ -188,27 +200,24 @@ describe('家园配窝图（摆位图画法）', () => {
     const couples = femaleActorIds.map((femaleActorId) => ({ femaleActorId, maleActorIds }));
     render(<HomePairDiagram couples={couples} residents={residents} pets={new Map()} />);
 
-    expect(screen.getByTitle('公本1').style.left).toBe('68px');
-    expect(screen.getByTitle('公本1').style.top).toBe('68px');
-    expect(screen.getByTitle('公本2').style.left).toBe('204px');
-    expect(screen.getByTitle('公本2').style.top).toBe('68px');
-    expect(screen.getByTitle('公本3').style.left).toBe('136px');
-    expect(screen.getByTitle('公本3').style.top).toBe('136px');
+    const males = ['公本1', '公本2', '公本3'].map(xyOf);
+    // 两只公本并排在上，第三只落在下一行中间（倒三角）
+    expect(males[0].y).toBe(males[1].y);
+    expect(males[0].x).toBeLessThan(males[1].x);
+    expect(males[2].y).toBeGreaterThan(males[0].y);
+    expect(males[2].x).toBe((males[0].x + males[1].x) / 2);
 
-    const femalePositions = femaleActorIds.map((_, index) => {
-      const node = screen.getByTitle(`母本${index + 1}`);
-      return [node.style.left, node.style.top];
-    });
-    expect(femalePositions).toEqual([
-      ['0px', '0px'],
-      ['136px', '0px'],
-      ['272px', '0px'],
-      ['0px', '68px'],
-      ['136px', '68px'],
-      ['272px', '68px'],
-      ['0px', '136px'],
-      ['272px', '136px'],
-    ]);
+    const females = femaleActorIds.map((_, index) => xyOf(`母本${index + 1}`));
+    // 八母围在四周：左列 1/4/7、右列 3/6/8 各自对齐，中列 2/5 对齐
+    expect(females[0].x).toBe(females[3].x);
+    expect(females[3].x).toBe(females[6].x);
+    expect(females[2].x).toBe(females[5].x);
+    expect(females[5].x).toBe(females[7].x);
+    expect(females[1].x).toBe(females[4].x);
+    // 母本不会摆在公本那一格上
+    for (const female of females) {
+      expect(males.some((male) => male.x === female.x && male.y === female.y)).toBe(false);
+    }
   });
 
   test('配对里的公本不在快照里时，用虚线占位块写「公本未知」', () => {

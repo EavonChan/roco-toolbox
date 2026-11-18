@@ -132,6 +132,43 @@ describe('myPetsFilterStore 持久化读取', () => {
 
     expect([...store.getMyPetsSelected()]).toEqual(['nature:开朗']);
   });
+
+  test('身高和体重共用一个显示开关，并持久化', async () => {
+    const store = await import('./myPetsFilterStore');
+    expect(store.getMyPetsSizeUnit()).toBe('percent');
+
+    store.setMyPetsSizeUnit('value');
+    expect(store.getMyPetsSizeUnit()).toBe('value');
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}').sizeUnit).toBe('value');
+
+    store.setMyPetsSizeUnit('percent');
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).not.toHaveProperty('sizeUnit');
+  });
+
+  test('旧版身高 / 体重各自开关迁移成一个开关：任一边选过数值就保持数值', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ heightUnit: 'value', weightUnit: 'percent' }));
+
+    const store = await import('./myPetsFilterStore');
+
+    expect(store.getMyPetsSizeUnit()).toBe('value');
+  });
+
+  test('两边都是百分比时迁移后仍是百分比', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ heightUnit: 'percent', weightUnit: 'percent' }));
+
+    const store = await import('./myPetsFilterStore');
+
+    expect(store.getMyPetsSizeUnit()).toBe('percent');
+  });
+
+  test('重置把显示开关收回百分比', async () => {
+    const store = await import('./myPetsFilterStore');
+    store.setMyPetsSizeUnit('value');
+
+    store.clearInventoryFilters();
+
+    expect(store.getMyPetsSizeUnit()).toBe('percent');
+  });
 });
 
 describe('重置只清精灵背包的标签', () => {

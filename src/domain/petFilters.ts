@@ -25,6 +25,39 @@ export function matchesHeightRange(
   );
 }
 
+/** 体重百分位范围（与身高同一套 0~100 口径）。 */
+export type WeightRange = HeightRange;
+export const DEFAULT_WEIGHT_RANGE: WeightRange = { min: 0, max: 100 };
+
+/** 体型筛选的两个维度（2026-11-17 用户口径：身高 / 体重可切换）。 */
+export type SizeField = 'height' | 'weight';
+/** 体型筛选的两种单位：百分比（0~100）/ 数值（身高米、体重公斤）。 */
+export type SizeUnit = 'percent' | 'value';
+
+/** 数值档的默认区间（米 / 公斤），按图鉴里的实际跨度给一个略宽松的范围。 */
+export const DEFAULT_SIZE_VALUE_RANGES: Record<SizeField, HeightRange> = {
+  height: { min: 0, max: 1.2 },
+  weight: { min: 0, max: 20 },
+};
+
+/** 百分位 → 真实身高（米）；缺图鉴区间或百分位时返回 null。 */
+export function heightMetersOf(
+  size: { min: number; max: number } | null | undefined,
+  percent: number | null | undefined,
+): number | null {
+  if (!size || typeof percent !== 'number' || !Number.isFinite(percent)) return null;
+  return size.min + (size.max - size.min) * (percent / 100);
+}
+
+/** 百分位 → 真实体重（公斤）；缺图鉴区间或百分位时返回 null。 */
+export function weightKgOf(
+  size: { small: number; big: number } | null | undefined,
+  percent: number | null | undefined,
+): number | null {
+  if (!size || typeof percent !== 'number' || !Number.isFinite(percent)) return null;
+  return size.small + (size.big - size.small) * (percent / 100);
+}
+
 export interface PetTag {
   id: string;
   kind: TagKind;

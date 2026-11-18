@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DEFAULT_HEIGHT_RANGE } from '../domain/petFilters';
-import type { HeightRange } from '../domain/petFilters';
+import type { HeightRange, SizeUnit } from '../domain/petFilters';
 
 /**
  * 「精灵背包」页的筛选状态（进程内共享，纯内存）。
@@ -24,9 +24,16 @@ const STORAGE_KEY = 'roco.myPetsFilter';
 interface PersistedFilter {
   selected?: string[];
   heightRange?: unknown;
+  /** 卡片显示方式（不参与筛选）：身高 / 体重共用百分比或数值 */
+  sizeUnit?: unknown;
+  /** 旧版身高 / 体重各自的显示开关，只用于迁移读取（2026-11-18 合并成一个） */
+  heightUnit?: unknown;
+  weightUnit?: unknown;
   bodyExtremeMode?: boolean;
   voiceExtremeMode?: boolean;
   eggGroupMatchMode?: unknown;
+  /** 卡片网格列数（3 / 4，纯显示口径，不参与筛选） */
+  columns?: unknown;
 }
 
 const readPersisted = (): PersistedFilter => {
@@ -72,7 +79,7 @@ const readHeightRange = (value: unknown): HeightRange | null => {
     return null;
   }
   return { min, max };
-};
+}
 
 /**
  * localStorage 里的字段可能是任意脏值（用户手改 / 旧版本数据）。这里逐项校验，
@@ -121,15 +128,33 @@ let heightRange =
       : { ...DEFAULT_HEIGHT_RANGE });
 let filtersOpen = true;
 
+/**
+ * 卡片身高 / 体重的显示单位（2026-11-18 用户口径：只是显示开关，**不参与筛选**）。
+ * 2026-11-18 晚：身高和体重不再分开设置，共用一个「百分比 / 数值」开关。
+ */
+let sizeUnit: SizeUnit =
+  persisted.sizeUnit === 'value' ||
+  persisted.sizeUnit === 'percent'
+    ? persisted.sizeUnit
+    : persisted.heightUnit === 'value' || persisted.weightUnit === 'value'
+      ? 'value'
+      : 'percent';
+
+/** 卡片网格列数（2026-11-18 用户口径：三列时卡片整体放大、一行铺满；默认四列）。 */
+export type CardColumns = 3 | 4;
+let columns: CardColumns = persisted.columns === 3 ? 3 : 4;
+
 const listeners = new Set<Listener>();
 
 const persist = (): void => {
   try {
     const value: PersistedFilter = { selected: [...selected] };
     if (heightRange.min !== 0 || heightRange.max !== 100) value.heightRange = heightRange;
+    if (sizeUnit !== 'percent') value.sizeUnit = sizeUnit;
     if (bodyExtremeMode) value.bodyExtremeMode = true;
     if (voiceExtremeMode) value.voiceExtremeMode = true;
     if (eggGroupMatchMode === 'dual') value.eggGroupMatchMode = eggGroupMatchMode;
+    if (columns === 3) value.columns = 3;
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(value),
@@ -188,9 +213,32 @@ export function setMyPetsFiltersOpen(next: boolean): void {
   commit();
 }
 
+export function getMyPetsSizeUnit(): SizeUnit {
+  return sizeUnit;
+}
+
+/** 卡片列数（3 / 4）：只改网格排布，不参与筛选。 */
+export function getMyPetsColumns(): CardColumns {
+  return columns;
+}
+
+export function setMyPetsColumns(next: CardColumns): void {
+  if (columns === next) return;
+  columns = next;
+  commit();
+}
+
+/** 卡片显示开关：身高和体重一起切换百分比 / 数值，不参与筛选。 */
+export function setMyPetsSizeUnit(next: SizeUnit): void {
+  if (sizeUnit === next) return;
+  sizeUnit = next;
+  commit();
+}
+
 export function clearMyPetsFilters(): void {
   selected = new Set();
   heightRange = { ...DEFAULT_HEIGHT_RANGE };
+  sizeUnit = 'percent';
   bodyExtremeMode = false;
   voiceExtremeMode = false;
   eggGroupMatchMode = 'multi';
@@ -206,17 +254,21 @@ export function useMyPetsFilters(): {
   selected: ReadonlySet<string>;
   filtersOpen: boolean;
   heightRange: HeightRange;
+  sizeUnit: SizeUnit;
   bodyExtremeMode: boolean;
   voiceExtremeMode: boolean;
   eggGroupMatchMode: EggGroupMatchMode;
+  columns: CardColumns;
 } {
   const [value, setValue] = useState({
     selected,
     filtersOpen,
     heightRange: { ...heightRange },
+    sizeUnit,
     bodyExtremeMode,
     voiceExtremeMode,
     eggGroupMatchMode,
+    columns,
   });
 
   useEffect(() => {
@@ -225,9 +277,11 @@ export function useMyPetsFilters(): {
         selected,
         filtersOpen,
         heightRange: { ...heightRange },
+        sizeUnit,
         bodyExtremeMode,
         voiceExtremeMode,
         eggGroupMatchMode,
+        columns,
       });
     listeners.add(listener);
     listener();
@@ -244,9 +298,11 @@ export function resetMyPetsFiltersForTest(): void {
   selected = new Set();
   filtersOpen = false;
   heightRange = { ...DEFAULT_HEIGHT_RANGE };
+  sizeUnit = 'percent';
   bodyExtremeMode = false;
   voiceExtremeMode = false;
   eggGroupMatchMode = 'multi';
+  columns = 4;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
   } catch {

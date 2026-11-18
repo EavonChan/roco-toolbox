@@ -36,24 +36,30 @@ describe('CollectionTargetEditor', () => {
     expect(getMotherCriteria()).toEqual(motherBefore);
   });
 
-  test('母本分区：组合奖牌写回原 store，种公目标不变', () => {
+  test('母本分区：组合奖牌写回原 store（单选），种公目标不变', () => {
     renderEditor('mothers');
     expect(screen.getByRole('dialog', { name: '调整母本达标条件' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '种公目标' })).toBeNull();
     const gradesBefore = [...getCoverageFilter().grades];
 
+    // 点另一个档位是「换过去」，不是累加
     fireEvent.click(screen.getByTestId('editor-mother-grade-小婉'));
-    expect(getMotherCriteria().grades).not.toContain('小婉');
+    expect(getMotherCriteria().grades).toEqual(['小婉']);
 
     expect(getCoverageFilter().grades).toEqual(gradesBefore);
   });
 
-  test('组合奖牌可分别取消选择', () => {
+  test('组合奖牌强制单选：换档位只留最后点的那个，点已选中的不会清空', () => {
     renderEditor('mothers');
-    for (const grade of ['大婉', '大粗', '小婉', '小粗']) {
-      fireEvent.click(screen.getByTestId(`editor-mother-grade-${grade}`));
-    }
-    expect(getMotherCriteria().grades).toEqual([]);
+    fireEvent.click(screen.getByTestId('editor-mother-grade-大粗'));
+    expect(getMotherCriteria().grades).toEqual(['大粗']);
+
+    fireEvent.click(screen.getByTestId('editor-mother-grade-小粗'));
+    expect(getMotherCriteria().grades).toEqual(['小粗']);
+
+    // 再点已选中的那个：保持选中，不会变成「一个都不选」
+    fireEvent.click(screen.getByTestId('editor-mother-grade-小粗'));
+    expect(getMotherCriteria().grades).toEqual(['小粗']);
 
     // 恢复默认按钮才把它改回默认
     fireEvent.click(screen.getByTestId('editor-reset-mothers'));
@@ -68,7 +74,7 @@ describe('CollectionTargetEditor', () => {
 
     fireEvent.click(screen.getByTestId('editor-mother-mode-medal'));
 
-    expect(getMotherCriteria().voices).toEqual(['婉转声', '粗嗓门']);
+    expect(getMotherCriteria().voices).toEqual(['婉转声']);
     expect(screen.getByTestId('editor-mother-grade-大婉').querySelectorAll('img')[1]).toHaveAttribute(
       'src',
       '/ui/medals/1026.png',

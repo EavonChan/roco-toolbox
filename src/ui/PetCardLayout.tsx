@@ -7,6 +7,8 @@ export interface PetCardLayoutProps {
   natures?: readonly string[];
   naturePrefix?: ReactNode;
   natureAdornment?: ReactNode;
+  /** 蛋组下方的小徽标（如稀有度图标，2026-11-17 用户口径） */
+  badge?: ReactNode;
   avatar: ReactNode;
   details?: ReactNode;
   footer?: ReactNode;
@@ -17,9 +19,17 @@ export interface PetCardLayoutProps {
   ariaLabel?: string;
   className?: string;
   academy?: boolean;
+  /**
+   * 卡片高度档位。
+   * - `default`：98px，紧凑卡 / 母本 / 家园用（文字 6px）；
+   * - `tall`：104px，精灵背包用（名字 / 身高体重 / 账号位置放大到 8px，头像略微上移）。
+   */
+  size?: PetCardSize;
   onClick?: () => void;
   ariaPressed?: boolean;
 }
+
+export type PetCardSize = 'default' | 'tall';
 
 /** Shared card frame for pet displays across the app. */
 export function PetCardLayout({
@@ -29,6 +39,7 @@ export function PetCardLayout({
   natures = [],
   naturePrefix,
   natureAdornment,
+  badge,
   avatar,
   details,
   footer,
@@ -39,6 +50,7 @@ export function PetCardLayout({
   ariaLabel,
   className = '',
   academy,
+  size = 'default',
   onClick,
   ariaPressed,
 }: PetCardLayoutProps) {
@@ -49,10 +61,11 @@ export function PetCardLayout({
   };
   const showDetails = details != null && details !== false;
   const showFooter = footer != null && footer !== false;
+  const tall = size === 'tall';
 
   return (
     <article
-      className={`relative h-[98px] min-w-0 overflow-hidden rounded-xl border border-emerald-300 bg-emerald-50/60 p-1 shadow-sm ${onClick ? 'cursor-pointer hover:border-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500' : ''} ${className}`}
+      className={`relative ${tall ? 'h-[104px]' : 'h-[98px]'} min-w-0 overflow-hidden rounded-xl border border-emerald-300 bg-emerald-50/60 p-1 shadow-sm ${onClick ? 'cursor-pointer hover:border-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500' : ''} ${className}`}
       data-testid={testId}
       data-academy={academy ? 'true' : undefined}
       title={title}
@@ -81,6 +94,7 @@ export function PetCardLayout({
               </span>
             ))}
           </span>
+          {badge ? <span className="flex min-w-0 items-start">{badge}</span> : null}
         </div>
         <div className="col-start-3 row-start-1 flex min-w-0 flex-col items-end gap-px">
           <div className="flex min-w-0 items-center justify-end gap-px">
@@ -102,28 +116,38 @@ export function PetCardLayout({
       </header>
 
       <div
-        className="absolute left-1/2 top-1/2 z-0 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+        className={`absolute left-1/2 z-0 flex h-11 w-11 -translate-x-1/2 items-center justify-center ${
+          tall ? 'top-[16px]' : 'top-1/2 -translate-y-1/2'
+        }`}
         data-testid="pet-card-avatar"
       >
         {avatar}
       </div>
 
       <h3
-        className="absolute inset-x-1 top-[70px] flex h-2 items-center justify-center truncate text-center text-[6px] font-bold leading-2 text-slate-900"
+        className={`absolute inset-x-1 flex items-center justify-center truncate text-center font-bold text-slate-900 ${
+          tall ? 'top-[62px] h-2.5 text-[8px] leading-[10px]' : 'top-[70px] h-2 text-[6px] leading-2'
+        }`}
         title={title ?? name}
       >
         {name}
       </h3>
 
       {showDetails ? (
-        <div className="absolute inset-x-1 top-[80px] flex h-2 items-center justify-center overflow-hidden text-center">
+        <div
+          className={`absolute inset-x-1 flex items-center justify-center overflow-hidden text-center ${
+            tall ? 'top-[74px] h-2.5' : 'top-[80px] h-2'
+          }`}
+        >
           {details}
         </div>
       ) : null}
 
       {showFooter ? (
         <div
-          className="absolute inset-x-1 bottom-1 flex h-1.5 items-center justify-center"
+          className={`absolute inset-x-1 flex items-center justify-center ${
+            tall ? 'top-[88px] h-2.5' : 'bottom-1 h-1.5'
+          }`}
         >
           {footer}
         </div>

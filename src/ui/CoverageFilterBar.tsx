@@ -5,11 +5,15 @@ import { eggGroupNames } from '../data/catalog';
 import { TargetGradeSelector } from './TargetGradeSelector';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { setTargetMode, useTargetMode } from './targetModeStore';
-import { toggleFilterGrade } from './coverageFilterStore';
+import { setTargetGrade } from './coverageFilterStore';
 
 export interface CoverageFilterBarProps {
   filter: CoverageFilter;
   onToggleGroup: (groupId: number) => void;
+  /** 恢复默认筛选（蛋组全选）；筛选没改动时不显示入口 */
+  onReset?: () => void;
+  /** 打开种公目标编辑器；筛选没改动时不显示入口 */
+  onOpenTargetEditor?: () => void;
 }
 
 const CHIP_ON = 'border-emerald-500 bg-emerald-50 font-medium text-emerald-700';
@@ -27,10 +31,12 @@ const chipClass = (active: boolean): string => `${CHIP_BASE} ${active ? CHIP_ON 
  * 性格不在这里——「每组推荐前 3」这个预设只在**组内**有意义（部分性格在部分组几乎没用），
  * 所以它下沉到蛋组展开区，由 CoverageMatrix 渲染，不再有「对所有组一起加减」的全局开关。
  */
-export function CoverageFilterBar({ filter, onToggleGroup }: CoverageFilterBarProps) {
+export function CoverageFilterBar({ filter, onToggleGroup, onReset, onOpenTargetEditor }: CoverageFilterBarProps) {
   const [groupsOpen, setGroupsOpen] = useState(false);
   const mode = useTargetMode();
   const groupCount = filter.groupIds.length;
+  // 蛋组被取消过才算「筛选已改动」，默认全选时不摆重置入口（2026-10-29 用户口径）
+  const filterDirty = groupCount !== ALL_EGG_GROUP_IDS.length;
 
   const emptyDimensions = [
     groupCount === 0 ? '蛋组' : null,
@@ -50,10 +56,11 @@ export function CoverageFilterBar({ filter, onToggleGroup }: CoverageFilterBarPr
           onValueChange={(value) => setTargetMode(value as TargetMode)}
           optionTestId={(value) => `coverage-target-mode-${value}`}
         />
+        {/* 奖牌档位是单选：旧数据 / 云同步里可能残留多个，这里只认第一个，避免出现多选观感 */}
         <TargetGradeSelector
           mode={mode}
-          selectedGrades={filter.grades}
-          onSelect={toggleFilterGrade}
+          selectedGrades={filter.grades.slice(0, 1)}
+          onSelect={setTargetGrade}
           label="种公目标奖牌组合"
           testIdPrefix="coverage-target"
         />
@@ -87,6 +94,31 @@ export function CoverageFilterBar({ filter, onToggleGroup }: CoverageFilterBarPr
           </div>
         ) : null}
       </div>
+
+      {filterDirty ? (
+        <div className="mt-1.5 flex items-center gap-2">
+          {onReset ? (
+            <button
+              type="button"
+              onClick={onReset}
+              className="min-h-[28px] text-xs font-medium text-emerald-700"
+              data-testid="coverage-filter-reset"
+            >
+              恢复默认
+            </button>
+          ) : null}
+          {onOpenTargetEditor ? (
+            <button
+              type="button"
+              onClick={onOpenTargetEditor}
+              className="min-h-[28px] text-xs text-slate-500"
+              data-testid="coverage-open-target-editor"
+            >
+              编辑目标
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {emptyDimensions.length > 0 ? (
         <p className="mt-2 text-xs text-amber-600" data-testid="coverage-filter-empty">

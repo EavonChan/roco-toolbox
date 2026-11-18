@@ -1,4 +1,4 @@
-import { buildClusterOffsets, NEST_SIZE } from '../domain/nestGeometry';
+import { NEST_SIZE } from '../domain/nestGeometry';
 import type { HomePair, HomeResident, OwnedPet } from '../domain/types';
 import { NestLayoutSvg, type NestSvgLine, type NestSvgSlot } from './NestLayoutSvg';
 import { pairingColor, pairingDashed } from './pairingColors';
@@ -8,8 +8,8 @@ import { pairingColor, pairingDashed } from './pairingColors';
  *
  * 和配窝建议的区别：那边画的是**建议**排位（`buildNestPlans` 算出来的坐标），
  * 这边画的是**游戏里实际成立的配对**（`layEggCouples`）。抓包里的窝坐标大多为空，
- * 所以两边都不按真实坐标、只按配对关系紧凑排：同一簇内的窝用 `buildClusterOffsets`
- * 排成「能连上的三角形/并排」，簇与簇之间留空隙、各用一种线色。
+ * 所以两边都不按真实坐标、只按配对关系紧凑排：同一簇内的窝按公母分布排开（`layoutPairNodes`），
+ * 簇与簇之间留空隙、各用一种线色。
  *
  * 方块里只写名字（最多 4 字，完整名放 title）+ 性别；学院小窝那只是绿底白字。
  */
@@ -17,35 +17,15 @@ import { pairingColor, pairingDashed } from './pairingColors';
 /** 配窝卡片四周留白（地板单元）：1/4 窝，只够描边不被裁，剩下的都留给方块。 */
 const HOME_PAIR_PADDING = 2;
 
-/** 展示顺序：母在左、公在右（与「配窝建议」的配对行、下面的家园精灵卡保持一致）。 */
-const genderRank = (gender: HomePairNode['gender']): number =>
-  gender === '母' ? 0 : gender === '公' ? 1 : 2;
-
-/**
- * 把摆位分给这一簇的方块：先按「母 → 公 → 未知」定展示顺序，再把从左到右的摆位依次发下去。
- * `buildClusterOffsets` 只保证互不重叠、能连线，具体哪个方块落在哪一格由这里决定。
- */
-function positionsOf(cluster: HomePairCluster): Array<{ x: number; y: number }> {
-  const order = cluster.nodes
-    .map((node, index) => ({ index, rank: genderRank(node.gender) }))
-    .sort((a, b) => a.rank - b.rank || a.index - b.index)
-    .map((item) => item.index);
-  const offsets = [...buildClusterOffsets(cluster.nodes.length)].sort(
-    (a, b) => a.x - b.x || a.y - b.y,
-  );
-  const positions = cluster.nodes.map(() => ({ x: 0, y: 0 }));
-  order.forEach((nodeIndex, slot) => {
-    positions[nodeIndex] = offsets[slot];
-  });
-  return positions;
-}
-
 interface PairPosition {
   x: number;
   y: number;
 }
 
-/** 按公母分布排卡；坐标仍用家园地板单元，保持卡片间距与摆位图一致。 */
+/**
+ * 按公母分布排卡；坐标用家园地板单元（1 窝 = 8 单元），保证卡片间距与摆位图一致。
+ * 母在左、公在右；多母时母本居中纵向排列、公本分居两侧；三公八母用倒三角围成一片。
+ */
 function layoutPairNodes(nodes: readonly HomePairNode[]): PairPosition[] {
   const males: number[] = [];
   const females: number[] = [];
@@ -104,18 +84,19 @@ function layoutPairNodes(nodes: readonly HomePairNode[]): PairPosition[] {
     return positions;
   }
 
+  // 兜底：母在左列、公（含未知）在右列，保证同一对里母本永远在左边
   if (males.length > 0 && females.length > 0) {
-    const leftColumn = [...males, ...unknown];
-    const rowCount = Math.max(leftColumn.length, females.length);
-    placeColumn(leftColumn, 0, rowCount);
-    placeColumn(females, 1, rowCount);
+    const rightColumn = [...males, ...unknown];
+    const rowCount = Math.max(rightColumn.length, females.length);
+    placeColumn(females, 0, rowCount);
+    placeColumn(rightColumn, 1, rowCount);
     return positions;
   }
 
   if (unknown.length > 0 && females.length > 0) {
     const rowCount = Math.max(unknown.length, females.length);
-    placeColumn(unknown, 0, rowCount);
-    placeColumn(females, 1, rowCount);
+    placeColumn(females, 0, rowCount);
+    placeColumn(unknown, 1, rowCount);
     return positions;
   }
 
@@ -236,6 +217,7 @@ export interface HomePairDiagramProps {
 export function HomePairDiagram({ couples, residents, pets }: HomePairDiagramProps) {
   const clusters = buildHomePairClusters(couples, residents, pets);
   if (clusters.length === 0) return null;
+  // 一公一母的配对优先显示（最好认），其余保持原顺序
   const orderedClusters = clusters
     .map((cluster, index) => ({
       cluster,
@@ -250,22 +232,26 @@ export function HomePairDiagram({ couples, residents, pets }: HomePairDiagramPro
 
   return (
     <div className="flex flex-wrap items-start gap-3" data-testid="home-pair-diagram">
-      {clusters.map((cluster, index) => {
+      {orderedClusters.map((cluster, index) => {
         const color = pairingColor(index);
-        const dashed = index >= PAIRING_COLORS.length;
-        // 同一簇内紧凑排位（与配窝建议同一个几何：1 窝 = 8 单元）
-        const raw = buildClusterOffsets(cluster.nodes.length);
-        // 贪心是从左侧找位，算出来母本可能落在右边：整体镜像一下，统一「母本在左」更好读
-        const maxX = Math.max(...raw.map((position) => position.x));
-        const minX = Math.min(...raw.map((position) => position.x));
-        const positions =
-          raw[0].x === minX ? raw : raw.map((position) => ({ x: maxX - position.x, y: position.y }));
-        const width = Math.max(...positions.map((position) => position.x)) * UNIT + BOX;
-        const height = Math.max(...positions.map((position) => position.y)) * UNIT + BOX;
-        const centerOf = (nodeIndex: number) => ({
-          x: positions[nodeIndex].x * UNIT + BOX / 2,
-          y: positions[nodeIndex].y * UNIT + BOX / 2,
-        });
+        const dashed = pairingDashed(index);
+        // 同一簇内按公母分布紧凑排位（与摆位图同一套几何：1 窝 = 8 单元）
+        const positions = layoutPairNodes(cluster.nodes);
+        const slots: NestSvgSlot[] = cluster.nodes.map((node, nodeIndex) => ({
+          key: node.actorId,
+          name: node.name,
+          gender: node.gender,
+          academy: node.academy,
+          missing: node.missing,
+          position: positions[nodeIndex],
+        }));
+        const lines: NestSvgLine[] = cluster.edges.map(([from, to], edgeIndex) => ({
+          key: `${from}-${to}-${edgeIndex}`,
+          from: positions[from],
+          to: positions[to],
+          color,
+          dashed,
+        }));
         return (
           <div
             key={cluster.key}
