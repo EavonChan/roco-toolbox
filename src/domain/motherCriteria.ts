@@ -5,7 +5,7 @@ import {
   type PetGrade,
   type TargetMode,
 } from './petFilters';
-import { bodyGradeOf } from '../shared/bodySize.js';
+import { breedingBodyGradeOf } from '../shared/bodySize.js';
 import type { OwnedPet } from './types';
 
 /**
@@ -69,12 +69,12 @@ export const matchesMotherVoice = (voiceDb: number, voices: readonly string[]): 
 /**
  * 该精灵是否命中选中的体型。
  *
- * 口径与档位 / 种公完全一致：奖牌优先；没有奖牌时，身高 100% / 0%
- * 分别等效大块头 / 小不点，不再要求体重阈值。
+ * 口径与档位 / 种公完全一致（孵蛋口径）：奖牌优先；没有奖牌时，身高 100% / 0%
+ * 分别等效大块头 / 小不点，不再要求体重阈值。奖牌拥有与展示仍按体重 98% / 2%。
  */
 export function matchesMotherBody(pet: OwnedPet, bodies: readonly MotherBody[]): boolean {
   if (bodies.length === 0) return true;
-  const body = bodyGradeOf(pet);
+  const body = breedingBodyGradeOf(pet);
   return body !== '' && (bodies as readonly string[]).includes(body);
 }
 

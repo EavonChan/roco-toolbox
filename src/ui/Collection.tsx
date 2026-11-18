@@ -139,7 +139,7 @@ export function Collection({
         <>
           <MyPets
             onGoImport={() => onNavigate({ type: 'open-profile', section: 'data' })}
-            onVisibleCountChange={reportInventoryCount}
+            onTotalCountChange={reportInventoryCount}
           />
         </>
       )}

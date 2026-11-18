@@ -75,7 +75,8 @@ const store = createModuleStore<CoverageFilter>(buildDefaultFilter(targetNatures
       groupIds: toGroupIds(loaded.groupIds) ?? defaults.groupIds,
       naturesByGroup: toNaturesByGroup(loaded.naturesByGroup, defaults.naturesByGroup),
       grades: Array.isArray(loaded.grades)
-        ? loaded.grades.filter(isGrade)
+        // 奖牌目标改成单选（2026-11-18）：旧数据 / 云同步里残留的多个档位只保留最后一个
+        ? loaded.grades.filter(isGrade).slice(-1)
         : defaults.grades,
       natureMode: loaded.natureMode === 'custom' ? 'custom' : 'recommended',
       customNatures: toStringArray(loaded.customNatures),
@@ -103,12 +104,9 @@ export function toggleFilterGroup(groupId: number): void {
   store.set({ ...filter, groupIds });
 }
 
+/** 奖牌目标是单选（2026-11-18）：点别的档替换，点已选中的档取消目标。 */
 export function toggleFilterGrade(grade: PetGrade): void {
-  const filter = store.get();
-  const grades = filter.grades.includes(grade)
-    ? filter.grades.filter((item) => item !== grade)
-    : [...filter.grades, grade];
-  store.set({ ...filter, grades });
+  setTargetGrade(store.get().grades[0] === grade ? null : grade);
 }
 
 /** 目标编辑器选择单一体型 × 声音组合时使用；null 表示清空目标档位。 */

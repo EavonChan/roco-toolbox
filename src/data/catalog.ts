@@ -55,16 +55,19 @@ const EGG_GAME_ID_OVERRIDES: Record<number, number | null> = {
  * 推荐性格以**产品口径**为准（2026-11-02 产品设定）：`productEggNatures.json` 里列出的蛋，
  * 直接用它给的性格列表；图鉴管线产出的 `eggRecommendedNatures` 可能滞后一步，只作兜底。
  */
-export const species: SpeciesEntry[] = data.species.map((entry) => ({
-  ...entry,
-  eggGameId: Object.prototype.hasOwnProperty.call(EGG_GAME_ID_OVERRIDES, entry.gameId)
+export const species: SpeciesEntry[] = data.species.map((entry) => {
+  const eggGameId = Object.prototype.hasOwnProperty.call(EGG_GAME_ID_OVERRIDES, entry.gameId)
     ? EGG_GAME_ID_OVERRIDES[entry.gameId]
-    : entry.eggGameId,
-  eggGroups: (entry.eggGroups ?? []).filter((g): g is EggGroupId => typeof g === 'number'),
-  ...(entry.eggGameId === entry.gameId && productNaturesByGameId[String(entry.gameId)]
-    ? { eggRecommendedNatures: productNaturesByGameId[String(entry.gameId)] }
-    : {}),
-}));
+    : entry.eggGameId;
+  return {
+    ...entry,
+    eggGameId,
+    eggGroups: (entry.eggGroups ?? []).filter((g): g is EggGroupId => typeof g === 'number'),
+    ...(eggGameId === entry.gameId && productNaturesByGameId[String(entry.gameId)]
+      ? { eggRecommendedNatures: productNaturesByGameId[String(entry.gameId)] }
+      : {}),
+  };
+});
 
 /**
  * 进化链里**最高形态**的推荐性格。

@@ -10,6 +10,7 @@ import {
   toggleFilterGroup,
   toggleGroupNature,
   setNatureMode,
+  setTargetGrade,
 } from './coverageFilterStore';
 
 const slotCount = (filter: CoverageFilter): number =>
@@ -21,11 +22,8 @@ const naturesOf = (groupId: number): string[] =>
 describe('覆盖筛选 store', () => {
   beforeEach(() => {
     resetCoverageFilter();
-    // 档位 2026-10-06 起是全局口径（入口在看板），「恢复默认」刻意不动它 → 测试里显式复位，保证用例隔离
-    if (!getCoverageFilter().grades.includes('大婉')) toggleFilterGrade('大婉');
-    for (const grade of getCoverageFilter().grades.filter((item) => item !== '大婉')) {
-      toggleFilterGrade(grade);
-    }
+    // 档位 2026-11-18 起是单选、全局口径（入口在看板 / 覆盖度筛选）；「恢复默认」刻意不动它
+    setTargetGrade('大婉');
   });
 
   test('默认：14 蛋组全选、每蛋组推荐前 3、档位只勾大婉 → 42 个槽位', () => {
@@ -35,10 +33,10 @@ describe('覆盖筛选 store', () => {
     expect(slotCount(filter)).toBe(42);
   });
 
-  test('档位多选：加一个档位，分母翻倍', () => {
+  test('档位单选：再点一个会替换，不会累加', () => {
     toggleFilterGrade('小婉');
-    expect(getCoverageFilter().grades).toEqual(['大婉', '小婉']);
-    expect(slotCount(getCoverageFilter())).toBe(84);
+    expect(getCoverageFilter().grades).toEqual(['小婉']);
+    expect(slotCount(getCoverageFilter())).toBe(42);
   });
 
   test('蛋组取消：只影响该组，别组不变', () => {

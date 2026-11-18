@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   TARGET_MODE_LABELS,
   type TargetMode,
@@ -21,7 +21,7 @@ import { setTargetGrade, useCoverageFilter } from './coverageFilterStore';
 import { useMotherCriteria } from './motherCriteriaStore';
 import { useNatureOverrides } from './natureOverrideStore';
 import { setTargetMode } from './targetModeStore';
-import { clearAccountFilter, toggleAccount, toggleAllAccounts, useAccountFilter } from './accountFilterStore';
+import { toggleAccount, toggleAllAccounts, useAccountFilter } from './accountFilterStore';
 import { removeStudTransferTask, useStudTransferTasks } from './studTransferTaskStore';
 import type { NavigationIntent } from './navigation';
 import { TargetGradeSelector } from './TargetGradeSelector';
@@ -47,9 +47,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const selectedAccountNames = accounts.filter((name) => !excluded.has(name));
   const selectedAccountCount = selectedAccountNames.length;
   const noSelectedAccounts = accounts.length > 0 && selectedAccountCount === 0;
-  useEffect(() => {
-    if (noSelectedAccounts) clearAccountFilter();
-  }, [noSelectedAccounts]);
   const coverageFilter = useCoverageFilter();
   const motherCriteria = useMotherCriteria();
 
@@ -88,7 +85,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         ? '种公目标已全部收集，没有要补的缺口。'
         : '没有能自己孵的方案：缺可配对的母本 / 公本，先去覆盖度看每个缺口的判定。';
   const suggestionEmptyNote = noSelectedAccounts
-    ? '当前未选中任何账号，请在上方选择账号后查看建议。'
+    ? '当前未选中任何账号，请先选择账号后查看建议。'
     : studEmptyNote({ hasData: accounts.length > 0, stud });
 
   const speciesGameIds = useMemo(() => new Set(species.map((entry) => entry.gameId)), []);
@@ -101,7 +98,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     <main className="mx-auto max-w-md space-y-2 p-3">
       {noSelectedAccounts ? (
         <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800" data-testid="dashboard-empty-accounts">
-          当前未选中任何账号，已恢复为全选。
+          当前未选中任何账号，请在下方「账号」里选择。
         </p>
       ) : null}
 
@@ -208,7 +205,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           <TargetGradeSelector
             mode={mode}
             selectedGrades={selectedGrade ? [selectedGrade] : []}
-            onSelect={setTargetGrade}
+            onSelect={(grade) => setTargetGrade(selectedGrade === grade ? null : grade)}
             label="目标奖牌组合（公母共用）"
             testIdPrefix="dashboard-target"
           />
@@ -220,11 +217,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           <p className="text-xs text-slate-400" data-testid="dashboard-target-body-note">
             大块头对应身高 100%，小不点对应身高 0%。
           </p>
-          {coverageFilter.grades.length > 1 ? (
-            <p className="text-xs text-amber-700" data-testid="dashboard-target-multiple-note">
-              当前有多个组合目标；选择后会收敛为一组。
-            </p>
-          ) : null}
         </div>
         {coverageFilter.grades.length === 0 ? (
           <p className="mt-1 text-[11px] text-amber-600" data-testid="target-grade-empty">

@@ -29,8 +29,6 @@ interface PersistedFilter {
   /** 旧版身高 / 体重各自的显示开关，只用于迁移读取（2026-11-18 合并成一个） */
   heightUnit?: unknown;
   weightUnit?: unknown;
-  bodyExtremeMode?: boolean;
-  voiceExtremeMode?: boolean;
   eggGroupMatchMode?: unknown;
   /** 卡片网格列数（3 / 4，纯显示口径，不参与筛选） */
   columns?: unknown;
@@ -106,17 +104,6 @@ for (const tagId of legacySelected) {
 let selected: ReadonlySet<string> = normalizedSelected;
 const hasLegacyZeroHeight = legacySelected.has('body:零身高');
 const hasLegacyFullHeight = legacySelected.has('body:满身高');
-let bodyExtremeMode =
-  persisted.bodyExtremeMode === true ||
-  legacySelected.has('body:极限') ||
-  legacySelected.has('body:满体重') ||
-  legacySelected.has('body:零体重');
-let voiceExtremeMode =
-  persisted.voiceExtremeMode === true ||
-  legacySelected.has('voice:极限') ||
-  legacySelected.has('voice:满声') ||
-  legacySelected.has('voice:+100') ||
-  legacySelected.has('voice:-100');
 let eggGroupMatchMode: EggGroupMatchMode =
   persisted.eggGroupMatchMode === 'dual' ? 'dual' : 'multi';
 let heightRange =
@@ -151,8 +138,6 @@ const persist = (): void => {
     const value: PersistedFilter = { selected: [...selected] };
     if (heightRange.min !== 0 || heightRange.max !== 100) value.heightRange = heightRange;
     if (sizeUnit !== 'percent') value.sizeUnit = sizeUnit;
-    if (bodyExtremeMode) value.bodyExtremeMode = true;
-    if (voiceExtremeMode) value.voiceExtremeMode = true;
     if (eggGroupMatchMode === 'dual') value.eggGroupMatchMode = eggGroupMatchMode;
     if (columns === 3) value.columns = 3;
     window.localStorage.setItem(
@@ -187,12 +172,6 @@ export function getMyPetsEggGroupMatchMode(): EggGroupMatchMode {
 
 export function setMyPetsEggGroupMatchMode(next: EggGroupMatchMode): void {
   eggGroupMatchMode = next;
-  commit();
-}
-
-export function setMyPetsExtremeMedalMode(kind: 'body' | 'voice', enabled: boolean): void {
-  if (kind === 'body') bodyExtremeMode = enabled;
-  else voiceExtremeMode = enabled;
   commit();
 }
 
@@ -238,9 +217,6 @@ export function setMyPetsSizeUnit(next: SizeUnit): void {
 export function clearMyPetsFilters(): void {
   selected = new Set();
   heightRange = { ...DEFAULT_HEIGHT_RANGE };
-  sizeUnit = 'percent';
-  bodyExtremeMode = false;
-  voiceExtremeMode = false;
   eggGroupMatchMode = 'multi';
   commit();
 }
@@ -255,8 +231,6 @@ export function useMyPetsFilters(): {
   filtersOpen: boolean;
   heightRange: HeightRange;
   sizeUnit: SizeUnit;
-  bodyExtremeMode: boolean;
-  voiceExtremeMode: boolean;
   eggGroupMatchMode: EggGroupMatchMode;
   columns: CardColumns;
 } {
@@ -265,8 +239,6 @@ export function useMyPetsFilters(): {
     filtersOpen,
     heightRange: { ...heightRange },
     sizeUnit,
-    bodyExtremeMode,
-    voiceExtremeMode,
     eggGroupMatchMode,
     columns,
   });
@@ -278,8 +250,6 @@ export function useMyPetsFilters(): {
         filtersOpen,
         heightRange: { ...heightRange },
         sizeUnit,
-        bodyExtremeMode,
-        voiceExtremeMode,
         eggGroupMatchMode,
         columns,
       });
@@ -299,8 +269,6 @@ export function resetMyPetsFiltersForTest(): void {
   filtersOpen = false;
   heightRange = { ...DEFAULT_HEIGHT_RANGE };
   sizeUnit = 'percent';
-  bodyExtremeMode = false;
-  voiceExtremeMode = false;
   eggGroupMatchMode = 'multi';
   columns = 4;
   try {

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { allNatureNames, targetNatureNames } from '../data/catalog';
 import { Coverage } from './Coverage';
-import { getCoverageFilter, resetCoverageFilter, toggleFilterGrade } from './coverageFilterStore';
+import { getCoverageFilter, resetCoverageFilter, setTargetGrade } from './coverageFilterStore';
 import { getTargetMode, setTargetMode } from './targetModeStore';
 
 /**
@@ -58,11 +58,7 @@ describe('覆盖度页（筛选项收进种公阵列右上角）', () => {
     window.localStorage.clear();
     setTargetMode('perfect');
     resetCoverageFilter();
-    // 档位是全局口径、覆盖度的「恢复默认」刻意不动它 → 用例里显式复位，保证隔离
-    if (!getCoverageFilter().grades.includes('大婉')) toggleFilterGrade('大婉');
-    for (const grade of getCoverageFilter().grades.filter((item) => item !== '大婉')) {
-      toggleFilterGrade(grade);
-    }
+    setTargetGrade('大婉');
   });
 
   test('筛选默认收起；点右上角「筛选」才展开档位与蛋组', () => {

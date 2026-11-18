@@ -60,7 +60,7 @@ export function CoverageFilterBar({ filter, onToggleGroup, onReset, onOpenTarget
         <TargetGradeSelector
           mode={mode}
           selectedGrades={filter.grades.slice(0, 1)}
-          onSelect={setTargetGrade}
+          onSelect={(grade) => setTargetGrade(filter.grades[0] === grade ? null : grade)}
           label="种公目标奖牌组合"
           testIdPrefix="coverage-target"
         />

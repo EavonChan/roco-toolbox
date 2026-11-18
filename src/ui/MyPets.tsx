@@ -355,7 +355,7 @@ function HeightRangeControl({
 export interface MyPetsProps {
   /** 空数据时「去导入数据」按钮的跳转 */
   onGoImport?: () => void;
-  onVisibleCountChange?: (count: number) => void;
+  onTotalCountChange?: (count: number) => void;
 }
 
 /**
@@ -364,7 +364,7 @@ export interface MyPetsProps {
  * 2026-10-29 用户口径：「合格种公」视图不要了——挑种公去「收集 · 种公」看种公阵列；
  * 母本去看「收集 · 母本」。这里不再有视角切换。
  */
-export function MyPets({ onGoImport, onVisibleCountChange }: MyPetsProps) {
+export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
   const { owned, accounts } = useOwnedPets();
   // 筛选状态提升到模块级 store：切页签 / 切视角都不丢（2026-10-04 用户拍板）
   const {
@@ -478,8 +478,9 @@ export function MyPets({ onGoImport, onVisibleCountChange }: MyPetsProps) {
   }, [filteredIndices, owned, nameQuery, speciesByGameId, chainSearchIndex]);
 
   useEffect(() => {
-    onVisibleCountChange?.(visiblePets.length);
-  }, [visiblePets.length, onVisibleCountChange]);
+    // 收集页入口卡的「共 N 只」是背包总数，不随筛选/搜索变化
+    onTotalCountChange?.(owned.length);
+  }, [owned.length, onTotalCountChange]);
 
   const toggle = (tagId: string) => {
     const kind = tagId.split(':')[0];

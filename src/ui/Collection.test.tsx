@@ -17,13 +17,13 @@ vi.mock('./useCollectionSummary', () => ({
 vi.mock('./MotherView', () => ({ MotherView: () => <div data-testid="stub-mother-view" /> }));
 vi.mock('./MyPets', () => ({
   MyPets: ({
-    onVisibleCountChange,
+    onTotalCountChange,
   }: {
-    onVisibleCountChange?: (count: number) => void;
+    onTotalCountChange?: (count: number) => void;
   }) => (
     <>
       <div data-testid="stub-mypets" />
-      <button type="button" onClick={() => onVisibleCountChange?.(12)}>
+      <button type="button" onClick={() => onTotalCountChange?.(12)}>
         更新精灵数量
       </button>
     </>

@@ -63,6 +63,20 @@ describe('母本达标口径（看板卡与母本页共用）', () => {
     expect(isQualifiedMother(pet({ medalBody: '小不点', heightPercent: 100 }), bigOnly)).toBe(false);
   });
 
+  test('母本孵蛋口径：无奖牌时身高 100% / 0% 即可，不再要求体重', () => {
+    const big: MotherCriteria = { voices: ['+100'], bodies: ['大块头'] };
+    expect(
+      isQualifiedMother(pet({ medalBody: '', heightPercent: 100, weightPercent: 55 }), big),
+    ).toBe(true);
+    expect(
+      isQualifiedMother(pet({ medalBody: '', heightPercent: 99, weightPercent: 100 }), big),
+    ).toBe(false);
+    const small: MotherCriteria = { voices: ['+100'], bodies: ['小不点'] };
+    expect(
+      isQualifiedMother(pet({ medalBody: '', heightPercent: 0, weightPercent: 45 }), small),
+    ).toBe(true);
+  });
+
   test('要求推荐性格时，性格不在推荐列表里的母本不算达标', () => {
     const criteria: MotherCriteria = {
       voices: ['+100'],

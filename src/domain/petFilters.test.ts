@@ -13,6 +13,7 @@ import {
   matchesHeightRange,
 } from './petFilters';
 import { species as realSpecies } from '../data/catalog';
+import { bodyGradeOf, breedingBodyGradeOf } from '../shared/bodySize.js';
 import type { OwnedPet, SpeciesEntry } from './types';
 
 const speciesByGameId = new Map<number, SpeciesEntry>([
@@ -206,6 +207,13 @@ describe('matchesHeightRange', () => {
 });
 
 describe('classifyMother（母本分级）', () => {
+  test('奖牌 / 展示口径仍要求身高与体重同时满足，只有孵蛋口径才只看身高', () => {
+    expect(bodyGradeOf({ heightPercent: 100, weightPercent: 60 })).toBe('');
+    expect(bodyGradeOf({ heightPercent: 100, weightPercent: 96 })).toBe('大块头');
+    expect(bodyGradeOf({ heightPercent: 0, weightPercent: 6 })).toBe('');
+    expect(breedingBodyGradeOf({ heightPercent: 100, weightPercent: 60 })).toBe('大块头');
+    expect(breedingBodyGradeOf({ heightPercent: 0, weightPercent: 40 })).toBe('小不点');
+  });
   test('大块头 + 100dB、追满分 = 大婉', () => {
     expect(classifyMother(pet({ gender: '母', medalBody: '大块头', voiceDb: 100 }), 'perfect')).toBe(
       '大婉',
@@ -230,6 +238,27 @@ describe('classifyMother（母本分级）', () => {
     expect(classifyMother(pet({ gender: '母', medalBody: '大块头', voiceDb: 97 }), 'medal')).toBe('大婉');
     expect(classifyMother(pet({ gender: '母', medalBody: '小不点', voiceDb: 96 }), 'medal')).toBe('小婉');
     expect(classifyMother(pet({ gender: '母', medalBody: '大块头', voiceDb: -99 }), 'medal')).toBe('大粗');
+  });
+
+  test('档位用孵蛋口径：无奖牌时身高到顶 / 到底即可，不再要求体重', () => {
+    expect(
+      classifyMother(
+        pet({ gender: '母', medalBody: '', heightPercent: 100, weightPercent: 55, voiceDb: 100 }),
+        'perfect',
+      ),
+    ).toBe('大婉');
+    expect(
+      classifyMother(
+        pet({ gender: '母', medalBody: '', heightPercent: 0, weightPercent: 45, voiceDb: 100 }),
+        'perfect',
+      ),
+    ).toBe('小婉');
+    expect(
+      classifyMother(
+        pet({ gender: '母', medalBody: '', heightPercent: 99, weightPercent: 100, voiceDb: 100 }),
+        'perfect',
+      ),
+    ).toBe('其他');
   });
 
   test('只有单牌或没有牌的算其他', () => {

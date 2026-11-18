@@ -161,13 +161,13 @@ describe('myPetsFilterStore 持久化读取', () => {
     expect(store.getMyPetsSizeUnit()).toBe('percent');
   });
 
-  test('重置把显示开关收回百分比', async () => {
+  test('重置筛选不动显示开关（百分比 / 数值只属于卡片显示）', async () => {
     const store = await import('./myPetsFilterStore');
     store.setMyPetsSizeUnit('value');
 
     store.clearInventoryFilters();
 
-    expect(store.getMyPetsSizeUnit()).toBe('percent');
+    expect(store.getMyPetsSizeUnit()).toBe('value');
   });
 });
 

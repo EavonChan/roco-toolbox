@@ -75,9 +75,9 @@ describe('MyPets', () => {
         pet.gameId = speciesWithEggGroup.gameId;
       });
     }
-    const onVisibleCountChange = vi.fn();
-    render(<MyPets onVisibleCountChange={onVisibleCountChange} />);
-    expect(onVisibleCountChange).toHaveBeenLastCalledWith(2);
+    const onTotalCountChange = vi.fn();
+    render(<MyPets onTotalCountChange={onTotalCountChange} />);
+    expect(onTotalCountChange).toHaveBeenLastCalledWith(2);
     fireEvent.click(screen.getByTestId('pet-filters-toggle'));
 
     for (const kind of ['gender', 'body', 'voice', 'height']) {
@@ -128,7 +128,8 @@ describe('MyPets', () => {
     );
     fireEvent.click(screen.getByTestId('filter-opt-gender-gender:公'));
     expectVisiblePetCount(1);
-    expect(onVisibleCountChange).toHaveBeenLastCalledWith(1);
+    // 「共 N 只」是背包总数，筛选后不跟着变
+    expect(onTotalCountChange).toHaveBeenLastCalledWith(2);
   });
 
   test('性格保留八大默认选项，奖牌依次排列为稀有度、体型、声音', () => {

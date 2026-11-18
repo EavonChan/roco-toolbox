@@ -1,7 +1,7 @@
 import type { OwnedPet, SpeciesEntry } from './types';
 import { isBreedableGroup } from './eggs';
 import { speciesDisplayName } from './speciesName';
-import { bodyGradeOf, heightBodyOf } from '../shared/bodySize.js';
+import { breedingBodyGradeOf, heightBodyOf } from '../shared/bodySize.js';
 
 export type TagKind = 'account' | 'body' | 'voice' | 'gender' | 'shiny' | 'eggGroup' | 'nature';
 
@@ -152,8 +152,8 @@ export function betterMotherClass(
 export function classifyGrade(pet: OwnedPet, mode: TargetMode): PetGrade | null {
   const threshold = mode === 'perfect' ? PERFECT_DB : MEDAL_DB;
   if (Math.abs(pet.voiceDb) < threshold) return null;
-  // 体型：奖牌（体重 98% / 2%）优先；无奖牌时身高 100% / 0% 等效大块头 / 小不点。
-  const body = bodyGradeOf(pet);
+  // 体型：奖牌（体重 98% / 2%）优先；无奖牌时身高 100% / 0% 等效大块头 / 小不点（孵蛋口径）。
+  const body = breedingBodyGradeOf(pet);
   const big = body === BIG_BODY;
   const small = body === SMALL_BODY;
   if (!big && !small) return null;

@@ -1,4 +1,4 @@
-import { bodyGradeOf } from '../shared/bodySize.js';
+import { breedingBodyGradeOf } from '../shared/bodySize.js';
 import type { DemandBody, DemandCriteria, DemandVoice } from '../shared/collectionGroups';
 import { isBreedableGroup } from './eggs';
 import { matchesVoiceOption } from './petFilters';
@@ -41,7 +41,7 @@ export interface DemandSupply {
 const accountKeyOfSnapshot = (snapshot: AccountSnapshot): string =>
   snapshot.accountKey ?? `uid:${snapshot.gameId}`;
 
-const bodyOfPet = (pet: OwnedPet): string => bodyGradeOf(pet);
+const bodyOfPet = (pet: OwnedPet): string => breedingBodyGradeOf(pet);
 
 /**
  * 体型口径是否命中（2026-11-01 新增满体重 / 零体重）：

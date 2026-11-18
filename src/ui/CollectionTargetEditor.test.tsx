@@ -4,15 +4,13 @@ import {
   DEFAULT_MOTHER_CRITERIA,
 } from '../domain/motherCriteria';
 import { CollectionTargetEditor } from './CollectionTargetEditor';
-import { getCoverageFilter, resetCoverageFilter, toggleFilterGrade } from './coverageFilterStore';
+import { getCoverageFilter, resetCoverageFilter, setTargetGrade } from './coverageFilterStore';
 import { getMotherCriteria, setMotherCriteria } from './motherCriteriaStore';
 import { setTargetMode } from './targetModeStore';
 
 beforeEach(() => {
   resetCoverageFilter();
-  const grades = getCoverageFilter().grades;
-  for (const grade of grades) toggleFilterGrade(grade);
-  toggleFilterGrade('大婉');
+  setTargetGrade('大婉');
   setTargetMode('perfect');
   setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA });
 });

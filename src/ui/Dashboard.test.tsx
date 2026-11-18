@@ -209,7 +209,8 @@ describe('Dashboard（看板）', () => {
       'dashboard-target-grade-小婉',
       'dashboard-target-grade-小粗',
     ]);
-    expect(screen.getByTestId('dashboard-target-multiple-note')).toBeTruthy();
+    // 档位单选：后点的「小粗」替换掉「大婉」，不会再出现多选提示
+    expect(screen.queryByTestId('dashboard-target-multiple-note')).toBeNull();
     expect(screen.getByTestId('dashboard-target-grade-小粗')).toHaveAttribute('aria-pressed', 'true');
     expect(
       screen.getByTestId('dashboard-target-grade-大婉').querySelectorAll('img')[1].getAttribute('src'),
