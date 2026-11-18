@@ -136,6 +136,13 @@ public class MainActivity extends Activity {
     private final Handler liveTick = new Handler(Looper.getMainLooper());
     /** Activity 是否在前台交互（onResume / onPause 维护；不能拿 webView.isShown() 代替）。 */
     private boolean pageVisible = true;
+    // JS 桥对象必须由 Activity 强引用：WebView 内部对 addJavascriptInterface 的对象是弱引用，
+    // 长时间停留 / 内存紧张时会被 GC，之后调用会报
+    // 「Java bridge method can't be invoked on a non-injected object」（2026-11-19 用户实测）。
+    private final ShareBridge shareBridge = new ShareBridge();
+    private final UpdateBridge updateBridge = new UpdateBridge();
+    private final ServerBridge serverBridge = new ServerBridge();
+    private final PrefsBridge prefsBridge = new PrefsBridge();
     /**
      * 后台心跳间隔（2026-11-10）：
      * 采集进行中 250ms 唤醒一次，空闲 1200ms。真机日志显示 1200ms 心跳下每 5 秒只有 3~5 轮，
@@ -239,13 +246,13 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         webView.setBackgroundColor(PAGE_BACKGROUND);
         // 网页「导出全部数据」改为分享：壳从这里把备份文本拿出去调起系统分享面板
-        webView.addJavascriptInterface(new ShareBridge(), "RocoShare");
+        webView.addJavascriptInterface(shareBridge, "RocoShare");
         // 网页「设置 / 关于」页的「检查更新」入口（网页侧调用 window.RocoUpdate.check()）
-        webView.addJavascriptInterface(new UpdateBridge(), "RocoUpdate");
+        webView.addJavascriptInterface(updateBridge, "RocoUpdate");
         // 内测切服：读取 / 一键互切 / 恢复服务器地址（网页侧 window.RocoServer）
-        webView.addJavascriptInterface(new ServerBridge(), "RocoServer");
+        webView.addJavascriptInterface(serverBridge, "RocoServer");
         // 跨环境共享的本地偏好（网页侧 window.RocoPrefs）：切站后教程进度跟着人走
-        webView.addJavascriptInterface(new PrefsBridge(), "RocoPrefs");
+        webView.addJavascriptInterface(prefsBridge, "RocoPrefs");
         installCaptureWebMessageBridge();
         webView.setWebViewClient(new WebViewClient() {
             /**
