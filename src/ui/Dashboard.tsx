@@ -11,6 +11,7 @@ import { ImportAdditionCard } from './ImportAdditionCard';
 import { ProgressCard } from './ProgressCard';
 import { SuggestionCard } from './SuggestionCard';
 import { NestPlanCard } from './NestPlanCard';
+import { buildMotherNestSuggestions } from '../domain/motherNest';
 import { PetAvatar } from './PetAvatar';
 import { PetCardLayout } from './PetCardLayout';
 import { SourceNotice } from './SourceNotice';
@@ -41,7 +42,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const [actionPanel, setActionPanel] = useState<'mothers' | 'studs'>('studs');
   const [accountSelectorOpen, setAccountSelectorOpen] = useState(false);
 
-  const { owned, motherGroups, mode, stud, plans, recommendations } = useCollectionSummary();
+  const { owned, motherGroups, mode, stud, coverageByAccount, plans, recommendations } =
+    useCollectionSummary();
   const { accounts } = useOwnedPets();
   const { excluded } = useAccountFilter();
   const selectedAccountNames = accounts.filter((name) => !excluded.has(name));
@@ -52,13 +54,16 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
   const selectedGrade = coverageFilter.grades[coverageFilter.grades.length - 1] ?? null;
 
-  const effectiveCriteria: MotherCriteria = {
-    bodies: motherCriteria.bodies,
-    voices: effectiveMotherVoices(motherCriteria.voices, mode),
-    grades: selectedGrade ? [selectedGrade] : motherCriteria.grades,
-    targetMode: mode,
-    recommendedNatures: motherCriteria.recommendedNatures === true,
-  };
+  const effectiveCriteria: MotherCriteria = useMemo(
+    () => ({
+      bodies: motherCriteria.bodies,
+      voices: effectiveMotherVoices(motherCriteria.voices, mode),
+      grades: selectedGrade ? [selectedGrade] : motherCriteria.grades,
+      targetMode: mode,
+      recommendedNatures: motherCriteria.recommendedNatures === true,
+    }),
+    [motherCriteria, mode, selectedGrade],
+  );
   const natureOverrides = useNatureOverrides();
   /** 种公阵列里手动加入的跨号补种公任务（2026-11-03） */
   const transferTasks = useStudTransferTasks();
@@ -73,15 +78,77 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   );
   const collectedMothers = motherGroups.length - missingMothers.length;
 
-  const remainingTargets = stud.cells.filter((cell) => cell.state !== 'covered').length;
-  const iterableTargets = stud.cells.filter((cell) => cell.state === 'breedable').length;
-  const missingTargets = remainingTargets - iterableTargets;
+  /**
+   * 缺口按号各算（2026-11-18 修正）：种公是成体、不能传，合并所有号算出来的「还差几个」
+   * 会把别的号的种公误算成本号的进度，数字偏小。看板按每个号自己的覆盖度报缺口。
+   */
+  const gapsByAccount = useMemo(
+    () =>
+      selectedAccountNames.map((name) => {
+        const coverage = coverageByAccount.get(name);
+        const remaining = (coverage?.cells ?? []).filter((cell) => cell.state !== 'covered');
+        return {
+          account: name,
+          gap: remaining.length,
+          iterable: remaining.filter((cell) => cell.state === 'breedable').length,
+          known: coverage != null,
+        };
+      }),
+    [selectedAccountNames, coverageByAccount],
+  );
+  const gapTotal = gapsByAccount.reduce((sum, item) => sum + item.gap, 0);
+  const allGapsKnown = gapsByAccount.every((item) => item.known);
+  /** 单号直接报数；多号逐个写「甲 4 · 乙 7」，不把几个号加成一个总数 */
+  const gapOfSingleAccount = gapsByAccount.length === 1 ? gapsByAccount[0] : null;
+  const gapsByAccountMap = useMemo(
+    () => new Map(gapsByAccount.map((item) => [item.account, item.gap])),
+    [gapsByAccount],
+  );
+  /** 每个号已经收齐的蛋组：配窝卡里的蛋组标签标绿（2026-11-18 用户口径） */
+  const collectedGroupsByAccount = useMemo(() => {
+    const map = new Map<string, Set<number>>();
+    for (const [account, coverage] of coverageByAccount) {
+      const collected = new Set<number>();
+      for (const row of coverage.groupSummary) {
+        if (row.total > 0 && row.covered === row.total) collected.add(row.groupId);
+      }
+      map.set(account, collected);
+    }
+    return map;
+  }, [coverageByAccount]);
+  /** 母本配窝建议（2026-11-18）：本号内母本线占窝 + 跨号传蛋；母本进度卡仍按全设备算 */
+  const motherSuggestions = useMemo(() => {
+    if (!selectedGrade) return new Map();
+    return buildMotherNestSuggestions({
+      species,
+      owned,
+      mode,
+      grade: selectedGrade,
+      criteria: effectiveCriteria,
+      naturesOf,
+      coverageByAccount,
+      plans,
+    });
+  }, [species, owned, mode, selectedGrade, effectiveCriteria, naturesOf, coverageByAccount, plans]);
   const firstIterableGroupId =
     stud.cells.find((cell) => cell.state === 'breedable')?.groupId ?? undefined;
+  /** 补全计划汇总（2026-11-18）：双组条数 + 母本建议 + 跨号传蛋待办（档位已在卡片上用概率表示） */
+  const planPills = useMemo(() => {
+    const pairings = plans.flatMap((plan) => plan.pairings);
+    return {
+      dual: pairings.filter((pairing) => pairing.groupIds.length >= 2).length,
+      transfers: transferTasks.length,
+      /** 母本建议条数（本号内 + 跨号），与配窝卡里的母本段一致 */
+      mother: [...motherSuggestions.values()].reduce(
+        (sum, account) => sum + account.pairings.length + account.tasks.length,
+        0,
+      ),
+    };
+  }, [plans, transferTasks, motherSuggestions]);
   const nestEmptyNote =
     stud.groupCount === 0
       ? '未设置种公目标，请先调整体型、声音目标、蛋组和性格。'
-      : remainingTargets === 0
+      : gapTotal === 0 && allGapsKnown
         ? '种公目标已全部收集，没有要补的缺口。'
         : '没有能自己孵的方案：缺可配对的母本 / 公本，先去覆盖度看每个缺口的判定。';
   const suggestionEmptyNote = noSelectedAccounts
@@ -329,20 +396,52 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           data-testid="nest-summary"
           data-tour="dashboard-nest"
         >
-          <h2 className="text-sm font-medium text-slate-500">配窝建议</h2>
+          <h2 className="text-sm font-medium text-slate-500">补全计划</h2>
           <p className="mt-1 text-sm text-slate-600" data-testid="nest-summary-line">
             {stud.groupCount === 0 ? (
               '未设置种公目标，请先调整体型、声音目标、蛋组和性格。'
-            ) : remainingTargets === 0 ? (
+            ) : gapTotal === 0 && allGapsKnown ? (
               '种公目标已全部收集，没有要补的缺口。'
+            ) : gapsByAccount.length > 1 ? (
+              <>
+                每个号各差种公目标：
+                <br />
+                {gapsByAccount.map((item, index) => (
+                  <span key={item.account} data-testid="nest-gap-account">
+                    {index > 0 ? <span className="text-slate-300"> · </span> : null}
+                    <span className="text-slate-700">{item.account}</span>{' '}
+                    <b className={item.gap > 0 ? 'text-rose-600' : 'text-emerald-700'}>
+                      {item.known ? item.gap : '—'}
+                    </b>
+                  </span>
+                ))}
+              </>
             ) : (
               <>
-                还差 {remainingTargets} 个目标：
+                还差 {gapTotal} 个种公目标：
                 <br />
-                能自己迭代 {iterableTargets} · 未收集 {missingTargets}
+                能自己迭代 {gapOfSingleAccount?.iterable ?? 0} · 未收集{' '}
+                {gapTotal - (gapOfSingleAccount?.iterable ?? 0)}
               </>
             )}
           </p>
+          {planPills.dual + planPills.mother + planPills.transfers > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5" data-testid="nest-plan-pills">
+              <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700">
+                双组 <b>{planPills.dual}</b>
+              </span>
+              {planPills.mother > 0 ? (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                  母本 <b>{planPills.mother}</b>
+                </span>
+              ) : null}
+              {planPills.transfers > 0 ? (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                  需传蛋 <b>{planPills.transfers}</b>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -376,6 +475,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             emptyNote={nestEmptyNote}
             transferTasks={transferTasks}
             onRemoveTransferTask={removeStudTransferTask}
+            gapsByAccount={gapsByAccountMap}
+            collectedGroupIdsByAccount={collectedGroupsByAccount}
+            motherSuggestions={motherSuggestions}
           />
         </section>
       ) : null}

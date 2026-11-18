@@ -130,13 +130,13 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-residents')).toHaveTextContent('母本甲');
     expect(screen.getByTestId('home-residents')).toHaveTextContent('公本乙');
     expect(screen.getAllByTestId('home-pet-card')).toHaveLength(2);
-    // 配窝卡片改成摆位图画法，不再带小头像：头像只有上面两张精灵卡
-    expect(screen.getAllByTestId('pet-avatar')).toHaveLength(2);
+    // 配窝卡片（2026-11-19）：跟补全计划同一张大卡，两张精灵卡也带小头像
+    expect(screen.getAllByTestId('pet-avatar')).toHaveLength(4);
     expect(screen.getByTestId('home-residents')).toHaveTextContent('50%');
     expect(screen.getByTestId('home-residents')).toHaveTextContent('99%');
-    expect(screen.getByTestId('home-pair-cards')).toHaveTextContent('公本乙');
-    expect(screen.getByTestId('home-pair-cards')).toHaveTextContent('母本甲');
-    expect(screen.getAllByTestId('home-pair-node')).toHaveLength(2);
+    expect(screen.getByTestId('home-pair-card-list')).toHaveTextContent('公本乙');
+    expect(screen.getByTestId('home-pair-card-list')).toHaveTextContent('母本甲');
+    expect(screen.getAllByTestId('breed-pet-card')).toHaveLength(2);
     expect(screen.getByTestId('home-egg-count')).toHaveTextContent('有 1 枚蛋');
     expect(screen.getByTestId('home-eggs')).toHaveTextContent('普通小窝 · 一楼');
   });
@@ -284,17 +284,18 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-residents')).toHaveTextContent('母本乙');
   });
 
-  test('配窝方块同样只写基础名，完整名字放 title', () => {
+  test('配窝卡片同样只写基础名，完整名字放 title', () => {
     const snapshot = snapshotWithHome();
     snapshot.home!.residents[1].name = '雪绒鸟_夏天的样子';
     h.snapshots = [snapshot];
     render(<HomeLand />);
 
-    const nodes = screen.getAllByTestId('home-pair-node');
-    const node = nodes.find((item) => item.getAttribute('data-name') === '雪绒鸟_夏天的样子');
-    expect(node).toBeTruthy();
-    expect(node).not.toHaveTextContent('夏天的样子');
-    expect(node).toHaveTextContent('雪绒鸟');
+    const card = screen
+      .getAllByTestId('breed-pet-card')
+      .find((item) => item.querySelector('h4')?.getAttribute('title') === '雪绒鸟_夏天的样子');
+    expect(card).toBeTruthy();
+    expect(card).not.toHaveTextContent('夏天的样子');
+    expect(card).toHaveTextContent('雪绒鸟');
   });
 
   test('配对里缺少公本时降级成「公本未知」，不崩也不空白', () => {
@@ -303,7 +304,7 @@ describe('家园页', () => {
     h.snapshots = [snapshot];
     render(<HomeLand />);
 
-    expect(screen.getByTestId('home-pair-diagram')).toHaveTextContent('公本未知');
+    expect(screen.getByTestId('home-pair-card-list')).toHaveTextContent('公本未知');
   });
 
   test('刷新说明默认收在问号按钮中，点击后显示并可收起', () => {

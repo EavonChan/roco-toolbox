@@ -5,6 +5,7 @@ import { EggLineSummary } from './plan/EggLineSummary';
 import { MotherGroupsApiError } from '../api/motherGroups';
 import { eggGroupNames, species } from '../data/catalog';
 import { boxLabel } from '../domain/coverageDetail';
+import { genderShareOf } from '../domain/genderRatio';
 import {
   buildDemandPlacements,
   studPlacementOptions,
@@ -383,8 +384,11 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
      * 性格概率（学院 100% / 双亲同性格 60% / 单方 30%，不挑性格算 100%）× 性别概率（挑性别 50%）。
      * 50% 绿、30% 黄、15% 红。
      */
-    const chance =
-      (placement.demand.nature ? active.natureChance : 1) * (placement.demand.gender ? 0.5 : 1);
+    const genderChance =
+      placement.demand.gender === '公' || placement.demand.gender === '母'
+        ? genderShareOf(speciesByGameId.get(active.mother.pet.gameId), placement.demand.gender)
+        : 1;
+    const chance = (placement.demand.nature ? active.natureChance : 1) * genderChance;
     const chancePercent = Math.round(chance * 100);
     const chanceTone =
       chance >= 0.5 ? 'text-emerald-700' : chance >= 0.3 ? 'text-amber-600' : 'text-rose-600';
