@@ -47,6 +47,10 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   const [editor, setEditor] = useState<EggDemand | 'new' | null>(null);
   const [withdraw, setWithdraw] = useState(false);
   const [proposal, setProposal] = useState<{ give?: WorkflowEgg; line?: EggLine; lineId?:string; supplier?: string } | null>(null);
+  /** 组内广场：只看我能接（有现蛋或能代孵）。 */
+  const [onlyAffordable, setOnlyAffordable] = useState(false);
+  /** 需求方点「看他的需求」：列出对方需求里我能提供的蛋。 */
+  const [peer, setPeer] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const syncing = useRef(false);
@@ -127,7 +131,9 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
 
   const sharedAccountKeys=members.find(m=>m.accountId===me)?.resource?.accounts.map(a=>a.accountKey)??[];
   const sharedSnapshots=snapshots.filter(s=>sharedAccountKeys.includes(accountKeyOf(s)));
-  const sharedLines:PublishedEggLine[]=state.demands.filter(d=>d.status==='open').flatMap(d=>localLinesForDemand(d,sharedSnapshots,species)).map(line=>({...line,accountId:me,id:JSON.stringify([line.gameAccountKey,line.motherId,line.fatherId,line.eggGameId,line.nature,line.body,line.voice,line.greenParentId??''])}));
+  // 产线只在需求/快照变化时重算；改筛选、开关弹窗不再把所有需求重跑一遍配对
+  const sharedLines:PublishedEggLine[]=useMemo(()=>state.demands.filter(d=>d.status==='open').flatMap(d=>localLinesForDemand(d,sharedSnapshots,species)).map(line=>({...line,accountId:me,id:JSON.stringify([line.gameAccountKey,line.motherId,line.fatherId,line.eggGameId,line.nature,line.body,line.voice,line.greenParentId??''])}))
+    ,[state.demands,sharedSnapshots,species,me]);
   const linePayload=JSON.stringify([...new Map(sharedLines.map(l=>[l.id,l])).values()].slice(0,1024));
   useEffect(()=>{
     if(!api.data||api.busy||syncing.current)return;
@@ -147,8 +153,17 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     (mine ? e.accountId !== me && e.listed : e.accountId === me)) : [];
   const groupLines=demand&&mine?(state.lines??[]).filter(l=>l.accountId!==me&&canMatchDemand(demand,l)&&(!demand.greenNest||l.greenParentId)):[];
   const lines=useMemo(()=>demand&&demand.demanderAccountId!==me?localLinesForDemand(demand,snapshots,species).map(line=>({line})):[],[demand,me,snapshots,species]);
-  const visible = state.demands.filter(d => (tab === 'mine' ? d.demanderAccountId === me : d.demanderAccountId !== me) &&
-    d.status === 'open' && (!query || name(d.eggGameId).includes(query) || owner(d.demanderAccountId).includes(query)));
+  /** 我这一侧能提供的现蛋 / 产线：广场卡片和「看他的需求」共用同一份索引。 */
+  const myEggs=useMemo(()=>state.eggs.filter(e=>e.accountId===me&&e.status!=='transferred'&&canCirculateEgg(e)),[state.eggs,me]);
+  const myLines=useMemo(()=>(state.lines??[]).filter(l=>l.accountId===me),[state.lines,me]);
+  const supplyOf=(value:EggDemand):'give'|'hatch'|'none'=>
+    myEggs.some(egg=>canMatchDemand(value,egg))?'give'
+      :myLines.some(l=>canMatchDemand(value,l)&&(!value.greenNest||l.greenParentId))?'hatch':'none';
+  const visible=useMemo(()=>state.demands.filter(d => (tab === 'mine' ? d.demanderAccountId === me : d.demanderAccountId !== me) &&
+    d.status === 'open' && (!query || name(d.eggGameId).includes(query) || owner(d.demanderAccountId).includes(query)) &&
+    (tab !== 'square' || !onlyAffordable || supplyOf(d) !== 'none')),
+    // eslint 会提示 supplyOf 每次都是新函数，但索引来自上面两个 memo，这里是纯判断，不会引发重复计算
+    [state.demands,tab,me,query,onlyAffordable,myEggs,myLines]);
   const completed=state.demands.filter(d=>d.demanderAccountId===me&&d.status==='fulfilled');
   const propose = (back: WorkflowEgg | {line:EggLine;id?:string}, returnDemandId?: string) => {
     if (!proposal || !demand) return;
@@ -169,6 +184,10 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     });
     return backDemands.flatMap(d=>localLinesForDemand(d,snapshots,species).map(line=>({line,id:undefined,demandId:d.id}))).slice(0,12);
   },[proposal,demand,state.demands,state.lines,mine,snapshots,species,me]);
+  /** 需求方点「看他的需求」：对方 open 需求里，我能提供的蛋与产线。 */
+  const peerDemands = peer ? state.demands.filter(d => d.demanderAccountId === peer && d.status === 'open') : [];
+  const peerEggs = peer ? myEggs.filter(egg => peerDemands.some(d => canMatchDemand(d, egg))) : [];
+  const peerLines = peer ? myLines.filter(line => peerDemands.some(d => canMatchDemand(d, line) && (!d.greenNest || line.greenParentId))) : [];
   const eggRow = (egg: EggRecord, action?: React.ReactNode) => <div className="flex items-center gap-2 py-2" key={egg.accountId + egg.id}>
     <PetAvatar gameId={egg.eggGameId} name={name(egg.eggGameId)} size={32} />
     <div className="min-w-0 flex-1"><strong className="text-xs">{name(egg.eggGameId)}</strong><div className="flex items-center gap-1 text-[10px] text-slate-500">{egg.nature || '性格未标注'}<EggMedals body={egg.body} voice={egg.voice}/><span>{owner(egg.accountId)}</span></div></div>{action}</div>;
@@ -182,8 +201,11 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
       <div className="grid grid-cols-2 gap-2"><Button variant="secondary" size="sm" onClick={() => setPage('stock')}>蛋仓 <span className="ml-auto text-slate-400">{ownEggs.length}</span></Button><Button variant="secondary" size="sm" onClick={() => setPage('tasks')}>我的换蛋 <span className="ml-auto text-amber-600">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></Button></div>
       <SearchField label="搜索需求" value={query} onValueChange={setQuery} placeholder="搜索精灵名" className="text-left [&_input]:text-left" />
       <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">{tab === 'mine' ? '想收' : '组内需求'}</h3>{tab === 'mine' ? <Button variant="text" size="sm" disabled={!api.data} onClick={() => setEditor('new')}>＋ 添加想收</Button> : <span className="text-[10px] text-slate-400">{visible.length} 项</span>}</div>
+      {tab === 'square' ? <div className="flex flex-wrap gap-1"><button type="button" aria-pressed={onlyAffordable} onClick={() => setOnlyAffordable(v => !v)} className={'min-h-7 rounded-md px-2 text-[11px] ' + (onlyAffordable ? 'bg-emerald-50 font-semibold text-emerald-700' : 'text-slate-500')}>只看我能接</button></div> : null}
       {api.loading ? <div className={empty}>正在读取…</div> : visible.length ? <div className="grid grid-cols-3 gap-[7px]">{visible.map(d => <EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} ownerLabel={tab === 'square' ? owner(d.demanderAccountId) : undefined}
-        statusLabel={state.trades.some(t => t.status === 'accepted' && t.demandId === d.id) ? '进行中' : state.eggs.some(e => e.accountId !== d.demanderAccountId && e.listed && canCirculateEgg(e) && canMatchDemand(d,e)) ? '有匹配' : '待匹配'}
+        statusLabel={state.trades.some(t => t.status === 'accepted' && t.demandId === d.id) ? '进行中'
+          : tab === 'square' ? (supplyOf(d) === 'give' ? '我能给蛋' : supplyOf(d) === 'hatch' ? '我能孵' : '接不了')
+          : state.eggs.some(e => e.accountId !== d.demanderAccountId && e.listed && canCirculateEgg(e) && canMatchDemand(d,e)) ? '有匹配' : '待匹配'}
         onOpen={d => { setDetailId(d.id); setError(''); }} />)}</div> : <div className={empty}>{tab === 'mine' ? '还没有想收的精灵' : '暂无组内需求'}</div>}
       {tab==='mine'&&completed.length?<details className="rounded-xl border border-slate-200 p-2"><summary className="cursor-pointer text-xs text-slate-500">已完成 · {completed.length}</summary><div className="mt-2 grid grid-cols-3 gap-[7px]">{completed.map(d=><EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} statusLabel="已完成" onOpen={d=>setDetailId(d.id)}/>)}</div></details>:null}
     </>}
@@ -192,12 +214,21 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     {demand ? <ModalSurface open title={mine?'需求详情':'接单详情'} onClose={() => { setDetailId(null); setProposal(null); }} size="lg"><div className="flex flex-col gap-2 p-3">
       <div className="flex items-center gap-2"><PetAvatar gameId={demand.eggGameId} name={name(demand.eggGameId)} size={44} /><div><strong className="text-sm">{name(demand.eggGameId)}</strong><div className="text-xs text-slate-500">{owner(demand.demanderAccountId)} · 已收 {demand.fulfilled}/{demand.quantity}</div><div className="flex items-center gap-1 text-[11px] text-slate-600">{demand.natures.join(' / ')}<EggMedals body={demand.body} voice={demand.voice}/></div></div></div>
       {mine && !locked && demand.status === 'open' ? <div className="flex justify-end gap-2"><Button variant="text" size="sm" onClick={() => setEditor(demand)}>调整需求</Button><Button variant="danger" size="sm" onClick={() => setWithdraw(true)}>撤回</Button></div> : null}
-      {demand.status==='open'?<><h4 className="text-xs font-semibold">{mine ? '组内供给' : '我能提供 · 现蛋'}</h4><div className={box}>{offers.length ? offers.map(egg => eggRow(egg, <Button size="sm" onClick={() => setProposal({ give: egg, supplier: egg.accountId })}>{mine ? '查看' : '选这颗'}</Button>)) : <p className="text-xs text-slate-400">暂无匹配现蛋</p>}</div>
-      {mine&&groupLines.length?<><h4 className="text-xs font-semibold">可现孵</h4><div className={box}>{groupLines.map(line=><div key={line.accountId+line.id} className="flex items-center gap-2 border-b border-slate-100 py-2 last:border-0"><div className="min-w-0 flex-1"><span className="text-xs">{owner(line.accountId)}</span><EggLineSummary line={line}/></div><Button size="sm" onClick={()=>setProposal({lineId:line.id,supplier:line.accountId})}>查看产线</Button></div>)}</div></>:null}
-      {!mine ? <><h4 className="text-xs font-semibold">可现孵</h4><div className={box}>{lines.length ? lines.map((p,i) => <div key={i} className="flex items-center gap-2 border-b border-slate-100 py-2 last:border-0"><div className="min-w-0 flex-1"><EggLineSummary line={p.line} snapshots={snapshots}/></div><Button size="sm" onClick={() => setProposal({ line: p.line })}>选这条</Button></div>) : <p className="text-xs text-slate-400">暂无匹配产线</p>}</div></> : null}
+      {demand.status==='open'?<><h4 className="text-xs font-semibold">{mine ? '组内现蛋' : '我能提供 · 现蛋'}</h4><div className={box}>{offers.length ? offers.map(egg => eggRow(egg, mine
+        ? <Button size="sm" onClick={() => { setProposal({ give: egg, supplier: egg.accountId }); setPeer(egg.accountId); }}>看他的需求</Button>
+        : <Button size="sm" onClick={() => setProposal({ give: egg, supplier: egg.accountId })}>选这颗</Button>)) : <p className="text-xs text-slate-400">暂无匹配现蛋</p>}</div>
+      {mine?<><h4 className="text-xs font-semibold">组内能帮我孵</h4><div className={box}>{groupLines.length?groupLines.map(line=><div key={line.accountId+line.id} className="flex items-center gap-2 border-b border-slate-100 py-2 last:border-0"><div className="min-w-0 flex-1"><span className="text-xs">{owner(line.accountId)}</span><EggLineSummary line={line}/></div><Button size="sm" onClick={()=>{setProposal({lineId:line.id,supplier:line.accountId});setPeer(line.accountId);}}>看他的需求</Button></div>):<p className="text-xs text-slate-400">暂无可用产线</p>}</div></>
+        :<><h4 className="text-xs font-semibold">可现孵</h4><div className={box}>{lines.length ? lines.map((p,i) => <div key={i} className="flex items-center gap-2 border-b border-slate-100 py-2 last:border-0"><div className="min-w-0 flex-1"><EggLineSummary line={p.line} snapshots={snapshots}/></div><Button size="sm" onClick={() => setProposal({ line: p.line })}>选这条</Button></div>) : <p className="text-xs text-slate-400">暂无匹配产线</p>}</div></>}
       </>:null}
     </div></ModalSurface> : null}
-    {proposal && demand ? <ModalSurface open title="选择换回" onClose={() => setProposal(null)}><div className="p-3"><h4 className="text-xs font-semibold">{mine ? '我能换给对方' : owner(demand.demanderAccountId) + '能提供'}</h4>{backOptions.length ? backOptions.map(egg => {
+    {peer && demand ? <ModalSurface open title="我能满足他的需求" onClose={() => { setPeer(null); setProposal(null); }} size="lg"><div className="p-3">
+      <p className="mb-2 text-[10px] text-slate-500">{owner(peer)} 有 {peerDemands.length} 条需求；下面是我能提供的蛋，选一颗发起换蛋。产线只是推荐配窝。</p>
+      {peerEggs.length || peerLines.length ? <>{peerEggs.map(egg => { const match = peerDemands.find(d => canMatchDemand(d, egg)); return eggRow(egg, <Button size="sm" busy={api.busy} onClick={() => propose(egg, match?.id)}>选这颗</Button>); })}
+        {peerLines.map(line => { const match = peerDemands.find(d => canMatchDemand(d, line) && (!d.greenNest || line.greenParentId)); return <div key={line.id} className="mt-2 flex items-center gap-2"><div className="min-w-0 flex-1"><strong className="text-xs">{name(line.eggGameId)} · 可现孵</strong><EggLineSummary line={line}/></div><Button size="sm" busy={api.busy} onClick={() => propose({ line, id: line.id }, match?.id)}>选这颗</Button></div>; })}</>
+        : <p className="py-2 text-center text-xs text-slate-500">他的需求我都满足不了</p>}
+      {error ? <p role="alert" className="text-xs text-rose-600">{error}</p> : null}
+    </div></ModalSurface> : null}
+    {proposal && demand && !peer ? <ModalSurface open title="选择换回" onClose={() => setProposal(null)}><div className="p-3"><h4 className="text-xs font-semibold">{mine ? '我能换给对方' : owner(demand.demanderAccountId) + '能提供'}</h4>{backOptions.length ? backOptions.map(egg => {
       const peerDemand = state.demands.find(d => d.demanderAccountId === (mine ? proposal.supplier : me) && d.status === 'open' && canMatchDemand(d,egg));
       return eggRow(egg, <Button size="sm" busy={api.busy} onClick={() => propose(egg, peerDemand?.id)}>发起换蛋</Button>);
     }) : <p className="py-2 text-center text-xs text-slate-500">暂无可换回的现蛋</p>}{backLines.map((item,i)=><div key={item.id??i} className="mt-2 flex items-center gap-2"><div className="min-w-0 flex-1"><strong className="text-xs">{name(item.line.eggGameId)} · 可现孵</strong><EggLineSummary line={item.line} snapshots={mine?snapshots:[]}/></div><Button size="sm" busy={api.busy} onClick={()=>propose(item,item.demandId)}>发起换蛋</Button></div>)}{error ? <p role="alert" className="text-xs text-rose-600">{error}</p> : null}</div></ModalSurface> : null}

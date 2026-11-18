@@ -484,6 +484,19 @@ describe('配对按概率排序（2026-10-30 石岚号漏选 60% 的回归）', 
     expect(pairOptionsForEgg(snapshots, criteria, species, 1)).toHaveLength(1);
   });
 
+  test('只有一只母本时也要用满名额，不把同样合法的公截掉（2026-11-19）', () => {
+    const snapshots = [
+      snapshot(1001, '石岚', [
+        mother(101, { captureId: 'only-mother' }),
+        mother(102, { gender: '公', captureId: 'male-1' }),
+        mother(102, { gender: '公', captureId: 'male-2' }),
+        mother(102, { gender: '公', captureId: 'male-3' }),
+      ]),
+    ];
+    const criteria: DemandCriteria = { eggGameId: 101, nature: '', gender: '母', body: '大块头', voice: '+100' };
+    expect(pairOptionsForEgg(snapshots, criteria, species, 3)).toHaveLength(3);
+  });
+
   test('不挑性格：接单人优先推荐带推荐性格的配对（2026-11-03）', () => {
     /** 火花蛋的推荐性格是「固执」（真实数据来自图鉴的 PVP 推荐表）。 */
     const withRecommended: SpeciesEntry[] = catalog.map((entry) =>

@@ -52,16 +52,33 @@ test('a failed capture sync is attempted once until the user retries',async()=>{
   mutate.mockResolvedValue(undefined);
 });
 
-test('my demand shows published matching production lines without switching hub tabs',()=>{
+test('my demand lists who has eggs and who can hatch, then opens their needs',()=>{
   const line={id:'l',accountId:'b',eggGameId:3227,nature:'固执',body:'大块头' as const,voice:'婉转声' as const,gameAccountKey:'uid:2',motherId:'m',fatherId:'f'};
   const data=state as typeof state & {lines:typeof line[]};data.lines=[line];
   render(<EggMatchingHub {...props} members={[...props.members,{accountId:'b',displayName:'乙'}]}/>);
   fireEvent.click(screen.getByRole('button',{name:/菊花梨/}));
-  expect(screen.getByText('可现孵')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'查看产线'}));
-  expect(screen.getByRole('dialog',{name:'选择换回'})).toBeTruthy();
+  expect(screen.getByText('组内现蛋')).toBeTruthy();
+  expect(screen.getByText('组内能帮我孵')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'看他的需求'}));
+  expect(screen.getByRole('dialog',{name:'我能满足他的需求'})).toBeTruthy();
   expect(screen.getByRole('button',{name:'我的收集'}).getAttribute('aria-pressed')).toBe('true');
   data.lines=[];
+});
+
+test('square cards show whether I can supply and can be filtered to affordable only',()=>{
+  state.demands.push({...createDemand({id:'d2',groupId:'g',demanderAccountId:'b',eggGameId:3227,natures:['固执'],body:'大块头',voice:'婉转声',quantity:1}),});
+  state.demands.push(createDemand({id:'d3',groupId:'g',demanderAccountId:'b',eggGameId:9999,natures:['固执'],body:'',voice:'',quantity:1}));
+  const egg={id:'e1',accountId:'a',gameAccountKey:'uid:1',eggGameId:3227,nature:'固执',body:'大块头' as const,voice:'婉转声' as const,
+    kind:'ordinary' as const,status:'available' as const,listed:true,provenance:'unknown' as const,confidence:'manual' as const,labelSource:'unknown' as const};
+  const data=state as typeof state & {eggs:(typeof egg)[]};data.eggs=[egg];
+  render(<EggMatchingHub {...props} members={[...props.members,{accountId:'b',displayName:'乙'}]}/>);
+  fireEvent.click(screen.getByText('组内广场'));
+  expect(screen.getAllByText('我能给蛋').length).toBeGreaterThan(0);
+  expect(screen.getByText('接不了')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'只看我能接'}));
+  expect(screen.getByRole('button',{name:'只看我能接'}).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.queryByText('接不了')).toBeNull();
+  data.eggs=[];state.demands.length=1;
 });
 
 test('completed collections remain accessible in a collapsed history',()=>{

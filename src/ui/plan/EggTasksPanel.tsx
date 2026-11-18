@@ -58,6 +58,18 @@ export function EggTasksPanel({state,me,members,species,busy,mutate,snapshots=[]
       const ownLine=demander?t.returnLine:t.line;
       const needsPlacement=eggTaskNeedsPlacement(t,me);
       const needsAllocation=!!ownLine&&!needsPlacement&&!(demander?t.returnEggId:t.giveEggId);
+      const peerName=members.find(m=>m.accountId===peer)?.displayName??'已退出成员';
+      /** 交换形式与两侧各自的状态：任一侧确认都不会替另一侧推进（2026-11-19）。 */
+      const formLabel=t.type==='spot'?'现蛋换现蛋':t.line&&t.returnLine?'双方上窝':'蛋换代孵';
+      const sideOf=(asDemander:boolean)=>{
+        const sideLine=asDemander?t.returnLine:t.line;
+        const placed=asDemander?!!t.returnPlaced:!!t.placed;
+        const eggId=asDemander?t.returnEggId:t.giveEggId;
+        if(sideLine)return placed?{text:'已上窝',done:true}:{text:'待上窝',done:false};
+        return eggId?{text:'已交付',done:true}:{text:'待交付',done:false};
+      };
+      const mySide=sideOf(demander);
+      const peerSide=sideOf(!demander);
       const reminder = state.reminders?.find(r=>r.tradeId===t.id&&r.reminderAt===t.reminderAt);
       const reminderLabel = reminder?.status==='sent'?'群内已提醒':reminder?.status==='unbound'?'对方未绑定QQ':reminder?.status==='failed'?'催促发送失败':reminder?.status==='pending'?'催促待发送':'已催进度';
       const patrol=(state.patrol??[]).find(p=>p.tradeId===t.id&&p.side===(demander?'return':'give'))??(state.patrol??[]).find(p=>p.tradeId===t.id);
@@ -68,10 +80,14 @@ export function EggTasksPanel({state,me,members,species,busy,mutate,snapshots=[]
           patrol.status==='error'?'巡查失败':patrol.status==='pending'?'待巡查':patrol.status==='queued'?'巡查排队中':'已巡查'):null;
       const steps=t.type==='custom'?['已提出','已接受','已上窝','已收到']:['已提出','已接受','交接中','已收到'];const step=t.status==='done'?3:t.status==='accepted'?(t.type==='custom'&&(((t.line||t.legacy)&&!t.placed)||(t.returnLine&&!t.returnPlaced))?1:2):0;
       return <article key={t.id} data-task-id={t.id} tabIndex={0} aria-label={'与'+(members.find(m=>m.accountId===peer)?.displayName??'已退出成员')+'的换蛋任务'} className={'select-none rounded-xl border bg-white p-2.5 '+(dragging===t.id?'border-emerald-500 shadow-lg':'border-slate-200')} onKeyDown={e=>{if(!e.altKey||!['ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();const ids=tasks.map(t=>t.id),i=ids.indexOf(t.id),j=i+(e.key==='ArrowUp'?-1:1);if(j<0||j>=ids.length)return;[ids[i],ids[j]]=[ids[j],ids[i]];setDraftOrder(ids);run({type:'order',ids});}}>
-        <div className="mb-2 flex items-center justify-between text-xs"><strong>{members.find(m=>m.accountId===peer)?.displayName??'已退出成员'}</strong><span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{status(t)}</span></div>
+        <div className="mb-2 flex items-center justify-between text-xs"><div className="flex min-w-0 items-center gap-1.5"><strong className="truncate">{peerName}</strong><span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{formLabel}</span></div><span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{status(t)}</span></div>
         <div className="grid grid-cols-[minmax(0,1fr)_18px_minmax(0,1fr)] items-center gap-1">{half(demander?t.receive:t.give,'给出')}<span className="self-center text-center text-lg leading-none text-slate-400">⇄</span>{half(demander?t.give:t.receive,'收到')}</div>
         {ownLine?<div className="mt-2"><EggLineSummary line={ownLine} snapshots={snapshots}/></div>:null}
         <ol aria-label="换蛋进度" className="my-2 grid grid-cols-4">{steps.map((label,i)=><li key={label} aria-current={i===step?'step':undefined} className={'relative border-t-2 pt-1 text-center text-[10px] '+(i<=step?'border-emerald-400 text-emerald-700':'border-slate-100 text-slate-400')}>{label}</li>)}</ol>
+        <div className="mb-2 flex flex-col gap-1 border-t border-slate-100 pt-1">
+          <div className="flex items-center gap-1.5 text-[10px] text-slate-600"><span className={'size-1.5 rounded-full '+(mySide.done?'bg-emerald-500':'bg-amber-500')}/>我 · {mySide.text}</div>
+          <div className="flex items-center gap-1.5 text-[10px] text-slate-600"><span className={'size-1.5 rounded-full '+(peerSide.done?'bg-emerald-500':'bg-amber-500')}/>{peerName} · {peerSide.text}</div>
+        </div>
         {patrolText?<p className="mb-1 border-t border-slate-100 pt-1 text-[10px] text-slate-500">{patrolText}</p>:null}
         {t.reminderAt&&t.reminderBy!==me&&t.status!=='done'?<p className="mb-1 text-[10px] text-amber-700">对方催了进度</p>:null}
         {['proposed','accepted'].includes(t.status)?<div className="flex items-center gap-1"><Button variant="text" size="sm" busy={busy} disabled={!!t.reminderAt&&Date.now()-t.reminderAt<1800000} onClick={()=>run({type:'remind',id:t.id})}>{t.reminderAt&&Date.now()-t.reminderAt<1800000?reminderLabel:'催进度'}</Button><Button variant="text" size="sm" onClick={()=>setCancel(t.id)}>取消</Button><span className="flex-1"/>{t.status==='proposed'&&canAccept?<Button size="sm" busy={busy} onClick={()=>run({type:'accept',id:t.id})}>接受换蛋</Button>:t.status==='accepted'&&needsPlacement?<Button size="sm" busy={busy} onClick={()=>run({type:'place',id:t.id})}>已上窝</Button>:t.status==='accepted'&&needsAllocation?<Button size="sm" busy={busy} onClick={()=>setAllocation(t.id)}>分配现蛋</Button>:t.status==='accepted'&&demander?(ready(t)?<Button size="sm" busy={busy} onClick={()=>setReceipt(t.id)}>已收到</Button>:<span className="text-[10px] text-amber-700">{t.type==='custom'&&(t.line||t.legacy)&&!t.placed?'等待对方上窝':'等待对方分配现蛋'}</span>):t.status==='accepted'&&!demander&&t.type==='custom'&&!t.placed?<Button size="sm" busy={busy} onClick={()=>run({type:'place',id:t.id})}>已上窝</Button>:<span className="text-[10px] text-slate-400">{t.status==='proposed'?'等待对方接受':'等待对方收到'}</span>}</div>:null}

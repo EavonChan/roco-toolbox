@@ -276,6 +276,16 @@ export function pairOptionsForEgg(
     picked.push(option);
     if (picked.length >= cap) break;
   }
+  // 只有一只母本时，上面的限流会用不满名额（cap=3 只取 2 条），
+  // 后两只同样合法的公被静默丢掉；补位到 cap（2026-11-19）。
+  if (picked.length < cap) {
+    const seen = new Set(picked);
+    for (const option of options) {
+      if (seen.has(option)) continue;
+      picked.push(option);
+      if (picked.length >= cap) break;
+    }
+  }
   return picked;
 }
 
