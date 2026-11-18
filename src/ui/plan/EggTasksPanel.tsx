@@ -62,7 +62,8 @@ export function EggTasksPanel({state,me,members,species,busy,mutate,snapshots=[]
       const reminderLabel = reminder?.status==='sent'?'群内已提醒':reminder?.status==='unbound'?'对方未绑定QQ':reminder?.status==='failed'?'催促发送失败':reminder?.status==='pending'?'催促待发送':'已催进度';
       const patrol=(state.patrol??[]).find(p=>p.tradeId===t.id&&p.side===(demander?'return':'give'))??(state.patrol??[]).find(p=>p.tradeId===t.id);
       const patrolText=patrol?(patrol.checkedAt?new Date(patrol.checkedAt).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'})+' ':'')+
-        (patrol.status==='produced'?'发现产出 · '+(patrol.notification==='sent'?'已提醒':patrol.notification==='failed'?'提醒失败':patrol.notification==='unbound'?'待绑定QQ':'待提醒'):
+        (patrol.status==='placed'?'已上窝 · 等待产出':
+          patrol.status==='produced'?'发现产出 · '+(patrol.notification==='sent'?'已提醒':patrol.notification==='failed'?'提醒失败':patrol.notification==='unbound'?'待绑定QQ':'待提醒'):
           patrol.status==='ambiguous'?'发现产出 · 待分配':patrol.status==='quota'?'今日巡查额度已用完':patrol.status==='quiet'?'夜间暂停 · 08:00 恢复':
           patrol.status==='error'?'巡查失败':patrol.status==='pending'?'待巡查':patrol.status==='queued'?'巡查排队中':'已巡查'):null;
       const steps=t.type==='custom'?['已提出','已接受','已上窝','已收到']:['已提出','已接受','交接中','已收到'];const step=t.status==='done'?3:t.status==='accepted'?(t.type==='custom'&&(((t.line||t.legacy)&&!t.placed)||(t.returnLine&&!t.returnPlaced))?1:2):0;
