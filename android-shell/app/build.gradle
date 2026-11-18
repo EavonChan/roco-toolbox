@@ -32,7 +32,8 @@ android {
         // 那样网页会被铺到状态栏底下。停在 34 时系统会自动让窗口避开系统栏，不用自己算 insets。
         // 这个壳只自己安装、不上架商店，不受商店 targetSdk 新规影响。
         targetSdk 34
-        versionCode 41
+        // 内测迭代：同一版本名用更高的 versionCode，客户端才会提示更新（2026-11-18 vc42）
+        versionCode 42
         versionName "1.5.6"
         // 应用名按通道区分，内测包在桌面上能和正式包一眼分开
         manifestPlaceholders = [appLabel: testBuild ? '小布助手·内测' : '小布助手']
