@@ -37,7 +37,7 @@ export interface PatrolEgg {
 }
 /** 家园里已经排上的一对亲本（breeding_pairs）。用于判定「已上窝」。 */
 export interface PatrolPair { mother: PatrolParent; fathers: PatrolParent[] }
-export interface PatrolScene { eggs: PatrolEgg[]; pairs: PatrolPair[]; capturedAt: number }
+export interface PatrolScene { eggs: PatrolEgg[]; pairs: PatrolPair[]; capturedAt: number; /** 本轮解析失败被跳过的配窝条数（排查用） */ skippedPairs?: number }
 /**
  * 巡查判定用的图鉴索引（由服务端从 catalog 构建一次）。
  *
@@ -141,22 +141,30 @@ export function parsePatrolScene(raw: unknown, now: number): PatrolScene {
   });
   if (new Set(eggs.map(egg => egg.actorId)).size !== eggs.length) throw new Error('蛋实例重复');
   const pairs: PatrolPair[] = [];
+  let skippedPairs = 0;
   if (Array.isArray(scene.breeding_pairs)) {
     for (const value of scene.breeding_pairs) {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) { skippedPairs++; continue; }
       const raw = value as ObjectValue;
-      if (!raw.female) continue;
-      const mother = parent(raw.female);
-      mother.weightKg = weightByPetId.get(mother.petId) ?? null;
-      const fathers = (Array.isArray(raw.male_partners) ? raw.male_partners : []).map(value => {
-        const father = parent(value);
-        father.weightKg = weightByPetId.get(father.petId) ?? null;
-        return father;
-      });
-      if (fathers.length) pairs.push({ mother, fathers });
+      if (!raw.female) { skippedPairs++; continue; }
+      try {
+        const mother = parent(raw.female);
+        mother.weightKg = weightByPetId.get(mother.petId) ?? null;
+        const rawFathers = Array.isArray(raw.male_partners) ? raw.male_partners : [];
+        const fathers = rawFathers.map(value => {
+          const father = parent(value);
+          father.weightKg = weightByPetId.get(father.petId) ?? null;
+          return father;
+        });
+        if (fathers.length) pairs.push({ mother, fathers });
+        else skippedPairs++;
+      } catch {
+        // 单条配窝的脏数据只跳过它自己，不能让整个账号的巡查静默停摆（R1-M02）
+        skippedPairs++;
+      }
     }
   }
-  return { eggs, pairs, capturedAt: now };
+  return { eggs, pairs, capturedAt: now, skippedPairs };
 }
 
 /** 亲本体型档位：按体重与物种阈值判，缺体重就判不了（返回空串）。 */
