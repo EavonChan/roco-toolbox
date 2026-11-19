@@ -135,8 +135,10 @@ export function ServerAddressPanel({ onClose }: { onClose: () => void }) {
     run(() => bridge.apply(raw));
   };
 
+  // 公开包构建时默认站就是正式站，不能再把「正式服（默认）」错标成「测试服（默认）」
+  const defaultKind = info.defaultUrl === info.productionUrl ? '正式服' : '测试服';
   const currentKind = info.current === info.defaultUrl
-    ? '测试服（默认）'
+    ? `${defaultKind}（默认）`
     : info.current === info.productionUrl ? '正式服' : '自定义';
 
   return (
@@ -147,6 +149,9 @@ export function ServerAddressPanel({ onClose }: { onClose: () => void }) {
       <h2 className="text-base font-semibold text-slate-900">服务器地址</h2>
       <p className="mt-1 text-xs text-amber-700" data-testid="server-address-risk">
         仅限自用：填错等于把采集数据交给该站点。
+      </p>
+      <p className="mt-1 text-xs text-slate-500" data-testid="server-address-identity-note">
+        换站等于换身份：账号和采集数据按站点分别保存，切换后要在新站点重新登录 / 导入。
       </p>
 
       <dl className="mt-3 space-y-1 text-xs" data-testid="server-address-current">
@@ -162,7 +167,9 @@ export function ServerAddressPanel({ onClose }: { onClose: () => void }) {
         <div className="flex gap-2">
           <dt className="shrink-0 text-slate-500">默认：</dt>
           <dd className="break-all text-slate-500">
-            <span className="mr-1 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">测试服</span>
+            <span className="mr-1 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+              {defaultKind}
+            </span>
             {info.defaultUrl}
           </dd>
         </div>
