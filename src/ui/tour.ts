@@ -15,7 +15,7 @@ const LEGACY_TOUR_SEEN_KEY = 'roco.tourSeen';
 const TOUR_SEEN_PREFIX = 'roco.tourSeen.';
 
 /** 引导版本：改任一分段的步骤时 +1（1 = 固定 15 步；2 = 按场景分段；3 = 首启改为「开始采集」） */
-export const TOUR_VERSION = '3';
+export const TOUR_VERSION = '4';
 
 /** 目标元素上挂的锚点属性；找不到时退化成居中说明卡。 */
 export const TOUR_ANCHOR_ATTR = 'data-tour';
