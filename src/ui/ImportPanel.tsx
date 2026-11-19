@@ -482,7 +482,7 @@ export function ImportPanel() {
         {importing ? '导入中…' : '导入游戏数据'}
       </button>
       <p className="-mt-1 text-center text-xs text-slate-400">
-        采集器里点「分享」选「小布助手」会自动导入；也可以在这里手选文件（抓包 .pcap / 备份 .json，可多选）
+        采集器分享到「小布助手」会自动导入；也可手选 .pcap / .json（可多选）
       </p>
       <input
         ref={fileInputRef}
@@ -606,8 +606,7 @@ export function ImportPanel() {
               }}
             />
             <p className="mt-1 text-xs text-slate-400">
-              导出的是你自己的账号数据（几个账号打包成一个文件）。换设备首选上面的「云同步」；没开云同步时再用它：
-              两台设备各导出一份、互相合并导入一次。收到的备份也可以直接在微信/QQ 里「分享给小布助手」。
+              导出自己的账号数据；换设备首选上面的「云同步」。
             </p>
             {snapshots.length > 0 ? (
               <button
