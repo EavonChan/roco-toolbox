@@ -18,6 +18,7 @@ import {
   isValidPassword,
   isValidUsername,
   json,
+  needsPasswordUpgrade,
   newId,
   newRecoveryCode,
   newToken,
@@ -152,10 +153,19 @@ export async function handleLogin(request: Request, env: Env, origin: string | n
   }
 
   const row = await findByUsername(env, lower);
-  if (!row || !(await verifyPassword(password, row.password_hash))) return fail('用户名或密码不对', 401, origin);
-  await env.DB.prepare('UPDATE accounts SET last_seen_at = ? WHERE id = ?').bind(Date.now(), row.id).run();
+  if (!row?.password_hash || !(await verifyPassword(password, row.password_hash))) return fail('用户名或密码不对', 401, origin);
+  const nextHash = needsPasswordUpgrade(row.password_hash) ? await hashPassword(password) : row.password_hash;
+  const token = newToken();
+  const now = Date.now();
+  const [, issued] = await env.DB.batch([
+    env.DB.prepare('UPDATE accounts SET last_seen_at = ?, password_hash = ? WHERE id = ? AND password_hash = ?')
+      .bind(now, nextHash, row.id, row.password_hash),
+    env.DB.prepare(`INSERT INTO tokens (token_hash, account_id, created_at, last_used_at)
+      SELECT ?, id, ?, ? FROM accounts WHERE id = ? AND password_hash = ?`)
+      .bind(await sha256Hex(token), now, now, row.id, nextHash),
+  ]);
+  if (!issued.meta.changes) return fail('用户名或密码不对', 401, origin);
   await touchDevice(env, (body.deviceId ?? '').slice(0, 64) || null, row.id);
-  const token = await issueToken(env, row.id);
   return json({ ok: true, accountId: row.id, token, username: row.username ?? username }, 200, origin);
 }
 
