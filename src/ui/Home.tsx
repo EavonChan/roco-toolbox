@@ -334,7 +334,11 @@ type HomeView = 'nests' | 'demands';
 
 const readHomeView = (): HomeView => {
   if (typeof window === 'undefined') return 'nests';
-  return window.localStorage.getItem(HOME_VIEW_KEY) === 'demands' ? 'demands' : 'nests';
+  try {
+    return window.localStorage.getItem(HOME_VIEW_KEY) === 'demands' ? 'demands' : 'nests';
+  } catch {
+    return 'nests';
+  }
 };
 
 /** 已挂载的家园页：外部改了分页要立刻跟着切，不能等重新挂载（新手引导用）。 */
