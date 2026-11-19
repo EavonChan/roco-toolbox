@@ -218,9 +218,17 @@ export async function handleChangePassword(request: Request, env: Env, origin: s
   if (!row?.password_hash) return fail('这个账号还没有设置密码', 400, origin);
   if (!(await verifyPassword(body.oldPassword ?? '', row.password_hash))) return fail('原密码不对', 400, origin);
   if (!isValidPassword(body.newPassword ?? '')) return fail('新密码需为 8-32 位', 400, origin);
-  await env.DB.prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')
-    .bind(await hashPassword(body.newPassword as string), accountId)
-    .run();
+  const tokenHash = await sha256Hex((request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim());
+  const nextHash = await hashPassword(body.newPassword as string);
+  const [changed] = await env.DB.batch([
+    env.DB.prepare(`UPDATE accounts SET password_hash = ? WHERE id = ? AND password_hash = ?
+      AND EXISTS (SELECT 1 FROM tokens WHERE token_hash = ? AND account_id = accounts.id)`)
+      .bind(nextHash, accountId, row.password_hash, tokenHash),
+    env.DB.prepare(`DELETE FROM tokens WHERE account_id = ? AND token_hash <> ?
+      AND EXISTS (SELECT 1 FROM accounts WHERE id = tokens.account_id AND password_hash = ?)`)
+      .bind(accountId, tokenHash, nextHash),
+  ]);
+  if (!changed.meta.changes) return fail('密码或会话已变更，请重新登录后再试', 409, origin);
   return json({ ok: true }, 200, origin);
 }
 
