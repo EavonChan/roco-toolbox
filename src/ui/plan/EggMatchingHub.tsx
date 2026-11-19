@@ -150,12 +150,12 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   const mine = demand?.demanderAccountId === me;
   const locked = !!demand && state.trades.some(t => t.status === 'accepted' && (t.demandId === demand.id || t.returnDemandId === demand.id));
   const ownEggs = state.eggs.filter(e => e.accountId === me && e.status !== 'transferred');
-  const offers = demand ? state.eggs.filter(e => canCirculateEgg(e) && canMatchDemand(demand, e) &&
+  const offers = demand ? state.eggs.filter(e => e.location !== 'home' && canCirculateEgg(e) && canMatchDemand(demand, e) &&
     (mine ? e.accountId !== me && e.listed : e.accountId === me)) : [];
   const groupLines=demand&&mine?(state.lines??[]).filter(l=>l.accountId!==me&&canMatchDemand(demand,l)&&(!demand.greenNest||l.greenParentId)):[];
   const lines=useMemo(()=>demand&&demand.demanderAccountId!==me?localLinesForDemand(demand,snapshots,species).map(line=>({line})):[],[demand,me,snapshots,species]);
   /** 我这一侧能提供的现蛋 / 产线：广场卡片和「看他的需求」共用同一份索引。 */
-  const myEggs=useMemo(()=>state.eggs.filter(e=>e.accountId===me&&e.status!=='transferred'&&canCirculateEgg(e)),[state.eggs,me]);
+  const myEggs=useMemo(()=>state.eggs.filter(e=>e.accountId===me&&e.location!=='home'&&canCirculateEgg(e)),[state.eggs,me]);
   const myLines=useMemo(()=>(state.lines??[]).filter(l=>l.accountId===me),[state.lines,me]);
   const supplyOf=(value:EggDemand):'give'|'hatch'|'none'=>
     myEggs.some(egg=>canMatchDemand(value,egg))?'give'
@@ -189,7 +189,7 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   /** 接单方换回：从对方已挂出的现蛋 / 产线里自动挑一颗能满足我需求单的。 */
   const myOpenDemands = state.demands.filter(d => d.demanderAccountId === me && d.status === 'open');
   const autoReturnEggs = demand && !mine
-    ? state.eggs.filter(e => e.accountId === demand.demanderAccountId && e.listed && canCirculateEgg(e) && myOpenDemands.some(d => canMatchDemand(d, e)))
+    ? state.eggs.filter(e => e.accountId === demand.demanderAccountId && e.location !== 'home' && e.listed && canCirculateEgg(e) && myOpenDemands.some(d => canMatchDemand(d, e)))
     : [];
   const autoReturnLines = demand && !mine
     ? (state.lines ?? []).filter(l => l.accountId === demand.demanderAccountId && myOpenDemands.some(d => canMatchDemand(d, l) && (!d.greenNest || l.greenParentId)))
@@ -236,7 +236,7 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
       {api.loading ? <div className={empty}>正在读取…</div> : visible.length ? <div className="grid grid-cols-3 gap-[7px]">{visible.map(d => <EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} ownerLabel={tab === 'square' ? owner(d.demanderAccountId) : undefined}
         statusLabel={state.trades.some(t => t.status === 'accepted' && t.demandId === d.id) ? '进行中'
           : tab === 'square' ? (supplyOf(d) === 'give' ? '我能给蛋' : supplyOf(d) === 'hatch' ? '我能孵' : '接不了')
-          : state.eggs.some(e => e.accountId !== d.demanderAccountId && e.listed && canCirculateEgg(e) && canMatchDemand(d,e)) ? '有匹配' : '待匹配'}
+          : state.eggs.some(e => e.accountId !== d.demanderAccountId && e.location !== 'home' && e.listed && canCirculateEgg(e) && canMatchDemand(d,e)) ? '有匹配' : '待匹配'}
         onOpen={d => { setDetailId(d.id); setError(''); }} />)}</div> : <div className={empty}>{tab === 'mine' ? '还没有想收的精灵' : '暂无组内需求'}</div>}
       {tab==='mine'&&completed.length?<details className="rounded-xl border border-slate-200 p-2"><summary className="cursor-pointer text-xs text-slate-500">已完成 · {completed.length}</summary><div className="mt-2 grid grid-cols-3 gap-[7px]">{completed.map(d=><EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} statusLabel="已完成" onOpen={d=>setDetailId(d.id)}/>)}</div></details>:null}
     </>}

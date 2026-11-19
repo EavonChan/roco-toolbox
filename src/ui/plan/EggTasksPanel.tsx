@@ -49,7 +49,7 @@ export function EggTasksPanel({state,me,members,species,busy,mutate,snapshots=[]
   const ready=eggTaskReady;
   const allocating=state.trades.find(t=>t.id===allocation);
   const target=allocating?(allocating.supplierAccountId===me?allocating.give:allocating.receive):null;
-  const candidates=target?state.eggs.filter(e=>e.accountId===me&&canCirculateEgg(e)&&canMatchDemand({eggGameId:target.eggGameId,natures:target.nature?[target.nature]:[],body:target.body==='unknown'?'':target.body,voice:target.voice==='unknown'?'':target.voice} as EggDemand,e)):[];
+  const candidates=target?state.eggs.filter(e=>e.accountId===me&&e.location!=='home'&&canCirculateEgg(e)&&canMatchDemand({eggGameId:target.eggGameId,natures:target.nature?[target.nature]:[],body:target.body==='unknown'?'':target.body,voice:target.voice==='unknown'?'':target.voice} as EggDemand,e)):[];
   const status=(t:WorkflowTrade)=>t.status==='done'?'已完成':t.status==='cancelled'?'已取消':t.status==='proposed'?'待接受':t.type==='custom'&&!ready(t)?((t.line&&!t.placed)||(t.returnLine&&!t.returnPlaced)?'待上窝':'待分配现蛋'):t.demanderAccountId===me?'待我收到':'待对方收到';
   const history=(state.legacyHistory??[]).filter(h=>[h.demanderAccountId,h.supplierAccountId].includes(me)&&(filter==='已完成'?h.status==='done':filter==='已取消'?h.status==='cancelled':false));
   return <div className="flex flex-col gap-2"><div className="flex gap-1">{['进行中','已完成','已取消'].map(f=><button key={f} type="button" aria-pressed={filter===f} onClick={()=>setFilter(f)} className={'min-h-7 rounded-md px-2 text-[11px] '+(filter===f?'bg-emerald-50 text-emerald-700':'text-slate-500')}>{f}</button>)}</div>
