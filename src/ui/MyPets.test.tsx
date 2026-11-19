@@ -378,6 +378,8 @@ describe('MyPets', () => {
   });
 
   test('体型和声音各只能选一个档位（单选，点另一个就换过去）', () => {
+    pets.push({ ...pets[1], gameId: 900003, name: '婉转小不点', voiceDb: 100 });
+    try {
     render(<MyPets />);
     fireEvent.click(screen.getByTestId('pet-filters-toggle'));
 
@@ -396,6 +398,9 @@ describe('MyPets', () => {
     fireEvent.click(roughVoice);
     expect(roughVoice).toHaveAttribute('aria-pressed', 'true');
     expect(softVoice).toHaveAttribute('aria-pressed', 'false');
+    } finally {
+      pets.pop();
+    }
   });
 
   test('身高和体重共用一个显示开关，切换不影响筛选', () => {

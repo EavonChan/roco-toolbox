@@ -454,18 +454,15 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
   }, [selected, eggGroupMatchMode, index, owned, heightRangeActive, heightIndices]);
 
   // 动态标签数量：按"其他类别已选条件"和身高范围重新计算。
-  // 单选的体型 / 声音要把自己这一档的已选条件摘掉，否则选了「大块头」后「小不点」立刻变成 0 命中被置灰，
-  // 用户就没法换档位了（2026-11-17 单选改造时发现）。
   const facetCounts = useMemo(
     () =>
       computeFacetCounts(
         index,
-        [...selected].filter(
-          (id) => !id.startsWith('account:') && !SINGLE_SELECT_KINDS.has(id.split(':')[0]),
-        ),
+        [...selected].filter((id) => !id.startsWith('account:')),
         heightRangeActive ? heightIndices : undefined,
+        eggGroupMatchMode === 'dual' ? 'eggGroup' : undefined,
       ),
-    [index, selected, heightRangeActive, heightIndices],
+    [index, selected, heightRangeActive, heightIndices, eggGroupMatchMode],
   );
 
   // 名称搜索 + 标签筛选的最终结果（搜索不持久化；按进化链全员匹配）
