@@ -1,4 +1,4 @@
-﻿import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
 test('我的精灵页：卡片展示与标签叠加筛选', async ({ page }) => {
@@ -70,14 +70,18 @@ test('种公阵列：性格筛选决定阵列的列，清空后回到未选提�
   await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('stud-matrix')).toBeVisible();
 
-  // 筛收取在阵列右上角：切自选性格 → 勾「固执」→ 阵列出现「固执」列；取消 → 回到未选提示
-  await page.getByTestId('stud-matrix-filter-toggle').click();
-  await page.getByTestId('nature-mode-custom').click();
-  await page.getByTestId('custom-nature-固执').click();
+  // 2026-11-19：筛选常显、性格默认八大 → 阵列直接出「固执」列
+  await expect(page.getByTestId('nature-mode-eight')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('columnheader', { name: '固执' })).toBeVisible();
 
-  await page.getByTestId('custom-nature-固执').click();
+  // 切自选（预选八大，下拉默认收起）→ 点开 → 全部取消 → 回到未选提示；勾回「固执」列再出现
+  await page.getByTestId('nature-mode-custom').click();
+  await page.getByTestId('custom-nature-toggle').click();
+  await page.getByTestId('custom-nature-select-all').click();
   await expect(page.getByTestId('stud-matrix-empty')).toBeVisible();
+
+  await page.getByTestId('custom-nature-固执').click();
+  await expect(page.getByRole('columnheader', { name: '固执' })).toBeVisible();
 });
 
 test('母本页：链清单一链一行（按蛋组分区），搜索即答已收集/未收集，计划不误判已达成', async ({ page }) => {

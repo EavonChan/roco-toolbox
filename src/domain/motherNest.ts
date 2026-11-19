@@ -4,8 +4,33 @@ import { genderFactorOf, genderShareOf } from './genderRatio';
 import { isBreedableGroup } from './eggs';
 import { speciesDisplayName } from './speciesName';
 import { boxLabel } from './coverageDetail';
+import { targetNatureNames } from '../data/catalog';
 import type { NestPet } from './nestPlan';
 import type { OwnedPet, SpeciesEntry } from './types';
+
+/**
+ * 玩家说的「八大性格」（2026-11-19 用户口径）。
+ *
+ * 公只有带这八种之一，才可能补上某个种公格；带其他性格的公对种公目标没有任何收益
+ * （母本概率可能一样，但那只公白占一个窝）。所以**同等概率下优先八大公**；
+ * 这一组实在没有八大公时才退回非八大——软门槛，不能因为卡八大把母本缺口丢掉。
+ */
+const EIGHT_NATURES: ReadonlySet<string> = new Set(targetNatureNames);
+
+const isEightNature = (nature: string): boolean => EIGHT_NATURES.has(nature);
+
+/**
+ * 母本线的**最低真实概率**（2026-11-19 用户口径：包含公母比例）。
+ *
+ * 真实概率 = 子代拿到推荐性格的概率 × 这个蛋的出母比例，和配窝卡头写的是同一个数：
+ * - 0.6（双方同性格）× 0.5（5:5）= 30% → 值当占窝；
+ * - 0.3（只有一方带）× 0.5 = 15% → 太低，不占窝，也不推给别的号，改「向小组求助」；
+ * - 0.3 × 1.0（出母 100%）= 30% → 也值当，本号自己配；
+ * - 0.6 × 0.2（2:8 的蛋）= 12% → 再稳的性格也救不回来，同样改求助。
+ *
+ * 一句话：**看界面上的那个百分比**，低于这条线就不占窝。
+ */
+export const MIN_MOTHER_CHANCE = 0.3;
 
 /**
  * 母本配窝建议（2026-11-18 用户口径）。
@@ -15,6 +40,10 @@ import type { OwnedPet, SpeciesEntry } from './types';
  *   时这条线同时补种公格，记「一窝双收益」。
  * - 本号连目标档位母本都没有 → 别的号配蛋传过来；每个源号只取**最高概率**的那一对，
  *   再按「对性母」概率（推荐性格 × 出母率）排序，不再用固定的 15% / 30%。
+ *
+ * 2026-11-19 之后加了两条硬口径（见 `MIN_MOTHER_CHANCE`）：
+ * 1. **真实概率低于 30% 的线不占窝**（真实概率 = 性格概率 × 出母比例，和卡头写的是同一个数）；
+ * 2. 本号和别的号都到不了 30% → 既不自配也不传蛋，改成 `helps`（向小组求助）。
  *
  * 只做纯计算，不读网络、不写库。本号内的线要占窝：返回 `nestsNeeded`，由调用方从剩余窝位里扣。
  */
@@ -64,12 +93,31 @@ export interface MotherNestTask {
   sameSpecies: boolean;
 }
 
+/**
+ * 只能找小组帮忙的母本缺口（2026-11-19 用户口径）。
+ *
+ * 本号和别的号的最好配法都到不了 30%（性格 × 出母比例）：不值得占窝，也不推给别的号，
+ * 改成「向小组求助」。
+ */
+export interface MotherHelpItem {
+  eggGameId: number;
+  eggName: string;
+  groupIds: number[];
+  recommendedNatures: string[];
+  /** 现在能做出来的最好性格概率（不含公母比例；本号或别的号；乘上出母比例后仍不到 30% 才会进这里） */
+  bestNatureChance: number;
+  /** 这只蛋的出母比例（公母比例；缺数据按 5:5）：界面上要和性格概率相乘，和配窝卡一个口径 */
+  femaleChance: number;
+}
+
 export interface MotherNestAccount {
   /** 本号未收集的母本蛋数（没有达标母本的蛋；不等于下面能补的条数） */
   gapCount: number;
   pairings: MotherNestPairing[];
   /** 跨号建议：每个蛋只留最高概率的源号，按 chance 降序 */
   tasks: MotherNestTask[];
+  /** 只能向小组求助的蛋（本号 / 别的号都只能 30%） */
+  helps: MotherHelpItem[];
   /** 本号母本配窝新占的窝数（已从剩余窝位里扣过） */
   nestsUsed: number;
 }
@@ -252,12 +300,57 @@ const bestPairForEgg = (
         }
       }
       const candidate = { mother, father, natureChance, studGain };
-      if (
+      // 依次比：能补的种公格 → 母本概率 → 公是不是八大性格（2026-11-19）
+      const better =
         !best ||
         candidate.studGain > best.studGain ||
-        (candidate.studGain === best.studGain && candidate.natureChance > best.natureChance)
+        (candidate.studGain === best.studGain && candidate.natureChance > best.natureChance) ||
+        (candidate.studGain === best.studGain &&
+          candidate.natureChance === best.natureChance &&
+          isEightNature(father.nature) &&
+          !isEightNature(best.father.nature));
+      if (better) best = candidate;
+    }
+  }
+  return best;
+};
+
+/**
+ * 某个号里「这颗蛋」能配出的最好一对（只看性格概率；同等概率优先八大公）。
+ *
+ * 跨号传蛋与「向小组求助」共用这一份判定：两边口径不一致时，会出现
+ * 「本号说只有 30%、别的号也说只有 30%，却谁也不肯认」的错位。
+ */
+const bestPairInAccount = (
+  source: AccountIndex,
+  eggGameId: number,
+  eggGroups: number[],
+  recommended: string[],
+  recommendedNaturesOn: boolean,
+  byGameId: ReadonlyMap<number, SpeciesEntry>,
+): { mother: OwnedPet; father: OwnedPet; natureChance: number } | null => {
+  const mothers = source.femalesByEgg.get(eggGameId);
+  if (!mothers || mothers.length === 0) return null;
+  const fathers = new Set<OwnedPet>();
+  for (const group of eggGroups) {
+    for (const father of source.malesByGroup.get(group) ?? []) fathers.add(father);
+  }
+  let best: { mother: OwnedPet; father: OwnedPet; natureChance: number } | null = null;
+  for (const mother of mothers) {
+    for (const father of fathers) {
+      if (mother === father || !sharesGroup(mother, father, byGameId)) continue;
+      const natureChance = recommendedNaturesOn
+        ? recommendedNatureChance(mother.nature, father.nature, recommended)
+        : 1;
+      if (natureChance <= 0) continue;
+      if (
+        !best ||
+        natureChance > best.natureChance ||
+        (natureChance === best.natureChance &&
+          isEightNature(father.nature) &&
+          !isEightNature(best.father.nature))
       ) {
-        best = candidate;
+        best = { mother, father, natureChance };
       }
     }
   }
@@ -311,7 +404,11 @@ export function buildMotherNestSuggestions(input: MotherNestInput): Map<string, 
     }
 
     // —— 本号内：目标档位母本已有、只是没达标（推荐性格）——
+    // 2026-11-19 用户口径：低于 60% 的线不占窝。本号内永远只有 30%（母本性格不对，公最多带 30%），
+    // 所以这一段实际上会全部落到下面的「传蛋 / 向小组求助」。
     const pairings: MotherNestPairing[] = [];
+    /** 本号各蛋自己能做到的最高性格概率（给 helps 判断用） */
+    const selfChanceByEgg = new Map<number, number>();
     if (recommendedNaturesOn) {
       for (const [eggGameId, mothers] of index.femalesByEgg) {
         if (index.qualifiedEggs.has(eggGameId)) continue;
@@ -331,7 +428,10 @@ export function buildMotherNestSuggestions(input: MotherNestInput): Map<string, 
           eggGroups,
         );
         if (!best) continue;
+        selfChanceByEgg.set(eggGameId, best.natureChance);
         const femaleChance = genderShareOf(egg, '母');
+        // 真实概率 = 性格概率 × 出母比例；低于门槛就不占窝（2026-11-19 用户口径）
+        if (best.natureChance * femaleChance < MIN_MOTHER_CHANCE) continue;
         const motherGain = best.natureChance * femaleChance;
         const sameSpecies = eggOf(best.father, byGameId) === eggGameId;
         pairings.push({
@@ -369,12 +469,14 @@ export function buildMotherNestSuggestions(input: MotherNestInput): Map<string, 
       nestsLeft -= pairing.nestsNeeded;
       accepted.push(pairing);
     }
+    const servedEggs = new Set(accepted.map((pairing) => pairing.eggGameId));
 
-    // —— 跨号：本号没有目标档位母本，别的号最高概率的那一对 ——
+    // —— 跨号：别的号能到 60% 的才建议传蛋（2026-11-19：30% 推给别的号同样是白占窝）——
     const tasks: MotherNestTask[] = [];
+    const taskEggs = new Set<number>();
     for (const egg of eggEntries) {
       const eggGameId = egg.gameId;
-      if (index.femalesByEgg.has(eggGameId) || index.qualifiedEggs.has(eggGameId)) continue;
+      if (servedEggs.has(eggGameId) || index.qualifiedEggs.has(eggGameId)) continue;
       const eggGroups = (egg.eggGroups ?? []).filter(isBreedableGroup);
       const recommended = [...naturesOf(eggGameId)];
       if (recommendedNaturesOn && recommended.length === 0) continue;
@@ -382,26 +484,15 @@ export function buildMotherNestSuggestions(input: MotherNestInput): Map<string, 
       let bestTask: MotherNestTask | null = null;
       for (const [sourceAccount, source] of indexes) {
         if (sourceAccount === account) continue;
-        const mothers = source.femalesByEgg.get(eggGameId);
-        if (!mothers || mothers.length === 0) continue;
-        const fathers = new Set<OwnedPet>();
-        for (const group of eggGroups) {
-          for (const father of source.malesByGroup.get(group) ?? []) fathers.add(father);
-        }
-        let bestPair: { mother: OwnedPet; father: OwnedPet; natureChance: number } | null = null;
-        for (const mother of mothers) {
-          for (const father of fathers) {
-            if (mother === father || !sharesGroup(mother, father, byGameId)) continue;
-            const natureChance = recommendedNaturesOn
-              ? recommendedNatureChance(mother.nature, father.nature, recommended)
-              : 1;
-            if (natureChance <= 0) continue;
-            if (!bestPair || natureChance > bestPair.natureChance) {
-              bestPair = { mother, father, natureChance };
-            }
-          }
-        }
-        if (!bestPair) continue;
+        const bestPair = bestPairInAccount(
+          source,
+          eggGameId,
+          eggGroups,
+          recommended,
+          recommendedNaturesOn,
+          byGameId,
+        );
+        if (!bestPair || bestPair.natureChance * femaleChance < MIN_MOTHER_CHANCE) continue;
         const task: MotherNestTask = {
           account,
           grade,
@@ -425,21 +516,76 @@ export function buildMotherNestSuggestions(input: MotherNestInput): Map<string, 
           chance: bestPair.natureChance * femaleChance,
           sameSpecies: index.maleEggs.has(eggGameId),
         };
+        // 跨号也优先八大公（2026-11-19）：概率一样时别把非八大的公推给用户
         if (
           !bestTask ||
           task.chance > bestTask.chance ||
-          (task.chance === bestTask.chance && Number(task.sameSpecies) > Number(bestTask.sameSpecies))
+          (task.chance === bestTask.chance &&
+            isEightNature(task.father.nature) &&
+            !isEightNature(bestTask.father.nature)) ||
+          (task.chance === bestTask.chance &&
+            isEightNature(task.father.nature) === isEightNature(bestTask.father.nature) &&
+            Number(task.sameSpecies) > Number(bestTask.sameSpecies))
         ) {
           bestTask = task;
         }
       }
-      if (bestTask) tasks.push(bestTask);
+      if (bestTask) {
+        tasks.push(bestTask);
+        taskEggs.add(eggGameId);
+      }
     }
     tasks.sort(
       (a, b) =>
         b.chance - a.chance ||
+        Number(isEightNature(b.father.nature)) - Number(isEightNature(a.father.nature)) ||
         Number(b.sameSpecies) - Number(a.sameSpecies) ||
         a.eggName.localeCompare(b.eggName, 'zh-Hans-CN'),
+    );
+
+    // —— 谁也到不了 60% → 向小组求助（2026-11-19 用户口径）——
+    // 只列「本号或别的号手里已经有这只蛋的母本」的蛋：连母本都没有的蛋不在这里刷屏，
+    // 它们本来就在「母本全收集」的未收集里。
+    const helps: MotherHelpItem[] = [];
+    for (const egg of eggEntries) {
+      const eggGameId = egg.gameId;
+      if (
+        servedEggs.has(eggGameId) ||
+        taskEggs.has(eggGameId) ||
+        index.qualifiedEggs.has(eggGameId)
+      ) {
+        continue;
+      }
+      const eggGroups = (egg.eggGroups ?? []).filter(isBreedableGroup);
+      const recommended = [...naturesOf(eggGameId)];
+      if (recommendedNaturesOn && recommended.length === 0) continue;
+      let bestChance = selfChanceByEgg.get(eggGameId) ?? 0;
+      for (const [sourceAccount, source] of indexes) {
+        if (sourceAccount === account) continue;
+        const bestPair = bestPairInAccount(
+          source,
+          eggGameId,
+          eggGroups,
+          recommended,
+          recommendedNaturesOn,
+          byGameId,
+        );
+        if (bestPair) bestChance = Math.max(bestChance, bestPair.natureChance);
+      }
+      if (bestChance <= 0) continue;
+      helps.push({
+        eggGameId,
+        eggName: speciesDisplayName(egg, egg.name),
+        groupIds: [...eggGroups].sort((a, b) => a - b),
+        recommendedNatures: recommended,
+        bestNatureChance: bestChance,
+        femaleChance: genderShareOf(egg, '母'),
+      });
+    }
+    /** 求助也要按「性格 × 公母比例」的真实概率排，和配窝卡的卡头一个口径 */
+    const helpChance = (item: MotherHelpItem): number => item.bestNatureChance * item.femaleChance;
+    helps.sort(
+      (a, b) => helpChance(b) - helpChance(a) || a.eggName.localeCompare(b.eggName, 'zh-Hans-CN'),
     );
 
     const gapCount = eggEntries.filter((egg) => !index.qualifiedEggs.has(egg.gameId)).length;
@@ -447,6 +593,7 @@ export function buildMotherNestSuggestions(input: MotherNestInput): Map<string, 
       gapCount,
       pairings: accepted,
       tasks: tasks.slice(0, 5),
+      helps: helps.slice(0, 5),
       nestsUsed: accepted.reduce((sum, pairing) => sum + pairing.nestsNeeded, 0),
     });
   }

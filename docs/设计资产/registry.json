@@ -649,6 +649,109 @@
         }
       ],
       "supersededBy": []
+    },
+    {
+      "id": "nest-mother-dual-channel",
+      "title": "补全计划 · 跨号传蛋与小组求助并存",
+      "status": "已采用",
+      "releaseScope": "开发/内测实现",
+      "scope": "母本缺口同时给内外两条路：内求（跨号传蛋/本号自配）的每条卡片右下角加「问小组」，外求（向小组求助）只列没有内求的缺口；一只精灵占一个窝，不到 30%（性格 × 出母）的线不占窝。",
+      "remaining": "种公缺口（跨号补种公）尚未并同样双入口；小组匹配度暂未回算。",
+      "files": [
+        {
+          "path": "docs/prototypes/跨号传蛋-内外求并存-预览.html",
+          "sha256": "bcaf8d1d2a8c8b0ce3e289cc5e2b7cf89d6f9493f617b320a82245183c56582e"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/prototypes/跨号传蛋-内外求并存-375.png",
+          "detail": "375 实机数据截图：每条内求线卡底「问小组」，下方只剩无内求缺口的求助段。"
+        },
+        {
+          "path": "docs/prototypes/跨号传蛋-内外求并存-390.png",
+          "detail": "390 实机数据截图。"
+        },
+        {
+          "path": "src/ui/NestPlanCard.tsx",
+          "detail": "SeekGroupButton：MotherPairingCard / MotherTaskCard 各挂一个「问小组」，走 onSeekHelp。"
+        },
+        {
+          "path": "src/domain/motherNest.ts",
+          "detail": "MIN_MOTHER_CHANCE = 0.3（性格 × 出母比例）；低于门槛进 helps（向小组求助）。"
+        }
+      ],
+      "supersededBy": []
+    },
+    {
+      "id": "gap-fill-dialog",
+      "title": "缺口「怎么补」悬浮窗（看板种公推荐 / 收集母本 / 收集种公复用）",
+      "status": "已采用",
+      "releaseScope": "开发/内测实现",
+      "scope": "点缺口卡弹居中悬浮窗：上方目标卡（母本粉 / 种公蓝）+ 小组求助卡，下方本号直配 / 跨号传蛋两段（概率 + 配窝卡 + 右下「加入配窝建议」）；少一截给虚框，两段都没有写红框「本号、跨号都无法配对」；没选奖牌档时改提示先选目标。看板母本缺口四列卡按本稿改成头像 52 / 名字 12。",
+      "remaining": "收集种公矩阵格入口未接：点格原本是「选种公 / 筛选性格」，用户要求改点格开悬浮窗、在精灵卡上切换种公（优先多格公），具体交互待确认。",
+      "files": [
+        {
+          "path": "docs/prototypes/母本悬浮窗-复用到种公-预览.html",
+          "sha256": "098bb6aff00780a948db9e8b4c2ee3648a31776d03863cc6d0a62182ab89b958"
+        },
+        {
+          "path": "docs/prototypes/看板-母本缺口-悬浮窗-预览.html",
+          "sha256": "0334772413fc253749453013eab067ced8b5a2899796f8004895ee83ff94ba7d"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "src/ui/GapFillDialog.tsx",
+          "detail": "共用悬浮窗：目标卡 / 求助卡 / 两段路线 / 无法配对 / 未选目标四态。"
+        },
+        {
+          "path": "src/domain/gapFill.ts",
+          "detail": "从母本建议与配窝方案里找同一颗蛋、同一格的线（概率与配窝卡同口径）。"
+        },
+        {
+          "path": "src/ui/useMotherSuggestions.ts",
+          "detail": "看板与收集页共用同一份母本建议与目标卡文案，避免两页概率不一致。"
+        },
+        {
+          "path": "src/ui/Dashboard.tsx",
+          "detail": "母本缺口四列卡：点击开悬浮窗，头像 52、名字 12px。"
+        },
+        {
+          "path": "src/ui/MotherView.tsx",
+          "detail": "收集-母本未收集卡复用同一块悬浮窗；底部「计划」按钮不触发悬浮窗。"
+        },
+        {
+          "path": "src/ui/SuggestionCard.tsx",
+          "detail": "种公推荐卡主点击改为开悬浮窗（传 onOpenGap 时不再标记已换到）。"
+        }
+      ],
+      "supersededBy": []
+    },
+    {
+      "id": "stud-stack-switch",
+      "title": "种公卡堆叠 · 悬浮窗内点卡切换同蛋组种公",
+      "status": "评审中",
+      "releaseScope": "未实现（等确认）",
+      "scope": "悬浮窗里目标卡改成堆叠卡：默认展示权重最高的一只（本号能配 > 跨号能传 > 只能求助，再看真实蛋组数与手里公的只数），点卡片展开该蛋组全部公（依次进场动画），展开后左上仍是一只完整精灵卡（公＝蓝底）可收起；点某只公即选中并收起。性格由格子上方锁定、不参与分档；边框四档：双组多公红、双组单公紫、单组多公蓝、单组单公绿；卡上带体型/声音奖牌与真实蛋组名，右下写本号可配 / 跨号 · 账号名 / 只能求助；右侧保留小组求助卡。",
+      "remaining": "多组少公归紫、单组正常归蓝两条仍是我补的；确认后接收集·种公矩阵格。",
+      "files": [
+        {
+          "path": "docs/prototypes/种公卡堆叠-预览.html",
+          "sha256": "a908f72a4e3f4ef6707e0654d693f1ed2383b4f54b828f06e61a364fddf15d6c"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/prototypes/种公堆叠-收起-375.png",
+          "detail": "收起态：三层堆叠 + 角标「6 只公」。"
+        },
+        {
+          "path": "docs/prototypes/种公堆叠-展开-390.png",
+          "detail": "展开态：同蛋组 6 只公两列，红/蓝/白三档边框。"
+        }
+      ],
+      "supersededBy": []
     }
   ],
   "attachments": [],

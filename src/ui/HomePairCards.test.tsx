@@ -65,6 +65,212 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     expect(within(males).getByTestId('breed-pet-card').className).toContain('border-emerald-500');
   });
 
+  test('母本在背包里缺失时仍按 femaleActorId 放左列，不冒充种公', () => {
+    const residents = [
+      resident({ actorId: 'f1', name: '胆小鳗鱼', gender: '未知', nature: '胆小', baseId: '3266' }),
+      resident({ actorId: 'm1', name: '豆丁鱼', gender: '公', nature: '沉默', baseId: '3384' }),
+    ];
+    // 背包里没有母本实例（莱茵家园的真实情况）：只剩一只种公
+    const pets = new Map<string, OwnedPet>([
+      ['ins_m1', owned({ gameId: 3384, name: '豆丁鱼', gender: '公', nature: '沉默' })],
+    ]);
+
+    render(
+      <HomePairCards
+        couples={[{ femaleActorId: 'f1', maleActorIds: ['m1'] }]}
+        residents={residents}
+        pets={pets}
+      />,
+    );
+
+    const card = screen.getByTestId('home-pair-card');
+    expect(within(card).getByTestId('home-pair-females')).toHaveTextContent('胆小鳗鱼');
+    expect(within(card).getByTestId('home-pair-males')).toHaveTextContent('豆丁鱼');
+    // 母本可能已放生：卡头改写成提示，不再算后代性格和声音
+    const notice = within(card).getByTestId('home-pair-released');
+    expect(notice).toHaveTextContent('胆小鳗鱼');
+    expect(notice).toHaveTextContent('可能已被放生');
+    expect(notice).not.toHaveTextContent('30%');
+    expect(notice).not.toHaveTextContent('dB');
+    expect(within(card).queryByTestId('home-pair-head')).toBeNull();
+  });
+
+  test('1 公多母：种公置顶只出现一次，母本两列，各自只算自己的公本', () => {
+    const residents = [
+      resident({ actorId: 'm1', name: '豆丁鱼', gender: '公', nature: '沉默' }),
+      resident({ actorId: 'f1', name: '胆小鳗鱼', gender: '母', nature: '胆小' }),
+      resident({ actorId: 'f2', name: '优优', gender: '母', nature: '开朗' }),
+      resident({ actorId: 'f3', name: '豆豆', gender: '母', nature: '踏实' }),
+      resident({ actorId: 'f4', name: '叮叮卯', gender: '母', nature: '聪明' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_m1', owned({ gameId: 3384, name: '豆丁鱼', gender: '公', nature: '沉默' })],
+      ['ins_f1', owned({ gameId: 3266, name: '胆小鳗鱼', gender: '母', nature: '胆小' })],
+      ['ins_f2', owned({ gameId: 3705, name: '优优', gender: '母', nature: '开朗' })],
+      ['ins_f3', owned({ gameId: 3384, name: '豆豆', gender: '母', nature: '踏实' })],
+      ['ins_f4', owned({ gameId: 3752, name: '叮叮卯', gender: '母', nature: '聪明' })],
+    ]);
+    const couples: HomePair[] = ['f1', 'f2', 'f3', 'f4'].map((femaleActorId) => ({
+      femaleActorId,
+      maleActorIds: ['m1'],
+    }));
+
+    render(<HomePairCards couples={couples} residents={residents} pets={pets} />);
+
+    const card = screen.getByTestId('home-pair-card');
+    const shared = within(card).getByTestId('home-pair-shared');
+    // 共用种公只出现一次
+    expect(within(shared).getAllByTestId('breed-pet-card')).toHaveLength(1);
+    expect(shared).toHaveTextContent('共用');
+    const mothers = within(card).getByTestId('home-pair-mothers');
+    expect(within(mothers).getAllByTestId('breed-pet-card')).toHaveLength(4);
+    const heads = within(mothers).getAllByTestId('home-pair-head');
+    expect(heads[0]).toHaveTextContent('30%胆小');
+    expect(heads[0]).toHaveTextContent('30%沉默');
+    expect(heads[0]).toHaveTextContent('100dB');
+    expect(heads[1]).toHaveTextContent('30%开朗');
+    expect(heads[1]).not.toHaveTextContent('30%胆小');
+  });
+
+  test('2 公 3 母：每只母本只列自己实际配的种公；共用种公各出现一次', () => {
+    const residents = [
+      resident({ actorId: 'm1', name: '豆丁鱼', gender: '公', nature: '沉默' }),
+      resident({ actorId: 'm2', name: '火花', gender: '公', nature: '胆小' }),
+      resident({ actorId: 'f1', name: '优优', gender: '母', nature: '开朗' }),
+      resident({ actorId: 'f2', name: '豆豆', gender: '母', nature: '踏实' }),
+      resident({ actorId: 'f3', name: '叮叮卯', gender: '母', nature: '聪明' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_m1', owned({ gameId: 3384, name: '豆丁鱼', gender: '公', nature: '沉默' })],
+      ['ins_m2', owned({ gameId: 3003, name: '火花', gender: '公', nature: '胆小' })],
+      ['ins_f1', owned({ gameId: 3705, name: '优优', gender: '母', nature: '开朗' })],
+      ['ins_f2', owned({ gameId: 3384, name: '豆豆', gender: '母', nature: '踏实' })],
+      ['ins_f3', owned({ gameId: 3752, name: '叮叮卯', gender: '母', nature: '聪明' })],
+    ]);
+    const couples: HomePair[] = [
+      { femaleActorId: 'f1', maleActorIds: ['m1'] },
+      { femaleActorId: 'f2', maleActorIds: ['m2'] },
+      { femaleActorId: 'f3', maleActorIds: ['m1', 'm2'] },
+    ];
+
+    render(<HomePairCards couples={couples} residents={residents} pets={pets} />);
+
+    const card = screen.getByTestId('home-pair-card');
+    const shared = within(card).getByTestId('home-pair-shared');
+    expect(within(shared).getAllByTestId('breed-pet-card')).toHaveLength(2);
+    // 种公卡片上方不再写「配 N 只母本」
+    expect(within(shared).queryByText('共用 · 配 2 只母本')).toBeNull();
+
+    const heads = within(card).getAllByTestId('home-pair-head');
+    expect(heads[0]).toHaveTextContent('30%开朗');
+    expect(heads[0]).toHaveTextContent('30%沉默');
+    expect(heads[0]).not.toHaveTextContent('30%胆小');
+    expect(heads[1]).toHaveTextContent('30%踏实');
+    expect(heads[1]).toHaveTextContent('30%胆小');
+    expect(heads[1]).not.toHaveTextContent('30%沉默');
+    expect(heads[2]).toHaveTextContent('30%聪明');
+    expect(heads[2]).toHaveTextContent('30%沉默');
+    expect(heads[2]).toHaveTextContent('30%胆小');
+  });
+
+  test('1 公 10 母不折叠：10 只母本全部显示', () => {
+    const residents = [resident({ actorId: 'm1', name: '豆丁鱼', gender: '公', nature: '沉默' })];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_m1', owned({ gameId: 3384, name: '豆丁鱼', gender: '公', nature: '沉默' })],
+    ]);
+    const couples: HomePair[] = [];
+    for (let i = 1; i <= 10; i += 1) {
+      residents.push(resident({ actorId: `f${i}`, name: `母本${i}`, gender: '母', nature: '胆小' }));
+      pets.set(`ins_f${i}`, owned({ gameId: 3266, name: `母本${i}`, gender: '母', nature: '胆小' }));
+      couples.push({ femaleActorId: `f${i}`, maleActorIds: ['m1'] });
+    }
+
+    render(<HomePairCards couples={couples} residents={residents} pets={pets} />);
+
+    const card = screen.getByTestId('home-pair-card');
+    expect(card.getAttribute('data-top')).toBe('male');
+    expect(within(card).getByTestId('home-pair-shared')).toHaveTextContent('共用种公');
+    expect(within(within(card).getByTestId('home-pair-shared')).getAllByTestId('breed-pet-card')).toHaveLength(1);
+    expect(within(within(card).getByTestId('home-pair-mothers')).getAllByTestId('breed-pet-card')).toHaveLength(10);
+    expect(within(card).queryByTestId('home-pair-more')).toBeNull();
+  });
+
+  test('10 公 1 母：母本置顶，10 只种公全部显示，不折叠', () => {
+    const natures = ['开朗', '踏实', '聪明', '固执', '沉默', '平和', '急躁', '大胆', '认真', '冷静'];
+    const residents = [
+      resident({ actorId: 'f1', name: '胆小鳗鱼', gender: '母', nature: '胆小' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_f1', owned({ gameId: 3266, name: '胆小鳗鱼', gender: '母', nature: '胆小' })],
+    ]);
+    const maleActorIds: string[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      const actorId = `m${i + 1}`;
+      maleActorIds.push(actorId);
+      residents.push(resident({ actorId, name: `种公${i + 1}`, gender: '公', nature: natures[i] }));
+      pets.set(`ins_${actorId}`, owned({ gameId: 3384, name: `种公${i + 1}`, gender: '公', nature: natures[i] }));
+    }
+
+    render(
+      <HomePairCards
+        couples={[{ femaleActorId: 'f1', maleActorIds }]}
+        residents={residents}
+        pets={pets}
+      />,
+    );
+
+    const card = screen.getByTestId('home-pair-card');
+    expect(card.getAttribute('data-top')).toBe('female');
+    const shared = within(card).getByTestId('home-pair-shared');
+    expect(shared).toHaveTextContent('共用母本');
+    expect(within(shared).getAllByTestId('breed-pet-card')).toHaveLength(1);
+    // 超过 3 只种公：卡头不显示后代性格和声音，只写配了几只
+    const head = within(shared).getByTestId('home-pair-head');
+    expect(head).toHaveTextContent('配 10 只种公');
+    expect(head).not.toHaveTextContent('30%');
+    expect(head).not.toHaveTextContent('dB');
+    expect(within(shared).queryAllByTestId('home-pair-nature')).toHaveLength(0);
+    expect(within(within(card).getByTestId('home-pair-males')).getAllByTestId('breed-pet-card')).toHaveLength(10);
+    expect(within(card).queryByTestId('home-pair-more')).toBeNull();
+  });
+
+  test('3 只种公仍显示后代性格声音，4 只起隐藏', () => {
+    const natures = ['开朗', '踏实', '聪明', '固执'];
+    const make = (count: number) => {
+      const residents = [
+        resident({ actorId: 'f1', name: '胆小鳗鱼', gender: '母', nature: '胆小' }),
+      ];
+      const pets = new Map<string, OwnedPet>([
+        ['ins_f1', owned({ gameId: 3266, name: '胆小鳗鱼', gender: '母', nature: '胆小' })],
+      ]);
+      const maleActorIds: string[] = [];
+      for (let i = 0; i < count; i += 1) {
+        const actorId = `m${i + 1}`;
+        maleActorIds.push(actorId);
+        residents.push(resident({ actorId, name: `种公${i + 1}`, gender: '公', nature: natures[i] }));
+        pets.set(`ins_${actorId}`, owned({ gameId: 3384, name: `种公${i + 1}`, gender: '公', nature: natures[i] }));
+      }
+      return { residents, pets, couples: [{ femaleActorId: 'f1', maleActorIds }] };
+    };
+
+    const three = make(3);
+    const first = render(
+      <HomePairCards couples={three.couples} residents={three.residents} pets={three.pets} />,
+    );
+    const threeHead = screen.getByTestId('home-pair-head');
+    expect(threeHead).toHaveTextContent('30%胆小');
+    expect(threeHead).toHaveTextContent('dB');
+    expect(threeHead.querySelectorAll('[data-testid="home-pair-nature"]')).toHaveLength(4);
+    first.unmount();
+
+    const four = make(4);
+    render(<HomePairCards couples={four.couples} residents={four.residents} pets={four.pets} />);
+    const fourHead = screen.getByTestId('home-pair-head');
+    expect(fourHead).toHaveTextContent('配 4 只种公');
+    expect(fourHead).not.toHaveTextContent('30%');
+    expect(fourHead).not.toHaveTextContent('dB');
+  });
+
   test('普通窝：母本上方写概率 + 声音，下面是母 × 公', () => {
     const residents = [
       resident({ actorId: 'f1', name: '喵喵', gender: '母', nature: '胆小' }),
