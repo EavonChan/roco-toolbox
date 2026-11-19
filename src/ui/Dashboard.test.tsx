@@ -369,7 +369,7 @@ describe('Dashboard（看板）', () => {
     expect(within(screen.getByTestId('mother-actions')).getAllByTestId('pet-avatar')).toHaveLength(5);
     expect(screen.getAllByTestId('mother-action-nature')).toHaveLength(5);
     expect(within(items[0]).getByTestId('mother-action-nature').textContent).toBeTruthy();
-    expect(within(items[0]).getByTestId('pet-avatar').className).toContain('h-11');
+    expect(within(items[0]).getByTestId('pet-avatar').className).toContain('h-[52px]');
     expect(screen.getByTestId('mother-actions').className).not.toContain('p-4');
     expect(screen.queryByRole('heading', { name: '母本缺口' })).toBeNull();
     expect(items[0]).toHaveAttribute('aria-label', expect.stringContaining('还没有达标母本'));
@@ -378,6 +378,30 @@ describe('Dashboard（看板）', () => {
       type: 'open-collection',
       location: { kind: 'mothers', status: 'missing' },
     });
+  });
+
+  test('种公推荐卡点开「种公推荐 · 怎么补」悬浮窗，目标卡是种公蓝', () => {
+    render(<Dashboard onNavigate={vi.fn()} />);
+    fireEvent.click(within(screen.getByTestId('recommend-item')).getByRole('button'));
+    expect(screen.getByTestId('gap-fill-eyebrow').textContent).toBe('种公推荐 · 怎么补');
+    expect(screen.getByTestId('gap-target-tag').textContent).toBe('推荐');
+    expect(screen.queryByTestId('gap-add-to-plan')).toBeNull();
+    fireEvent.click(screen.getByTestId('gap-fill-close'));
+    expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
+  });
+
+  test('点母本缺口卡打开「怎么补」悬浮窗，没有可配的线时写本号跨号都无法配对', () => {
+    const onNavigate = vi.fn();
+    render(<Dashboard onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByTestId('dashboard-action-mothers'));
+
+    fireEvent.click(within(screen.getAllByTestId('mother-action-item')[0]).getByRole('button'));
+    expect(screen.getByRole('dialog', { name: '怎么补' })).toBeTruthy();
+    expect(screen.getByTestId('gap-fill-eyebrow').textContent).toBe('母本缺口 · 怎么补');
+    expect(screen.getByTestId('gap-unpairable').textContent).toContain('本号、跨号都无法配对');
+
+    fireEvent.click(screen.getByTestId('gap-fill-close'));
+    expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
   });
 
   test('进度卡与行动都发明确导航意图', () => {
@@ -396,20 +420,12 @@ describe('Dashboard（看板）', () => {
       location: { kind: 'mothers', status: 'missing' },
     });
 
-    fireEvent.click(screen.getByTestId('nest-open-coverage'));
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'open-collection',
-      location: { kind: 'studs', view: 'coverage', groupId: 3 },
-    });
-
-    fireEvent.click(screen.getByTestId('nest-open-swap'));
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'open-collection',
-      location: { kind: 'studs', view: 'eggs' },
-    });
+    // 2026-11-19 用户口径：补全计划不再放「看缺口 / 看推荐种公」入口
+    expect(screen.queryByTestId('nest-open-coverage')).toBeNull();
+    expect(screen.queryByTestId('nest-open-swap')).toBeNull();
   });
 
-  test('看板直接展示配窝建议的摆位图与配对（标题已改为补全计划）', () => {
+  test('看板直接展示配窝建议的配对（标题已改为补全计划，摆位图已移除）', () => {
     h.summary = { ...h.summary, plans: [demoPlan] };
     render(<Dashboard onNavigate={vi.fn()} />);
 
@@ -417,7 +433,8 @@ describe('Dashboard（看板）', () => {
     // 2026-11-18：汇总只剩双组 / 母本 / 需传蛋；这份方案三者都是 0，不再渲染空胶囊行
     expect(screen.queryByTestId('nest-plan-pills')).toBeNull();
     expect(screen.getByTestId('breed-list')).toBeTruthy();
-    expect(screen.getByTestId('nest-layout')).toBeTruthy();
+    // 2026-11-19 用户口径：补全计划不再画小窝摆位图
+    expect(screen.queryByTestId('nest-layout')).toBeNull();
     expect(screen.getAllByTestId('breed-suggestion').length).toBeGreaterThan(0);
   });
 
