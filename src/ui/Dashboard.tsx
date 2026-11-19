@@ -70,6 +70,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     suggestions: motherSuggestions,
     targetLabel: gapTargetLabel,
     bodyMedal: gapTargetBody,
+    voiceTarget: gapTargetVoiceTarget,
     voiceDb: gapTargetVoiceDb,
     weightPercent: gapTargetWeight,
   } = useMotherSuggestions({ owned, mode, coverageByAccount, plans });
@@ -372,6 +373,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                             tag: '未收集',
                             targetLabel: gapTargetLabel,
                             bodyMedal: gapTargetBody,
+                            voiceTarget: gapTargetVoiceTarget,
                             voiceDb: gapTargetVoiceDb,
                             weightPercent: gapTargetWeight,
                           },
@@ -421,6 +423,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                 tag: '推荐',
                 targetLabel: gapTargetLabel,
                 bodyMedal: gapTargetBody,
+                voiceTarget: gapTargetVoiceTarget,
                 voiceDb: gapTargetVoiceDb,
                 weightPercent: gapTargetWeight,
               },
