@@ -1,12 +1,12 @@
 # 2026-11-19 审查修复交接 · 待确认，未发布
 
-本轮核对了原始证据、裁决和发布门槛。起点与当前分支均为 test，HEAD 均为 d00739ce38191c759d7f013434393ab4adc11278。仅新增本报告；原有 46 个已跟踪文件的改动和未跟踪产物保留，未暂存、提交、回滚或清理。下表没有新修复提交号，不能把三路未提交改动算作已落地。
+起点：`test` @ `d00739c`。可独立验收的修复已拆成提交，剩余改动和产物原位保留。**本轮未发布、未推送。**
 
 ## 已核实与待确认
 
-1. **R2b-H01：闸门仍红，但可只改测试夹具。** npm run test:mother-groups:api 退出 1；第 1/6 步报 AssertionError [ERR_ASSERTION]: 旧 schema 不应包含新表 mother_groups（tools/test/verify-mother-groups-schema.mjs:159）。旧库夹具没有剥离新增巡查区块，剩下 4 处真实外键引用。拟在自检脚本按现有唯一注释定位巡查区块，校验边界后只从内存夹具剥离，登记七张巡查表和三份既有迁移，补检显式索引与旧记录保留；不改既有断言、schema 或迁移文件。一次性 node --input-type=module 内存探针退出 0：剥离后巡查对象数为 0；基础迁移 → placement → repeat-reminders 重放，7 表列定义和对象清单一致，显式索引只有 egg_patrol_notification_due；换序会额外出现 egg_patrol_one_egg。探针通过不代表 API 自检转绿，也不代表生产库结构已验证。
+1. **R2b-H01：六步闸门已转绿。** 原失败是旧夹具残留对 `mother_groups` 的巡查外键引用；现按巡查区块起止边界剥离，仅修改旧库夹具。没有把巡查迁移扩检混入本提交。
 2. **R4-H03/H04：恢复码策略。** 找回入口可直接复用 POST /api/auth/recover，不需新增列，先交 375/390 预览审核，恢复后引导无用户名的老账号设置用户名密码。改密建议 A：保留当前会话，吊销其它令牌并让该账号旧恢复码失效；也可选 B：只吊销其它令牌、保留旧恢复码，旧码仍能登录。两者都保留无密码老账号的找回路径；仓库不能证明旧客户端不再使用恢复码接口。推荐先通过找回入口验收再启用 A。
-3. **正式分支与生产结构。** git ls-remote --heads origin refs/heads/release refs/heads/release/prod-1.5.0 refs/heads/test 只列出 release（88bce8d）和 test。396f9c8 明确将旧分支改名为 release；D:/roco-build/release-prod-1.5.0 只是 release 工作树目录。拟使用现行规范的 release，Cloudflare 目标仍为 main。git diff --name-status origin/release test -- functions/schema.sql functions/migrations 显示三份既有迁移和 schema 差异，不能推定生产未迁移；建议获准后只读核对生产 D1 结构，不查账号记录。若缺结构，另报缺项，绝不自行执行迁移。
+3. **正式分支与生产结构。** 发布分支为 `release`，Cloudflare 目标为 `main`。只读查询 `npx --no-install wrangler d1 execute roco-toolbox-db --remote --json --command <结构查询>` 退出 0，查到 `username`、`username_lower`、`password_hash`、换蛋组表及七张巡查表；两条查询均 `changed_db: false`、`rows_written: 0`。没有读用户记录。另发现直接合并会把 `package.json` 从 `1.3.2` 带到 `1.5.6`，安卓 `versionName`/`versionCode` 也不同；未经确认不推进合并。
 4. **R6b-H01：跨号补缺。** de0b394 断开 Coverage 到 StudMatrix 的跨号参数，但交互规范仍有该功能，存量跨号任务仍可见。证据偏向回归，但不能替代产品确认。建议只恢复单账号跨号补缺，不恢复小组资源页或需求中心。
 5. **R9-1-H02 / R8a3-H01：采集边界。** 任意尾部切片缺少有效 PCAP 头和记录边界；继续解码还依赖偏移与状态。安卓桥未提供裁剪重写代次，网页不能仅凭长度分辨追加与裁剪后长回原长度。只评估能独立验证且不改 Worker 契约的网页缓解；如需改契约另行确认，不能把缓解算作完整修复。
 
@@ -17,15 +17,15 @@
 | 编号 | 状态与下一步 | 本轮验证 |
 | --- | --- | --- |
 | R2b-H01 | 已修：仅从旧库夹具剥离巡查区块，不改 schema、迁移或既有断言。`0c20305`（前置 HEAD `d00739c`）。 | `npm run test:mother-groups:api` 退出 0，六步通过，见下。 |
-| R3a-H01 | 未修；按裁决排除窝内蛋，覆盖「我能提供」和代孵单分配现蛋。 | 未跑现货、代孵回归。 |
-| R4-H01 | 未修；严格校验存储串，兼容旧迭代数，登录成功后条件更新防并发覆盖改密；新参数须验证运行预算。 | 未测兼容登录、并发、运行预算。 |
-| R4-H02 | 未修；原密码输错走表单校验，真正会话失效才返回 401。 | 未测输错后保留会话。 |
-| R4-H03 | 未修；复用接口，新增入口先交预览。 | 静态核实接口存在；未测老账号跨设备找回。 |
-| R4-H04 | 未修；现行改密只写哈希，待确认恢复码口径再做原子吊销并防换发竞态。 | 未测双设备及旧恢复码。 |
-| R5-H01 | 未修；展示和判定共用首个合法档位，区分旧多档、空数组和缺失。 | 核对三路现有改动；未跑旧数据回归。 |
-| R6a-H01 / R6a-M01 | 未修；其它分面保留体型/声音，只忽略计数对象自身；双蛋组计数与列表统一。 | 未测点击前计数与点击后列表。 |
+| R3a-H01 | 已修，`dc2d95a`：家园蛋不算可提供现蛋，也不进入分配或回礼候选。 | `npx vitest run src/ui/plan/EggMatchingHub.test.tsx src/ui/plan/EggTasksPanel.test.tsx src/ui/plan/EggStockPanel.test.tsx`：3 文件 26 通过。 |
+| R4-H01 | 已修，`5dcb21b`：10 万次，旧 1 万次正确登录后静默升级，条件写入防止覆盖并发改密。 | 本地 Miniflare 100000 `{"ok":true}`、45ms 往返（不是生产 CPU 测量）；正式 CPU 预算未核实。 |
+| R4-H02 | 已修，`5080bf0`：原密码错误返回 400，不触发 401 清会话。 | `node --test tools/test/auth-password.test.mjs`：`pass 1 / fail 0`（验证提交 `0697791`）。 |
+| R4-H03 | 仅预览：`docs/prototypes/account-recovery-review.html`，待批准，不连接服务器。 | Chromium 375/390px：弹窗完整，空码报错，模拟成功引导设置用户名密码，无横向溢出。审核截图 `account-recovery-review-375.png`、`account-recovery-review-390.png`。 |
+| R4-H04 | 已修会话，`1bb0a4c`：原子改密并吊销其它令牌，保留当前令牌。旧恢复码不变，是否作废待确认。 | 同 `auth-password.test.mjs`，两机令牌、正确/错误密码及恢复哈希保留通过。 |
+| R5-H01 | 已修，`ac833b8`：个人展示和判定只使用第一个合法档位，旧存储与小组多档不改写。 | `npx vitest run src/ui/storeMigrate.test.ts src/ui/MotherCriteriaMedals.test.tsx src/ui/Dashboard.test.tsx src/domain/motherCriteria.test.ts`：4 文件 34 通过。 |
+| R6a-H01 / R6a-M01 | 已修，`b6e3f4b`：其它分面保留所选档位；双组模式按交集。 | `npx vitest run src/ui/MyPets.test.tsx src/domain/petFilters.test.ts`：2 文件 58 通过；补测试数据，不改原断言。 |
 | R6b-H01 | 未修；待确认是否只恢复旧跨号入口。 | 核对提交及交互规范，未跑浏览器。 |
-| R7b-H03 | 未修；存储读取失败时默认显示家园窝视图。 | 未测禁用存储；安卓未验证。 |
+| R7b-H03 | 已修，`18bcd58`：读存储失败时默认显示家园窝。 | `npx vitest run src/ui/Home.test.tsx`：18 通过，含 `SecurityError`。安卓未验证。 |
 | R8a1-H01 | 未修；根因在 Android 悬浮窗 WebView 生命周期，无等价网页修复。 | Android 未编译、未验证、未发布。 |
 | R8a2-H01 | 未修；网页已有 matched，Android 脚注误读 total；不应破坏标题总数来修脚注。 | Android 未编译、未验证、未发布。 |
 | R8a3-H01 | 未修；网页仅评估可检测的失配重读；完整修复待壳提供代次。 | Android 未编译、未验证、未发布。 |
@@ -59,6 +59,28 @@ schema 校验通过：
 
 ## 发布记录
 
-- **未发布。** 无正式构建、bundle、SHA-256、发布时间、通道校验、线上回读或已核实的目标回滚命令。本轮未合并、推送、部署，未打包，未改默认站、版本、清单，未连接生产 D1。
+- **未发布。** 无正式候选 bundle、SHA-256、发布时间、通道校验、发布后回读或可执行的目标回滚命令。本轮未合并、推送、部署、打包，未改默认站、版本或清单；生产 D1 只读查结构。
+- `npx tsc -b` 和 `npx tsc -p functions/tsconfig.json` 通过；`node tools/lint-copy.mjs`：`文案 lint 通过：存量 13 条，新增 0 条。` `npx playwright test --list`：`Total: 82 tests in 15 files`。
+- `npx playwright test e2e/my-pets.spec.ts e2e/dashboard.spec.ts e2e/mother-sharing.spec.ts --workers=2 --output=docs/code-review/2026-11-19/playwright-130209` 退出 1：`6 failed / 28 passed (1.8m)`。看板 4 项：种公推荐标题未找到、两个过期 `inventory-grade-toggle` 定位、账号摘要定位匹配两个控件；背包 2 项：旧性别/体型瓦片定位不存在。日志上下文原位保留。未放松断言；既存 e2e 改动先不提交。最终候选的全量 Vitest、API 闸门复验及回读未执行。
+- 版本裁决：建议正式候选保留 `release` 版本元数据与安卓壳配置，仅合入网页、必要 API 与相关测试；绝不把整条 `test` 直接合入并带上壳版本变更。明确发布范围后再续。若后续回滚，只恢复上一笔 Cloudflare 网页部署及其 Functions，并比对两份清单与 APK 字节；不改清单或 APK。
 - git diff --quiet origin/release test -- public/android/version.json public/android/version-18.json 退出 0，仅证明 Git 中清单一致。正式发布前记录现网部署 ID、bundle 与两份清单/APK 的字节校验；仅回滚网页及对应 API 行为，清单/APK 不重发，回读比对基线。
-- 继续后按问题记录前置 HEAD、拆分既存改动，跑相关测试和 npx tsc -b，不把 lockfile、原型、截图或非授权配置混入修复。所有指定门槛用最终候选实际执行，不用 SUMMARY.md 的历史输出替代。
+- 继续后按问题提交，保留未暂存的锁文件、设计台账原改动、e2e 改动和所有预览/截图；最终闸门用候选实跑，不用历史输出替代。
+
+## 已有改动的拆分提交
+
+| 编号 | 提交与行为 | 本轮实测 |
+| --- | --- | --- |
+| R7a-H01 | `8063e81` 背包分段渲染。 | `PetList.test.tsx` 2 通过、`MyPets.test.tsx` 7 通过。 |
+| R7b-H02 | `6992be3` 已同步上窝不可撤回提示。 | `HomeDemandPlacements.test.tsx` 27 通过。 |
+| R9-2b-M01 | `445d0c4` 采集期间刷新悬浮窗需求。 | `useNearbyOverlayPush.test.tsx` 7 通过。 |
+| R9-4b-M01 | `17efaa9` 默认站文案和身份隔离提示；不改默认地址。 | `ServerAddressPanel.test.tsx` 13 通过。 |
+| R9-1-H01 / R10-M02 | `23e252f` 桌面超限状态仍可读。 | `nativeCollector.test.ts` 13 通过；未打包。 |
+| R9-1-M01 | `0698dfd` 并发采集共享进度。 | `useCaptureProgress.test.tsx` 10 通过；有 `act()` 警告。 |
+| R1-M02 | `7c50926` 巡查对单条脏配窝容错。 | `eggPatrol.test.ts` 9 通过。 |
+| R1-M03 | `63ad97d` 家园与背包拆分水印。 | `eggWorkflow.test.ts` 26 通过。 |
+| R7b-H01 | `bd308b7` 母本与看板读同一口径，已选档可取消。 | `Dashboard.test.tsx` 16、`MotherCriteriaMedals.test.tsx` 3、`CollectionTargetEditor.test.tsx` 6 通过。 |
+| R7c-L05 | `dc5d17e` 缺奖牌图片显示文字。 | `npx tsc -b` 退出 0。 |
+| R9-5 / 引导与埋点 | `215583c` 首启判抑制、引导版本 4、同步已读及去重埋点。 | `App.test.tsx` 7、`useTabViewTracking.test.tsx` 2 通过（单独请求的 `tour.test.tsx` 不在实际收集结果，未算通过）。 |
+| R2a-H01 / H02、R1-M02 接线 | `fbc45c7` 按组读巡查，已产出不回退，并报告坏配窝数量。 | `node --test tools/test/egg-patrol-api.test.mjs tools/test/deploy-web.test.mjs`：25 通过；未发真实 QQ 消息。 |
+| R10-H01 / M01 / M03、R9-6-H01 / M02 | `82fae69` 发布护栏、文案闸门与桌面迁移原有改动。 | 同上护栏测试及文案 lint；桌面未打包、未验收安装覆盖。 |
+| R10 文档 | `70ce1a1` 项目名称和入口说明。 | `npx tsc -b` 退出 0。 |
