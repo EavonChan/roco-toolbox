@@ -52,10 +52,17 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
   const selectedGrade = coverageFilter.grades[coverageFilter.grades.length - 1] ?? null;
 
+  /**
+   * 母本「已收集」只认母本页的奖牌选择（2026-11-19 口径统一）。
+   *
+   * 看板目标档位（coverageFilter.grades）是种公 / 覆盖度的目标，不再参与母本判定；
+   * 否则在母本页换了奖牌、看板数字不动，两页会给出不同结果。
+   * 旧数据没有 `grades` 时仍按体型 / 声音条件判定（与母本页一致）。
+   */
   const effectiveCriteria: MotherCriteria = {
     bodies: motherCriteria.bodies,
     voices: effectiveMotherVoices(motherCriteria.voices, mode),
-    grades: selectedGrade ? [selectedGrade] : motherCriteria.grades,
+    grades: motherCriteria.grades,
     targetMode: mode,
     recommendedNatures: motherCriteria.recommendedNatures === true,
   };
