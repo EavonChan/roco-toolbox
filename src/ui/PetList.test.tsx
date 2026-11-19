@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { OwnedPet, SpeciesEntry } from '../domain/types';
 import { PetList } from './PetList';
@@ -45,5 +45,27 @@ describe('PetList（全部展示，不分页）', () => {
     expect(screen.queryByText('上一页')).toBeNull();
     expect(screen.queryByText('下一页')).toBeNull();
     expect(screen.queryByText(/每页/)).toBeNull();
+  });
+
+  test('500 只先渲染首屏，滚动到底再续一屏（仍不分页）', () => {
+    const many: OwnedPet[] = Array.from({ length: 500 }, (_, index): OwnedPet => ({
+      gameId: index + 1,
+      name: `精灵${index + 1}`,
+      gender: '母',
+      nature: '开朗',
+      voiceDb: 100,
+      medalBody: '大块头',
+      isShiny: false,
+      account: '账号甲',
+    }));
+    render(<PetList {...props} pets={many} />);
+
+    expect(screen.getAllByRole('article')).toHaveLength(60);
+    expect(screen.getByTestId('pet-list-more')).toHaveTextContent('已显示 60 / 500 只');
+
+    fireEvent.scroll(window);
+    expect(screen.getAllByRole('article')).toHaveLength(120);
+    expect(screen.getByTestId('pet-list-more')).toHaveTextContent('已显示 120 / 500 只');
+    expect(screen.queryByText('上一页')).toBeNull();
   });
 });
