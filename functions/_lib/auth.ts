@@ -206,7 +206,7 @@ export async function handleChangePassword(request: Request, env: Env, origin: s
     .bind(accountId)
     .first<{ password_hash: string | null }>();
   if (!row?.password_hash) return fail('这个账号还没有设置密码', 400, origin);
-  if (!(await verifyPassword(body.oldPassword ?? '', row.password_hash))) return fail('原密码不对', 401, origin);
+  if (!(await verifyPassword(body.oldPassword ?? '', row.password_hash))) return fail('原密码不对', 400, origin);
   if (!isValidPassword(body.newPassword ?? '')) return fail('新密码需为 8-32 位', 400, origin);
   await env.DB.prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')
     .bind(await hashPassword(body.newPassword as string), accountId)
