@@ -185,13 +185,26 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         typeof action.homeComplete !== 'undefined' && typeof action.homeComplete !== 'boolean' ||
         !Array.isArray(action.eggs) || action.eggs.length > 2000) throw new Error('库存快照无效');
     const watermark = JSON.stringify([actor, key]);
-    if (timestamp <= (state.watermarks[watermark] ?? -1)) return previous;
     const incoming = action.eggs.map(e => normalizeEgg(e, actor, key, true));
     if (new Set(incoming.map(e => e.id)).size !== incoming.length) throw new Error('库存实例重复');
     const old = state.eggs.filter(e => e.accountId === actor && e.gameAccountKey === key);
     const completeBag = action.complete === true;
     const completeHome = action.homeComplete === true;
-    const completeOf = (egg: EggRecord): boolean => (egg.location ?? 'bag') === 'home' ? completeHome : completeBag;
+    // 背包与家园来自不同抓包，各自只和上一次比：一侧旧快照不能把另一侧整批丢掉（R1-M03）
+    const sideKey = (side: 'bag' | 'home') => JSON.stringify([actor, key, side]);
+    const isHome = (egg: EggRecord) => (egg.location ?? 'bag') === 'home';
+    const sideTime = (egg: EggRecord) => egg.lastConfirmedAt ?? timestamp;
+    const bagIncoming = incoming.filter(egg => !isHome(egg));
+    const homeIncoming = incoming.filter(isHome);
+    const bagTime = bagIncoming.length ? Math.max(...bagIncoming.map(sideTime)) : completeBag ? timestamp : -1;
+    const homeTime = homeIncoming.length ? Math.max(...homeIncoming.map(sideTime)) : completeHome ? timestamp : -1;
+    // 旧版只有 [账号, 游戏账号] 一个水印：作为两侧兜底读一次，避免升级后重放旧快照
+    const appliedBag = bagTime > (state.watermarks[sideKey('bag')] ?? state.watermarks[watermark] ?? -1);
+    const appliedHome = homeTime > (state.watermarks[sideKey('home')] ?? state.watermarks[watermark] ?? -1);
+    if (!appliedBag && !appliedHome) return previous;
+    const accepted = [...(appliedBag ? bagIncoming : []), ...(appliedHome ? homeIncoming : [])];
+    const sideApplied = (egg: EggRecord) => (isHome(egg) ? appliedHome : appliedBag);
+    const sideComplete = (egg: EggRecord) => (isHome(egg) ? appliedHome && completeHome : appliedBag && completeBag);
     for (const egg of incoming) {
       const before = old.find(e => e.id === egg.id);
       if (before) {
@@ -216,12 +229,15 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
       }
     }
     for (const egg of old) {
-      if (completeOf(egg) && !incoming.some(n => n.id === egg.id)) { egg.missingFromCapture = true; egg.listed = false; }
+      if (sideApplied(egg) && sideComplete(egg) && !accepted.some(n => n.id === egg.id)) {
+        egg.missingFromCapture = true; egg.listed = false;
+      }
     }
-    state.eggs = state.eggs.filter(e => !(e.accountId === actor && e.gameAccountKey === key) ||
-      (!incoming.some(n => n.id === e.id) && (!completeOf(e) || e.status === 'reserved' || e.status === 'transferred')));
-    state.eggs.push(...incoming);
-    state.watermarks[watermark] = timestamp;
+    state.eggs = state.eggs.filter(e => !(e.accountId === actor && e.gameAccountKey === key) || !sideApplied(e) ||
+      (!accepted.some(n => n.id === e.id) && (!sideComplete(e) || e.status === 'reserved' || e.status === 'transferred')));
+    state.eggs.push(...accepted);
+    if (appliedBag) state.watermarks[sideKey('bag')] = timestamp;
+    if (appliedHome) state.watermarks[sideKey('home')] = timestamp;
     return state;
   }
   if (action.type === 'list' || action.type === 'label') {

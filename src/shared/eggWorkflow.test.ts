@@ -136,6 +136,26 @@ test('a special egg cannot be downgraded by a later ordinary import', () => {
   expect(state.eggs[0].kind).toBe('special');
 });
 
+test('背包与家园各自记水印：较晚导入的旧家园快照不再被背包时间挡掉', () => {
+  const bagEgg = { ...stock('bag1', 3227), location: 'bag' as const, lastConfirmedAt: 12 * 3600_000 };
+  const homeEgg = { ...stock('home1', 3436), location: 'home' as const, lastConfirmedAt: 11 * 3600_000 + 50 * 60_000 };
+  let state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 12 * 3600_000, complete: true, eggs: [bagEgg],
+  }, 1);
+  expect(state.eggs.map(egg => egg.id)).toEqual(['bag1']);
+  // 家园快照比背包旧：只影响家园这一侧，家园蛋仍要入库
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 11 * 3600_000 + 50 * 60_000,
+    complete: false, homeComplete: true, eggs: [bagEgg, homeEgg],
+  }, 2);
+  expect(state.eggs.map(egg => egg.id).sort()).toEqual(['bag1', 'home1']);
+  // 再回放同一份旧家园快照：家园水印已推进，整批忽略
+  expect(applyEggAction(state, 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 11 * 3600_000 + 50 * 60_000,
+    complete: false, homeComplete: true, eggs: [bagEgg, homeEgg],
+  }, 3)).toBe(state);
+});
+
 test('batch publishing is atomic and marks green nest only with a chosen nature',()=>{
   const draft={id:'one',eggGameId:3227,natures:['固执'],body:'大块头',voice:'婉转声',quantity:2,greenNest:true};
   const state=applyEggAction(emptyEggWorkflow(),'g','a',{type:'publish-batch',demands:[draft,{...draft,id:'two',eggGameId:3436}]},1);
