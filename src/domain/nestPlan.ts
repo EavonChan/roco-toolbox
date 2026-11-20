@@ -658,20 +658,37 @@ export function buildNestPlans(input: NestPlanInput): NestPlan[] {
       }))
       .filter((entry) => entry.net > 1e-9)
       .sort((a, b) => b.net - a.net || byGroupsThenStable(a.candidate, b.candidate));
-    const earlyByPet = new Map<OwnedPet, Candidate[]>();
-    for (const { candidate } of earlyAcademy) {
+    const earlyByPet = new Map<OwnedPet, Array<{ candidate: Candidate; net: number }>>();
+    for (const entry of earlyAcademy) {
+      const candidate = entry.candidate;
       if (!candidate.academy) continue;
       const list = earlyByPet.get(candidate.academy) ?? [];
-      list.push(candidate);
+      list.push(entry);
       earlyByPet.set(candidate.academy, list);
     }
-    for (const list of earlyByPet.values()) {
-      for (const candidate of list) {
+    /**
+     * 先按「这只精灵坐学院最多能多吃几格」选学院那只，再逐条收它的配对方。
+     * 不能按单条配对的净值先到先得：1:2 的火花两条各 1.0，合计 2.0，
+     * 必须压过只能补一格的鸭吉吉（1.0）。
+     */
+    const earlyGroups = [...earlyByPet.values()]
+      .map((list) => ({
+        list,
+        score: list
+          .slice(0, MAX_ACADEMY_PARTNERS)
+          .reduce((sum, entry) => sum + entry.net, 0),
+      }))
+      .sort((a, b) =>
+        b.score - a.score ||
+        byGroupsThenStable(a.list[0].candidate, b.list[0].candidate),
+      );
+    const earlyBest = earlyGroups[0];
+    if (earlyBest) {
+      for (const { candidate } of earlyBest.list) {
         if (academyPartners >= MAX_ACADEMY_PARTNERS) break;
         if (academyPet !== null && candidate.academy !== academyPet) break;
         tryAccept(candidate);
       }
-      if (academyPet !== null) break;
     }
 
     // 一遍扫描：只收能补新缺口的线（**不再有「空窝就把线挂满」的第二遍**，见 tryAccept 注释）。

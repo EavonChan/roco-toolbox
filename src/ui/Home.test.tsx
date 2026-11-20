@@ -299,7 +299,8 @@ describe('家园页', () => {
     });
     try {
       render(<HomeLand />);
-      expect(screen.getByTestId('home-residents')).toBeTruthy();
+      expect(screen.getByTestId('home-pair-cards')).toBeTruthy();
+      expect(screen.getByText('母本甲')).toBeTruthy();
     } finally {
       storage.mockRestore();
     }
