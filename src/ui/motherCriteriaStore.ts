@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { createModuleStore } from './createModuleStore';
 import {
   DEFAULT_MOTHER_CRITERIA,
@@ -24,6 +25,7 @@ const isBody = (value: unknown): value is MotherBody =>
 const MOTHER_GRADE_OPTIONS = ['大婉', '大粗', '小婉', '小粗'] satisfies readonly PetGrade[];
 const isGrade = (value: unknown): value is PetGrade =>
   MOTHER_GRADE_OPTIONS.includes(value as PetGrade);
+const singleGrade = (grades: readonly unknown[]): PetGrade[] => grades.filter(isGrade).slice(0, 1);
 
 /**
  * 「待补齐母本」的达标标准（2026-10-05 用户拍板，取代旧开关）。
@@ -58,5 +60,6 @@ export function setMotherCriteria(criteria: MotherCriteria): void {
 }
 
 export function useMotherCriteria(): MotherCriteria {
-  return store.use();
+  const criteria = store.use();
+  return useMemo(() => criteria.grades === undefined ? criteria : { ...criteria, grades: singleGrade(criteria.grades) }, [criteria]);
 }

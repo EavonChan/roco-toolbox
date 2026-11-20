@@ -482,7 +482,7 @@ export function ImportPanel() {
         {importing ? '导入中…' : '导入游戏数据'}
       </button>
       <p className="-mt-1 text-center text-xs text-slate-400">
-        采集器分享到「小布助手」会自动导入，也可手选 .pcap / .json。
+        采集器分享到「小布助手」会自动导入；也可手选 .pcap / .json（可多选）
       </p>
       <input
         ref={fileInputRef}

@@ -403,7 +403,12 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
     const rowKey = rowKeyOf(placement);
     const next = !marks[rowKey];
     setMarks(togglePlacementMark(accountId, rowKey, next));
-    if (!next) return;
+    if (!next) {
+      // 本轮没有服务端撤回接口：取消的只是本机标记，已同步的「已上窝」仍留在发布方那边，
+      // 必须讲明白，避免用户以为点一下就撤回了。
+      setPlaceNotice('本机已取消标记；已同步到服务端的「已上窝」不会撤回，如需更正请联系发布方。');
+      return;
+    }
     const demand = placement.demand;
     setPlaceNotice('');
     const workflow=items.find(item=>item.workflowTaskId&&item.groupId===demand.groupId&&item.demanderAccountId===demand.demanderAccountId&&item.eggGameId===demand.eggGameId&&item.createdAt===demand.claimedAt);
@@ -703,7 +708,7 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
               {placeNotice}
             </p>
           ) : null}
-          {fixedTasks.map(item=><article key={item.workflowTaskId} className="space-y-1 rounded-xl border border-slate-200 p-2"><div className="flex items-center justify-between gap-2"><strong className="text-xs">{eggNameOf(item.eggGameId)}</strong><label className="flex min-h-7 items-center gap-1 text-[11px]"><input data-testid="home-demand-placed" type="checkbox" checked={!!item.placedAt} disabled={!!item.placedAt} onChange={()=>{setPlaceNotice('');void mutateEggMatching(item.groupId,item.workflowVersion!,{type:'place',id:item.workflowTaskId}).then(()=>reload()).catch(e=>{setPlaceNotice(e instanceof Error?e.message:'上窝同步失败');reload();});}}/>已上窝</label></div><EggLineSummary line={item.placementLine??item.workflowTask!.line!} snapshots={snapshots}/></article>)}
+          {fixedTasks.map(item=><article key={item.workflowTaskId} className="space-y-1 rounded-xl border border-slate-200 p-2"><div className="flex items-center justify-between gap-2"><strong className="text-xs">{eggNameOf(item.eggGameId)}</strong>{item.placedAt!=null?<span className="text-[11px] text-emerald-700" title="已同步给发布方，本轮不支持撤回；如需更正请联系发布方" data-testid="home-demand-placed-locked">已上窝（已同步，不可撤回）</span>:<label className="flex min-h-7 items-center gap-1 text-[11px]"><input data-testid="home-demand-placed" type="checkbox" checked={false} onChange={()=>{setPlaceNotice('');void mutateEggMatching(item.groupId,item.workflowVersion!,{type:'place',id:item.workflowTaskId}).then(()=>reload()).catch(e=>{setPlaceNotice(e instanceof Error?e.message:'上窝同步失败');reload();});}}/>已上窝</label>}</div><EggLineSummary line={item.placementLine??item.workflowTask!.line!} snapshots={snapshots}/></article>)}
           {withPlacements.length === 0 && fixedTasks.length===0 ? (
             <p className={`${HINT} rounded-xl bg-slate-50 p-3`} data-testid="home-demand-nothing-placeable">
               已接的单在本机都排不上配对，原因见下方。

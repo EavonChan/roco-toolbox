@@ -89,11 +89,12 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
   }
   if (action === 'claim') {
     if (!validId(input.botId) || !validId(input.qqGroupId)) return invalid(400, '参数无效');
-    const tasks = await activePatrolTasks(env.DB);
     const rows = await env.DB.prepare(`SELECT n.* FROM egg_patrol_notifications n JOIN egg_bot_bindings b
       ON b.group_id=n.group_id AND b.binding_version=n.binding_version AND b.enabled=1
       WHERE b.bot_id=? AND b.qq_group_id=? AND n.status IN ('pending','leased') AND n.next_at<=? AND n.lease_until<=? ORDER BY n.created_at LIMIT 20`)
       .bind(input.botId, input.qqGroupId, now, now).all<NotificationRow>();
+    // 只读这批通知所属的小组，不扫全站任务
+    const tasks = rows.results.length ? await activePatrolTasks(env.DB, rows.results.map(row => row.group_id)) : [];
     const events: Row[] = [];
     for (const row of rows.results) {
       if (typeof input.groupId === 'string' && row.group_id !== input.groupId) continue;
@@ -113,7 +114,7 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
       ON b.group_id=n.group_id AND b.binding_version=n.binding_version AND b.enabled=1
       WHERE n.id=? AND n.lease_token=? AND n.status='leased' AND n.lease_until>? AND b.bot_id=? AND b.qq_group_id=?`)
       .bind(input.id, input.leaseToken, now, input.botId, input.qqGroupId).first<NotificationRow>();
-    const tasks = row ? await activePatrolTasks(env.DB) : [];
+    const tasks = row ? await activePatrolTasks(env.DB, [row.group_id]) : [];
     const valid = !!row && await currentNotification(env.DB, row, tasks);
     return json({ ok: true, valid }, 200, null);
   }
@@ -122,7 +123,7 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
     const row = await env.DB.prepare('SELECT * FROM egg_patrol_notifications WHERE id=? AND lease_token=?').bind(input.id, input.leaseToken).first<NotificationRow>();
     if (!row) return invalid(409, '提醒租约已失效');
     if (row.status === 'sent') return json({ ok: true }, 200, null);
-    const tasks = await activePatrolTasks(env.DB);
+    const tasks = await activePatrolTasks(env.DB, [row.group_id]);
     if (!(await currentNotification(env.DB, row, tasks))) return invalid(409, '任务或群关联已变化');
     const sent = input.outcome === 'sent';
     if (row.side === 'reminder') {

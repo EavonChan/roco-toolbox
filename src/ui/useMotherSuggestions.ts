@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { GRADE_BODY, GRADE_VOICE } from '../domain/petFilters';
+import { GRADE_BODY, GRADE_VOICE, type PetGrade } from '../domain/petFilters';
 import { effectiveMotherVoices, type MotherCriteria } from '../domain/motherCriteria';
 import { buildMotherNestSuggestions, type MotherNestAccount } from '../domain/motherNest';
 import { createNaturesResolver } from '../domain/recommendedNatures';
@@ -17,7 +17,7 @@ import type { CollectionSummary } from './useCollectionSummary';
  * 目标卡文案（目标 大块头 · 婉转声）都收在这一个 hook 里。
  */
 export interface MotherSuggestionsView {
-  selectedGrade: ReturnType<typeof useCoverageFilter>['grades'][number] | null;
+  selectedGrade: PetGrade | null;
   effectiveCriteria: MotherCriteria;
   naturesOf: (gameId: number) => readonly string[];
   suggestions: ReadonlyMap<string, MotherNestAccount>;

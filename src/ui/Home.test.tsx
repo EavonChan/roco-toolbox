@@ -292,6 +292,19 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-pair-card-list')).toBeTruthy();
   });
 
+  test('禁止访问本地存储时仍显示家园窝', () => {
+    h.snapshots = [snapshotWithHome()];
+    const storage = vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new DOMException('Storage is disabled', 'SecurityError');
+    });
+    try {
+      render(<HomeLand />);
+      expect(screen.getByTestId('home-residents')).toBeTruthy();
+    } finally {
+      storage.mockRestore();
+    }
+  });
+
   test('没导入数据时接单上窝给导入引导，不显示「都排不上」', () => {
     render(<HomeLand />);
     fireEvent.click(screen.getByTestId('home-view-demands'));

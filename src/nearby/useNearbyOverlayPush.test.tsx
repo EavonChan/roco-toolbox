@@ -143,6 +143,27 @@ describe('useNearbyOverlayPush（应用级悬浮面板推送）', () => {
     expect(lastPayload(update).self).toEqual({ x: 100, y: 200 });
   });
 
+  test('采集中每 60 秒刷新一次需求中心，停止采集后不再刷新', async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+    vi.mocked(useDemandCenter).mockReturnValue({ ...noDemands, reload });
+    let phase: Phase = 'capturing';
+    installShell(() => phase);
+    writeNearbySnapshot(snapshot);
+    render(<Harness />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(reload).not.toHaveBeenCalled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(reload).toHaveBeenCalled();
+
+    phase = 'stopping';
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    const calls = reload.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(reload).toHaveBeenCalledTimes(calls);
+  });
+
   test('需求中心命中的精灵排在列表最前（全部档下普通精灵也进列表）', async () => {
     const update = installShell(() => 'capturing');
     vi.mocked(useDemandCenter).mockReturnValue({

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { TARGET_MODE_LABELS, type TargetMode } from '../domain/petFilters';
-import { isChainCollected } from '../domain/motherCriteria';
+import { effectiveMotherVoices, isChainCollected, type MotherCriteria } from '../domain/motherCriteria';
 import { findUncataloguedCount, studEmptyNote } from '../domain/suggestions';
 import { eggGroupNames, species } from '../data/catalog';
 import { ImportAdditionCard } from './ImportAdditionCard';
@@ -18,6 +18,7 @@ import { SegmentedControl } from './primitives/SegmentedControl';
 import { useOwnedPets } from './useOwnedPets';
 import { useCollectionSummary } from './useCollectionSummary';
 import { setTargetGrade, useCoverageFilter } from './coverageFilterStore';
+import { useMotherCriteria } from './motherCriteriaStore';
 import { setTargetMode } from './targetModeStore';
 import { toggleAccount, toggleAllAccounts, useAccountFilter } from './accountFilterStore';
 import { removeStudTransferTask, useStudTransferTasks } from './studTransferTaskStore';
@@ -65,7 +66,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
    */
   const {
     selectedGrade,
-    effectiveCriteria,
     naturesOf,
     suggestions: motherSuggestions,
     targetLabel: gapTargetLabel,
@@ -73,12 +73,20 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     voiceDb: gapTargetVoiceDb,
     weightPercent: gapTargetWeight,
   } = useMotherSuggestions({ owned, mode, coverageByAccount, plans });
+  const motherCriteria = useMotherCriteria();
+  const motherEffectiveCriteria: MotherCriteria = useMemo(() => ({
+    bodies: motherCriteria.bodies,
+    voices: effectiveMotherVoices(motherCriteria.voices, mode),
+    grades: motherCriteria.grades,
+    targetMode: mode,
+    recommendedNatures: motherCriteria.recommendedNatures === true,
+  }), [motherCriteria, mode]);
   /** 种公阵列里手动加入的跨号补种公任务（2026-11-03） */
   const transferTasks = useStudTransferTasks();
   /** 母本缺口只报**个人事实**；小组未加载时不在看板声称某成员拥有 */
   const missingMothers = useMemo(
-    () => motherGroups.filter((group) => !isChainCollected(group, owned, effectiveCriteria, naturesOf)),
-    [motherGroups, owned, effectiveCriteria, naturesOf],
+    () => motherGroups.filter((group) => !isChainCollected(group, owned, motherEffectiveCriteria, naturesOf)),
+    [motherGroups, owned, motherEffectiveCriteria, naturesOf],
   );
   const collectedMothers = motherGroups.length - missingMothers.length;
 

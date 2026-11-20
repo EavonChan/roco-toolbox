@@ -6,6 +6,8 @@ export interface CollectorState {
   version: 1; supported: boolean; phase: CapturePhase; message: string;
   packets: number; bytes: number; files: CaptureFile[];
   progressVersion?: 1; fileId?: string; savedBytes?: number;
+  /** 桌面采集已到 128MiB 上限：此时 savedBytes 允许略超上限，面板按 message 显示原因而不是判整份无效 */
+  capped?: boolean;
 }
 export type CaptureSnapshot = { id: string; size: number; url: string };
 export type CollectorAction = 'startCapture' | 'stopCapture' | 'openGame' | 'importCapture' | 'shareCapture' | 'deleteCapture';
@@ -100,11 +102,13 @@ export async function readCollectorState(): Promise<CollectorState | null> {
   try { value = JSON.parse(await window.RocoCapture.getState()) as CollectorState; }
   catch { throw new Error('无法读取本机采集状态，请返回小布助手重试'); }
   if (value?.version !== 1) throw new Error('采集桥版本不兼容，请更新安卓版小布助手');
+  const capped = value.capped === true;
   if (typeof value.supported !== 'boolean' || !['idle', 'starting', 'capturing', 'stopping', 'failed'].includes(value.phase)
     || typeof value.message !== 'string' || !nonnegative(value.packets) || !nonnegative(value.bytes)
+    || (value.capped != null && typeof value.capped !== 'boolean')
     || (value.progressVersion != null && (value.progressVersion !== 1 || typeof value.fileId !== 'string'
       || (value.fileId !== '' && !/^capture-[0-9]+\.pcap$/.test(value.fileId)) || !Number.isSafeInteger(value.savedBytes)
-      || !nonnegative(value.savedBytes) || value.savedBytes > MAX_CAPTURE_BYTES))
+      || !nonnegative(value.savedBytes) || (!capped && value.savedBytes > MAX_CAPTURE_BYTES)))
     || !Array.isArray(value.files) || value.files.length > 10 || value.files.some((file) =>
       !file || !/^capture-[0-9]+\.pcap$/.test(file.id) || typeof file.name !== 'string'
       || !nonnegative(file.size) || !nonnegative(file.createdAt) || typeof file.valid !== 'boolean')) {
@@ -119,9 +123,11 @@ export async function readCaptureSnapshot(): Promise<CaptureSnapshot | null> {
   let snapshot: CaptureSnapshot;
   try { snapshot = JSON.parse(text) as CaptureSnapshot; } catch { throw new Error('无法读取采集快照'); }
   if (!snapshot || !/^capture-[0-9]+\.pcap$/.test(snapshot.id) || !Number.isSafeInteger(snapshot.size)
-    || snapshot.size <= 24 || snapshot.size > MAX_CAPTURE_BYTES || typeof snapshot.url !== 'string' || !isCollectorCaptureUrl(snapshot.url)) {
+    || snapshot.size <= 24 || typeof snapshot.url !== 'string' || !isCollectorCaptureUrl(snapshot.url)) {
     throw new Error('本机采集快照无效');
   }
+  // 与 capped 状态对齐：超过上限是已知的「采满了」，不是数据损坏；提示先解析导入，别让入口看起来坏了
+  if (snapshot.size > MAX_CAPTURE_BYTES) throw new Error('本次采集已达 128MiB 上限，请先解析导出已有的原包');
   return snapshot;
 }
 

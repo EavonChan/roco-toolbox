@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { renderHook } from '@testing-library/react';
 import { DEFAULT_MOTHER_CRITERIA } from '../domain/motherCriteria';
 import { ALL_EGG_GROUP_IDS, DEFAULT_GRADES } from '../domain/coverageTargets';
 
@@ -36,6 +37,17 @@ describe('store migrate', () => {
     );
     const store = await import('./motherCriteriaStore');
     expect(store.getMotherCriteria()).toEqual({ voices: ['+100'], bodies: ['大块头'] });
+  });
+
+  test('个人母本旧多档仅保留第一个合法组合，空组合仍为空', async () => {
+    localStorage.setItem('roco.motherCriteria', JSON.stringify({ grades: ['旧档', '小婉', '大粗'] }));
+    const store = await import('./motherCriteriaStore');
+    expect(store.getMotherCriteria().grades).toEqual(['小婉', '大粗']);
+    const view = renderHook(() => store.useMotherCriteria());
+    expect(view.result.current.grades).toEqual(['小婉']);
+    view.unmount();
+    store.setMotherCriteria({ ...store.getMotherCriteria(), grades: [] });
+    expect(store.getMotherCriteria().grades).toEqual([]);
   });
 
   test('覆盖筛选：脏值逐字段回默认，不会让渲染期抛错', async () => {

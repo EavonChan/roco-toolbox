@@ -6,6 +6,7 @@ import { readNearbySnapshot, writeNearbySnapshot } from './nearbyStore';
 import { trackNearbySelf } from './nearbySelfTrack';
 import { recordCapturePerf } from './perfProbe';
 import { readLiveDecodeState, writeLiveDecodeState } from './liveDecodeStore';
+import { createModuleStore } from '../ui/createModuleStore';
 import { readCaptureSnapshot, readCaptureSnapshotBytes, type CollectorState } from './nativeCollector';
 
 interface ProgressState { progress: CaptureProgress | null; sourceBytes: number; error: string | null; checking: boolean }
@@ -70,12 +71,18 @@ let liveLoopOwner: symbol | null = null;
 let liveLoopScore = -1;
 let liveLoopSeenAt = 0;
 let liveRoundOwner: symbol | null = null;
+/**
+ * 共享进度（R9-1-M01）：同一时刻只有一个实例真正解码，抢不到所有权的实例
+ * 不再各自空转一个永远不更新的 result，而是订阅这份共享结果（与 nearbyStore 同思路）。
+ */
+const progressStore = createModuleStore<{ session: string; value: ProgressState } | null>(null);
 /** 测试用：清空模块级解码源所有权，避免用例之间互相影响。 */
 export function resetLiveLoopForTest() {
   liveLoopOwner = null;
   liveLoopScore = -1;
   liveLoopSeenAt = 0;
   liveRoundOwner = null;
+  progressStore.set(null);
 }
 
 export interface CaptureProgressOptions {
@@ -130,6 +137,7 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
         }
       : empty,
   );
+  const shared = progressStore.use();
   useEffect(() => {
     if (!enabled || !session) return;
     const cached = readCaptureProgressCache(session);
@@ -142,6 +150,13 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
         }
       : empty;
     setResult(initial);
+    let latest = initial;
+    /** 本实例的结果同时发布到共享源：没抢到解码权的实例也能看到进度（R9-1-M01）。 */
+    const apply = (next: ProgressState) => {
+      latest = next;
+      setResult(next);
+      progressStore.set({ session, value: next });
+    };
     // 已经走满：彻底停下，不再读快照 / 解码。否则走满后再来个数据包就会重新复核，
     // 拖住紧随其后的自动停止与导入（2026-10-25 用户要求）。
     // 持续获取模式例外：不能停，否则实时计数就死在「已收齐」那一刻。
@@ -211,12 +226,12 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
           previous = null;
           analysisCache = null;
           if (persistCache) clearCaptureProgressCache();
-          setResult(empty);
+          apply(empty);
         } else {
           // live 模式每次都重新解码：不按文件尺寸跳过，避免「文件在涨但界面不动」的假缓存
           let analysis = !live && analysisCache?.size === snapshot.size ? analysisCache.analysis : null;
           if (!analysis) {
-            setResult((current) => ({ ...current, checking: true }));
+            apply({ ...latest, checking: true });
             controller = new AbortController();
             if (live) {
               // 增量读取（2026-11-08）：只搬新增的一段，拼接后送 worker。
@@ -284,7 +299,7 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
             selfHeading,
             estimatedSelf: tracked.self,
             selfSource,
-            selfAt: rawSelf || tracked.self ? Date.now() : previousSnapshot?.selfAt,
+            selfAt: rawSelf ? Date.now() : previousSnapshot?.selfAt,
             encounter: analysis.encounter ?? null,
             hasKey: Boolean(analysis.hasKey),
             updatedAt: Date.now(),
@@ -296,7 +311,7 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
             error: null,
             checking: false,
           };
-          setResult(next);
+          apply(next);
           persist(next, analysis);
           if (next.progress?.stage === 'ready' && !live) {
             settled = true;
@@ -311,7 +326,7 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
           ...empty,
           error: error instanceof Error ? error.message : '暂时无法核对数据进度，正在重试',
         };
-        setResult(next);
+        apply(next);
         if (cached) {
           if (persistCache) writeCaptureProgressCache({
             session,
@@ -407,6 +422,10 @@ export function useCaptureProgress(state: CollectorState | null, options: Captur
   useEffect(() => {
     if (refreshKey > 0) restartRef.current?.();
   }, [refreshKey]);
-  if (!enabled || result.progress?.session !== session) return { ...empty, error: enabled ? result.error : null };
+  // 同一会话优先显示共享进度：没抢到解码权的实例也能刷新（R9-1-M01）
+  if (!enabled) return { ...empty, error: null };
+  const sharedValue = shared && shared.session === session ? shared.value : null;
+  if (sharedValue) return sharedValue;
+  if (result.progress?.session !== session) return { ...empty, error: result.error };
   return result;
 }

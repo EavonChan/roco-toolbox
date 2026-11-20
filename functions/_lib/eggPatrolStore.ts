@@ -33,17 +33,31 @@ function patrolEntries(trade: WorkflowTrade): PatrolEntry[] {
 }
 
 /** Read current parties and group binding again before delivering queued observations. */
-export async function activePatrolTasks(db: D1Database): Promise<ActivePatrolTask[]> {
+export async function activePatrolTasks(db: D1Database, groupIds?: readonly string[]): Promise<ActivePatrolTask[]> {
+  const filter = groupIds ? [...new Set(groupIds)] : null;
+  if (filter && filter.length === 0) return [];
+  const where = filter ? ` WHERE e.group_id IN (${filter.map(() => '?').join(',')})` : '';
   const rows = await db.prepare(`SELECT e.group_id,e.state_json,b.binding_version,b.qq_group_id,b.bot_id
-    FROM egg_matching_groups e JOIN egg_bot_bindings b ON b.group_id=e.group_id AND b.enabled=1`).all<{
+    FROM egg_matching_groups e JOIN egg_bot_bindings b ON b.group_id=e.group_id AND b.enabled=1${where}`)
+    .bind(...(filter ?? [])).all<{
     group_id: string; state_json: string; binding_version: string; qq_group_id: string; bot_id: string;
   }>();
+  if (!rows.results.length) return [];
+  // 成员一次批量查回来，按小组分组；不再每个小组一条 SQL
+  const ids = [...new Set(rows.results.map(row => row.group_id))];
+  const members = await db.prepare(`SELECT group_id,account_id,display_name FROM mother_group_members
+    WHERE group_id IN (${ids.map(() => '?').join(',')})`)
+    .bind(...ids).all<{ group_id: string; account_id: string; display_name: string }>();
+  const namesByGroup = new Map<string, Map<string, string>>();
+  for (const member of members.results) {
+    const names = namesByGroup.get(member.group_id) ?? new Map<string, string>();
+    names.set(member.account_id, member.display_name);
+    namesByGroup.set(member.group_id, names);
+  }
   const tasks: ActivePatrolTask[] = [];
   for (const row of rows.results) {
     const state = JSON.parse(row.state_json) as EggWorkflowState;
-    const members = await db.prepare('SELECT account_id,display_name FROM mother_group_members WHERE group_id=?')
-      .bind(row.group_id).all<{ account_id: string; display_name: string }>();
-    const names = new Map(members.results.map(member => [member.account_id, member.display_name]));
+    const names = namesByGroup.get(row.group_id) ?? new Map<string, string>();
     for (const trade of state.trades) {
       if (trade.status !== 'accepted' || !names.has(trade.supplierAccountId) || !names.has(trade.demanderAccountId)) continue;
       for (const entry of patrolEntries(trade)) {
@@ -63,7 +77,7 @@ export async function activePatrolTasks(db: D1Database): Promise<ActivePatrolTas
 }
 
 export async function readPatrolStatus(db: D1Database, groupId: string, accountId: string, now: number): Promise<PatrolTaskStatus[]> {
-  const tasks = (await activePatrolTasks(db)).filter(task => task.groupId === groupId && [task.producerAccountId, task.recipientAccountId].includes(accountId));
+  const tasks = (await activePatrolTasks(db, [groupId])).filter(task => [task.producerAccountId, task.recipientAccountId].includes(accountId));
   const result: PatrolTaskStatus[] = [];
   for (const task of tasks) {
     const cache = await db.prepare('SELECT success_at,status FROM egg_patrol_cache WHERE uid=?').bind(task.uid).first<{success_at:number|null;status:PatrolTaskStatus['status']}>();

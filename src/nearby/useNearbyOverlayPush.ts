@@ -44,7 +44,7 @@ export function useNearbyOverlayPush(): void {
   // 换局后旧会话的附近数据不再推给壳（O-9），停止采集仍保留同一 session 的最后一帧
   const snapshot = freshNearbySnapshot(useNearbySnapshot(), state?.fileId);
   const panels = useNearbyOverlayPanels();
-  const { items: demands } = useDemandCenter(supported);
+  const { items: demands, reload: reloadDemands } = useDemandCenter(supported);
   // 列表口径与附近页共用同一份状态：顶部三档（含目标档）+ 战斗目标的维度筛选 + 蹲守名单
   const filter = useNearbyFilter();
   const target = useBattleTarget();
@@ -98,6 +98,25 @@ export function useNearbyOverlayPush(): void {
   }, [supported]);
 
   const capturing = state?.phase === 'capturing';
+
+  /**
+   * 采集期间定期刷新需求命中（R9-2b-M01）。
+   *
+   * 只在页面上挂一次 60 秒缓存，采集可能持续很久；发布方中途改条件 / 新需求时，
+   * 悬浮窗的命中列表不该等到重进页面才更新。页面重新可见时也补拉一次。
+   */
+  useEffect(() => {
+    if (!supported || !capturing) return;
+    const refresh = () => {
+      if (!document.hidden) reloadDemands();
+    };
+    const timer = window.setInterval(refresh, 60_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [supported, capturing, reloadDemands]);
   const latest = useRef({ snapshot, hasKey: Boolean(snapshot?.hasKey) });
   latest.current = { snapshot, hasKey: Boolean(snapshot?.hasKey) };
   /** 尾随补发读的都是 ref：定时器触发时补推的一定是最新一帧，而不是排期那一刻的旧数据。 */

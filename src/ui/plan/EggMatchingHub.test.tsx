@@ -81,6 +81,24 @@ test('square cards show whether I can supply and can be filtered to affordable o
   data.eggs=[];state.demands.length=1;
 });
 
+test('a home egg does not make a demand immediately fulfillable',()=>{
+  state.demands.push(createDemand({id:'home-only',groupId:'g',demanderAccountId:'b',eggGameId:3227,natures:['固执'],body:'',voice:'',quantity:1}));
+  const egg={id:'home-egg',accountId:'a',gameAccountKey:'uid:1',eggGameId:3227,nature:'固执',body:'大块头' as const,voice:'婉转声' as const,
+    location:'home' as const,kind:'ordinary' as const,status:'available' as const,listed:true,provenance:'unknown' as const,confidence:'manual' as const,labelSource:'unknown' as const};
+  const data=state as typeof state & {eggs:(typeof egg)[]};
+  data.eggs=[egg];
+  try {
+    render(<EggMatchingHub {...props} members={[...props.members,{accountId:'b',displayName:'乙'}]}/>);
+    fireEvent.click(screen.getByText('组内广场'));
+    expect(screen.queryByText('我能给蛋')).toBeNull();
+    expect(screen.getByText('接不了')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'只看我能接'}));
+    expect(document.querySelector('[data-demand-id="home-only"]')).toBeNull();
+  } finally {
+    data.eggs=[];state.demands.length=1;
+  }
+});
+
 test('demander picks my own egg for the peer and confirms before the trade is sent',()=>{
   mutate.mockClear();
   state.demands.push(createDemand({id:'d2',groupId:'g',demanderAccountId:'b',eggGameId:3227,natures:['固执'],body:'',voice:'',quantity:1}));
