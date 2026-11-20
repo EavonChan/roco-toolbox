@@ -1,5 +1,6 @@
 import { observeSceneEggs, observeScenePlacements, parsePatrolScene, patrolWindowOpen, type PatrolSpeciesIndex } from '../../src/shared/eggPatrol';
 import { activePatrolTasks, patrolTaskKey } from './eggPatrolStore';
+import { recordProducedPatrolEggs, type ProducedPatrolEgg } from './eggPatrolStock';
 import { type Env, newToken } from './util';
 import { species as catalogSpecies } from '../../src/data/catalog';
 import catalog from '../../src/data/catalog.gen.json';
@@ -151,6 +152,22 @@ export async function runEggPatrol(env: Env, now: number, fetcher: typeof fetch 
         WHERE uid=? AND lease_token=?`).bind(JSON.stringify(scene), JSON.stringify(latestTasks.map(patrolTaskKey)), now, now + INTERVAL, cache.uid, lease));
       const results = await env.DB.batch(statements);
       count.queued += notificationIndexes.reduce((sum, index) => sum + results[index].meta.changes, 0);
+      const producedByGroup = new Map<string, ProducedPatrolEgg[]>();
+      const seenProduced = new Set<string>();
+      for (const observation of observations) {
+        if (observation.status !== 'produced') continue;
+        const egg = scene.eggs.find(value => value.actorId === observation.actorId);
+        if (!egg) continue;
+        const dedupe = observation.task.groupId + '\n' + patrolTaskKey(observation.task) + '\n' + observation.actorId;
+        if (seenProduced.has(dedupe)) continue;
+        seenProduced.add(dedupe);
+        const inputs = producedByGroup.get(observation.task.groupId) ?? [];
+        inputs.push({ task: observation.task, observation, egg });
+        producedByGroup.set(observation.task.groupId, inputs);
+      }
+      for (const [groupId, inputs] of producedByGroup) {
+        await recordProducedPatrolEggs(env.DB, groupId, inputs, now);
+      }
     } catch (error) {
       // 强刷时把失败原因带回响应，方便内测排查（正式 tick 不返回，避免泄露上游细节）
       if (force) count.error = error instanceof Error ? error.message : 'UPSTREAM';

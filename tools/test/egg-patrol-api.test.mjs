@@ -5,11 +5,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'vite';
 
 const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
-let settings, bridge, patrol, matching;
+let settings, bridge, patrol, matching, recordProducedPatrolEggs;
 try {
   ({ handleEggBotSettings: settings, handleEggBotBridge: bridge } = await vite.ssrLoadModule('/functions/_lib/eggBotBridge.ts'));
   ({ handleEggMatching: matching } = await vite.ssrLoadModule('/functions/_lib/eggMatching.ts'));
   ({ runEggPatrol: patrol } = await vite.ssrLoadModule('/functions/_lib/eggPatrol.ts'));
+  ({ recordProducedPatrolEggs } = await vite.ssrLoadModule('/functions/_lib/eggPatrolStock.ts'));
 } finally { await vite.close(); }
 
 const time = Date.parse('2026-11-16T08:00:00+08:00');
@@ -95,6 +96,65 @@ test('quiet hours make no request; 30 minute cache; an egg on the ground queues 
   assert.equal((await bot(db,'ack',{id:event.id,leaseToken:event.leaseToken,outcome:'sent'},time+30*60000)).status,200);
   await patrol(db.env,time+60*60000,fetcher);
   assert.equal(db.sql.prepare('SELECT count(*) n FROM egg_patrol_notifications').get().n,1);
+  db.sql.close();
+});
+test('a produced patrol egg enters the egg warehouse once without overwriting user state',async()=>{
+  const db=database();await connect(db);tasks(db);
+  const id=JSON.stringify(['uid:293143','home','egg1']);
+  const read=()=>JSON.parse(db.sql.prepare('SELECT state_json FROM egg_matching_groups WHERE group_id=?').get('g').state_json);
+  await patrol(db.env,time,async()=>Response.json(scene(['egg1'])));
+  let state=read();
+  assert.equal(state.eggs.length,1);
+  assert.deepEqual(state.eggs[0],{
+    id,accountId:'b',gameAccountKey:'uid:293143',eggGameId:3062,nature:'',body:'unknown',voice:'unknown',
+    provenance:'self-bred',confidence:'unknown',kind:'ordinary',status:'available',location:'home',listed:false,
+    labelSource:'unknown',lastConfirmedAt:time,
+    parents:{mother:{id:'64299',gameId:3062,name:'',nature:'',body:'',voice:''},
+      fathers:[{id:'64037',gameId:3744,name:'',nature:'',body:'',voice:''}],confirmed:false},
+  });
+  state.eggs[0]={...state.eggs[0],nature:'固执',labelSource:'manual',confidence:'manual',status:'reserved',listed:true};
+  db.sql.prepare('UPDATE egg_matching_groups SET state_json=? WHERE group_id=?').run(JSON.stringify(state),'g');
+  await patrol(db.env,time+1800000,async()=>Response.json(scene(['egg1'])));
+  state=read();
+  assert.equal(state.eggs.length,1);
+  assert.deepEqual(state.eggs[0],{
+    id,accountId:'b',gameAccountKey:'uid:293143',eggGameId:3062,nature:'固执',body:'unknown',voice:'unknown',
+    provenance:'self-bred',confidence:'manual',kind:'ordinary',status:'reserved',location:'home',listed:true,
+    labelSource:'manual',lastConfirmedAt:time+1800000,
+    parents:{mother:{id:'64299',gameId:3062,name:'',nature:'',body:'',voice:''},
+      fathers:[{id:'64037',gameId:3744,name:'',nature:'',body:'',voice:''}],confirmed:false},
+  });
+  db.sql.close();
+});
+test('egg warehouse writes retry after a concurrent user mutation',async()=>{
+  const db=database();await connect(db);tasks(db);
+  const task={groupId:'g',tradeId:'trade',side:'give',uid:'293143',producerAccountId:'b',recipientAccountId:'a',
+    motherId:'mother',fatherId:'father',eggGameId:3062,nature:'固执',body:'',voice:''};
+  const observation={task,actorId:'egg1',status:'produced'};
+  const egg={actorId:'egg1',nestId:'nest',mother:{petId:'mother',nestId:'nest',speciesGameId:3062,natureId:2,voiceDb:100,weightKg:55},
+    fathers:[{petId:'father',nestId:'other',speciesGameId:3744,natureId:2,voiceDb:100,weightKg:30}],biologicalParentageConfirmed:false};
+  const real=db.env.DB;
+  let conflicted=false;
+  db.env.DB={...real,prepare(query){
+    const statement=real.prepare(query);
+    if(!conflicted&&/^UPDATE egg_matching_groups SET state_json=\?,version=version\+1/.test(query)){
+      conflicted=true;
+      return {bind(){return {async run(){
+        const row=db.sql.prepare('SELECT state_json FROM egg_matching_groups WHERE group_id=?').get('g');
+        const state=JSON.parse(row.state_json);
+        state.eggs.push({id:'user-egg',accountId:'b',gameAccountKey:'uid:293143',eggGameId:3062,nature:'',body:'unknown',voice:'unknown',
+          provenance:'unknown',confidence:'unknown',status:'available',listed:false});
+        db.sql.prepare('UPDATE egg_matching_groups SET state_json=?,version=version+1 WHERE group_id=?').run(JSON.stringify(state),'g');
+        return {success:true,meta:{changes:0}};
+      }};}};
+    }
+    return statement;
+  }};
+  const added=await recordProducedPatrolEggs(db.env.DB,'g',[{task,observation,egg}],time);
+  assert.equal(added,1);
+  assert.equal(conflicted,true);
+  const state=JSON.parse(db.sql.prepare('SELECT state_json FROM egg_matching_groups WHERE group_id=?').get('g').state_json);
+  assert.deepEqual(state.eggs.map(value=>value.id).sort(),['user-egg',JSON.stringify(['uid:293143','home','egg1'])].sort());
   db.sql.close();
 });
 test('force tick only works on the test deployment and skips the night window and 30 minute cache',async()=>{
