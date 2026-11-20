@@ -159,6 +159,10 @@ function SuggestionItem({
               : `标记 ${detail} 已换到`
         }
         className="w-full"
+        size="suggest"
+        fitName
+        fitNameBase={9}
+        fitNameMin={8}
         avatar={<PetAvatar gameId={group.gameId} name={group.displayName} size={44} />}
         onClick={() =>
           onOpenGap

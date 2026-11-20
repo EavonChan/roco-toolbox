@@ -52,6 +52,8 @@ describe('SuggestionCard', () => {
     expect(within(displayedItems[0]).getByText(`No.${recommendationSpecies.number}`)).toBeInTheDocument();
     expect(within(displayedItems[0]).getByRole('button')).toHaveAttribute('aria-pressed', 'false');
     expect(within(displayedItems[0]).getByTestId('pet-avatar').className).toContain('h-11');
+    // 名字 9px（以前 6px 太小），长名字再逐档缩到 8px
+    expect(within(displayedItems[0]).getByRole('heading', { level: 3 })).toHaveClass('text-[9px]');
     expect(within(displayedItems[0]).getByTestId('recommend-item-nature')).toHaveClass('items-end');
     expect(screen.getByTestId('recommend-list').className).not.toContain('p-4');
     expect(screen.queryByTestId('recommend-quantity')).toBeNull();

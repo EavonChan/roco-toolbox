@@ -30,15 +30,19 @@ export interface PetCardLayoutProps {
    *   2026-11-19 原型口径：四列不变，头像 44 → 52、名字 6px → 12px）。
    */
   size?: PetCardSize;
-  /** 名字过长时从 12px 逐档缩小到 9px，避免长名字直接截断（母本卡用） */
+  /** 名字过长时从基准字号逐档缩小，避免长名字直接截断（母本卡 / 看板推荐卡用） */
   fitName?: boolean;
+  /** 名字基准字号（默认 12；看板种公推荐卡传 9） */
+  fitNameBase?: number;
+  /** 名字最小字号（默认 9；看板种公推荐卡传 8） */
+  fitNameMin?: number;
   /** 精灵背包传性别：母粉 / 公蓝 / 未知灰，底色与边框都和配窝卡一致 */
   gender?: '公' | '母' | '未知';
   onClick?: () => void;
   ariaPressed?: boolean;
 }
 
-export type PetCardSize = 'default' | 'tall' | 'mother' | 'gap';
+export type PetCardSize = 'default' | 'tall' | 'mother' | 'gap' | 'suggest';
 
 /** Shared card frame for pet displays across the app. */
 export function PetCardLayout({
@@ -62,6 +66,8 @@ export function PetCardLayout({
   academy,
   size = 'default',
   fitName = false,
+  fitNameBase,
+  fitNameMin,
   gender,
   onClick,
   ariaPressed,
@@ -77,6 +83,8 @@ export function PetCardLayout({
   const mother = size === 'mother';
   /** 看板四列缺口卡：52px 头像 + 12px 名字（2026-11-19 原型） */
   const gap = size === 'gap';
+  /** 看板「种公推荐」卡：44px 头像居中、名字 9px（2026-11-19 用户口径） */
+  const suggest = size === 'suggest';
   /** 与配窝卡（NestPlanCard）同一套性别色：母粉、公蓝、未知灰；不传保持母本绿 */
   const genderTone =
     gender === '母'
@@ -99,7 +107,7 @@ export function PetCardLayout({
     const text = nameTextRef.current;
     if (!heading || !text) return;
     const fit = () => {
-      const base = 12;
+      const base = fitNameBase ?? 12;
       text.style.fontSize = `${base}px`;
       // 先放开宽度量出文字自然宽度，再交给 truncate 兜底
       text.style.maxWidth = 'none';
@@ -111,7 +119,10 @@ export function PetCardLayout({
       text.style.maxWidth = '';
       const available = heading.clientWidth;
       if (width > 0 && available > 0 && width > available) {
-        const scaled = Math.max(9, Math.floor(((base * available) / width) * 2) / 2);
+        const scaled = Math.max(
+          fitNameMin ?? 9,
+          Math.floor(((base * available) / width) * 2) / 2,
+        );
         text.style.fontSize = `${scaled}px`;
       }
     };
@@ -207,9 +218,11 @@ export function PetCardLayout({
             ? 'top-[72px] h-[14px] text-[12px] leading-[14px]'
             : gap
               ? 'top-[64px] h-4 text-[12px] leading-4'
-              : tall
-                ? 'top-[62px] h-2.5 text-[8px] leading-[10px]'
-                : 'top-[70px] h-2 text-[6px] leading-2'
+              : suggest
+                ? 'top-[72px] h-[12px] text-[9px] leading-3'
+                : tall
+                  ? 'top-[62px] h-2.5 text-[8px] leading-[10px]'
+                  : 'top-[70px] h-2 text-[6px] leading-2'
         }`}
         title={title ?? name}
       >

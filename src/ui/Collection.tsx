@@ -12,7 +12,6 @@ import { AccountFilterBar } from './AccountFilterBar';
 import { useOwnedPets } from './useOwnedPets';
 import {
   clearInventoryFilters,
-  setMyPetsHeightRange,
   setMyPetsSelected,
 } from './myPetsFilterStore';
 import { setPersonalQuery } from './listViewStore';
@@ -57,7 +56,7 @@ function MothersBranch({
   const { excluded } = useAccountFilter();
   const accountNames = accounts.filter((name) => !excluded.has(name));
   /** 悬浮窗与看板共用同一份母本建议（2026-11-19） */
-  const { suggestions, targetLabel, bodyMedal, voiceDb, weightPercent } =
+  const { suggestions, targetLabel, bodyMedal, voiceTarget, voiceDb, weightPercent } =
     useMotherSuggestions(summary);
 
   return (
@@ -71,13 +70,12 @@ function MothersBranch({
         status={status}
         motherSuggestions={suggestions}
         accountNames={accountNames}
-        gapTarget={{ label: targetLabel, bodyMedal, voiceDb, weightPercent }}
+        gapTarget={{ label: targetLabel, bodyMedal, voiceTarget, voiceDb, weightPercent }}
         onSeekHelp={() => onNavigate({ type: 'open-groups', groupType: 'mother' })}
         onOpenInventory={(jump) => {
-          // 「查看」= 去精灵背包按这条进化链搜，并带上奖牌 / 身高 / 性格条件
+          // 点已收集卡 = 去精灵背包按这条进化链搜，带上奖牌 / 身高 / 性格条件
           clearInventoryFilters();
           setMyPetsSelected(new Set(jump.tags));
-          if (jump.heightRange) setMyPetsHeightRange(jump.heightRange);
           setPersonalQuery('inventory-all', jump.name);
           onNavigate({ type: 'open-collection', location: { kind: 'inventory' } });
         }}
