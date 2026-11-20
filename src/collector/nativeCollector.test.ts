@@ -42,6 +42,22 @@ describe('内置采集桥', () => {
     window.RocoCapture.getState = () => JSON.stringify({ ...state, files: [{ id: '../secret' }] });
     await expect(readCollectorState()).rejects.toThrow('状态');
   });
+  test('桌面采集到达 128MiB 上限时带 capped 标记，不把整份状态判无效', async () => {
+    const capped = {
+      ...state,
+      phase: 'capturing',
+      progressVersion: 1,
+      fileId: 'capture-1.pcap',
+      savedBytes: 128 * 1024 * 1024 + 1,
+      capped: true,
+    };
+    window.RocoCapture = { getState: () => JSON.stringify(capped) };
+    await expect(readCollectorState()).resolves.toEqual(capped);
+    // 没有 capped 标记的越界状态仍然必须拒绝（避免把损坏数据当成正常上限）
+    const { capped: _ignored, ...missing } = capped;
+    window.RocoCapture.getState = () => JSON.stringify(missing);
+    await expect(readCollectorState()).rejects.toThrow('状态');
+  });
   test('动作明确调用原生入口并传递文件 ID；错误可见', async () => {
     const importCapture = vi.fn(() => '');
     window.RocoCapture = { getState: () => JSON.stringify(state), importCapture };
@@ -60,6 +76,16 @@ describe('内置采集桥', () => {
       window.RocoCapture.inspectCapture = () => JSON.stringify(bad);
       await expect(readCaptureSnapshot()).rejects.toThrow('快照');
     }
+  });
+  test('采满 128MiB 时快照给出上限提示而不是「快照无效」', async () => {
+    const snapshot = { id: 'capture-123.pcap', size: 128 * 1024 * 1024 + 1,
+      url: 'https://roco-share.invalid/collector/12345678-1234-1234-1234-123456789abc' };
+    window.RocoCapture = { getState: () => JSON.stringify(state), inspectCapture: () => JSON.stringify(snapshot) };
+    await expect(readCaptureSnapshot()).rejects.toThrow('已达 128MiB 上限');
+    // 上限内的正常快照不受影响
+    const withinLimit = { ...snapshot, size: 128 * 1024 * 1024 };
+    window.RocoCapture = { getState: () => JSON.stringify(state), inspectCapture: () => JSON.stringify(withinLimit) };
+    await expect(readCaptureSnapshot()).resolves.toEqual(withinLimit);
   });
   test('稀有提醒：旧壳静默跳过，新壳裁剪长度并回传原生错误', async () => {
     window.RocoCapture = { getState: () => JSON.stringify(state) };

@@ -58,6 +58,26 @@ describe('服务器地址（内测）', () => {
     window.RocoServer = makeBridge();
     render(<ServerAddressPanel onClose={vi.fn()} />);
     expect(screen.getByTestId('server-address-current')).toHaveTextContent('当前：测试服（默认）');
+    expect(screen.getByTestId('server-address-identity-note')).toHaveTextContent(
+      '换站等于换身份',
+    );
+  });
+
+  test('公开包默认站是正式站时标「正式服（默认）」，不再错写测试服', () => {
+    window.RocoServer = makeBridge({
+      read: () =>
+        JSON.stringify({
+          current: PROD_URL,
+          defaultUrl: PROD_URL,
+          productionUrl: PROD_URL,
+        }),
+    });
+    render(<ServerAddressPanel onClose={vi.fn()} />);
+
+    const current = screen.getByTestId('server-address-current');
+    expect(current).toHaveTextContent('当前：正式服（默认）');
+    expect(current).toHaveTextContent('默认：正式服');
+    expect(current).not.toHaveTextContent('测试服（默认）');
   });
 
   test('http 地址直接拒绝，不调用壳去探活', () => {

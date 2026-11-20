@@ -49,7 +49,7 @@ async function currentNotification(db: D1Database, row: NotificationRow, tasks: 
     task.bindingVersion === row.binding_version && patrolTaskKey(task) === payload.taskKey);
 }
 
-export async function handleEggBotBridge(request: Request, env: Env, now = Date.now()): Promise<Response> {
+export async function handleEggBotBridge(request: Request, env: Env, now = Date.now(), fetcher: typeof fetch = fetch): Promise<Response> {
   const secret = env.EGG_BOT_BRIDGE_TOKEN;
   const provided = request.headers.get('Authorization') ?? '';
   if (!secret || secret.length < 24 || await sha256Hex(provided) !== await sha256Hex(`Bearer ${secret}`)) return invalid(401, '机器人凭据无效');
@@ -57,7 +57,12 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
   const action = new URL(request.url).pathname.split('/').at(-1);
   const input = await body(request);
   if (!input) return invalid(400, '参数无效');
-  if (action === 'tick') return json({ ok: true, ...await runEggPatrol(env, now) }, 200, null);
+  if (action === 'tick') {
+    const force = input.force === true || input.force === '1';
+    // 强刷只在内测部署生效（正式部署 CF_PAGES_BRANCH=main）
+    if (force && env.CF_PAGES_BRANCH !== 'test') return invalid(403, '强制巡查仅内测可用');
+    return json({ ok: true, ...await runEggPatrol(env, now, fetcher, force) }, 200, null);
+  }
   if (action === 'redeem') {
     if (typeof input.code !== 'string' || input.code.length > 64 || !validId(input.qqGroupId) || !validId(input.botId) || !validId(input.operatorQq)) return invalid(400, '接入参数无效');
     const codeHash = await sha256Hex(input.code.replace(/[-\s]/g, '').toUpperCase());
@@ -84,11 +89,12 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
   }
   if (action === 'claim') {
     if (!validId(input.botId) || !validId(input.qqGroupId)) return invalid(400, '参数无效');
-    const tasks = await activePatrolTasks(env.DB);
     const rows = await env.DB.prepare(`SELECT n.* FROM egg_patrol_notifications n JOIN egg_bot_bindings b
       ON b.group_id=n.group_id AND b.binding_version=n.binding_version AND b.enabled=1
       WHERE b.bot_id=? AND b.qq_group_id=? AND n.status IN ('pending','leased') AND n.next_at<=? AND n.lease_until<=? ORDER BY n.created_at LIMIT 20`)
       .bind(input.botId, input.qqGroupId, now, now).all<NotificationRow>();
+    // 只读这批通知所属的小组，不扫全站任务
+    const tasks = rows.results.length ? await activePatrolTasks(env.DB, rows.results.map(row => row.group_id)) : [];
     const events: Row[] = [];
     for (const row of rows.results) {
       if (typeof input.groupId === 'string' && row.group_id !== input.groupId) continue;
@@ -108,7 +114,7 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
       ON b.group_id=n.group_id AND b.binding_version=n.binding_version AND b.enabled=1
       WHERE n.id=? AND n.lease_token=? AND n.status='leased' AND n.lease_until>? AND b.bot_id=? AND b.qq_group_id=?`)
       .bind(input.id, input.leaseToken, now, input.botId, input.qqGroupId).first<NotificationRow>();
-    const tasks = row ? await activePatrolTasks(env.DB) : [];
+    const tasks = row ? await activePatrolTasks(env.DB, [row.group_id]) : [];
     const valid = !!row && await currentNotification(env.DB, row, tasks);
     return json({ ok: true, valid }, 200, null);
   }
@@ -117,7 +123,7 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
     const row = await env.DB.prepare('SELECT * FROM egg_patrol_notifications WHERE id=? AND lease_token=?').bind(input.id, input.leaseToken).first<NotificationRow>();
     if (!row) return invalid(409, '提醒租约已失效');
     if (row.status === 'sent') return json({ ok: true }, 200, null);
-    const tasks = await activePatrolTasks(env.DB);
+    const tasks = await activePatrolTasks(env.DB, [row.group_id]);
     if (!(await currentNotification(env.DB, row, tasks))) return invalid(409, '任务或群关联已变化');
     const sent = input.outcome === 'sent';
     if (row.side === 'reminder') {

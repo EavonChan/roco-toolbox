@@ -5,6 +5,8 @@ export interface Env {
   STATS_TOKEN: string;
   EGG_BOT_BRIDGE_TOKEN?: string;
   ROCOM_PATROL_API_KEY?: string;
+  /** Cloudflare Pages 注入：当前部署所属分支（test / main），用于区分内测与正式 */
+  CF_PAGES_BRANCH?: string;
 }
 
 /** 允许跨域的前端来源；预检与实际请求都走这里 */
@@ -78,6 +80,68 @@ export function newRecoveryCode(): string {
 export function normalizeRecoveryCode(input: string): string {
   return input.toUpperCase().replace(/[^0-9A-Z]/g, '');
 }
+
+/**
+ * 密码哈希（2026-11-18）：PBKDF2-SHA256 + 16 字节随机盐。
+ * 存储格式：`pbkdf2$<迭代次数>$<盐hex>$<哈希hex>`，改算法时按前缀区分。
+ */
+const PASSWORD_ITERATIONS = 100_000;
+const LEGACY_PASSWORD_ITERATIONS = 10_000;
+const PASSWORD_HASH_PATTERN = /^pbkdf2\$(10000|100000)\$([a-f0-9]{32})\$([a-f0-9]{64})$/;
+
+function toHex(bytes: Uint8Array): string {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function fromHex(hex: string): Uint8Array {
+  const bytes = new Uint8Array(Math.floor(hex.length / 2));
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+async function derivePasswordBits(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, [
+    'deriveBits',
+  ]);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
+  return new Uint8Array(bits);
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derivePasswordBits(password, salt, PASSWORD_ITERATIONS);
+  return `pbkdf2$${PASSWORD_ITERATIONS}$${toHex(salt)}$${toHex(hash)}`;
+}
+
+export function needsPasswordUpgrade(stored: string): boolean {
+  return Number(PASSWORD_HASH_PATTERN.exec(stored)?.[1]) === LEGACY_PASSWORD_ITERATIONS;
+}
+
+export async function verifyPassword(password: string, stored: string | null): Promise<boolean> {
+  const match = stored && PASSWORD_HASH_PATTERN.exec(stored);
+  if (!match || !isValidPassword(password)) return false;
+  const [, iterations, saltHex, hashHex] = match;
+  const hash = await derivePasswordBits(password, fromHex(saltHex), Number(iterations));
+  return timingSafeEqual(toHex(hash), hashHex);
+}
+
+/** 用户名：3-16 位字母 / 数字 / 下划线 / 中文 */
+export function isValidUsername(username: string): boolean {
+  return /^[A-Za-z0-9_\u4e00-\u9fa5]{3,16}$/.test(username);
+}
+
+/** 用户名唯一性按小写比较（中文不受影响） */
+export function normalizeUsername(username: string): string {
+  return username.trim().toLowerCase();
+}
+
+/** 密码：8-32 位，不做复杂度强制 */
+export function isValidPassword(password: string): boolean {
+  return password.length >= 8 && password.length <= 32;
+}
+
 
 /** 令牌最后使用时间最多 5 分钟写一次：每条请求都写会把每次读都变成一次 D1 写往返。 */
 const TOKEN_TOUCH_INTERVAL_MS = 5 * 60_000;

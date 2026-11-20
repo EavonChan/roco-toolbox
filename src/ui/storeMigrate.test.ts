@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { renderHook } from '@testing-library/react';
 import { DEFAULT_MOTHER_CRITERIA } from '../domain/motherCriteria';
 import { ALL_EGG_GROUP_IDS, DEFAULT_GRADES } from '../domain/coverageTargets';
 
@@ -38,6 +39,17 @@ describe('store migrate', () => {
     expect(store.getMotherCriteria()).toEqual({ voices: ['+100'], bodies: ['大块头'] });
   });
 
+  test('个人母本旧多档仅保留第一个合法组合，空组合仍为空', async () => {
+    localStorage.setItem('roco.motherCriteria', JSON.stringify({ grades: ['旧档', '小婉', '大粗'] }));
+    const store = await import('./motherCriteriaStore');
+    expect(store.getMotherCriteria().grades).toEqual(['小婉', '大粗']);
+    const view = renderHook(() => store.useMotherCriteria());
+    expect(view.result.current.grades).toEqual(['小婉']);
+    view.unmount();
+    store.setMotherCriteria({ ...store.getMotherCriteria(), grades: [] });
+    expect(store.getMotherCriteria().grades).toEqual([]);
+  });
+
   test('覆盖筛选：脏值逐字段回默认，不会让渲染期抛错', async () => {
     localStorage.setItem(
       'roco.coverageFilter',
@@ -48,7 +60,20 @@ describe('store migrate', () => {
     expect(filter.grades).toEqual(DEFAULT_GRADES);
     expect(filter.groupIds).toEqual(ALL_EGG_GROUP_IDS);
     expect(filter.customNatures).toEqual(['急躁']);
-    expect(filter.natureMode).toBe('recommended');
+    // 2026-11-19：无法识别的值回落到新的默认模式「八大性格」
+    expect(filter.natureMode).toBe('eight');
+  });
+
+  test('覆盖筛选：旧的「推荐性格」是上一版默认值，迁到八大', async () => {
+    localStorage.setItem('roco.coverageFilter', JSON.stringify({ natureMode: 'recommended' }));
+    const store = await import('./coverageFilterStore');
+    expect(store.getCoverageFilter().natureMode).toBe('eight');
+  });
+
+  test('覆盖筛选：显式选的「自选性格」保留', async () => {
+    localStorage.setItem('roco.coverageFilter', JSON.stringify({ natureMode: 'custom' }));
+    const store = await import('./coverageFilterStore');
+    expect(store.getCoverageFilter().natureMode).toBe('custom');
   });
 
   test('覆盖筛选：用户主动清空的蛋组与档位保留（不是「缺字段」）', async () => {

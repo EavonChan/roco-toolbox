@@ -147,7 +147,11 @@ for (const table of NEW_TABLES) {
 }
 
 /* ---------- 2. 旧 schema（去掉新表）+ 增量迁移 ---------- */
-let legacySql = schemaSql;
+const patrolStart = schemaSql.indexOf('-- Additive patrol state; historical exchange and legacy records are untouched.');
+const patrolLastStatement = 'CREATE INDEX IF NOT EXISTS egg_patrol_notification_due ON egg_patrol_notifications(status,next_at,lease_until);';
+const patrolEnd = schemaSql.indexOf(patrolLastStatement);
+assert.ok(patrolStart >= 0 && patrolEnd > patrolStart, 'schema.sql 里缺少巡查区块边界');
+let legacySql = `${schemaSql.slice(0, patrolStart)}${schemaSql.slice(patrolEnd + patrolLastStatement.length)}`;
 for (const item of MIGRATIONS) {
   if (!item.start || !item.end) continue;
   const start = legacySql.indexOf(item.start);
