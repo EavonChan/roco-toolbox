@@ -78,7 +78,7 @@ export function MotherCriteriaMedals({ testIdPrefix }: MotherCriteriaMedalsProps
 }
 
 /** 当前选中的档位：永远只返回一个（强制单选），旧数据里的多选值只取第一个。 */
-function selectedGradesFor(criteria: MotherCriteria, mode: TargetMode): PetGrade[] {
+export function selectedGradesFor(criteria: MotherCriteria, mode: TargetMode): PetGrade[] {
   if (criteria.grades !== undefined) {
     return [criteria.grades[0] ?? DEFAULT_GRADE];
   }

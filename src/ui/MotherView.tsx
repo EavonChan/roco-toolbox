@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { boxLabel } from '../domain/coverageDetail';
-import type { MotherGroup, TargetMode } from '../domain/petFilters';
+import { GRADE_BODY, GRADE_VOICE, type MotherGroup, type TargetMode } from '../domain/petFilters';
 import type { OwnedPet } from '../domain/types';
 import { species as catalogSpecies } from '../data/catalog';
 import {
@@ -17,20 +16,33 @@ import { SearchField } from './primitives/SearchField';
 import { InlineMultiSelect } from './primitives/InlineMultiSelect';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { setPersonalQuery, usePersonalList } from './listViewStore';
-import { GenderMark } from './GenderMark';
 import {
   getMotherCriteria,
   setMotherCriteria,
   useMotherCriteria,
 } from './motherCriteriaStore';
-import { removeManyFromMotherPlan, toggleMotherPlan, useMotherPlan } from './motherPlanStore';
+import {
+  mergeMotherPlan,
+  removeManyFromMotherPlan,
+  toggleMotherPlan,
+  useMotherPlan,
+} from './motherPlanStore';
 import { createNaturesResolver, eggNatures } from '../domain/recommendedNatures';
 import { useNatureOverrides } from './natureOverrideStore';
 import { RecommendedNatureEditor } from './RecommendedNatureEditor';
-import { MotherCriteriaMedals } from './MotherCriteriaMedals';
+import { MotherCriteriaMedals, selectedGradesFor } from './MotherCriteriaMedals';
+import { findMotherGapFill, type GapFill } from '../domain/gapFill';
+import type { MotherNestAccount } from '../domain/motherNest';
+import { GapFillDialog, type GapTargetView } from './GapFillDialog';
 
 /** 每节的分页大小：母本视角的每一节动辄上百条，必须分页 */
 const PAGE_SIZE = 20;
+
+/** 点「查看」带到精灵背包的筛选：进化链名 + 标签 + 身高范围（大块头强制满身高） */
+export interface MotherInventoryJump {
+  name: string;
+  tags: string[];
+}
 
 export interface MotherViewProps {
   owned: OwnedPet[];
@@ -41,6 +53,21 @@ export interface MotherViewProps {
   mode: TargetMode;
   /** 从收集页直达的状态（未收集 / 已收集）；计划分区独立展示 */
   status?: 'missing' | 'collected' | 'plan';
+  /** 点卡片底部「查看」：带到精灵背包的筛选条件 */
+  onOpenInventory?: (jump: MotherInventoryJump) => void;
+  /** 母本配窝建议（与看板同一份口径）：未收集卡点开悬浮窗时找「本号直配 / 跨号传蛋」 */
+  motherSuggestions?: ReadonlyMap<string, MotherNestAccount>;
+  /** 当前选中的号（悬浮窗按号的顺序找线） */
+  accountNames?: readonly string[];
+  /** 悬浮窗目标卡：目标说明与奖牌图标 */
+  gapTarget?: {
+    label: string;
+    bodyMedal: string | null;
+    voiceDb: number | null;
+    weightPercent: number | null;
+  };
+  /** 悬浮窗里的「去求蛋」：打开小组求助 */
+  onSeekHelp?: () => void;
 }
 
 interface SectionProps {
@@ -209,7 +236,16 @@ export function MotherView({
   motherGroups,
   mode,
   status,
+  onOpenInventory,
+  motherSuggestions,
+  accountNames = [],
+  gapTarget,
+  onSeekHelp,
 }: MotherViewProps) {
+  /** 「未收集母本怎么补」悬浮窗（2026-11-19 用户口径）：与看板共用同一块内容 */
+  const [gapDialog, setGapDialog] = useState<{ chainKey: string; target: GapTargetView; fill: GapFill } | null>(
+    null,
+  );
   const plan = useMotherPlan();
   const criteria = useMotherCriteria();
   const natureOverrides = useNatureOverrides();
@@ -262,6 +298,25 @@ export function MotherView({
     isQualifiedMotherBy(pet, effectiveCriteria, naturesOf);
   const isChainCollected = (group: MotherGroup): boolean =>
     chainCollectedBy(group, owned, effectiveCriteria, naturesOf);
+
+  /**
+   * 「查看」带到精灵背包的公共条件：按钮上显示的那一档奖牌（强制单选）。
+   * 大块头 / 小不点同时强制满身高 / 零身高，跟母本判定口径一致。
+   */
+  const jumpBase = useMemo(() => {
+    const grade = selectedGradesFor(criteria, mode)[0] ?? '大婉';
+    const body = GRADE_BODY[grade];
+    const voice =
+      mode === 'medal' ? GRADE_VOICE[grade] : GRADE_VOICE[grade] === '婉转声' ? '+100' : '-100';
+    return {
+      tags: [
+        'gender:母',
+        `body:${body}`,
+        `body:${body === '大块头' ? '满身高' : '零身高'}`,
+        `voice:${voice}`,
+      ],
+    };
+  }, [criteria, mode]);
 
   /** 搜索（进化链全员命中）+ 蛋组筛选：同时作用于已收集 / 计划 / 待补齐 */
   const keyword = query.trim().toLowerCase();
@@ -374,6 +429,29 @@ export function MotherView({
         </button>
       </li>
     );
+  };
+
+  /** 打开「未收集母本怎么补」悬浮窗：目标卡用当前目标奖牌，路线按本号优先找 */
+  const openGapFor = (group: MotherGroup) => {
+    if (!gapTarget) return;
+    const name = group.formLabel || '未知精灵';
+    setGapDialog({
+      chainKey: group.chainKey,
+      target: {
+        kind: 'mother',
+        name,
+        number: group.number,
+        gameId: group.eggGameId,
+        natures: eggNatures(catalogSpecies, group.eggGameId, natureOverrides),
+        eggGroupLabels: group.eggGroups.map((groupId) => eggGroupNames[groupId] ?? `蛋组${groupId}`),
+        tag: '未收集',
+        targetLabel: gapTarget.label,
+        bodyMedal: gapTarget.bodyMedal,
+        voiceDb: gapTarget.voiceDb,
+        weightPercent: gapTarget.weightPercent,
+      },
+      fill: findMotherGapFill(group.eggGameId, motherSuggestions ?? new Map(), accountNames),
+    });
   };
 
   return (
@@ -507,6 +585,9 @@ export function MotherView({
                     )}
                     planned={plannedSet.has(group.chainKey)}
                     onTogglePlan={() => toggleMotherPlan(group.chainKey)}
+                    jumpBase={jumpBase}
+                    onOpenInventory={onOpenInventory}
+                    onOpenGap={gapTarget ? () => openGapFor(group) : undefined}
                   />
                 ))}
               </ul>
@@ -515,13 +596,30 @@ export function MotherView({
         )}
       </section>
 
+      <GapFillDialog
+        target={gapDialog?.target ?? null}
+        fill={gapDialog?.fill ?? null}
+        eyebrow="母本缺口 · 怎么补"
+        targetReady={gapTarget != null && gapTarget.label !== '目标未选'}
+        onClose={() => setGapDialog(null)}
+        onSeekHelp={() => {
+          // 去求蛋 = 跳小组页，悬浮窗顺手关掉，回来不会挡着列表
+          setGapDialog(null);
+          onSeekHelp?.();
+        }}
+        onAddToPlan={() => {
+          if (gapDialog) mergeMotherPlan([gapDialog.chainKey]);
+          setGapDialog(null);
+        }}
+      />
+
       <RecommendedNatureEditor open={natureEditorOpen} onClose={() => setNatureEditorOpen(false)} />
     </div>
   );
 }
 
 /**
- * 母本清单卡片（四列）；已收集卡片可展开实际母本，未收集卡片可加入计划。
+ * 母本清单卡片（四列）：已收集点「查看」跳精灵背包，未收集可加入计划。
  */
 function MotherEggRow({
   eggName,
@@ -532,6 +630,9 @@ function MotherEggRow({
   eggGroupLabels,
   planned,
   onTogglePlan,
+  jumpBase,
+  onOpenInventory,
+  onOpenGap,
 }: {
   eggName: string;
   eggGameId: number;
@@ -541,10 +642,17 @@ function MotherEggRow({
   eggGroupLabels: string[];
   planned: boolean;
   onTogglePlan: () => void;
+  jumpBase: { tags: string[] };
+  onOpenInventory?: (jump: MotherInventoryJump) => void;
+  /** 未收集的卡点开「怎么补」悬浮窗 */
+  onOpenGap?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const collected = mothers.length > 0;
-  const recommended = new Set(recommendedNatures);
+  const collectedNatures = new Set(mothers.map((mother) => mother.nature));
+  // 只带卡片上显示为绿色的推荐性格：点「查看」就是看这几只已经达标母本的性格
+  const natureTags = recommendedNatures
+    .filter((nature) => collectedNatures.has(nature))
+    .map((nature) => `nature:${nature}`);
 
   return (
     <li data-testid="mother-chain-row" className="min-w-0">
@@ -553,29 +661,38 @@ function MotherEggRow({
         number={number}
         eggGroups={eggGroupLabels}
         natures={recommendedNatures}
-        avatar={<PetAvatar gameId={eggGameId} name={eggName} size={44} />}
+        natureCollected={(nature) => collectedNatures.has(nature)}
+        size="mother"
+        fitName
+        avatar={<PetAvatar gameId={eggGameId} name={eggName} size={62} />}
         eggGroupsTestId="mother-card-egg-groups"
         naturesTestId="mother-card-natures"
-        title={eggName}
+        title={collected || !onOpenGap ? eggName : `${eggName} · 点卡片看怎么补`}
+        onClick={collected ? undefined : onOpenGap}
         footer={
           collected ? (
             <button
               type="button"
-              aria-expanded={open}
-              onClick={() => setOpen((prev) => !prev)}
-              data-testid="mother-chain-expand"
-              className="min-h-3 w-full truncate rounded-full bg-emerald-100 px-1 text-[7px] font-medium leading-3 text-emerald-700"
+              onClick={() =>
+                onOpenInventory?.({
+                  name: eggName,
+                  tags: [...jumpBase.tags, ...natureTags],
+                })
+              }
+              data-testid="mother-chain-open"
+              className="min-h-3 w-full truncate rounded-full bg-emerald-100 px-1 text-[8px] font-medium leading-3 text-emerald-700"
             >
-              <span data-testid="mother-chain-detail">查看 {mothers.length} 只</span>
-              <span className="ml-1" aria-hidden>
-                {open ? '▲' : '▼'}
-              </span>
+              查看
             </button>
           ) : (
             <button
               type="button"
-              onClick={onTogglePlan}
-              className={`min-h-3 w-full rounded-full border px-1 text-[7px] leading-3 ${
+              onClick={(event) => {
+                // 卡片本身是「怎么补」入口，点底部的计划按钮不要顺手把悬浮窗也打开
+                event.stopPropagation();
+                onTogglePlan();
+              }}
+              className={`min-h-3 w-full rounded-full border px-1 text-[8px] leading-3 ${
                 planned
                   ? 'border-emerald-500 bg-emerald-100 text-emerald-700'
                   : 'border-emerald-200 bg-white text-slate-500'
@@ -588,38 +705,6 @@ function MotherEggRow({
           )
         }
       />
-
-      {collected && open ? (
-        <ul className="space-y-1 border-t border-slate-100 bg-slate-50/60 px-3 py-1.5" data-testid="mother-chain-mothers">
-          {mothers.map((mother, index) => (
-            <li
-              key={`${mother.account}-${mother.captureId ?? mother.gameId}-${index}`}
-              className="text-[11px]"
-              data-testid="mother-chain-mother"
-            >
-              <div className="flex items-center gap-1">
-                <PetAvatar gameId={mother.gameId} name={mother.name} size={20} />
-                <span className="font-medium text-slate-700">{mother.name}</span>
-                <GenderMark gender={mother.gender} />
-                <span
-                  className={
-                    recommended.has(mother.nature)
-                      ? 'font-medium text-emerald-600'
-                      : 'text-slate-400'
-                  }
-                >
-                  {mother.nature}
-                </span>
-              </div>
-              <div className="text-slate-400">
-                {mother.voiceDb}dB · 体重{' '}
-                {mother.weightPercent != null ? `${mother.weightPercent.toFixed(2)}%` : '—'} ·{' '}
-                {mother.medalBody || '无体型牌'} · {mother.account} · {boxLabel(mother)}
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </li>
   );
 }
