@@ -359,6 +359,19 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
               ))}
             </ul>
           </section>
+
+          <h2 className="px-1 text-sm font-medium text-slate-500">缺口明细（按蛋组）</h2>
+          <CoverageMatrix
+            stud={stud}
+            eggGroupNames={eggGroupNames}
+            expandedGroupId={expandedGroupId}
+            onToggleGroup={onToggleGroup}
+            details={details}
+            naturePool={targetNaturePool}
+            groupNatures={filter.naturesByGroup}
+            onToggleGroupNature={toggleGroupNature}
+            natureMode={filter.natureMode}
+          />
           </div>
 
           <div className="collection-main space-y-3">
@@ -386,18 +399,6 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
             accountNames={accounts.filter((name) => !excluded.has(name))}
           />
 
-          <h2 className="px-1 text-sm font-medium text-slate-500">缺口明细（按蛋组）</h2>
-          <CoverageMatrix
-            stud={stud}
-            eggGroupNames={eggGroupNames}
-            expandedGroupId={expandedGroupId}
-            onToggleGroup={onToggleGroup}
-            details={details}
-            naturePool={targetNaturePool}
-            groupNatures={filter.naturesByGroup}
-            onToggleGroupNature={toggleGroupNature}
-            natureMode={filter.natureMode}
-          />
           </div>
           </div>
         </>
