@@ -106,19 +106,20 @@ export function Profile({
     prod: { label: '正式', cls: 'border-slate-200 bg-slate-100 text-slate-500' },
     custom: { label: '自定义', cls: 'border-sky-200 bg-sky-50 text-sky-600' },
   }[env];
+  // 环境角标不再单独占右上角（2026-11-21）：跟着版本信息走——有更新入口时在「检查更新」卡里，
+  // 浏览器（没有壳）挂在底部版本号行上，两处只出现一份。
+  const envBadge = (
+    <span
+      data-testid="env-badge"
+      data-env={env}
+      className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${envMeta.cls}`}
+    >
+      {envMeta.label}
+    </span>
+  );
 
   return (
     <main className="mx-auto max-w-md space-y-3 p-4">
-      {/* 环境角标：按当前域名自动判定（测试站 / 正式站 / 自定义），切服重载后自动变化 */}
-      <div className="flex justify-end" data-testid="env-badge-row">
-        <span
-          data-testid="env-badge"
-          data-env={env}
-          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${envMeta.cls}`}
-        >
-          {envMeta.label}
-        </span>
-      </div>
       <SegmentedControl
         label="我的分区"
         value={section}
@@ -233,7 +234,10 @@ export function Profile({
       {updateSupported ? (
         <section className="flex items-center justify-between gap-2 rounded-2xl bg-white p-4 shadow-sm" data-testid="app-update-card">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-800">检查更新</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-semibold text-slate-800">检查更新</p>
+              {envBadge}
+            </div>
             <p className="text-xs text-slate-500">当前版本 {update.current || '—'}</p>
             {update.state === 'available' ? (
               <p className="text-xs text-emerald-700">发现新版本 {update.latest}</p>
@@ -256,13 +260,14 @@ export function Profile({
       ) : null}
 
       {/* 构建时间（原顶栏版本标记）：排障时确认「拿到的是不是最新一版」 */}
-      <p
-        className="pt-1 text-center text-[10px] text-slate-300"
+      <div
+        className="flex flex-col items-center gap-1 pt-1"
         data-testid="app-version"
         onClick={onVersionTap}
       >
-        版本 {__APP_BUILD__}
-      </p>
+        <span className="text-[10px] text-slate-300">版本 {__APP_BUILD__}</span>
+        {updateSupported ? null : envBadge}
+      </div>
 
       {serverPanelOpen ? (
         <ServerAddressPanel onClose={() => setServerPanelOpen(false)} />

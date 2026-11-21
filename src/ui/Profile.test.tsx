@@ -11,6 +11,7 @@ afterEach(() => {
   clearSyncFeedback();
   window.localStorage.clear();
   delete window.RocoServer;
+  delete window.RocoUpdate;
 });
 
 const renderProfile = (section: ProfileSection = 'data') =>
@@ -94,6 +95,23 @@ describe('Profile（我的）', () => {
     );
     fireEvent.click(screen.getByTestId('import-outcome-open-groups'));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-groups' });
+  });
+
+  test('环境角标跟在「检查更新」卡里，不再单独占右上角', () => {
+    window.RocoUpdate = { check: vi.fn(), version: () => '1.3.6' };
+    renderProfile('identity');
+
+    const card = screen.getByTestId('app-update-card');
+    expect(card.contains(screen.getByTestId('env-badge'))).toBe(true);
+    expect(screen.queryByTestId('env-badge-row')).toBeNull();
+  });
+
+  test('没有更新壳（浏览器）时，环境角标挂在版本号行上', () => {
+    renderProfile('identity');
+
+    expect(screen.queryByTestId('app-update-card')).toBeNull();
+    const version = screen.getByTestId('app-version');
+    expect(version.contains(screen.getByTestId('env-badge'))).toBe(true);
   });
 
   test('连点版本号 5 次在测试站 / 正式站之间互切，浏览器里没有反应', () => {
