@@ -223,13 +223,17 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     </div>;
   };
 
-  return <div className="flex min-w-0 flex-col gap-2" data-testid="egg-matching-hub">
+  return <div className="flex min-w-0 flex-col gap-2" data-testid="egg-matching-hub" data-tour="egg-matching-hub">
     {syncError?<div role="alert" className="flex items-center justify-between rounded-lg bg-amber-50 p-2 text-xs text-amber-800"><span>蛋仓同步失败：{syncError}</span><Button size="sm" variant="text" disabled={api.busy} onClick={()=>{attemptedCaptures.current.clear();lineAttempt.current='';setSyncError('');setSyncRetry(n=>n+1);}}>重试同步</Button></div>:null}
     {api.error || error ? <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 p-2 text-xs text-rose-700"><span>{error || api.error}</span><Button variant="text" size="sm" onClick={() => void api.refresh()}>重试</Button></div> : null}
     {notice ? <div role="status" className="text-xs text-emerald-700">{notice}<button type="button" aria-label="关闭提示" onClick={() => setNotice('')} className="ml-2 min-h-7 px-2">×</button></div> : null}
     {page ? <div className="flex items-center gap-2"><Button variant="text" size="sm" onClick={() => setPage(null)}>‹ 返回</Button><h3 className="text-sm font-semibold">{page === 'stock' ? '我的蛋仓' : '我的换蛋'}</h3></div> : <>
-      <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1">{(['mine','square'] as const).map(t => <button key={t} type="button" aria-pressed={tab === t} onClick={() => { setTab(t); setQuery(''); }} className={'min-h-8 rounded-md text-xs ' + (tab === t ? 'bg-white font-semibold text-emerald-700 shadow-sm' : 'text-slate-500')}>{t === 'mine' ? '我的收集' : '组内广场'}</button>)}</div>
-      <div className="grid grid-cols-2 gap-2"><Button variant="secondary" size="sm" onClick={() => setPage('stock')}>蛋仓 <span className="ml-auto text-slate-400">{ownEggs.length}</span></Button><Button variant="secondary" size="sm" onClick={() => setPage('tasks')}>我的换蛋 <span className="ml-auto text-amber-600">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></Button></div>
+      {/* 2026-11-21：蛋仓 / 我的换蛋 挪到「组内广场」右边，和视图切换同一行 */}
+      <div className="flex items-center gap-2">
+        <div className="grid min-w-0 flex-1 grid-cols-2 rounded-lg bg-slate-100 p-1">{(['mine','square'] as const).map(t => <button key={t} type="button" aria-pressed={tab === t} onClick={() => { setTab(t); setQuery(''); }} className={'min-h-8 rounded-md text-xs ' + (tab === t ? 'bg-white font-semibold text-emerald-700 shadow-sm' : 'text-slate-500')}>{t === 'mine' ? '我的收集' : '组内广场'}</button>)}</div>
+        <Button variant="secondary" size="sm" className="shrink-0 px-2" onClick={() => setPage('stock')}>蛋仓 <span className="ml-1 text-slate-400">{ownEggs.length}</span></Button>
+        <Button variant="secondary" size="sm" className="shrink-0 px-2" onClick={() => setPage('tasks')}>我的换蛋 <span className="ml-1 text-amber-600">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></Button>
+      </div>
       <SearchField label="搜索需求" value={query} onValueChange={setQuery} placeholder="搜索精灵名" className="text-left [&_input]:text-left" />
       <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">{tab === 'mine' ? '想收' : '组内需求'}</h3>{tab === 'mine' ? <Button variant="text" size="sm" disabled={!api.data} onClick={() => setEditor('new')}>＋ 添加想收</Button> : <span className="text-[10px] text-slate-400">{visible.length} 项</span>}</div>
       {tab === 'square' ? <div className="flex flex-wrap gap-1"><button type="button" aria-pressed={onlyAffordable} onClick={() => setOnlyAffordable(v => !v)} className={'min-h-7 rounded-md px-2 text-[11px] ' + (onlyAffordable ? 'bg-emerald-50 font-semibold text-emerald-700' : 'text-slate-500')}>只看我能接</button></div> : null}

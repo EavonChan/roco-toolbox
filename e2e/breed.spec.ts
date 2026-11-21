@@ -1,51 +1,62 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-test('配窝：看板直接给出完整摆位与配对，并保留覆盖度 / 种公阵列入口', async ({ page }) => {
+/**
+ * 导入 fixture 并切到看板。
+ *
+ * 2026-10-25 起导入后不再自动跳看板；断言导入真正落盘再点页签，
+ * 否则导入中的导航会被拦住（点了不动）。
+ */
+const openDashboardWith = async (page: Page, fixture: string) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-breed-pair.json');
-  await expect(page.getByText('还没有数据')).toHaveCount(0);
-  // 2026-10-25 起导入后不再自动跳看板，配窝在看板上，自己点过去
+  await page.getByTestId('import-input').setInputFiles(fixture);
   await expect(page.getByTestId('import-outcome')).toContainText('已保存到本机');
   await page.getByRole('button', { name: '看板', exact: true }).click();
+};
 
-  await expect(page.getByRole('heading', { name: '配窝' })).toBeVisible();
-  await expect(page.getByTestId('nest-summary-line')).toContainText('还差');
-  // 说法与覆盖度对齐（2026-10-07）：看板这边也改用「迭代」（覆盖度里叫「可迭代」）
-  await expect(page.getByTestId('nest-summary-line')).toContainText('能自己迭代');
-  // 2026-10-25 用户要求：配窝建议明细直接落在看板
+test('配窝建议：看板直接给出配对，标题不再叫「补全计划」', async ({ page }) => {
+  await openDashboardWith(page, 'src/domain/__fixtures__/backup-breed-pair.json');
+
+  const card = page.getByTestId('nest-summary');
+  await expect(card.getByRole('heading', { name: '配窝建议' })).toBeVisible();
+
+  // 2026-11-20 用户口径：摘要行（还差 N 个种公目标 / 能自己迭代 …）与汇总胶囊整段删除
+  await expect(page.getByTestId('nest-summary-line')).toHaveCount(0);
+  await expect(page.getByTestId('nest-plan-pills')).toHaveCount(0);
+  // 2026-11-19 用户口径：不再画小窝摆位图
+  await expect(page.getByTestId('nest-layout')).toHaveCount(0);
+  // 2026-11-19 用户口径：「看缺口 / 看推荐种公」两个入口也已移除
+  await expect(page.getByTestId('nest-open-coverage')).toHaveCount(0);
+  await expect(page.getByTestId('nest-open-swap')).toHaveCount(0);
+
+  // 配窝明细直接落在看板（2026-10-25 用户要求）：一条配对 = 两张精灵卡
   await expect(page.getByTestId('breed-list')).toBeVisible();
-  await expect(page.getByTestId('nest-layout').first()).toBeVisible();
-  // 2026-11-01 R2-5-M02：两个入口改成各自真实的落点（看缺口 / 看推荐种公），不再同名不同落点
-  await expect(page.getByTestId('nest-open-coverage')).toHaveText(/看缺口/);
-  await expect(page.getByTestId('nest-open-swap')).toHaveText(/看推荐种公/);
-
-  // 入口①：覆盖度页（那里每个目标都带「怎么迭代」的方案）
-  await page.getByTestId('nest-open-coverage').click();
-  await expect(page.getByTestId('coverage-group-row').first()).toBeVisible();
-
-  // 入口②：收集 · 种公阵列（去弄哪颗蛋）
-  await page.getByRole('button', { name: '看板', exact: true }).click();
-  await page.getByTestId('nest-open-swap').click();
-  // 2026-11-01：「换什么」页已删除，入口落到「收集 · 种公阵列」。
-  // 断言页签选中态 + 该页独有标题与阵列，不用「某页可见」这种守护不到落点的写法。
-  await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('heading', { name: '覆盖度' })).toBeVisible();
-  await expect(page.getByTestId('stud-matrix')).toBeVisible();
+  await expect(page.getByTestId('breed-suggestion').first()).toBeVisible();
 });
 
-test('「看缺口」跳过去：自动展开第一个可迭代的蛋组并滚到它，直接看到那对怎么放', async ({ page }) => {
+test('配窝建议跟随「看板行动」开关：种公推荐 ↔ 母本缺口', async ({ page }) => {
+  await openDashboardWith(page, 'src/domain/__fixtures__/backup-breed-pair.json');
+
+  // 默认在「种公推荐」：配窝卡里是种公配对
+  await expect(page.getByTestId('dashboard-action-studs')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('breed-list')).toBeVisible();
+
+  // 切到「母本缺口」：种公配对整段让位给母本配窝（这份数据没有母本建议时给空态，但一定不再画种公配对）
+  await page.getByTestId('dashboard-action-mothers').click();
+  await expect(page.getByTestId('dashboard-action-mothers')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('breed-list')).toHaveCount(0);
+  await expect(page.getByTestId('mother-nest').or(page.getByTestId('breed-empty'))).toBeVisible();
+
+  // 切回「种公推荐」：种公配对回来
+  await page.getByTestId('dashboard-action-studs').click();
+  await expect(page.getByTestId('breed-list')).toBeVisible();
+});
+
+test('没有导入数据时不出现配窝建议卡（不制造空推荐）', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-breed-pair.json');
-  await expect(page.getByTestId('import-outcome')).toContainText('已保存到本机');
   await page.getByRole('button', { name: '看板', exact: true }).click();
-  await expect(page.getByTestId('nest-open-coverage')).toBeVisible();
+  // 看板本身正常渲染（有数据时才会多出配窝建议卡）
+  await expect(page.getByRole('heading', { name: '小布助手' })).toBeVisible();
 
-  await page.getByTestId('nest-open-coverage').click();
-
-  // 落在覆盖度页：可迭代那一组已展开，并且滚进了视野 —— 直接看到「学院小窝 / 配对」两只
-  const academy = page.getByTestId('coverage-cell-academy');
-  await expect(academy).toBeVisible();
-  await expect(academy).toBeInViewport();
-  await expect(academy).toContainText('学院小窝');
-  await expect(academy).toContainText('火花');
+  await expect(page.getByTestId('nest-summary')).toHaveCount(0);
+  await expect(page.getByTestId('breed-empty')).toHaveCount(0);
 });

@@ -5,7 +5,7 @@
  * 这里只放真实页面行为；云同步 409 / 网络失败在既有单测与 mother-groups live 里覆盖。
  */
 
-test('我的：身份 / 游戏数据 / 私有同步三个分区各自可达', async ({ page }) => {
+test('我的：身份 / 游戏数据两个分区各自可达，私有同步在游戏数据里', async ({ page }) => {
   await page.goto('/');
 
   // 首启（空存储）默认落在「游戏数据」
@@ -15,7 +15,8 @@ test('我的：身份 / 游戏数据 / 私有同步三个分区各自可达', as
   await expect(page.getByTestId('profile-identity-intro')).toContainText('我的身份');
   await expect(page.getByTestId('account-register')).toBeVisible();
 
-  await page.getByTestId('profile-section-sync').click();
+  // 2026-11-21：私有同步挪到「游戏数据 · 本机采集」下方，不再单独占一个分区
+  await page.getByTestId('profile-section-data').click();
   await expect(page.getByTestId('profile-sync-intro')).toContainText('不会更新小组资源');
   // 还没有身份：明确告诉用户去哪里，而不是给一个不能点的同步按钮
   await expect(page.getByTestId('account-sync-needs-identity')).toBeVisible();

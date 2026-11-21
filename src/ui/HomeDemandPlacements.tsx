@@ -24,6 +24,7 @@ import {
 } from '../domain/petIcons';
 import { speciesDisplayName } from '../domain/speciesName';
 import { averageVoiceOf, groupName, PairingPetCard, type PairCardPet } from './NestPlanCard';
+import { sortByAccountName } from './accountOrder';
 import { GenderMark } from './GenderMark';
 import {
   placementRowKey,
@@ -78,7 +79,7 @@ const eggNameOf = (eggGameId: number): string => {
   return speciesDisplayName(speciesByGameId.get(eggGameId), '未知的蛋');
 };
 
-/** 需求的目标蛋卡（2026-11-19 用户口径）：复用补全计划那张紧凑卡的结构，只放需求里有的字段。 */
+/** 需求的目标蛋卡（2026-11-19 用户口径）：复用配窝建议那张紧凑卡的结构，只放需求里有的字段。 */
 function DemandEggCard({
   demand,
   demanderLabel,
@@ -180,7 +181,7 @@ function DemandEggCard({
   );
 }
 
-/** 亲本卡：复用补全计划的紧凑精灵卡；接单特有的「进学院小窝 / 已在家园」标记画在外层。 */
+/** 亲本卡：复用配窝建议的紧凑精灵卡；接单特有的「进学院小窝 / 已在家园」标记画在外层。 */
 function ParentCard({
   parent,
   accountLabel,
@@ -371,7 +372,15 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
       placement.father.pet.captureId ?? placement.father.pet,
     ]),
   ).size;
-  const withPlacements = result.accounts.filter((account) => account.placements.length > 0);
+  /** 接单上窝的账号分组也按数字排序（2026-11-20 用户口径）。 */
+  const withPlacements = useMemo(
+    () =>
+      sortByAccountName(
+        result.accounts.filter((account) => account.placements.length > 0),
+        (account) => labelByAccountKey.get(account.accountKey) ?? account.accountKey,
+      ),
+    [result, labelByAccountKey],
+  );
 
   const isInHome = (parent: DemandPlacementParent): boolean => {
     const instanceId = instanceIdOf(parent.pet);
@@ -447,7 +456,7 @@ export function HomeDemandPlacements({ snapshots, labelOf }: HomeDemandPlacement
       !preferred ||
       (active.mother.pet.captureId === preferred.motherCaptureId &&
         active.father.pet.captureId === preferred.fatherCaptureId);
-    // 概率头（2026-11-19 用户口径）：性格概率 × 性别比例，写法对齐补全计划卡头。
+    // 概率头（2026-11-19 用户口径）：性格概率 × 性别比例，写法对齐配窝建议卡头。
     const genderChance =
       placement.demand.gender === '公' || placement.demand.gender === '母'
         ? genderShareOf(speciesByGameId.get(active.mother.pet.gameId), placement.demand.gender)

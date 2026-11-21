@@ -4,6 +4,7 @@ import type { OwnedPet } from '../domain/types';
 import { EmptyState } from './EmptyState';
 import { HomeDemandPlacements } from './HomeDemandPlacements';
 import { HomePairCards } from './HomePairCards';
+import { sortByAccountName } from './accountOrder';
 import { CARD, HINT, PAGE, TITLE } from './primitives/styles';
 import { useSnapshots } from './useSnapshots';
 import { labelerFor } from './useOwnedPets';
@@ -228,14 +229,19 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
   const { snapshots, loaded } = useSnapshots();
   const homeRefresh = useHomeRefresh();
   const labelOf = useMemo(() => labelerFor(snapshots), [snapshots]);
-  const accounts = useMemo(() => snapshots.map(labelOf), [snapshots, labelOf]);
+  /** 账号切换器按数字排序（2026-11-20 用户口径）：默认第一个也是排最前的号。 */
+  const orderedSnapshots = useMemo(
+    () => sortByAccountName(snapshots, (snapshot) => labelOf(snapshot)),
+    [snapshots, labelOf],
+  );
+  const accounts = useMemo(() => orderedSnapshots.map(labelOf), [orderedSnapshots, labelOf]);
   const [view, setView] = useState<HomeView>(() => readHomeView());
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const activeAccount = accounts.includes(selectedAccount ?? '')
     ? selectedAccount
     : accounts[0] ?? null;
-  const activeSnapshot = snapshots.find((snapshot) => labelOf(snapshot) === activeAccount);
+  const activeSnapshot = orderedSnapshots.find((snapshot) => labelOf(snapshot) === activeAccount);
   useEffect(() => {
     if (selectedAccount !== activeAccount) setSelectedAccount(activeAccount);
   }, [activeAccount, selectedAccount]);

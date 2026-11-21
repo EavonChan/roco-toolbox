@@ -89,7 +89,9 @@ async function contextFor(browser: Browser, identity: Identity, groupId: string)
 
 const openSharing = async (page: Page) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '小组', exact: true }).click();
+  // 2026-11-21：小组管理搬到「我的 · 小组」，原来的「小组」页签改名叫「换蛋」只剩广场
+  await page.getByRole('button', { name: '我的', exact: true }).click();
+  await page.getByTestId('profile-section-groups').click();
   await expect(page.getByTestId('collection-groups')).toBeVisible();
 };
 

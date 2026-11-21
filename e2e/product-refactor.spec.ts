@@ -49,7 +49,9 @@ test('看板两类进度一步直达目标，种公求蛋已迁到小组', async
   await expect(page.getByTestId('coverage-filter-card')).toBeVisible();
   await expect(page.getByTestId('coverage-groups-toggle')).toBeVisible();
   await expect(page.getByTestId('stud-tool-eggs')).toHaveCount(0);
-  await page.getByRole('button', { name: '小组', exact: true }).click();
+  // 2026-11-21：小组管理搬到「我的 · 小组」，原来的「小组」页签改名叫「换蛋」只剩广场
+  await page.getByRole('button', { name: '我的', exact: true }).click();
+  await page.getByTestId('profile-section-groups').click();
   // 个人求蛋已删除：未登录取小组页只给登录 / 新建加入，不再有求种公清单
   await expect(page.getByTestId('collection-groups')).toBeVisible();
   await expect(page.getByTestId('personal-eggs')).toHaveCount(0);

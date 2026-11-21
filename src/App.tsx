@@ -19,8 +19,6 @@ import { Dashboard } from './ui/Dashboard';
 import { HomeLand, saveHomeView } from './ui/Home';
 import { Collection } from './ui/Collection';
 import { CollectionGroups } from './ui/CollectionGroups';
-import { Nearby } from './ui/Nearby';
-import { NearbyErrorBoundary } from './ui/NearbyErrorBoundary';
 import { BattleHudOrb } from './ui/BattleHudOrb';
 import { useNearbyOverlayPush } from './nearby/useNearbyOverlayPush';
 import { Profile } from './ui/Profile';
@@ -57,7 +55,10 @@ export default function App() {
     if (getImportOutcome().local === 'importing' && intent.type !== 'consume-focus') return;
     const current = navigationRef.current;
     const next = resolveNavigation(current, intent);
-    if (current.page === 'groups' && next.page !== 'groups' && groupsDraftDirty) {
+    // 小组资源草稿既可能改在「小组」页，也可能改在「我的 · 小组」：两边离开都要拦一下。
+    const inGroupAdmin = (state: AppNavigation): boolean =>
+      state.page === 'groups' || (state.page === 'profile' && state.profileSection === 'groups');
+    if (inGroupAdmin(current) && !inGroupAdmin(next) && groupsDraftDirty) {
       void confirmLeave().then((leave) => {
         if (leave) setNavigation((latest) => resolveNavigation(latest, intent));
       });
@@ -68,7 +69,8 @@ export default function App() {
   const importOutcome = useImportOutcome();
   // 安卓壳悬浮面板推送：应用级，跟随采集状态而不是跟随「附近」页
   useNearbyOverlayPush();
-  const activeTab = navigation.page;
+  // 「附近」不再是独立页签：它挂在「我的 · 游戏数据」下，顶栏高亮算作「我的」。
+  const activeTab = navigation.page === 'nearby' ? 'profile' : navigation.page;
   /** 手动刷新按钮的忙碌态（真正刷新会让页面重载，这里只防连点） */
   const [refreshing, setRefreshing] = useState(false);
   const { snapshots, loaded, refreshError, refreshedAt } = useSnapshots();
@@ -155,7 +157,7 @@ export default function App() {
     // 引导自己会切好几页，别把这几次跳转算成用户行为
     if (tour) return;
     // 兼容桥阶段仍上报旧页签名（任务 9 再换新页面名，避免埋点口径提前断档）
-    track('tab_view', { tab: activeTab });
+    track('tab_view', { tab: navigation.page });
     // 记住停留的页签：关后台后重开不会莫名其妙回到「导入数据」。
     // **不把四个新 page 字符串直接写进旧键**：旧版安装升级 / 降级都要能理解。
     const legacy = legacyLocation(navigation);
@@ -240,25 +242,24 @@ export default function App() {
         <Dashboard onNavigate={navigate} />
       ) : navigation.page === 'home' ? (
         <HomeLand onGoImport={() => navigate({ type: 'open-profile', section: 'data' })} />
-      ) : navigation.page === 'profile' ? (
+      ) : navigation.page === 'profile' || navigation.page === 'nearby' ? (
         <Profile
-          section={navigation.profileSection}
+          section={navigation.page === 'nearby' ? 'data' : navigation.profileSection}
+          dataView={navigation.page === 'nearby' ? 'nearby' : 'import'}
           returnToGroups={navigation.returnToGroups}
           onNavigate={navigate}
           onStartTour={startTour}
+          onDraftDirtyChange={setGroupsDraftDirty}
         />
       ) : navigation.page === 'groups' ? (
         <CollectionGroups
           onDraftDirtyChange={setGroupsDraftDirty}
           focus={{ groupType: navigation.groupType }}
+          onGoProfileGroups={() => navigate({ type: 'open-profile', section: 'groups' })}
           onGoAccount={() =>
             navigate({ type: 'open-profile', section: 'identity', returnToGroups: true })
           }
         />
-      ) : navigation.page === 'nearby' ? (
-        <NearbyErrorBoundary>
-          <Nearby onNavigate={navigate} />
-        </NearbyErrorBoundary>
       ) : (
         <Collection
           location={collection}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { analyticsEnabled, setAnalyticsEnabled, track } from '../api/analytics';
 import { readAccountId } from '../api/session';
 import { syncNow } from '../api/sync';
@@ -47,7 +47,12 @@ import { autoPublishGroups, collectPendingDemandClaims } from './groupAutoPublis
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** 「导入数据」页：抓包导入 / 合并导入 / 导出全部 / 重置，以及导入结果汇报。 */
-export function ImportPanel() {
+export interface ImportPanelProps {
+  /** 匿名统计下方、数据来源前给调用方留的一块（2026-11-21：私有同步卡片）。 */
+  afterAnalytics?: ReactNode;
+}
+
+export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
   const { snapshots, loaded } = useSnapshots();
   // 历史入口常驻：只要有导入历史，卡片就渲染（重启后入口仍在，2026-10-05 用户拍板）
   const importHistory = useLastImportHistory();
@@ -649,6 +654,8 @@ export function ImportPanel() {
           {analyticsOn ? '已开启' : '已关闭'}
         </button>
       </section>
+
+      {afterAnalytics}
 
       <SourceNotice />
     </main>

@@ -40,15 +40,32 @@ export interface CollectionGroupsProps {
   onDraftDirtyChange?: (dirty: boolean) => void;
   /** 从看板 / 收集页直达：进入同类型的小组（个人求蛋已删除，2026-10-30）。 */
   focus?: { groupType?: CollectionGroupType } | null;
+  /**
+   * 2026-11-21：小组页拆成两块——
+   * - `admin`：收集范围 / 小组信息 / 发布 / 成员与邀请 / 新建加入（在「我的 · 小组」）；
+   * - `feed`：我的收集 / 组内广场（留在「换蛋」页签，2026-11-21 由「小组」更名）。
+   */
+  variant?: 'admin' | 'feed';
+  /** 未登录 / 未入组时去「我的 · 小组」 */
+  onGoProfileGroups?: () => void;
+  /** 嵌在「我的」页里：不再自带外边距与最大宽度 */
+  embedded?: boolean;
 }
 
 /**
- * 小组页（二期）：母本组 + 种公组。
+ * 换蛋页（二期；2026-11-21 前叫「小组」页）：母本组 + 种公组。
  *
  * 2026-10-30 用户口径：个人求蛋已删除——不在组里时只留「新建 / 加入小组」。
  * 小组模式要求成员资格；本机数据只在用户手动选号发布时上传。
  */
-export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: CollectionGroupsProps) {
+export function CollectionGroups({
+  onGoAccount,
+  onDraftDirtyChange,
+  focus,
+  variant = 'feed',
+  onGoProfileGroups,
+  embedded = false,
+}: CollectionGroupsProps) {
   const { snapshots } = useSnapshots();
   const summary = useCollectionSummary();
   const personalNatures = useNatureOverrides();
@@ -197,7 +214,11 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
   );
 
   return (
-    <section className="mx-auto max-w-md space-y-2 p-4" data-testid="collection-groups">
+    <section
+      className={embedded ? 'space-y-2' : 'mx-auto max-w-md space-y-2 p-4'}
+      data-testid="collection-groups"
+      data-variant={variant}
+    >
       {hook.error ? (
         <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600" data-testid="group-error">
           {hook.error}
@@ -228,6 +249,7 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
             2026-10-29 用户口径：顶部 4 张卡（收集范围 / 收集小组 + 我的资源 / 成员与邀请 /
             新建加入）合成一张卡；成员与新建加入折叠成一行，点开就地展开。
           */}
+          {variant === 'admin' ? (
           <div className="rounded-2xl bg-white p-3 shadow-sm" data-testid="group-card" data-tour="group-card">
             <GroupSwitcher
               bare
@@ -318,7 +340,19 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
               ) : null}
             </div>
           </div>
+          ) : null}
+          {variant === 'admin' && editing ? (
+            <MotherResourceEditor
+              key={`mother-editor:${hook.currentGroup.group.id}:${hook.accountId}`}
+              hook={hook as never}
+              snapshots={snapshots}
+              species={species}
+              onGoAccount={onGoAccount}
+            />
+          ) : null}
 
+          {variant === 'feed' ? (
+          <>
           {/* 需求接口失败时不能静默当成「没有需求」：给出错误与重试（2026-10-29 审查 B6-M02）。 */}
           {hook.demandsError ? (
             <p
@@ -381,16 +415,6 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
             </div>
           ) : null}
 
-          {editing ? (
-            <MotherResourceEditor
-              key={`mother-editor:${hook.currentGroup.group.id}:${hook.accountId}`}
-              hook={hook as never}
-              snapshots={snapshots}
-              species={species}
-              onGoAccount={onGoAccount}
-            />
-          ) : null}
-
           <GroupPlanHub
             key={`mother-resources:${hook.currentGroup.group.id}:${hook.accountId}`}
             group={hook.currentGroup}
@@ -422,6 +446,8 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
             onReleaseDemand={hook.releaseDemand}
             onCompleteDemand={hook.completeDemand}
           />
+          </>
+          ) : null}
         </>
       ) : null}
 
@@ -448,38 +474,42 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
         )
       ) : null}
 
-      {hook.accountId ? (
-        inGroup ? null : <div data-tour="group-setup">{setupNode(true)}</div>
-      ) : (
-        <div
-          className="rounded-2xl bg-white p-3 shadow-sm"
-          data-testid="group-login-hint"
-          data-tour="group-setup"
-        >
-          <p className="text-xs text-slate-500">
-            新建 / 加入小组、共享资源与成员管理都要先登录，才能识别「同一个人」。
-          </p>
-          <button
-            type="button"
-            onClick={onGoAccount}
-            data-testid="group-login"
-            className="mt-2 min-h-[36px] w-full rounded-lg bg-emerald-600 text-sm font-medium text-white"
+      {variant === 'admin' ? (
+        hook.accountId ? (
+          inGroup || groupLoading ? null : <div data-tour="group-setup">{setupNode(true)}</div>
+        ) : (
+          <div
+            className="rounded-2xl bg-white p-3 shadow-sm"
+            data-testid="group-login-hint"
+            data-tour="group-setup"
           >
-            去登录 / 开启云同步
-          </button>
-          <input
-            value={pendingCode}
-            onChange={(event) => {
-              const next = event.target.value.toUpperCase();
-              setPendingCode(next);
-              savePendingInviteCode(next);
-            }}
-            placeholder="已有邀请码？先记在这里"
-            maxLength={8}
-            data-testid="group-pending-invite"
-            className="mt-2 min-h-[32px] w-full rounded-lg border border-slate-200 px-2.5 text-sm uppercase tracking-widest text-slate-700"
-          />
-        </div>
+            <p className="text-xs text-slate-500">
+              新建 / 加入小组、共享资源与成员管理都要先登录，才能识别「同一个人」。
+            </p>
+            <button
+              type="button"
+              onClick={onGoAccount}
+              data-testid="group-login"
+              className="mt-2 min-h-[36px] w-full rounded-lg bg-emerald-600 text-sm font-medium text-white"
+            >
+              去登录 / 开启云同步
+            </button>
+            <input
+              value={pendingCode}
+              onChange={(event) => {
+                const next = event.target.value.toUpperCase();
+                setPendingCode(next);
+                savePendingInviteCode(next);
+              }}
+              placeholder="已有邀请码？先记在这里"
+              maxLength={8}
+              data-testid="group-pending-invite"
+              className="mt-2 min-h-[32px] w-full rounded-lg border border-slate-200 px-2.5 text-sm uppercase tracking-widest text-slate-700"
+            />
+          </div>
+        )
+      ) : inGroup || groupLoading ? null : (
+        <GroupFeedHint loggedIn={hook.accountId != null} onGo={() => onGoProfileGroups?.()} />
       )}
       {leaveConfirmation}
     </section>
@@ -618,6 +648,33 @@ function PublicationCard({
           {editing ? '收起选号' : status === '需更新' ? '去发布更新' : status === '已发布' ? '管理选号' : '选号并发布'}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 「小组」页签只剩广场后的空态（2026-11-21）。
+ * 管理入口搬到了「我的 · 小组」，这里只负责把人送过去，不再重复登录表单。
+ */
+function GroupFeedHint({ loggedIn, onGo }: { loggedIn: boolean; onGo: () => void }) {
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-sm" data-testid="group-feed-hint">
+      <p className="text-sm font-medium text-slate-800">
+        {loggedIn ? '还没进小组' : '换蛋要先登录'}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        {loggedIn
+          ? '新建或加入小组后，这里会出现组内广场和我的收集。'
+          : '登录并在小组里，才能看到需求广场和组里的共享资源。'}
+      </p>
+      <button
+        type="button"
+        onClick={onGo}
+        data-testid="group-go-profile"
+        className="mt-2 min-h-[36px] w-full rounded-lg bg-emerald-600 text-sm font-medium text-white"
+      >
+        去「我的 · 小组」
+      </button>
     </div>
   );
 }

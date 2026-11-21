@@ -10,7 +10,12 @@ import {
   type NestPosition,
   type Placement,
 } from './nestGeometry';
-import { cellStateFor, type StudCoverageResult } from './studCoverage';
+import {
+  cellStateFor,
+  isStudCoverageComplete,
+  type CoverageCell,
+  type StudCoverageResult,
+} from './studCoverage';
 import { buildCanBreedMale } from './breedAbility';
 import { canProduceGender, genderFactorOf } from './genderRatio';
 import { boxLabel } from './coverageDetail';
@@ -216,6 +221,9 @@ interface Candidate {
 const cellKey = (natureName: string, grade: PetGrade, groupId: number): string =>
   `${natureName}|${grade}|${groupId}`;
 
+/** 排一个号时用到的格子：只关心蛋组 / 性格 / 档位（供蛋格来自别的号的缺口，不带覆盖状态）。 */
+type PlanCell = Pick<CoverageCell, 'groupId' | 'natureId' | 'natureName' | 'grade'>;
+
 /** 稳的排序：补得多的在前，再按性格名、组号。 */
 const byGroupsThenStable = (a: Candidate, b: Candidate): number =>
   b.groupIds.length - a.groupIds.length ||
@@ -259,8 +267,22 @@ export function buildNestPlans(input: NestPlanInput): NestPlan[] {
     pets.filter((pet) => classifyGrade(pet, mode) !== null).length;
 
   const pendingUnfilled: Array<{ account: string; item: UnfilledItem }> = [];
+  /**
+   * 这个号的种公目标是不是已经全齐（`coverageByAccount` 有这一份、且没有未覆盖的格）。
+   * 全齐的号没有自己的缺口可排，但仍要进配窝建议：拿自己的母 × 公替别的号出蛋（2026-11-20 用户口径）。
+   */
+  const isAccountComplete = (account: string): boolean =>
+    isStudCoverageComplete(input.coverageByAccount?.get(account));
+
+  /**
+   * 处理顺序：有缺口的号先排（它们的 `pendingUnfilled` 才是全齐号能帮的格子），
+   * 全齐号放最后——这样轮到它时，前面所有号的缺口已经收集好了。
+   */
   const accountsByAbility = [...byAccount.entries()].sort(
-    (a, b) => capability(b[1]) - capability(a[1]) || a[0].localeCompare(b[0]),
+    (a, b) =>
+      Number(isAccountComplete(a[0])) - Number(isAccountComplete(b[0])) ||
+      capability(b[1]) - capability(a[1]) ||
+      a[0].localeCompare(b[0]),
   );
   for (const [account, accountOwned] of accountsByAbility) {
     const petIndex = new Map(accountOwned.map((pet, index) => [pet, index]));
@@ -304,7 +326,34 @@ export function buildNestPlans(input: NestPlanInput): NestPlan[] {
      * 显示出来的「还差几个」因此偏小）。
      */
     const accountCoverage = input.coverageByAccount?.get(account) ?? coverage;
-    const cells = accountCoverage.cells.filter((cell) => cell.state !== 'covered');
+    const ownCells: PlanCell[] = accountCoverage.cells.filter((cell) => cell.state !== 'covered');
+    /**
+     * 全齐的号（2026-11-20 用户口径）：自己的缺口是 0，但还有余力替别的号出蛋。
+     * 把前面号没排上的缺口拿来当本轮要补的格子；`no-room` 不要——那种是别的号自己
+     * 11 个窝排不下，不需要本号再占一遍窝。同一格多个号都缺时只算一次，
+     * 「哪个号等这颗蛋」由收尾的 delegated 写回。
+     */
+    const supplyCells: PlanCell[] = [];
+    if (ownCells.length === 0 && isAccountComplete(account)) {
+      const seen = new Set<string>();
+      for (const entry of pendingUnfilled) {
+        if (entry.account === account || entry.item.reason === 'no-room') continue;
+        const key = cellKey(entry.item.natureName, entry.item.grade, entry.item.groupId);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        supplyCells.push({
+          groupId: entry.item.groupId,
+          natureId: 0,
+          natureName: entry.item.natureName,
+          grade: entry.item.grade,
+        });
+      }
+    }
+    const cells: PlanCell[] = ownCells.length > 0 ? ownCells : supplyCells;
+    /** 这些是替别的号补的格：不能记成本号自己的未排上缺口 */
+    const supplyCellKeys = new Set(
+      supplyCells.map((cell) => cellKey(cell.natureName, cell.grade, cell.groupId)),
+    );
 
     // —— 候选配对（用来决定「该放哪些精灵」；最终连线由几何决定）——
     const byPair = new Map<string, Candidate>();
@@ -917,6 +966,8 @@ export function buildNestPlans(input: NestPlanInput): NestPlan[] {
     };
     for (const cell of cells) {
       if (filledFromPairings.has(cellKey(cell.natureName, cell.grade, cell.groupId))) continue;
+      // 替别的号补的格：没排上也不算本号的缺口（本号本来就是全齐的）
+      if (supplyCellKeys.has(cellKey(cell.natureName, cell.grade, cell.groupId))) continue;
       pendingUnfilled.push({
         account,
         item: {

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Profile } from './Profile';
+import type { ProfileSection } from './navigation';
 import { beginImport, resetImportOutcomeForTest, updateImportOutcome } from './importOutcomeStore';
 import { clearSyncFeedback } from './syncNoticeStore';
 
@@ -12,7 +13,7 @@ afterEach(() => {
   delete window.RocoServer;
 });
 
-const renderProfile = (section: 'identity' | 'data' | 'sync' = 'data') =>
+const renderProfile = (section: ProfileSection = 'data') =>
   render(
     <Profile
       section={section}
@@ -22,13 +23,43 @@ const renderProfile = (section: 'identity' | 'data' | 'sync' = 'data') =>
   );
 
 describe('Profile（我的）', () => {
-  test('三个分区可切换，并带上明确的分区意图', () => {
+  test('三个分区（小组/身份/数据）可切换，并带上明确的分区意图', () => {
     const onNavigate = vi.fn();
     render(
       <Profile section="data" returnToGroups={false} onNavigate={onNavigate} />,
     );
+    expect(screen.getByTestId('profile-section-groups')).toHaveTextContent('小组');
     fireEvent.click(screen.getByTestId('profile-section-identity'));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'identity' });
+    fireEvent.click(screen.getByTestId('profile-section-groups'));
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'groups' });
+  });
+
+  test('小组分区：未登录时给登录入口，身份面板保持隐藏', () => {
+    renderProfile('groups');
+    expect(screen.getByTestId('collection-groups')).toHaveAttribute('data-variant', 'admin');
+    expect(screen.getByTestId('group-login-hint')).toBeTruthy();
+    expect(screen.queryByTestId('account-panel')).toBeNull();
+  });
+
+  test('游戏数据里的「附近」子视图：切换发导航意图，打开时渲染附近页', () => {
+    const onNavigate = vi.fn();
+    const { rerender } = render(
+      <Profile section="data" returnToGroups={false} onNavigate={onNavigate} />,
+    );
+    fireEvent.click(screen.getByTestId('data-view-nearby'));
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'tab', page: 'nearby' });
+
+    rerender(
+      <Profile
+        section="data"
+        dataView="nearby"
+        returnToGroups={false}
+        onNavigate={onNavigate}
+      />,
+    );
+    expect(screen.getByTestId('nearby-page')).toBeTruthy();
+    expect(screen.queryByTestId('import-input')).toBeNull();
   });
 
   test('游戏数据分区：导入入口与三阶段反馈都在', () => {
@@ -40,20 +71,17 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('import-outcome')).toHaveTextContent('已保存到本机');
     expect(screen.getByTestId('import-outcome')).toHaveTextContent('私有云同步失败（本机数据已保存）');
     expect(screen.getByTestId('import-outcome-group')).toHaveTextContent('小组资源未自动更新');
-    // 身份面板在数据分区不卸载，只是隐藏
-    expect(screen.getByTestId('profile-account-slot').className).toContain('hidden');
+    // 私有同步已经挪到游戏数据页：本机采集 / 导入之后紧接着就是同步
+    expect(screen.getByTestId('profile-sync-intro')).toHaveTextContent('不会更新小组资源');
+    expect(screen.getByTestId('account-panel')).toHaveTextContent('私有同步');
   });
 
-  test('身份与同步分区的标题与说明写清主语', () => {
+  test('身份分区的标题与说明写清主语', () => {
     const { rerender } = renderProfile('identity');
     expect(screen.getByTestId('profile-identity-intro')).toHaveTextContent('我的身份');
     expect(screen.getByTestId('account-panel')).toHaveTextContent('我的身份');
 
-    rerender(
-      <Profile section="sync" returnToGroups onNavigate={vi.fn()} />,
-    );
-    expect(screen.getByTestId('profile-sync-intro')).toHaveTextContent('不会更新小组资源');
-    expect(screen.getByTestId('account-panel')).toHaveTextContent('私有同步');
+    rerender(<Profile section="identity" returnToGroups onNavigate={vi.fn()} />);
     expect(screen.getByTestId('profile-return-groups')).toBeTruthy();
   });
 

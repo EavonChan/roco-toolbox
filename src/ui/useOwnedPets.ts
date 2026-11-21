@@ -3,6 +3,7 @@ import type { AccountSnapshot } from '../domain/parseBackup';
 import type { OwnedPet } from '../domain/types';
 import { useSnapshots } from './useSnapshots';
 import { filterByAccounts, useAccountFilter } from './accountFilterStore';
+import { sortAccountNames } from './accountOrder';
 
 /**
  * 账号的显示名。重名时补 UID 后缀：
@@ -26,7 +27,9 @@ export function useOwnedPets(): { owned: OwnedPet[]; accounts: string[]; all: Ow
 
   return useMemo(() => {
     const labelOf = labelerFor(snapshots);
-    const accounts = [...new Set(snapshots.map(labelOf))];
+    // 账号按数字排序（2026-11-20 用户口径）：看板 / 收集 / 覆盖度 / 我的精灵共用这一份，
+    // 不再各自按导入顺序排。
+    const accounts = sortAccountNames([...new Set(snapshots.map(labelOf))]);
     // 精灵上的 account 就是显示名（领域层按它聚账号：配窝不能跨账号配对）
     const all = snapshots.flatMap((snapshot) => {
       const label = labelOf(snapshot);

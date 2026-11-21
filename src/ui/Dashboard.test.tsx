@@ -141,6 +141,19 @@ describe('Dashboard（看板）', () => {
     expect(screen.queryByTestId('account-filter')).toBeNull();
   });
 
+  test('账号选择器按数字排序：没数字的号在前，2号在6号前', () => {
+    h.accounts = ['洛乌（6号）', '洛筱（2号）', '莱茵'];
+    h.summary = { ...h.summary, owned: [], recommendations: [] };
+    render(<Dashboard onNavigate={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('dashboard-account-summary'));
+    const options = within(screen.getByTestId('dashboard-account-selector')).getAllByRole('button');
+    expect(options.map((option) => option.textContent)).toEqual([
+      '莱茵',
+      '洛筱（2号）',
+      '洛乌（6号）',
+    ]);
+  });
+
   test('多账号使用卡片选择，且始终保留至少一个账号', () => {
     h.accounts = ['测试甲', '测试乙', '测试丙', '测试丁'];
     h.summary = { ...h.summary, owned: [], recommendations: [] };
@@ -178,15 +191,17 @@ describe('Dashboard（看板）', () => {
     expect(fourth).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('未设置种公目标时配窝摘要不声称全部收集', () => {
+  test('未设置种公目标时配窝空态不声称全部收集', () => {
     h.summary = {
       ...h.summary,
       stud: { ...h.summary.stud, cells: [], groupCount: 0, passedGroups: 0, total: 0 },
       recommendations: [],
     };
     render(<Dashboard onNavigate={vi.fn()} />);
-    expect(screen.getByTestId('nest-summary-line')).toHaveTextContent('未设置种公目标');
-    expect(screen.getByTestId('nest-summary-line')).not.toHaveTextContent('全部收集');
+    expect(screen.getByTestId('breed-empty')).toHaveTextContent('未设置种公目标');
+    expect(screen.getByTestId('breed-empty')).not.toHaveTextContent('全部收集');
+    // 没设目标不是「全通」：种公推荐空态提示要保留
+    expect(screen.getByTestId('recommend-empty')).toHaveTextContent('还没设置有效的种公目标');
   });
   test('结构与顺序：目标摘要 → 并列进度 → 行动切换 → 种公推荐 → 配窝汇总', () => {
     const { container } = render(<Dashboard onNavigate={vi.fn()} />);
@@ -233,6 +248,9 @@ describe('Dashboard（看板）', () => {
     expect(
       screen.getByTestId('dashboard-target-grade-大婉').querySelectorAll('img')[1].getAttribute('src'),
     ).toBe('/ui/medals/1026-max.png');
+    // 说明默认收起：点「追双牌」右边的问号才展开（2026-11-20 用户口径）
+    expect(screen.queryByTestId('dashboard-target-body-note')).toBeNull();
+    fireEvent.click(screen.getByTestId('dashboard-target-help'));
     expect(screen.getByTestId('dashboard-target-body-note')).toHaveTextContent(
       '大块头对应身高 100%，小不点对应身高 0%',
     );
@@ -254,6 +272,7 @@ describe('Dashboard（看板）', () => {
     const button = screen.getByTestId('dashboard-target-grade-大婉');
     expect(button.querySelectorAll('img')[0].getAttribute('src')).toBe('/ui/medals/1001.png');
     expect(button.querySelectorAll('img')[1].getAttribute('src')).toBe('/ui/medals/1026.png');
+    fireEvent.click(screen.getByTestId('dashboard-target-help'));
     expect(screen.getByTestId('dashboard-target-voice-note')).toHaveTextContent(
       '婉转声 ≥96、粗嗓门 ≤-96',
     );
@@ -420,64 +439,64 @@ describe('Dashboard（看板）', () => {
       location: { kind: 'mothers', status: 'missing' },
     });
 
-    // 2026-11-19 用户口径：补全计划不再放「看缺口 / 看推荐种公」入口
+    // 2026-11-19 用户口径：配窝建议不再放「看缺口 / 看推荐种公」入口
     expect(screen.queryByTestId('nest-open-coverage')).toBeNull();
     expect(screen.queryByTestId('nest-open-swap')).toBeNull();
   });
 
-  test('看板直接展示配窝建议的配对（标题已改为补全计划，摆位图已移除）', () => {
+  test('看板直接展示配窝建议的配对（摆位图已移除）', () => {
     h.summary = { ...h.summary, plans: [demoPlan] };
     render(<Dashboard onNavigate={vi.fn()} />);
 
-    expect(screen.getByText('补全计划')).toBeTruthy();
-    // 2026-11-18：汇总只剩双组 / 母本 / 需传蛋；这份方案三者都是 0，不再渲染空胶囊行
-    expect(screen.queryByTestId('nest-plan-pills')).toBeNull();
+    expect(screen.getByTestId('stud-tab-high')).toHaveTextContent('配窝建议');
     expect(screen.getByTestId('breed-list')).toBeTruthy();
-    // 2026-11-19 用户口径：补全计划不再画小窝摆位图
+    // 2026-11-19 用户口径：配窝建议不再画小窝摆位图
     expect(screen.queryByTestId('nest-layout')).toBeNull();
     expect(screen.getAllByTestId('breed-suggestion').length).toBeGreaterThan(0);
   });
 
-  test('补全计划汇总不再写学院 / 性格档位，只剩双组 / 母本 / 需传蛋', () => {
-    const dualPlan: NestPlan = {
-      ...demoPlan,
-      pairings: [{ ...demoPlan.pairings[0], groupIds: [2, 7] }],
-    };
-    h.summary = { ...h.summary, plans: [dualPlan] };
-    render(<Dashboard onNavigate={vi.fn()} />);
-
-    const pills = screen.getByTestId('nest-plan-pills');
-    expect(pills).toHaveTextContent('双组');
-    expect(pills).not.toHaveTextContent('学院');
-    expect(pills).not.toHaveTextContent('性格');
-  });
-
-  test('补全计划按号各报缺口，不把几个号加成一个总数（2026-11-18 修正）', () => {
+  test('种公全齐的号也在配窝建议里，但账号格不再挂「全齐」小字', () => {
+    // 2026-11-20 用户口径：全齐的号不能从配窝建议里消失（它还能替别的号出蛋）
     h.accounts = ['测试甲', '测试乙'];
-    const coverageOf = (states: Array<'breedable' | 'empty'>) =>
-      ({
-        cells: states.map((state, index) => ({ groupId: 3 + index, state }) as never),
-        groupCount: 14,
-        passedGroups: 0,
-        total: states.length,
-        covered: 0,
-        groupSummary: [],
-      }) as never;
     h.summary = {
       ...h.summary,
+      owned: [
+        { gameId: 3200, account: '测试甲' },
+        { gameId: 3201, account: '测试乙' },
+      ] as never,
+      plans: [demoPlan, { ...demoPlan, account: '测试乙', pairings: [], slots: [], nestsUsed: 0 }],
       coverageByAccount: new Map([
-        ['测试甲', coverageOf(['breedable', 'empty'])],
-        ['测试乙', coverageOf(['breedable'])],
+        [
+          '测试甲',
+          {
+            cells: [{ groupId: 2, state: 'breedable' } as never],
+            groupCount: 1,
+            passedGroups: 0,
+            total: 1,
+            covered: 0,
+            groupSummary: [],
+          },
+        ],
+        [
+          '测试乙',
+          {
+            cells: [{ groupId: 2, state: 'covered' } as never],
+            groupCount: 1,
+            passedGroups: 1,
+            total: 1,
+            covered: 1,
+            groupSummary: [],
+          },
+        ],
       ]),
     };
     render(<Dashboard onNavigate={vi.fn()} />);
 
-    const line = screen.getByTestId('nest-summary-line');
-    // 甲号差 2、乙号差 1：分别写出来，不合成「还差 3 个」
-    expect(line).toHaveTextContent('测试甲 2');
-    expect(line).toHaveTextContent('测试乙 1');
-    expect(line).not.toHaveTextContent('还差 3');
-    expect(screen.getAllByTestId('nest-gap-account')).toHaveLength(2);
+    const tabs = screen.getAllByTestId('breed-account-tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['测试甲0 窝', '测试乙0 窝']);
+    // 点全齐号：标题写清种公都收齐了，不再挂「全齐」小字
+    fireEvent.click(tabs[1]);
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('种公都收齐了');
   });
 
   test('没有可自己孵的方案时明确解释，不制造空推荐', () => {
@@ -512,8 +531,25 @@ describe('Dashboard（看板）', () => {
       recommendations: [],
     };
     render(<Dashboard onNavigate={vi.fn()} />);
-    expect(screen.getByTestId('nest-summary-line')).toHaveTextContent('已全部收集');
     expect(screen.getByTestId('breed-empty')).toHaveTextContent('已全部收集');
-    expect(screen.getByTestId('recommend-empty')).toHaveTextContent('没有要补的缺口');
+    // 2026-11-20 用户口径：全通后不再显示「种公网络已全通，没有要补的缺口」这张空卡
+    expect(screen.queryByTestId('recommend-list')).toBeNull();
+    expect(screen.queryByText(/种公网络已全通/)).toBeNull();
+  });
+
+  test('配窝建议卡跟随「看板行动」开关：种公推荐显种公配对，母本缺口只留母本', () => {
+    h.summary = { ...h.summary, plans: [demoPlan] };
+    render(<Dashboard onNavigate={vi.fn()} />);
+
+    // 默认种公推荐：显示种公配对
+    expect(screen.getByTestId('breed-list')).toBeTruthy();
+
+    // 切到母本缺口：配窝卡不再显示种公配对
+    fireEvent.click(screen.getByTestId('dashboard-action-mothers'));
+    expect(screen.queryByTestId('breed-list')).toBeNull();
+
+    // 切回种公推荐：种公配对回来
+    fireEvent.click(screen.getByTestId('dashboard-action-studs'));
+    expect(screen.getByTestId('breed-list')).toBeTruthy();
   });
 });

@@ -204,7 +204,7 @@ describe('legacyLocation：新页面写回旧键', () => {
       swapView: 'eggs',
     });
     expect(legacyLocation({ ...base, page: 'nearby' })).toEqual({
-      lastTab: 'dashboard',
+      lastTab: 'import',
       swapView: 'eggs',
     });
   });

@@ -9,6 +9,7 @@ import {
   type PublishedStudResource,
 } from '../shared/collectionGroups';
 import type { MotherGroupDetail, MotherGroupMember } from '../shared/motherGroups';
+import { sortByAccountName } from './accountOrder';
 
 const timeText = (ms: number): string => (ms ? new Date(ms).toLocaleDateString() : '—');
 
@@ -203,6 +204,15 @@ export function MotherGroupMembers({
             member.accountId !== accountId &&
             member.accountId !== group.group.ownerAccountId &&
             Boolean(onRemove);
+          /** 成员展开后的共享账号按数字排序（2026-11-20 用户口径）。 */
+          const sharedStudAccounts = sortByAccountName(
+            studAccountsOf(member),
+            (account) => account.accountName,
+          );
+          const sharedMotherAccounts = sortByAccountName(
+            member.resource?.accounts ?? [],
+            (account) => account.accountName,
+          );
           return (
             <li key={member.accountId} className="rounded-xl bg-slate-50 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
@@ -270,8 +280,8 @@ export function MotherGroupMembers({
               {expanded === member.accountId ? (
                 <ul className="mt-2 space-y-1 border-t border-slate-200 pt-2" data-testid="mother-member-accounts">
                   {groupType === 'stud' ? (
-                    studAccountsOf(member).length > 0 ? (
-                      studAccountsOf(member).map((account) => (
+                    sharedStudAccounts.length > 0 ? (
+                      sharedStudAccounts.map((account) => (
                         <li key={account.accountKey} className="text-[11px] text-slate-500">
                           {account.accountName} · UID {account.accountKey.slice(4)} · 覆盖{' '}
                           {account.covered.length} 格 · 可迭代 {account.breedable.length} 格 · 导出{' '}
@@ -281,8 +291,8 @@ export function MotherGroupMembers({
                     ) : (
                       <li className="text-[11px] text-slate-400">没有共享中的游戏账号</li>
                     )
-                  ) : member.resource && member.resource.accounts.length > 0 ? (
-                    member.resource.accounts.map((account) => (
+                  ) : member.resource && sharedMotherAccounts.length > 0 ? (
+                    sharedMotherAccounts.map((account) => (
                       <li key={account.accountKey} className="text-[11px] text-slate-500">
                         {account.accountName} · UID {account.accountKey.slice(4)} · 母本{' '}
                         {account.eggGameIds.length} 种 · 导出 {timeText(Date.parse(account.sourceExportedAt))}

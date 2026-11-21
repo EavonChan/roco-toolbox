@@ -18,7 +18,7 @@ export type CollectionLocation =
   /** 精灵背包只剩「全部精灵」（2026-10-29：「合格种公」页取消）。 */
   | { kind: 'inventory' };
 
-export type ProfileSection = 'identity' | 'data' | 'sync';
+export type ProfileSection = 'groups' | 'identity' | 'data';
 
 export interface AppNavigation {
   page: AppPage;
@@ -149,8 +149,9 @@ export function legacyLocation(state: AppNavigation): LegacyLocation {
     return { lastTab: 'swap', swapView: state.groupType === 'stud' ? 'eggs' : 'sharing' };
   }
   if (state.page === 'profile') return { lastTab: 'import', swapView: 'eggs' };
-  // 附近是 2026-11-06 新增页面，旧键没有对应值；回落到看板，避免写进旧版不认识的值。
-  if (state.page === 'nearby') return { lastTab: 'dashboard', swapView: 'eggs' };
+  // 附近 2026-11-21 已并入「我的 · 游戏数据」：落到我的（旧版认 import），
+  // 避免写进旧版不认识的值。
+  if (state.page === 'nearby') return { lastTab: 'import', swapView: 'eggs' };
   if (state.page === 'home') return { lastTab: 'home', swapView: 'eggs' };
   if (state.page === 'dashboard') return { lastTab: 'dashboard', swapView: 'eggs' };
   if (state.collection.kind === 'studs') {
