@@ -252,7 +252,7 @@ export function PetCardLayout({
       {showFooter ? (
         <div
           className={`absolute inset-x-1 flex items-center justify-center ${
-            mother ? 'bottom-[3px] h-3' : gap ? 'bottom-[4px] h-3' : tall ? 'top-[88px] h-2.5' : 'bottom-1 h-1.5'
+            mother ? 'bottom-[3px] h-3' : gap ? 'bottom-[4px] h-3' : tall ? 'top-[86px] h-[15px]' : 'bottom-1 h-1.5'
           }`}
         >
           {footer}

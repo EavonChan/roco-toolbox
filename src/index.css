@@ -434,3 +434,12 @@ span {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* 精灵卡：身高体重一行放不下时略缩字号；账号与背包位置各占一行（2026-11-21 用户口径） */
+@container (max-width: 120px) {
+  [data-testid="pet-card-sizes"] { font-size: 7px; line-height: 9px; }
+}
+@container (max-width: 92px) {
+  [data-testid="pet-card-sizes"] { font-size: 6px; line-height: 8px; }
+  [data-testid="pet-card-position"] { font-size: 6px; line-height: 8px; }
+}

@@ -794,7 +794,6 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
               className="flex shrink-0 flex-nowrap items-center gap-1 whitespace-nowrap"
               data-testid="card-size-display"
             >
-              <span className="whitespace-nowrap text-[10px] text-slate-500">身高体重</span>
               <span className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5">
                 {(
                   [
