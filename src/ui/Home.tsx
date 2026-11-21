@@ -167,16 +167,24 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
   return (
     <section className="rounded-2xl bg-white p-1.5 shadow-sm" data-testid={`home-account-${snapshot.gameId}`}>
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <h2 className={TITLE}>{label} 的家园</h2>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <h2 className={TITLE}>{label} 的家园</h2>
+            <span
+              className="text-[11px] leading-4 text-slate-400"
+              data-testid="home-captured-at"
+            >
+              采集时间 {formatCapturedAt(home.capturedAt)}
+            </span>
+          </div>
           <p className={HINT}>
-            采集时间 {formatCapturedAt(home.capturedAt)}
-            {home.homeLevel ? ` · 家园 ${home.homeLevel} 级` : ''}
-            {home.roomLevel ? ` · 房间 ${home.roomLevel} 级` : ''}
+            {home.homeLevel ? `家园 ${home.homeLevel} 级` : ''}
+            {home.homeLevel && home.roomLevel ? ' · ' : ''}
+            {home.roomLevel ? `房间 ${home.roomLevel} 级` : ''}
           </p>
         </div>
         <span
-          className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
             eggCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
           }`}
           data-testid="home-egg-count"
@@ -206,12 +214,12 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
       </div>
 
       {home.couplesStale ? (
-        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="home-stale">
+        <p className="mt-2 w-fit max-w-full rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="home-stale">
           采集期间有精灵进出，游戏配对可能已经过期；重新采集一次家园会更准。
         </p>
       ) : null}
       {home.snapshotKind === 'delta' ? (
-        <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <p className="mt-2 w-fit max-w-full rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600" data-testid="home-delta-note">
           这份是增量快照，可能不包含全部住户；建议重新采集一次完整的家园场景。
         </p>
       ) : null}
@@ -313,12 +321,12 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
   return (
     <div className={PAGE}>
       <header
-        className="flex items-center justify-between gap-2"
+        className="flex items-center gap-2"
         data-tour="home-tabs"
         data-testid="home-header"
       >
         {view === 'nests' && loaded && activeAccount ? (
-          <section className="relative min-w-0 flex-1" data-testid="home-account-switcher">
+          <section className="relative w-[14rem] max-w-[60%] min-w-0 shrink-0" data-testid="home-account-switcher">
             <button
               type="button"
               onClick={() => setAccountPickerOpen((open) => !open)}
