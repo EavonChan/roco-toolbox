@@ -41,6 +41,7 @@ import {
   setMyPetsColumns,
   useMyPetsFilters,
 } from './myPetsFilterStore';
+import { useWideLandscape } from './useWideLandscape';
 import { setPersonalQuery, usePersonalList } from './listViewStore';
 
 /** 筛选维度顺序；稀有度单独占一行。 */
@@ -391,6 +392,9 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
       speciesDisplayName(entry, pet.name).toLowerCase();
     return text.includes(query);
   };
+  /** 宽横屏（≥1120 横屏）才给 5 / 6 列；竖屏一律按原来的 3 / 4 列 */
+  const wideLandscape = useWideLandscape();
+  const effectiveColumns = wideLandscape ? columns : (Math.min(columns, 4) as 3 | 4);
   const { tags, index } = useMemo(
     () => buildTagIndex(owned, speciesByGameId, eggGroupNames),
     [owned, speciesByGameId],
@@ -815,7 +819,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
             className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5"
             data-testid="card-columns-toggle"
           >
-            {([3, 4] as const).map((count) => (
+            {(wideLandscape ? ([3, 4, 5, 6] as const) : ([3, 4] as const)).map((count) => (
               <button
                 key={count}
                 type="button"
@@ -826,7 +830,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
                 }`}
                 data-testid={`card-columns-${count}`}
               >
-                {count === 3 ? '三列' : '四列'}
+                {count === 3 ? '三列' : count === 4 ? '四列' : count === 5 ? '五列' : '六列'}
               </button>
             ))}
           </div>
@@ -906,7 +910,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           speciesByGameId={speciesByGameId}
           eggGroupNames={eggGroupNames}
           showCount={false}
-          columns={columns}
+          columns={effectiveColumns}
         />
       )}
     </main>

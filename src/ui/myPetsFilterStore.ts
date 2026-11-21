@@ -141,8 +141,10 @@ let sizeUnit: SizeUnit =
       : 'percent';
 
 /** 卡片网格列数（2026-11-18 用户口径：三列时卡片整体放大、一行铺满；默认四列）。 */
-export type CardColumns = 3 | 4;
-let columns: CardColumns = persisted.columns === 3 ? 3 : 4;
+export type CardColumns = 3 | 4 | 5 | 6;
+let columns: CardColumns = ([3, 4, 5, 6] as const).includes(persisted.columns as CardColumns)
+  ? (persisted.columns as CardColumns)
+  : 4;
 
 const listeners = new Set<Listener>();
 
@@ -209,7 +211,7 @@ export function getMyPetsSizeUnit(): SizeUnit {
   return sizeUnit;
 }
 
-/** 卡片列数（3 / 4）：只改网格排布，不参与筛选。 */
+/** 卡片列数（3–6）：只改网格排布，不参与筛选；5 / 6 只在宽横屏出现。 */
 export function getMyPetsColumns(): CardColumns {
   return columns;
 }

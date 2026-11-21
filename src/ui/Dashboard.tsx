@@ -533,6 +533,17 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       {/* 本次新增：最新一次导入的明细，可收起；历史在「我的 · 游戏数据」 */}
       <ImportAdditionCard />
+
+      {uncataloguedCount > 0 ? (
+        <section className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+          <h2 className="font-medium text-slate-500">图鉴未收录</h2>
+          <p className="mt-1">
+            {uncataloguedCount} 只精灵的 game_id 暂不在图鉴中，已单独列出、不计入进度分母。
+          </p>
+        </section>
+      ) : null}
+
+      <SourceNotice />
       </div>
 
       <div
@@ -565,7 +576,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         </div>
 
         <div className="dashboard-narrow-scroll space-y-2">
-
+          <div className="dashboard-panel">
       {actionPanel === 'mothers' ? null : showStudRecommendationCard ? (
         <SuggestionCard
           items={recommendations}
@@ -573,9 +584,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           onOpenGap={(group) => openStudGap(group, selectedAccountNames)}
         />
       ) : null}
+          </div>
 
       {/* 配窝建议是产品亮点（2026-10-25 用户要求放回看板）：直接展示完整摆位与配对，
           不再只给一个「去配窝」入口；收集页的完整视图仍然保留。 */}
+          <div className="dashboard-panel">
       {owned.length > 0 ? (
         <section
           className="rounded-2xl bg-white p-4 shadow-sm"
@@ -637,17 +650,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           ) : null}
         </section>
       ) : null}
-
-      {uncataloguedCount > 0 ? (
-        <section className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-          <h2 className="font-medium text-slate-500">图鉴未收录</h2>
-          <p className="mt-1">
-            {uncataloguedCount} 只精灵的 game_id 暂不在图鉴中，已单独列出、不计入进度分母。
-          </p>
-        </section>
-      ) : null}
-
-      <SourceNotice />
+          </div>
         </div>
       </div>
 

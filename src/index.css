@@ -396,3 +396,41 @@ span {
     grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
   }
 }
+
+/* ==========================================================================
+   宽横屏（≥1120）：看板把「推荐 / 配窝」并排成两栏，切换条占整行
+   （2026-11-21 用户口径；窄横屏仍是单栏 + 切换条）
+   ========================================================================== */
+@media (orientation: landscape) and (min-width: 1120px) {
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 1rem;
+    height: 100%;
+    min-height: 0;
+  }
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body > .dashboard-narrow-switch {
+    grid-column: 1 / -1;
+  }
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body > .dashboard-narrow-scroll {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    overflow-y: auto;
+  }
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body > .dashboard-narrow-scroll > * {
+    min-width: 0;
+    margin-top: 0;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 1120px) {
+  /* 推荐面板为空（如看板停在「母本缺口」）时，配窝面板独占整行，不留空栏 */
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body
+    > .dashboard-narrow-scroll:has(> .dashboard-panel:empty) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
