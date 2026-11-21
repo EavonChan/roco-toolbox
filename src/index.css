@@ -466,3 +466,14 @@ span {
 [data-testid="mother-chain-list"] article[data-testid="breed-pet-card"] > div:last-child {
   bottom: 2px;
 }
+
+
+/* 竖屏保留引导卡与档位按钮；横屏空间紧张，按 2026-11-21 用户口径隐藏
+   （档位跟全局目标走，矩阵直接铺满）。 */
+@media (orientation: landscape) {
+  [data-testid="coverage-intro"],
+  [data-testid="stud-grade-row"],
+  [data-testid="stud-matrix-hint"] {
+    display: none !important;
+  }
+}

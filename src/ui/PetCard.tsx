@@ -40,7 +40,7 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
   /** 账号与背包位置分两行（2026-11-21 用户口径），放不下时各自截断。 */
   const accountLine = pet.account ?? '—';
   const boxLine = pet.boxGroup
-    ? `${pet.boxGroup}${pet.slotOrder != null ? ` 第${pet.slotOrder}位` : ''}`
+    ? `${pet.boxGroup}${pet.slotOrder != null ? `-${pet.slotOrder}` : ''}`
     : '';
   const position = boxLine ? `${accountLine}·${boxLine}` : accountLine;
   const bodyIcon = petBodyMedalIcon(pet.medalBody, pet.weightPercent);

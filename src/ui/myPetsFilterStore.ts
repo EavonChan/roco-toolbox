@@ -154,7 +154,7 @@ const persist = (): void => {
     if (heightRange.min !== 0 || heightRange.max !== 100) value.heightRange = heightRange;
     if (sizeUnit !== 'percent') value.sizeUnit = sizeUnit;
     if (eggGroupMatchMode === 'dual') value.eggGroupMatchMode = eggGroupMatchMode;
-    if (columns === 3) value.columns = 3;
+    if (columns !== 4) value.columns = columns;
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(value),
@@ -212,6 +212,11 @@ export function getMyPetsSizeUnit(): SizeUnit {
 }
 
 /** 卡片列数（3–6）：只改网格排布，不参与筛选；5 / 6 只在宽横屏出现。 */
+/** 用户是否手动选过列数：没选过时宽屏默认五列，选过就完全按用户来（2026-11-21 用户口径）。 */
+export function hasChosenColumns(): boolean {
+  return ([3, 4, 5, 6] as const).includes(persisted.columns as CardColumns);
+}
+
 export function getMyPetsColumns(): CardColumns {
   return columns;
 }

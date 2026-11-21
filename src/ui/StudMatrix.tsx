@@ -287,7 +287,7 @@ export function StudMatrix({
       {/* 卡片标题与副标题去掉（2026-11-19 用户口径）：导航已经是「收集 · 种公」 */}
 
       {grades.length > 0 ? (
-        <div className="flex items-center gap-1" role="group" aria-label="阵列档位">
+        <div className="flex items-center gap-1" role="group" aria-label="阵列档位" data-testid="stud-grade-row">
           {grades.map((item) => (
             <button
               key={item}
@@ -302,7 +302,7 @@ export function StudMatrix({
               {GRADE_LABEL[item]}
             </button>
           ))}
-          <span className="ml-auto truncate text-[10px] text-slate-400">
+          <span className="ml-auto truncate text-[10px] text-slate-400" data-testid="stud-matrix-hint">
             左右滑动看更多性格
             {onPublishStudDemand ? ' · 点缺口格可求蛋' : ''}
           </span>

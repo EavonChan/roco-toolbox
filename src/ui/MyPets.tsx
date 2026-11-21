@@ -39,6 +39,7 @@ import {
   setMyPetsSelected,
   setMyPetsSizeUnit,
   setMyPetsColumns,
+  hasChosenColumns,
   useMyPetsFilters,
 } from './myPetsFilterStore';
 import { useWideLandscape } from './useWideLandscape';
@@ -394,6 +395,10 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
   };
   /** 宽横屏（≥1120 横屏）才给 5 / 6 列；竖屏一律按原来的 3 / 4 列 */
   const wideLandscape = useWideLandscape();
+  /** 宽屏且用户没手动选过列数时默认五列（2026-11-21 用户口径） */
+  useEffect(() => {
+    if (wideLandscape && !hasChosenColumns() && columns === 4) setMyPetsColumns(5);
+  }, [wideLandscape, columns]);
   const effectiveColumns = wideLandscape ? columns : (Math.min(columns, 4) as 3 | 4);
   const { tags, index } = useMemo(
     () => buildTagIndex(owned, speciesByGameId, eggGroupNames),
