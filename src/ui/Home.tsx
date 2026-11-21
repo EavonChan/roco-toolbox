@@ -166,7 +166,7 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
   const eggCount = home.sceneEggs.length;
   return (
     <section className="rounded-2xl bg-white p-1.5 shadow-sm" data-testid={`home-account-${snapshot.gameId}`}>
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <h2 className={TITLE}>{label} 的家园</h2>
@@ -176,6 +176,14 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
             >
               采集时间 {formatCapturedAt(home.capturedAt)}
             </span>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                eggCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
+              }`}
+              data-testid="home-egg-count"
+            >
+              {eggCount > 0 ? `有 ${eggCount} 枚蛋` : '没有蛋'}
+            </span>
           </div>
           <p className={HINT}>
             {home.homeLevel ? `家园 ${home.homeLevel} 级` : ''}
@@ -183,14 +191,6 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
             {home.roomLevel ? `房间 ${home.roomLevel} 级` : ''}
           </p>
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-            eggCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
-          }`}
-          data-testid="home-egg-count"
-        >
-          {eggCount > 0 ? `有 ${eggCount} 枚蛋` : '没有蛋'}
-        </span>
       </div>
 
       {/* 2026-11-01 用户口径：三个数字方框太大 → 改成一行小标签 */}

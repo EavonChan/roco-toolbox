@@ -22,7 +22,6 @@ import { GapFillDialog, type GapTargetView } from './GapFillDialog';
 import { mergeMotherPlan } from './motherPlanStore';
 import { useMotherSuggestions } from './useMotherSuggestions';
 import { useLandscape } from './useWideLandscape';
-import { SourceNotice } from './SourceNotice';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { useOwnedPets } from './useOwnedPets';
 import { sortAccountNames } from './accountOrder';
@@ -542,7 +541,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         </section>
       ) : null}
 
-      <SourceNotice />
       </div>
 
       <div

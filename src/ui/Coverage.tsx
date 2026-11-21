@@ -35,7 +35,6 @@ import {
 } from './CoverageMatrix';
 import { EmptyState } from './EmptyState';
 import { NATURE_STAT_ORDER } from './NatureSelectionContent';
-import { SourceNotice } from './SourceNotice';
 import { StudMatrix, type StudDemandPublishInput } from './StudMatrix';
 import { useCoverageSlots } from './useCoverageSlots';
 
@@ -410,7 +409,6 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
         onClose={() => setEditorOpen(false)}
       />
 
-      <SourceNotice />
     </main>
   );
 }
