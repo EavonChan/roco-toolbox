@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listCollectionGroups, publishCollectionDemand } from '../api/collectionGroups';
 import { readAccountId } from '../api/session';
-import { ALL_EGG_GROUP_IDS } from '../domain/coverageTargets';
 import { describeCoverageCells } from '../domain/coverageDetail';
 import { TARGET_MODE_LABELS } from '../domain/petFilters';
 import {
@@ -68,15 +67,6 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
 
   const filter = useCoverageFilter();
   const slots = useCoverageSlots();
-  /**
-   * 「筛选与默认值不同」标记（2026-11-01 R2-4-L03，2026-11-19 随默认模式改为八大）：
-   * 蛋组少选、或性格模式不是「八大性格」，都算偏离默认。
-   */
-  const filterActive = useMemo(
-    () =>
-      filter.groupIds.length < ALL_EGG_GROUP_IDS.length || filter.natureMode !== 'eight',
-    [filter],
-  );
 
   /**
    * 点属性名整组勾选 / 取消（与精灵背包「全部性格」一致）：
@@ -169,24 +159,13 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
           <div className="collection-layout">
           <div className="collection-rail space-y-3">
           {/* 筛选提成一级卡片（2026-11-19 用户口径）：一进种公页就能改蛋组 / 档位 / 性格，
-              不再收在阵列右上角；性格三种模式，默认「八大性格」 */}
+              不再收在阵列右上角；性格三种模式，默认「八大性格」。
+              2026-11-21 用户口径：去掉「筛选」标题行，直接从追满分 / 追双牌开始。 */}
           <section
             className="rounded-2xl bg-white p-3 shadow-sm"
             data-testid="coverage-filter-card"
           >
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-medium text-slate-500">筛选</h2>
-              {filterActive ? (
-                <span
-                  className="text-[10px] font-medium text-emerald-700"
-                  data-testid="coverage-filter-active"
-                >
-                  已改
-                </span>
-              ) : null}
-            </div>
-
-            <div className="mt-2">
+            <div>
               <CoverageFilterBar
                 filter={filter}
                 onToggleGroup={toggleFilterGroup}

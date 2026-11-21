@@ -444,28 +444,9 @@ span {
   [data-testid="pet-card-position"] { font-size: 6px; line-height: 8px; }
 }
 
-/* ---- 收集 · 母本卡片：贴近精灵背包的轻卡片，降低高度、淡黄底（2026-11-21 用户口径） ----
-   只作用在母本链列表，不影响看板缺口卡和精灵背包。 */
-[data-testid="mother-chain-list"] article[data-testid="breed-pet-card"] {
-  height: 96px;
-  background: #fffbeb;
-  border-color: #fde68a;
-}
-[data-testid="mother-chain-list"] article[data-testid="breed-pet-card"] [data-testid="pet-card-avatar"] {
-  top: 2px;
-  height: 52px;
-  width: 52px;
-}
-[data-testid="mother-chain-list"] article[data-testid="breed-pet-card"] [data-testid="pet-card-avatar"] img {
-  width: 52px;
-  height: 52px;
-}
-[data-testid="mother-chain-list"] article[data-testid="breed-pet-card"] > h3 {
-  top: 56px;
-}
-[data-testid="mother-chain-list"] article[data-testid="breed-pet-card"] > div:last-child {
-  bottom: 2px;
-}
+/* ---- 收集 · 母本卡片：与精灵背包同款卡片（2026-11-21 用户口径） ----
+   三态底色由卡片组件的 status 传（未收集淡黄 / 计划中淡蓝 / 已收集淡绿），
+   这里不再单独覆盖高度与头像。 */
 
 
 /* 竖屏保留引导卡与档位按钮；横屏空间紧张，按 2026-11-21 用户口径隐藏
@@ -478,10 +459,11 @@ span {
   }
 }
 
-/* 收起筛选且屏幕够宽、蛋组较多时，母本蛋组排三列（2026-11-21 用户口径） */
+/* 收起筛选且屏幕够宽、两列一屏放不下全部蛋组时，母本蛋组排三列
+   （2026-11-21 用户口径；是否放不下由 MotherView 按真实高度判定） */
 @media (orientation: landscape) and (min-width: 1250px) {
   .collection-scope[data-rail-collapsed="true"]
-    [data-testid="mother-chain-list"][data-many-groups="true"] {
+    [data-testid="mother-chain-list"][data-three-columns="true"] {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

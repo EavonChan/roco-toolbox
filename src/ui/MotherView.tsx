@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { GRADE_BODY, GRADE_VOICE, type MotherGroup, type TargetMode } from '../domain/petFilters';
 import type { OwnedPet } from '../domain/types';
 import { species as catalogSpecies } from '../data/catalog';
@@ -12,7 +12,8 @@ import {
 import { AccountSection } from './AccountSection';
 import { useWideLandscape } from './useWideLandscape';
 import { PetAvatar } from './PetAvatar';
-import { PetCardLayout } from './PetCardLayout';
+import { PetCardLayout, type PetCardStatus } from './PetCardLayout';
+import { shouldUseThreeColumns } from './motherColumnLayout';
 import { SearchField } from './primitives/SearchField';
 import { InlineMultiSelect } from './primitives/InlineMultiSelect';
 import { SegmentedControl } from './primitives/SegmentedControl';
@@ -75,6 +76,8 @@ export interface MotherViewProps {
   onSeekHelp?: () => void;
   /** 收集中页发布/查看小组需求 */
   onNavigate?: (intent: NavigationIntent) => void;
+  /** 收集页右侧筛选栏是否收起：收起后才考虑把蛋组排成三列（2026-11-21 用户口径） */
+  filterCollapsed?: boolean;
 }
 
 interface SectionProps {
@@ -254,6 +257,7 @@ export function MotherView({
   gapTarget,
   onSeekHelp,
   onNavigate,
+  filterCollapsed = false,
 }: MotherViewProps) {
   /** 「未收集母本怎么补」悬浮窗（2026-11-19 用户口径）：与看板共用同一块内容 */
   const [gapDialog, setGapDialog] = useState<{ chainKey: string; target: GapTargetView; fill: GapFill } | null>(
@@ -419,7 +423,9 @@ export function MotherView({
   const chainSections = useMemo(() => {
     const list = matchedGroups.filter((group) => {
       const collected = isChainCollected(group);
-      if (chainFilter === 'uncollected') return !collected && !plannedSet.has(group.chainKey);
+      // 计划中的蛋组仍留在「未收集」清单里，用淡蓝卡表示进度（2026-11-21 用户口径）；
+      // 上方「计划收集」只做汇总，不再把卡片从清单里抽走。
+      if (chainFilter === 'uncollected') return !collected;
       if (chainFilter === 'collected') return collected;
       return false;
     });
@@ -449,6 +455,64 @@ export function MotherView({
   }, [chainFilter, keyword, eggGroupFilter.join(','), initialSections]);
   const visibleChainSections = chainSections.slice(0, visibleSectionCount);
   const hiddenChainSections = Math.max(0, chainSections.length - visibleChainSections.length);
+
+  /**
+   * 三列蛋组（2026-11-21 用户口径）：收起筛选且屏幕够宽时，
+   * 只有「两列一屏放不下全部蛋组」才排三列；两列能一屏放下就保持两列大卡。
+   */
+  const [threeColumns, setThreeColumns] = useState(false);
+  const [layoutTick, setLayoutTick] = useState(0);
+  const chainListRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onResize = () => setLayoutTick((tick) => tick + 1);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useLayoutEffect(() => {
+    if (!filterCollapsed || chainFilter === 'collecting') {
+      setThreeColumns(false);
+      return;
+    }
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      setThreeColumns(false);
+      return;
+    }
+    if (!window.matchMedia('(orientation: landscape) and (min-width: 1250px)').matches) {
+      setThreeColumns(false);
+      return;
+    }
+    const list = chainListRef.current;
+    if (!list) {
+      setThreeColumns(false);
+      return;
+    }
+    // 还有「显示更多蛋组」= 两列本来就没展示完全部蛋组
+    if (hiddenChainSections > 0) {
+      setThreeColumns(true);
+      return;
+    }
+    // 同步按两列量一次真实高度，量完立刻还原，绘制前完成不会闪
+    const previous = list.style.gridTemplateColumns;
+    list.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+    const heights = Array.from(list.children)
+      .filter(
+        (child): child is HTMLElement =>
+          child instanceof HTMLElement &&
+          child.getAttribute('data-testid')?.startsWith('mother-chain-group-') === true,
+      )
+      .map((child) => child.getBoundingClientRect().height);
+    list.style.gridTemplateColumns = previous;
+    const gap = Number.parseFloat(getComputedStyle(list).rowGap) || 0;
+    setThreeColumns(
+      shouldUseThreeColumns({
+        sectionHeights: heights,
+        totalSections: chainSections.length,
+        gap,
+        viewportHeight: window.innerHeight,
+      }),
+    );
+  }, [filterCollapsed, chainFilter, chainSections, hiddenChainSections, layoutTick]);
+
   const planGroups = useMemo(
     () => matchedGroups.filter((group) => plannedSet.has(group.chainKey)),
     [matchedGroups, plannedSet],
@@ -609,9 +673,10 @@ export function MotherView({
 
       {/* 链清单按蛋组分区，每行四只；收集中使用同一母本卡但不按蛋组分区 */}
       <section
+        ref={chainListRef}
         className="space-y-2"
         data-testid={chainFilter === 'collecting' ? 'mother-collecting-shell' : 'mother-chain-list'}
-        data-many-groups={chainSections.length > 4 ? 'true' : undefined}
+        data-three-columns={threeColumns ? 'true' : undefined}
       >
         {chainFilter === 'collecting' ? (
           <MotherCollectingView
@@ -746,17 +811,23 @@ function MotherEggRow({
     .filter((nature) => collectedNatures.has(nature))
     .map((nature) => `nature:${nature}`);
 
+  /** 三态底色（2026-11-21 用户口径）：未收集淡黄 / 计划中淡蓝 / 已收集淡绿 */
+  const cardStatus: PetCardStatus = collected ? 'collected' : planned ? 'planned' : 'uncollected';
+
   return (
-    <li data-testid="mother-chain-row" className="min-w-0">
+    <li data-testid="mother-chain-row" data-mother-status={cardStatus} className="min-w-0">
       <PetCardLayout
         name={eggName}
         number={number}
         eggGroups={eggGroupLabels}
         natures={recommendedNatures}
         natureCollected={(nature) => collectedNatures.has(nature)}
-        size="mother"
+        size="tall"
+        status={cardStatus}
         fitName
-        avatar={<PetAvatar gameId={eggGameId} name={eggName} size={62} />}
+        fitNameBase={8}
+        fitNameMin={6}
+        avatar={<PetAvatar gameId={eggGameId} name={eggName} size={44} />}
         eggGroupsTestId="mother-card-egg-groups"
         naturesTestId="mother-card-natures"
         title={collected || !onOpenGap ? eggName : `${eggName} · 点卡片看怎么补`}
@@ -772,7 +843,7 @@ function MotherEggRow({
                 })
               }
               data-testid="mother-chain-open"
-              className="min-h-3 w-full truncate rounded-full bg-emerald-100 px-1 text-[8px] font-medium leading-3 text-emerald-700"
+              className="min-h-[13px] w-full truncate rounded-full bg-emerald-100 px-1 text-[7px] font-medium leading-[13px] text-emerald-700"
             >
               查看
             </button>
@@ -784,10 +855,10 @@ function MotherEggRow({
                 event.stopPropagation();
                 onTogglePlan();
               }}
-              className={`min-h-3 w-full rounded-full border px-1 text-[8px] leading-3 ${
+              className={`min-h-[13px] w-full truncate rounded-full border px-1 text-[7px] leading-[13px] ${
                 planned
-                  ? 'border-emerald-500 bg-emerald-100 text-emerald-700'
-                  : 'border-emerald-200 bg-white text-slate-500'
+                  ? 'border-sky-300 bg-sky-100 text-sky-700'
+                  : 'border-amber-300 bg-amber-100/70 text-amber-800'
               }`}
               data-testid="mother-plan-toggle"
               aria-pressed={planned}

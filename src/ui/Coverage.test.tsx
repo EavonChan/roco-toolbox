@@ -56,8 +56,6 @@ describe('覆盖度页（筛选一级卡片 + 性格三模式）', () => {
     expect(screen.getByTestId('nature-mode-eight')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('nature-mode-recommended')).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByTestId('nature-mode-eight-list')).toHaveTextContent('八大性格：固执');
-    // 默认就是默认值：不亮「已改」
-    expect(screen.queryByTestId('coverage-filter-active')).toBeNull();
   });
 
   test('奖牌目标使用母本同款模式且强制单选，并更新种公档位', () => {
@@ -100,17 +98,6 @@ describe('覆盖度页（筛选一级卡片 + 性格三模式）', () => {
     expect(screen.getByTestId('custom-natures-empty')).toBeTruthy();
     expect(screen.getByTestId('coverage-total')).toHaveTextContent('已通 0');
     expect(document.body.textContent).not.toContain('NaN');
-  });
-
-  test('性格模式偏离默认时「已改」标记点亮', () => {
-    render(<Coverage />);
-    expect(screen.queryByTestId('coverage-filter-active')).toBeNull();
-
-    fireEvent.click(screen.getByTestId('nature-mode-custom'));
-    expect(screen.getByTestId('coverage-filter-active')).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('nature-mode-eight'));
-    expect(screen.queryByTestId('coverage-filter-active')).toBeNull();
   });
 
   test('全选八大 / 全部取消：只作用八大性格，按钮文案随之切换', () => {

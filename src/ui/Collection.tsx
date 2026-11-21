@@ -66,10 +66,12 @@ function MothersBranch({
   searchIndex,
   status,
   onNavigate,
+  filterCollapsed,
 }: {
   searchIndex: ReturnType<typeof buildEggSearchIndex>;
   status: Extract<CollectionLocation, { kind: 'mothers' }>['status'];
   onNavigate: (intent: NavigationIntent) => void;
+  filterCollapsed: boolean;
 }) {
   const summary = useCollectionSummary();
   const { owned, motherGroups, mode } = summary;
@@ -91,6 +93,7 @@ function MothersBranch({
         status={status}
         motherSuggestions={suggestions}
         accountNames={accountNames}
+        filterCollapsed={filterCollapsed}
         gapTarget={{ label: targetLabel, bodyMedal, voiceTarget, voiceDb, weightPercent }}
         onSeekHelp={() => onNavigate({ type: 'open-groups', groupType: 'mother' })}
         /** 收集中页的「去小组 / 发布需求」也要能导航（上游收集中结构） */
@@ -200,7 +203,12 @@ export function Collection({
       </nav>
 
       {location.kind === 'mothers' ? (
-        <MothersBranch searchIndex={searchIndex} status={location.status} onNavigate={onNavigate} />
+        <MothersBranch
+          searchIndex={searchIndex}
+          status={location.status}
+          onNavigate={onNavigate}
+          filterCollapsed={railCollapsed}
+        />
       ) : location.kind === 'studs' ? (
         <StudCollection
           expandedGroupId={expandedGroupId}

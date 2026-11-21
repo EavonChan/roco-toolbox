@@ -639,17 +639,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         data-testid="dashboard-main-column"
       >
         <div className="dashboard-narrow-switch" data-testid="dashboard-action-switch" data-tour="dashboard-actions">
-          {landscape && leftCollapsed ? (
-            <button
-              type="button"
-              onClick={() => setLeftCollapsed(false)}
-              data-testid="dashboard-left-expand"
-              aria-label="显示右栏"
-              className="min-h-[28px] shrink-0 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-500 shadow-sm"
-            >
-              ‹ 显示右栏
-            </button>
-          ) : null}
           <SegmentedControl
             label="看板行动"
             value={actionPanel}
@@ -661,6 +650,18 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             optionTestId={(value) => `dashboard-action-${value}`}
             className="w-full"
           />
+          {/* 「显示右栏」贴切换条右侧（2026-11-21 用户口径），不再占最左边 */}
+          {landscape && leftCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setLeftCollapsed(false)}
+              data-testid="dashboard-left-expand"
+              aria-label="显示右栏"
+              className="min-h-[28px] shrink-0 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-500 shadow-sm"
+            >
+              ‹ 显示右栏
+            </button>
+          ) : null}
         </div>
 
         <div className="dashboard-narrow-scroll space-y-2">

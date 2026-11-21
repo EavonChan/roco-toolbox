@@ -24,12 +24,13 @@ export interface PetCardLayoutProps {
   /**
    * 卡片高度档位。
    * - `default`：98px，紧凑卡 / 家园用（文字 6px）；
-   * - `tall`：104px，精灵背包用（名字 / 身高体重 / 账号位置放大到 8px，头像略微上移）；
-   * - `mother`：106px，收集页母本卡用（62px 头像、12px 名字、底部「查看 / 计划」）；
+   * - `tall`：104px，精灵背包与收集页母本卡共用（名字 / 身高体重 / 账号位置放大到 8px，头像略微上移）；
    * - `gap`：104px，看板「母本缺口 / 种公推荐」四列卡用（52px 头像、12px 名字，
    *   2026-11-19 原型口径：四列不变，头像 44 → 52、名字 6px → 12px）。
    */
   size?: PetCardSize;
+  /** 收集页母本卡的三态底色：未收集淡黄 / 计划中淡蓝 / 已收集淡绿 */
+  status?: PetCardStatus;
   /** 名字过长时从基准字号逐档缩小，避免长名字直接截断（母本卡 / 看板推荐卡用） */
   fitName?: boolean;
   /** 名字基准字号（默认 12；看板种公推荐卡传 9） */
@@ -42,7 +43,10 @@ export interface PetCardLayoutProps {
   ariaPressed?: boolean;
 }
 
-export type PetCardSize = 'default' | 'tall' | 'mother' | 'gap' | 'suggest';
+export type PetCardSize = 'default' | 'tall' | 'gap' | 'suggest';
+
+/** 收集页母本卡的收集状态：未收集 / 计划中 / 已收集（2026-11-21 用户口径）。 */
+export type PetCardStatus = 'uncollected' | 'planned' | 'collected';
 
 /** Shared card frame for pet displays across the app. */
 export function PetCardLayout({
@@ -65,6 +69,7 @@ export function PetCardLayout({
   className = '',
   academy,
   size = 'default',
+  status,
   fitName = false,
   fitNameBase,
   fitNameMin,
@@ -80,12 +85,20 @@ export function PetCardLayout({
   const showDetails = details != null && details !== false;
   const showFooter = footer != null && footer !== false;
   const tall = size === 'tall';
-  const mother = size === 'mother';
   /** 看板四列缺口卡：52px 头像 + 12px 名字（2026-11-19 原型） */
   const gap = size === 'gap';
   /** 看板「种公推荐」卡：44px 头像居中、名字 9px（2026-11-19 用户口径） */
   const suggest = size === 'suggest';
-  /** 与配窝卡（NestPlanCard）同一套性别色：母粉、公蓝、未知灰；不传保持母本绿 */
+  /** 与配窝卡（NestPlanCard）同一套性别色：母粉、公蓝、未知灰；
+   *  收集页母本卡传 status 时按收集状态上色（未收集淡黄 / 计划中淡蓝 / 已收集淡绿） */
+  const statusTone =
+    status === 'uncollected'
+      ? 'border-amber-200 bg-amber-50'
+      : status === 'planned'
+        ? 'border-sky-200 bg-sky-50'
+        : status === 'collected'
+          ? 'border-emerald-200 bg-emerald-50'
+          : null;
   const genderTone =
     gender === '母'
       ? 'border-pink-200 bg-pink-50'
@@ -94,6 +107,7 @@ export function PetCardLayout({
         : gender === '未知'
           ? 'border-slate-200 bg-slate-50'
           : 'border-emerald-300 bg-emerald-50/60';
+  const tone = statusTone ?? genderTone;
   const nameRef = useRef<HTMLHeadingElement | null>(null);
   const nameTextRef = useRef<HTMLSpanElement | null>(null);
 
@@ -135,7 +149,7 @@ export function PetCardLayout({
 
   return (
     <article
-      className={`relative ${mother ? 'h-[106px]' : tall || gap ? 'h-[104px]' : 'h-[98px]'} min-w-0 overflow-hidden rounded-xl border ${genderTone} p-1 shadow-sm ${onClick ? 'cursor-pointer hover:border-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500' : ''} ${className}`}
+      className={`relative ${tall || gap ? 'h-[104px]' : 'h-[98px]'} min-w-0 overflow-hidden rounded-xl border ${tone} p-1 shadow-sm ${onClick ? 'cursor-pointer hover:border-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500' : ''} ${className}`}
       data-testid={testId}
       data-academy={academy ? 'true' : undefined}
       title={title}
@@ -196,13 +210,11 @@ export function PetCardLayout({
 
       <div
         className={`absolute left-1/2 z-0 flex -translate-x-1/2 items-center justify-center ${
-          mother
-            ? 'top-[9px] h-[62px] w-[62px]'
-            : gap
-              ? 'top-[8px] h-[52px] w-[52px]'
-              : tall
-                ? 'top-[16px] h-11 w-11'
-                : 'top-1/2 h-11 w-11 -translate-y-1/2'
+          gap
+            ? 'top-[8px] h-[52px] w-[52px]'
+            : tall
+              ? 'top-[16px] h-11 w-11'
+              : 'top-1/2 h-11 w-11 -translate-y-1/2'
         }`}
         data-testid="pet-card-avatar"
       >
@@ -211,18 +223,14 @@ export function PetCardLayout({
 
       <h3
         ref={nameRef}
-        className={`absolute ${mother ? 'inset-x-0.5' : 'inset-x-1'} flex items-center justify-center truncate text-center text-slate-900 ${
-          mother ? 'font-medium' : 'font-bold'
-        } ${
-          mother
-            ? 'top-[72px] h-[14px] text-[12px] leading-[14px]'
-            : gap
-              ? 'top-[64px] h-4 text-[12px] leading-4'
-              : suggest
-                ? 'top-[72px] h-[12px] text-[9px] leading-3'
-                : tall
-                  ? 'top-[62px] h-2.5 text-[8px] leading-[10px]'
-                  : 'top-[70px] h-2 text-[6px] leading-2'
+        className={`absolute inset-x-1 flex items-center justify-center truncate text-center font-bold text-slate-900 ${
+          gap
+            ? 'top-[64px] h-4 text-[12px] leading-4'
+            : suggest
+              ? 'top-[72px] h-[12px] text-[9px] leading-3'
+              : tall
+                ? 'top-[62px] h-2.5 text-[8px] leading-[10px]'
+                : 'top-[70px] h-2 text-[6px] leading-2'
         }`}
         title={title ?? name}
       >
@@ -242,7 +250,7 @@ export function PetCardLayout({
       {showDetails ? (
         <div
           className={`absolute inset-x-1 flex items-center justify-center overflow-hidden text-center ${
-            mother ? 'top-[90px] h-2' : gap ? 'top-[84px] h-2.5' : tall ? 'top-[74px] h-2.5' : 'top-[80px] h-2'
+            gap ? 'top-[84px] h-2.5' : tall ? 'top-[74px] h-2.5' : 'top-[80px] h-2'
           }`}
         >
           {details}
@@ -252,7 +260,7 @@ export function PetCardLayout({
       {showFooter ? (
         <div
           className={`absolute inset-x-1 flex items-center justify-center ${
-            mother ? 'bottom-[3px] h-3' : gap ? 'bottom-[4px] h-3' : tall ? 'top-[86px] h-[15px]' : 'bottom-1 h-1.5'
+            gap ? 'bottom-[4px] h-3' : tall ? 'top-[86px] h-[15px]' : 'bottom-1 h-1.5'
           }`}
         >
           {footer}

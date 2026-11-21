@@ -8,6 +8,7 @@ import { species } from '../data/catalog';
 import { MotherView } from './MotherView';
 import { setMotherCriteria } from './motherCriteriaStore';
 import { setTargetMode } from './targetModeStore';
+import { clearMotherPlan } from './motherPlanStore';
 
 const groups: MotherGroup[] = [1, 2, 3, 4].map((id) => ({
   chainKey: `egg:${id}`,
@@ -22,6 +23,7 @@ const groups: MotherGroup[] = [1, 2, 3, 4].map((id) => ({
 }));
 
 beforeEach(() => {
+  clearMotherPlan();
   setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA });
   setTargetMode('perfect');
 });
@@ -46,17 +48,24 @@ describe('MotherView', () => {
     expect(list).toHaveClass('grid-cols-4');
     expect(within(list).getAllByTestId('mother-chain-row')).toHaveLength(4);
     expect(within(list).getAllByTestId('pet-avatar')).toHaveLength(4);
+    // 2026-11-21：母本卡改成精灵背包同款（44px 头像、8px 名字、104px 高），未收集淡黄底
     expect(within(list).getAllByTestId('pet-card-avatar')[0]).toHaveClass(
-      'top-[9px]',
-      'h-[62px]',
-      'w-[62px]',
+      'top-[16px]',
+      'h-11',
+      'w-11',
     );
-    expect(within(list).getAllByTestId('pet-avatar')[0]).toHaveClass('h-[62px]', 'w-[62px]');
+    expect(within(list).getAllByTestId('pet-avatar')[0]).toHaveClass('h-11', 'w-11');
     expect(within(list).getAllByRole('heading', { level: 3 })[0]).toHaveClass(
-      'top-[72px]',
-      'text-[12px]',
-      'font-medium',
+      'top-[62px]',
+      'text-[8px]',
+      'font-bold',
     );
+    expect(within(list).getAllByTestId('mother-chain-row')[0]).toHaveAttribute(
+      'data-mother-status',
+      'uncollected',
+    );
+    const firstCard = within(list).getAllByTestId('mother-chain-row')[0].querySelector('article');
+    expect(firstCard).toHaveClass('bg-amber-50', 'border-amber-200');
     expect(within(list).getAllByTestId('mother-card-natures')[0]).toHaveClass('flex-col');
     expect(within(list).getAllByTestId('mother-card-egg-groups')[0]).toHaveClass('flex-col');
   });
@@ -87,9 +96,13 @@ describe('MotherView', () => {
     expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
 
     // 计划按钮只切计划，不打开悬浮窗
-    const planButton = within(screen.getAllByTestId('mother-chain-row')[1]).getByTestId('mother-plan-toggle');
+    const planRow = screen.getAllByTestId('mother-chain-row')[1];
+    const planButton = within(planRow).getByTestId('mother-plan-toggle');
     fireEvent.click(planButton);
     expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
+    // 计划中换成淡蓝底（2026-11-21 用户口径）
+    expect(planRow).toHaveAttribute('data-mother-status', 'planned');
+    expect(within(planRow).getByTestId('mother-plan-toggle')).toHaveClass('bg-sky-100');
   });
 
   test('已收集卡片只显示「查看」，按达标母本给性格上色，点击查看带齐背包筛选', () => {
@@ -133,6 +146,8 @@ describe('MotherView', () => {
     );
 
     const card = screen.getByTestId('mother-chain-row');
+    expect(card).toHaveAttribute('data-mother-status', 'collected');
+    expect(card.querySelector('article')).toHaveClass('bg-emerald-50');
     const open = within(card).getByTestId('mother-chain-open');
     expect(open).toHaveTextContent('查看');
     expect(open).not.toHaveTextContent('只');
