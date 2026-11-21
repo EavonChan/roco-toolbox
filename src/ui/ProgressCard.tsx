@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 export interface ProgressCardProps {
   title: string;
   numerator: number;
@@ -18,16 +20,42 @@ export function ProgressCard({
   actionTestId,
 }: ProgressCardProps) {
   const percent = denominator > 0 ? Math.round((numerator / denominator) * 100) : 0;
+  /** 说明默认收起：点标题右侧的圆圈问号再展开（2026-11-21 用户口径） */
+  const [hintOpen, setHintOpen] = useState(false);
   const content = (
     <>
-      <h2 className="text-sm font-medium text-slate-500">{title}</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-slate-500">{title}</h2>
+        {hint ? (
+          <span
+            role="button"
+            tabIndex={0}
+            aria-expanded={hintOpen}
+            aria-label={hintOpen ? '收起说明' : '查看说明'}
+            data-testid="progress-card-info"
+            onClick={(event) => {
+              event.stopPropagation();
+              setHintOpen((open) => !open);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              event.stopPropagation();
+              setHintOpen((open) => !open);
+            }}
+            className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 text-[11px] text-slate-400"
+          >
+            ?
+          </span>
+        ) : null}
+      </div>
       <p className="mt-1 text-2xl font-semibold text-slate-900">
         {numerator} <span className="text-slate-400">/ {denominator}</span>
       </p>
       <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
         <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${percent}%` }} />
       </div>
-      {hint ? <p className="mt-1 text-xs text-slate-400">{hint}</p> : null}
+      {hint && hintOpen ? <p className="mt-1 text-xs text-slate-400">{hint}</p> : null}
     </>
   );
 

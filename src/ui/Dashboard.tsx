@@ -369,10 +369,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         data-tour="dashboard-target"
       >
         <div
-          className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2"
+          className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2"
           data-testid="dashboard-target-header"
         >
-          <span className="text-xs font-medium text-slate-500">账号</span>
           {accounts.length > 0 ? (
             <button
               type="button"

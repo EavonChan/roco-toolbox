@@ -411,7 +411,6 @@ describe('Dashboard（看板）', () => {
   test('看板用账号摘要替代蛋组与性格设置入口', () => {
     render(<Dashboard onNavigate={vi.fn()} />);
 
-    expect(screen.getByTestId('dashboard-target-header')).toHaveTextContent('账号');
     expect(screen.getByTestId('dashboard-account-summary')).toBeInTheDocument();
     expect(screen.queryByTestId('dashboard-target-settings')).toBeNull();
     expect(screen.queryByRole('dialog', { name: '调整目标' })).toBeNull();
