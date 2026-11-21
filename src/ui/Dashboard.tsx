@@ -21,6 +21,7 @@ import { findMotherGapFill, findStudGapFill, type GapFill } from '../domain/gapF
 import { GapFillDialog, type GapTargetView } from './GapFillDialog';
 import { mergeMotherPlan } from './motherPlanStore';
 import { useMotherSuggestions } from './useMotherSuggestions';
+import { useLandscape } from './useWideLandscape';
 import { SourceNotice } from './SourceNotice';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { useOwnedPets } from './useOwnedPets';
@@ -45,7 +46,35 @@ export interface DashboardProps {
  * 顺序：账号范围 → 目标与进度 → 近期新增 → 推荐与缺口清单。
  * 奖牌目标直接在看板调整；蛋组 / 性格设置保留在目标弹层。
  */
+const LEFT_COLLAPSED_KEY = 'roco.dashboardLeftCollapsed';
+
+function readLeftCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(LEFT_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveLeftCollapsed(collapsed: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(LEFT_COLLAPSED_KEY, collapsed ? '1' : '0');
+  } catch {
+    // 隐私模式 / 配额满：本次照样生效，只是下次打开不记住
+  }
+}
+
 export function Dashboard({ onNavigate }: DashboardProps) {
+  /** 横屏才允许折叠右侧信息栏；竖屏保持原来的上下堆叠（2026-11-21 用户口径） */
+  const landscape = useLandscape();
+  const [leftCollapsedState, setLeftCollapsedState] = useState(readLeftCollapsed);
+  const leftCollapsed = landscape && leftCollapsedState;
+  const setLeftCollapsed = (collapsed: boolean) => {
+    saveLeftCollapsed(collapsed);
+    setLeftCollapsedState(collapsed);
+  };
   const [actionPanel, setActionPanel] = useState<'mothers' | 'studs'>('studs');
   const [accountSelectorOpen, setAccountSelectorOpen] = useState(false);
   /** 奖牌口径说明默认收起：点「追双牌」右边的问号再展开（2026-11-20 用户口径） */
@@ -308,7 +337,26 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   };
 
   return (
-    <main className="mx-auto max-w-md space-y-2 p-3">
+    <main
+      className="mx-auto max-w-md space-y-2 p-3"
+      data-testid="dashboard-page"
+      data-left-collapsed={leftCollapsed ? 'true' : 'false'}
+    >
+      {/* 右侧信息栏：账号 / 目标奖牌 / 进度 / 本次新增。横屏时这一栏自己滚（2026-11-21 用户口径） */}
+      <div className="dashboard-left space-y-2">
+        {landscape ? (
+          <div className="dashboard-left-tools">
+            <button
+              type="button"
+              onClick={() => setLeftCollapsed(true)}
+              data-testid="dashboard-left-collapse"
+              aria-label="收起右栏"
+              className="min-h-[28px] rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-500 shadow-sm"
+            >
+              收起右栏 ›
+            </button>
+          </div>
+        ) : null}
       {noSelectedAccounts ? (
         <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800" data-testid="dashboard-empty-accounts">
           当前未选中任何账号，请在下方「账号」里选择。
@@ -485,20 +533,38 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       {/* 本次新增：最新一次导入的明细，可收起；历史在「我的 · 游戏数据」 */}
       <ImportAdditionCard />
-
-      <div data-testid="dashboard-action-switch" data-tour="dashboard-actions">
-        <SegmentedControl
-          label="看板行动"
-          value={actionPanel}
-          options={[
-            { value: 'studs', label: '种公推荐' },
-            { value: 'mothers', label: '母本缺口' },
-          ]}
-          onValueChange={(value) => setActionPanel(value as 'mothers' | 'studs')}
-          optionTestId={(value) => `dashboard-action-${value}`}
-          className="w-full"
-        />
       </div>
+
+      <div
+        className={landscape ? 'dashboard-narrow-body' : 'dashboard-body'}
+        data-testid="dashboard-main-column"
+      >
+        <div className="dashboard-narrow-switch" data-testid="dashboard-action-switch" data-tour="dashboard-actions">
+          {landscape && leftCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setLeftCollapsed(false)}
+              data-testid="dashboard-left-expand"
+              aria-label="显示右栏"
+              className="min-h-[28px] shrink-0 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-500 shadow-sm"
+            >
+              ‹ 显示右栏
+            </button>
+          ) : null}
+          <SegmentedControl
+            label="看板行动"
+            value={actionPanel}
+            options={[
+              { value: 'studs', label: '种公推荐' },
+              { value: 'mothers', label: '母本缺口' },
+            ]}
+            onValueChange={(value) => setActionPanel(value as 'mothers' | 'studs')}
+            optionTestId={(value) => `dashboard-action-${value}`}
+            className="w-full"
+          />
+        </div>
+
+        <div className="dashboard-narrow-scroll space-y-2">
 
       {actionPanel === 'mothers' ? null : showStudRecommendationCard ? (
         <SuggestionCard
@@ -582,6 +648,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       ) : null}
 
       <SourceNotice />
+        </div>
+      </div>
 
       <GapFillDialog
         target={gapDialog?.target ?? null}
