@@ -16,6 +16,7 @@ import { accountKeyOf } from '../../domain/parseBackup';
 import { saveSnapshot, listSnapshots } from '../../storage/snapshots';
 import { refreshSnapshots } from '../../storage/snapshotStore';
 import { CHANGELOG } from '../../data/changelog';
+import { TOUR_VERSION } from '../../ui/tour';
 import { createMockState, ensureSelf, handleMockApi, type MockGroupState } from './api';
 import { MOCK_GROUP_ID, MOCK_INVITE, MOCK_ME } from './data';
 import { mockSnapshots } from './home';
@@ -42,7 +43,7 @@ function seedSession(): void {
   // 直接从「小组」页开屏：旧键 swap 会被 initialNavigation() 映射到 groups。
   if (!localStorage.getItem('roco.lastTab')) localStorage.setItem('roco.lastTab', 'swap');
   for (const segment of ['start', 'dashboard', 'collection', 'groups', 'home', 'profile', 'nearby']) {
-    localStorage.setItem(`roco.tourSeen.${segment}`, '3');
+    localStorage.setItem(`roco.tourSeen.${segment}`, TOUR_VERSION);
   }
   if (!localStorage.getItem(PREFS_KEY)) {
     localStorage.setItem(

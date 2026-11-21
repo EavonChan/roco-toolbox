@@ -19,7 +19,7 @@ import type {
   CollectionTaskRecord,
   GroupTargetConfig,
 } from '../../shared/collectionGroups';
-import type { EggRecord } from '../../shared/eggMatching';
+import type { EggDemand, EggRecord } from '../../shared/eggMatching';
 import type {
   EggLine,
   EggWorkflowState,
@@ -242,6 +242,10 @@ export function createEggWorkflow(now = Date.now()): EggWorkflowState {
     eggRecord(eggA, 'egg-me-1', MOCK_ME, 'uid:10001', true),
     eggRecord(eggB, 'egg-me-2', MOCK_ME, 'uid:10001', true),
     eggRecord(eggC, 'egg-me-3', MOCK_ME, 'uid:10001', false),
+    // 多几只自己的蛋：换蛋页「蛋仓」和「我能给蛋 / 我能孵」会更有内容（2026-11-21）
+    eggRecord(speciesAt(12), 'egg-me-4', MOCK_ME, 'uid:10001', true),
+    eggRecord(speciesAt(14), 'egg-me-5', MOCK_ME, 'uid:10001', false),
+    eggRecord(speciesAt(19), 'egg-me-6', MOCK_ME, 'uid:10001', true),
     eggRecord(eggA, 'egg-lin-1', MOCK_LIN, 'uid:20001', true),
     eggRecord(eggC, 'egg-lin-2', MOCK_LIN, 'uid:20001', true),
     eggRecord(eggB, 'egg-yu-1', MOCK_YU, 'uid:30001', true),
@@ -286,6 +290,51 @@ export function createEggWorkflow(now = Date.now()): EggWorkflowState {
       status: 'open',
     },
   ];
+
+  /**
+   * 2026-11-21：多补几张需求卡，方便在横屏 / 不同屏幕比例下看换蛋页的网格。
+   * 都是编的，只用于 ?mock=group 预览；数量、性格、奖牌刻意有些差异。
+   */
+  const demandOf = (
+    id: string,
+    demanderAccountId: string,
+    entry: SpeciesEntry,
+    patch: Partial<Pick<EggDemand, 'natures' | 'body' | 'voice' | 'quantity' | 'fulfilled' | 'status' | 'greenNest'>> = {},
+  ): EggDemand => ({
+    id,
+    groupId: MOCK_GROUP_ID,
+    demanderAccountId,
+    eggGameId: entry.gameId,
+    natures: [natureOf(entry)],
+    body: '大块头',
+    voice: '+100',
+    quantity: 1,
+    fulfilled: 0,
+    status: 'open',
+    ...patch,
+  });
+
+  demands.push(
+    // 我的收集：多几张，横屏网格能看出排布
+    demandOf('demand-me-2', MOCK_ME, speciesAt(0), { natures: ['固执', '大胆'], quantity: 2 }),
+    demandOf('demand-me-3', MOCK_ME, speciesAt(2), { body: '小不点' }),
+    demandOf('demand-me-4', MOCK_ME, speciesAt(4), { voice: '婉转声', greenNest: true }),
+    demandOf('demand-me-5', MOCK_ME, speciesAt(7), { voice: '粗嗓门', quantity: 3, fulfilled: 1 }),
+    demandOf('demand-me-6', MOCK_ME, speciesAt(10), { natures: ['稳重', '天真'], body: '小不点', voice: '-100' }),
+    demandOf('demand-me-7', MOCK_ME, speciesAt(16), { quantity: 2 }),
+    demandOf('demand-me-done-1', MOCK_ME, speciesAt(12), { status: 'fulfilled', fulfilled: 1 }),
+    demandOf('demand-me-done-2', MOCK_ME, speciesAt(14), { status: 'fulfilled', quantity: 2, fulfilled: 2 }),
+    // 组内广场：另外三位成员的需求
+    demandOf('demand-lin-2', MOCK_LIN, speciesAt(1)),
+    demandOf('demand-lin-3', MOCK_LIN, speciesAt(3), { quantity: 2 }),
+    demandOf('demand-lin-4', MOCK_LIN, speciesAt(21), { voice: '粗嗓门' }),
+    demandOf('demand-yu-2', MOCK_YU, speciesAt(5), { voice: '婉转声', greenNest: true }),
+    demandOf('demand-yu-3', MOCK_YU, speciesAt(8), { body: '小不点' }),
+    demandOf('demand-yu-4', MOCK_YU, speciesAt(22), { natures: ['胆小', '平和'] }),
+    demandOf('demand-mo-1', MOCK_MO, speciesAt(17), { quantity: 2 }),
+    demandOf('demand-mo-2', MOCK_MO, speciesAt(18), { fulfilled: 1, quantity: 2 }),
+    demandOf('demand-mo-3', MOCK_MO, speciesAt(19), { body: '小不点', voice: '-100' }),
+  );
 
   const line: PublishedEggLine = {
     id: 'line-lin-1',
