@@ -29,7 +29,7 @@ export interface PetCardLayoutProps {
    *   2026-11-19 原型口径：四列不变，头像 44 → 52、名字 6px → 12px）。
    */
   size?: PetCardSize;
-  /** 收集页母本卡的三态底色：未收集淡黄 / 计划中淡蓝 / 已收集淡绿 */
+  /** 收集页母本卡的三态底色：未收集白底 / 计划中淡蓝 / 已收集淡绿 */
   status?: PetCardStatus;
   /** 名字过长时从基准字号逐档缩小，避免长名字直接截断（母本卡 / 看板推荐卡用） */
   fitName?: boolean;
@@ -90,10 +90,10 @@ export function PetCardLayout({
   /** 看板「种公推荐」卡：44px 头像居中、名字 9px（2026-11-19 用户口径） */
   const suggest = size === 'suggest';
   /** 与配窝卡（NestPlanCard）同一套性别色：母粉、公蓝、未知灰；
-   *  收集页母本卡传 status 时按收集状态上色（未收集淡黄 / 计划中淡蓝 / 已收集淡绿） */
+   *  收集页母本卡传 status 时按收集状态上色（未收集白底 / 计划中淡蓝 / 已收集淡绿） */
   const statusTone =
     status === 'uncollected'
-      ? 'border-amber-200 bg-amber-50'
+      ? 'border-amber-200 bg-white'
       : status === 'planned'
         ? 'border-sky-200 bg-sky-50'
         : status === 'collected'

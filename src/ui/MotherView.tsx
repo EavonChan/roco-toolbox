@@ -823,7 +823,7 @@ function MotherEggRow({
     .filter((nature) => collectedNatures.has(nature))
     .map((nature) => `nature:${nature}`);
 
-  /** 三态底色（2026-11-21 用户口径）：未收集淡黄 / 计划中淡蓝 / 已收集淡绿 */
+  /** 三态底色（2026-11-21 用户口径）：未收集白底 / 计划中淡蓝 / 已收集淡绿 */
   const cardStatus: PetCardStatus = collected ? 'collected' : planned ? 'planned' : 'uncollected';
 
   return (

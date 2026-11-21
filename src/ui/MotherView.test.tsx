@@ -48,7 +48,7 @@ describe('MotherView', () => {
     expect(list).toHaveClass('grid-cols-4');
     expect(within(list).getAllByTestId('mother-chain-row')).toHaveLength(4);
     expect(within(list).getAllByTestId('pet-avatar')).toHaveLength(4);
-    // 2026-11-21：母本卡改成精灵背包同款（44px 头像、8px 名字、104px 高），未收集淡黄底
+    // 2026-11-21：母本卡改成精灵背包同款（44px 头像、8px 名字、104px 高），未收集白底
     expect(within(list).getAllByTestId('pet-card-avatar')[0]).toHaveClass(
       'top-[16px]',
       'h-11',
@@ -65,7 +65,7 @@ describe('MotherView', () => {
       'uncollected',
     );
     const firstCard = within(list).getAllByTestId('mother-chain-row')[0].querySelector('article');
-    expect(firstCard).toHaveClass('bg-amber-50', 'border-amber-200');
+    expect(firstCard).toHaveClass('bg-white', 'border-amber-200');
     expect(within(list).getAllByTestId('mother-card-natures')[0]).toHaveClass('flex-col');
     expect(within(list).getAllByTestId('mother-card-egg-groups')[0]).toHaveClass('flex-col');
   });
