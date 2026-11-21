@@ -537,39 +537,6 @@ export function MotherView({
 
       {/* 母本页的奖牌组合与看板全局目标同一份：syncTargetGrade 让两处一起写 */}
       <MotherCriteriaMedals testIdPrefix="mother-criteria" syncTargetGrade />
-      </div>
-
-      <div className="collection-main space-y-2">
-      {planGroups.length > 0 ? (
-        <CollapsibleSection
-          title="计划收集"
-          titleClass="text-emerald-700"
-          groups={planGroups}
-          defaultOpen
-          testId="mother-plan"
-          renderRow={renderPlanRow}
-          toolbar={
-            achievedGroups.length > 0 ? (
-              <button
-                type="button"
-                onClick={() =>
-                  removeManyFromMotherPlan(achievedGroups.map((group) => group.chainKey))
-                }
-                className="min-h-[28px] rounded-md border border-emerald-500 px-2 text-xs font-medium text-emerald-700"
-                data-testid="mother-plan-clear-done"
-              >
-                清除已达成（{achievedGroups.length}）
-              </button>
-            ) : undefined
-          }
-        />
-      ) : null}
-
-      {/* 链清单按蛋组分区，每行四只；收集中使用同一母本卡但不按蛋组分区 */}
-      <section
-        className="space-y-2"
-        data-testid={chainFilter === 'collecting' ? 'mother-collecting-shell' : 'mother-chain-list'}
-      >
         <div className="flex flex-wrap items-center justify-between gap-1 px-1">
           <span className="text-[11px] text-slate-400" data-testid="mother-chain-summary">
             共 {matchedGroups.length} 条链 · 已收集 {collectedChainCount}
@@ -608,6 +575,39 @@ export function MotherView({
             />
           </div>
         </div>
+      </div>
+
+      <div className="collection-main space-y-2">
+      {planGroups.length > 0 ? (
+        <CollapsibleSection
+          title="计划收集"
+          titleClass="text-emerald-700"
+          groups={planGroups}
+          defaultOpen
+          testId="mother-plan"
+          renderRow={renderPlanRow}
+          toolbar={
+            achievedGroups.length > 0 ? (
+              <button
+                type="button"
+                onClick={() =>
+                  removeManyFromMotherPlan(achievedGroups.map((group) => group.chainKey))
+                }
+                className="min-h-[28px] rounded-md border border-emerald-500 px-2 text-xs font-medium text-emerald-700"
+                data-testid="mother-plan-clear-done"
+              >
+                清除已达成（{achievedGroups.length}）
+              </button>
+            ) : undefined
+          }
+        />
+      ) : null}
+
+      {/* 链清单按蛋组分区，每行四只；收集中使用同一母本卡但不按蛋组分区 */}
+      <section
+        className="space-y-2"
+        data-testid={chainFilter === 'collecting' ? 'mother-collecting-shell' : 'mother-chain-list'}
+      >
         {chainFilter === 'collecting' ? (
           <MotherCollectingView
             motherGroups={motherGroups}
