@@ -10,7 +10,7 @@ import {
   type MotherCriteria,
 } from '../domain/motherCriteria';
 import { AccountSection } from './AccountSection';
-import { useWideLandscape } from './useWideLandscape';
+import { useTabletLandscape, useWideLandscape } from './useWideLandscape';
 import { PetAvatar } from './PetAvatar';
 import { PetCardLayout, type PetCardStatus } from './PetCardLayout';
 import { shouldUseThreeColumns } from './motherColumnLayout';
@@ -277,9 +277,17 @@ export function MotherView({
   const setQuery = (value: string) => setPersonalQuery('mothers', value);
   // 默认看「未收集」（待补齐才是主场景；看板「母本全收集」卡跳过来也是它）
   const [chainFilter, setChainFilter] = useState<ChainFilter>('uncollected');
-  /** 宽屏一屏能放下更多蛋组：首屏直接给 10 组，窄屏仍 2 组（2026-11-21 用户口径） */
+  /**
+   * 首屏蛋组数（2026-11-21 用户口径）：宽横屏 10 组；4:3 这类 1000px 起的横屏给 6 组，
+   * 避免只渲染 2 组、半屏空白；竖屏仍是 2 组。
+   */
   const wideLandscape = useWideLandscape();
-  const initialSections = wideLandscape ? 10 : INITIAL_CHAIN_SECTIONS;
+  const tabletLandscape = useTabletLandscape();
+  const initialSections = wideLandscape
+    ? 10
+    : tabletLandscape
+      ? 6
+      : INITIAL_CHAIN_SECTIONS;
   const [visibleSectionCount, setVisibleSectionCount] = useState(initialSections);
 
   // 收集页的「未收集 / 收集中 / 已收集」直达：同步到本页的状态开关
@@ -477,7 +485,7 @@ export function MotherView({
       setThreeColumns(false);
       return;
     }
-    if (!window.matchMedia('(orientation: landscape) and (min-width: 1250px)').matches) {
+    if (!window.matchMedia('(orientation: landscape) and (min-width: 1200px)').matches) {
       setThreeColumns(false);
       return;
     }
@@ -503,15 +511,19 @@ export function MotherView({
       .map((child) => child.getBoundingClientRect().height);
     list.style.gridTemplateColumns = previous;
     const gap = Number.parseFloat(getComputedStyle(list).rowGap) || 0;
+    // 列表上方还有计划汇总等块：按列表在文档里的顶部算真实可用高度，
+    // 否则 3:2 这类屏会把「列表刚好 800px」误判成一屏放得下。
+    const listTop = list.getBoundingClientRect().top + window.scrollY;
+    const availableHeight = window.innerHeight - Math.max(0, listTop);
     setThreeColumns(
       shouldUseThreeColumns({
         sectionHeights: heights,
         totalSections: chainSections.length,
         gap,
-        viewportHeight: window.innerHeight,
+        viewportHeight: availableHeight,
       }),
     );
-  }, [filterCollapsed, chainFilter, chainSections, hiddenChainSections, layoutTick]);
+  }, [filterCollapsed, chainFilter, chainSections, hiddenChainSections, layoutTick, plan.length]);
 
   const planGroups = useMemo(
     () => matchedGroups.filter((group) => plannedSet.has(group.chainKey)),

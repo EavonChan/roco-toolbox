@@ -460,8 +460,9 @@ span {
 }
 
 /* 收起筛选且屏幕够宽、两列一屏放不下全部蛋组时，母本蛋组排三列
-   （2026-11-21 用户口径；是否放不下由 MotherView 按真实高度判定） */
-@media (orientation: landscape) and (min-width: 1250px) {
+   （2026-11-21 用户口径；是否放不下由 MotherView 按真实高度判定）
+   3:2（1200px）也算够宽，实测三列能一屏放下全部蛋组。 */
+@media (orientation: landscape) and (min-width: 1200px) {
   .collection-scope[data-rail-collapsed="true"]
     [data-testid="mother-chain-list"][data-three-columns="true"] {
     grid-template-columns: repeat(3, minmax(0, 1fr));
