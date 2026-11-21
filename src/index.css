@@ -477,3 +477,11 @@ span {
     display: none !important;
   }
 }
+
+/* 收起筛选且屏幕够宽、蛋组较多时，母本蛋组排三列（2026-11-21 用户口径） */
+@media (orientation: landscape) and (min-width: 1250px) {
+  .collection-scope[data-rail-collapsed="true"]
+    [data-testid="mother-chain-list"][data-many-groups="true"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

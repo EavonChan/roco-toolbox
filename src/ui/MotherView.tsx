@@ -611,6 +611,7 @@ export function MotherView({
       <section
         className="space-y-2"
         data-testid={chainFilter === 'collecting' ? 'mother-collecting-shell' : 'mother-chain-list'}
+        data-many-groups={chainSections.length > 4 ? 'true' : undefined}
       >
         {chainFilter === 'collecting' ? (
           <MotherCollectingView
