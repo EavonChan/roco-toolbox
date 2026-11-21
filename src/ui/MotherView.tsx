@@ -10,6 +10,7 @@ import {
   type MotherCriteria,
 } from '../domain/motherCriteria';
 import { AccountSection } from './AccountSection';
+import { useWideLandscape } from './useWideLandscape';
 import { PetAvatar } from './PetAvatar';
 import { PetCardLayout } from './PetCardLayout';
 import { SearchField } from './primitives/SearchField';
@@ -272,7 +273,10 @@ export function MotherView({
   const setQuery = (value: string) => setPersonalQuery('mothers', value);
   // 默认看「未收集」（待补齐才是主场景；看板「母本全收集」卡跳过来也是它）
   const [chainFilter, setChainFilter] = useState<ChainFilter>('uncollected');
-  const [visibleSectionCount, setVisibleSectionCount] = useState(INITIAL_CHAIN_SECTIONS);
+  /** 宽屏一屏能放下更多蛋组：首屏直接给 10 组，窄屏仍 2 组（2026-11-21 用户口径） */
+  const wideLandscape = useWideLandscape();
+  const initialSections = wideLandscape ? 10 : INITIAL_CHAIN_SECTIONS;
+  const [visibleSectionCount, setVisibleSectionCount] = useState(initialSections);
 
   // 收集页的「未收集 / 收集中 / 已收集」直达：同步到本页的状态开关
   useEffect(() => {
@@ -441,8 +445,8 @@ export function MotherView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchedGroups, chainFilter, owned, criteria, activeVoices.join(','), naturesOf, plannedSet]);
   useEffect(() => {
-    setVisibleSectionCount(INITIAL_CHAIN_SECTIONS);
-  }, [chainFilter, keyword, eggGroupFilter.join(',')]);
+    setVisibleSectionCount(initialSections);
+  }, [chainFilter, keyword, eggGroupFilter.join(','), initialSections]);
   const visibleChainSections = chainSections.slice(0, visibleSectionCount);
   const hiddenChainSections = Math.max(0, chainSections.length - visibleChainSections.length);
   const planGroups = useMemo(

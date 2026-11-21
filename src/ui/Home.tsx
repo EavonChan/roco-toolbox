@@ -148,12 +148,9 @@ function savePairChoice(value: PairLayout): void {
 function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: string }) {
   const landscape = useLandscape();
   const [pairLayout, setPairLayout] = useState<PairLayout>(() => readPairChoice() ?? 'single');
-  const togglePairLayout = () => {
-    setPairLayout((current) => {
-      const next: PairLayout = current === 'double' ? 'single' : 'double';
-      savePairChoice(next);
-      return next;
-    });
+  const setPairLayoutChoice = (next: PairLayout) => {
+    savePairChoice(next);
+    setPairLayout(next);
   };
   const home = snapshot.home;
   // 先建索引再判空：hook 不能写在条件 return 之后
@@ -168,14 +165,13 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
     <section className="rounded-2xl bg-white p-1.5 shadow-sm" data-testid={`home-account-${snapshot.gameId}`}>
       <div className="flex items-start gap-2">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <h2 className={TITLE}>{label} 的家园</h2>
-            <span
-              className="text-[11px] leading-4 text-slate-400"
-              data-testid="home-captured-at"
-            >
+          <h2 className={TITLE}>{label} 的家园</h2>
+          <p className={`${HINT} flex flex-wrap items-center gap-x-2 gap-y-0.5`}>
+            <span data-testid="home-captured-at">
               采集时间 {formatCapturedAt(home.capturedAt)}
             </span>
+            {home.homeLevel ? <span>· 家园 {home.homeLevel} 级</span> : null}
+            {home.roomLevel ? <span>· 房间 {home.roomLevel} 级</span> : null}
             <span
               className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                 eggCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
@@ -184,11 +180,6 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
             >
               {eggCount > 0 ? `有 ${eggCount} 枚蛋` : '没有蛋'}
             </span>
-          </div>
-          <p className={HINT}>
-            {home.homeLevel ? `家园 ${home.homeLevel} 级` : ''}
-            {home.homeLevel && home.roomLevel ? ' · ' : ''}
-            {home.roomLevel ? `房间 ${home.roomLevel} 级` : ''}
           </p>
         </div>
       </div>
@@ -229,14 +220,28 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
           <div className="text-xs font-medium text-slate-500">配窝卡片</div>
           <div className="flex items-center gap-2">
             {landscape ? (
-              <button
-                type="button"
-                onClick={togglePairLayout}
-                data-testid="home-pair-layout-toggle"
-                className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-500"
+              <div
+                className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5"
+                role="group"
+                aria-label="配窝卡列数"
               >
-                {pairLayout === 'double' ? '单列' : '双列'}
-              </button>
+                {(['single', 'double'] as const).map((layout) => (
+                  <button
+                    key={layout}
+                    type="button"
+                    onClick={() => setPairLayoutChoice(layout)}
+                    aria-pressed={pairLayout === layout}
+                    data-testid={`home-pair-layout-${layout}`}
+                    className={`rounded px-1.5 py-0.5 text-[10px] ${
+                      pairLayout === layout
+                        ? 'bg-white font-medium text-emerald-700 shadow-sm'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {layout === 'single' ? '单列' : '双列'}
+                  </button>
+                ))}
+              </div>
             ) : null}
             <div className="text-[10px] text-slate-400">按游戏实际配对</div>
           </div>

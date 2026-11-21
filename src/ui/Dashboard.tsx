@@ -21,7 +21,7 @@ import { findMotherGapFill, findStudGapFill, type GapFill } from '../domain/gapF
 import { GapFillDialog, type GapTargetView } from './GapFillDialog';
 import { mergeMotherPlan } from './motherPlanStore';
 import { useMotherSuggestions } from './useMotherSuggestions';
-import { useLandscape } from './useWideLandscape';
+import { useLandscape, useWideLandscape } from './useWideLandscape';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { useOwnedPets } from './useOwnedPets';
 import { sortAccountNames } from './accountOrder';
@@ -68,6 +68,7 @@ function saveLeftCollapsed(collapsed: boolean): void {
 export function Dashboard({ onNavigate }: DashboardProps) {
   /** 横屏才允许折叠右侧信息栏；竖屏保持原来的上下堆叠（2026-11-21 用户口径） */
   const landscape = useLandscape();
+  const wideLandscape = useWideLandscape();
   const [leftCollapsedState, setLeftCollapsedState] = useState(readLeftCollapsed);
   const leftCollapsed = landscape && leftCollapsedState;
   const setLeftCollapsed = (collapsed: boolean) => {
@@ -335,6 +336,69 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     });
   };
 
+  /** 配窝卡区块：宽屏双面板与窄屏共用，section 决定种公 / 母本口径。 */
+  const nestCard = (section: 'studs' | 'mothers') => (
+            <section
+              className="rounded-2xl bg-white p-4 shadow-sm"
+              data-testid="nest-summary"
+              data-tour="dashboard-nest"
+            >
+              <NestPlanCard
+                plans={plans}
+                emptyNote={nestEmptyNote}
+                gapsByAccount={gapsByAccountMap}
+                studCompleteAccounts={studCompleteAccounts}
+                studRecommendationsByAccount={studRecommendationsByAccount}
+                onOpenStudRecommendation={(account, group) => openStudGap(group, [account])}
+                collectedGroupIdsByAccount={collectedGroupsByAccount}
+                motherSuggestions={motherSuggestions}
+                section={section}
+                targetBodyMedal={gapTargetBody}
+                targetVoiceDb={gapTargetVoiceDb}
+                motherGaps={motherGapCards}
+                onOpenMotherGap={openMotherGap}
+                onOpenMotherGaps={() =>
+                  onNavigate({ type: 'open-collection', location: { kind: 'mothers', status: 'missing' } })
+                }
+                onSeekHelp={() => onNavigate({ type: 'open-groups', groupType: 'mother' })}
+              />
+              {transferTasks.length > 0 ? (
+                <div
+                  className="mt-2 border-t border-dashed border-slate-200 pt-2"
+                  data-testid="transfer-task-list"
+                >
+                  <h3 className="text-xs font-semibold text-slate-600">跨号传蛋</h3>
+                  <ul className="mt-1 space-y-1">
+                    {transferTasks.map((task) => (
+                      <li
+                        key={task.id}
+                        className="flex items-center gap-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800"
+                        data-testid="transfer-task-item"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium">
+                            {task.sourceAccount} → {task.targetAccount}
+                          </p>
+                          <p className="truncate text-amber-700">
+                            {task.motherName} × {task.fatherName} · {task.natureName}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeStudTransferTask(task.id)}
+                          data-testid="transfer-task-remove"
+                          className="shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px]"
+                        >
+                          移除
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+  );
+
   return (
     <main
       className="mx-auto max-w-md space-y-2 p-3"
@@ -543,6 +607,33 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       </div>
 
+      {wideLandscape && landscape && !leftCollapsed ? (
+        <div className="dashboard-panels" data-testid="dashboard-main-column">
+          <div className="dashboard-panel">
+            <h2 className="dashboard-panel-title mx-auto py-1 text-center text-sm font-medium text-slate-700">
+              种公推荐
+            </h2>
+            <div className="dashboard-panel-scroll space-y-2">
+              {showStudRecommendationCard ? (
+                <SuggestionCard
+                  items={recommendations}
+                  emptyNote={suggestionEmptyNote}
+                  onOpenGap={(group) => openStudGap(group, selectedAccountNames)}
+                />
+              ) : null}
+              {owned.length > 0 ? nestCard('studs') : null}
+            </div>
+          </div>
+          <div className="dashboard-panel">
+            <h2 className="dashboard-panel-title mx-auto py-1 text-center text-sm font-medium text-slate-700">
+              母本缺口
+            </h2>
+            <div className="dashboard-panel-scroll space-y-2">
+              {owned.length > 0 ? nestCard('mothers') : null}
+            </div>
+          </div>
+        </div>
+      ) : (
       <div
         className={landscape ? 'dashboard-narrow-body' : 'dashboard-body'}
         data-testid="dashboard-main-column"
@@ -586,70 +677,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       {/* 配窝建议是产品亮点（2026-10-25 用户要求放回看板）：直接展示完整摆位与配对，
           不再只给一个「去配窝」入口；收集页的完整视图仍然保留。 */}
           <div className="dashboard-panel">
-      {owned.length > 0 ? (
-        <section
-          className="rounded-2xl bg-white p-4 shadow-sm"
-          data-testid="nest-summary"
-          data-tour="dashboard-nest"
-        >
-          <NestPlanCard
-            plans={plans}
-            emptyNote={nestEmptyNote}
-            gapsByAccount={gapsByAccountMap}
-            studCompleteAccounts={studCompleteAccounts}
-            studRecommendationsByAccount={studRecommendationsByAccount}
-            onOpenStudRecommendation={(account, group) => openStudGap(group, [account])}
-            collectedGroupIdsByAccount={collectedGroupsByAccount}
-            motherSuggestions={motherSuggestions}
-            section={actionPanel}
-            targetBodyMedal={gapTargetBody}
-            targetVoiceDb={gapTargetVoiceDb}
-            motherGaps={motherGapCards}
-            onOpenMotherGap={openMotherGap}
-            onOpenMotherGaps={() =>
-              onNavigate({ type: 'open-collection', location: { kind: 'mothers', status: 'missing' } })
-            }
-            onSeekHelp={() => onNavigate({ type: 'open-groups', groupType: 'mother' })}
-          />
-          {transferTasks.length > 0 ? (
-            <div
-              className="mt-2 border-t border-dashed border-slate-200 pt-2"
-              data-testid="transfer-task-list"
-            >
-              <h3 className="text-xs font-semibold text-slate-600">跨号传蛋</h3>
-              <ul className="mt-1 space-y-1">
-                {transferTasks.map((task) => (
-                  <li
-                    key={task.id}
-                    className="flex items-center gap-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800"
-                    data-testid="transfer-task-item"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">
-                        {task.sourceAccount} → {task.targetAccount}
-                      </p>
-                      <p className="truncate text-amber-700">
-                        {task.motherName} × {task.fatherName} · {task.natureName}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeStudTransferTask(task.id)}
-                      data-testid="transfer-task-remove"
-                      className="shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px]"
-                    >
-                      移除
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+      {owned.length > 0 ? nestCard(actionPanel) : null}
           </div>
         </div>
       </div>
+      )}
 
       <GapFillDialog
         target={gapDialog?.target ?? null}
