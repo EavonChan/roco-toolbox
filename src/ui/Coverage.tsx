@@ -160,13 +160,15 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
   }, []);
 
   return (
-    <main className="mx-auto max-w-md space-y-3 p-4" data-tour="collection-studs">
+    <main className="mx-auto max-w-md space-y-3 p-4" data-testid="collection-studs" data-tour="collection-studs">
       {!loaded ? (
         <p className="text-sm text-slate-400">正在读取本地数据…</p>
       ) : accounts.length === 0 ? (
         <EmptyState onGoImport={onGoImport} />
       ) : (
         <>
+          <div className="collection-layout">
+          <div className="collection-rail space-y-3">
           {/* 筛选提成一级卡片（2026-11-19 用户口径）：一进种公页就能改蛋组 / 档位 / 性格，
               不再收在阵列右上角；性格三种模式，默认「八大性格」 */}
           <section
@@ -358,6 +360,9 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
               ))}
             </ul>
           </section>
+          </div>
+
+          <div className="collection-main space-y-3">
 
           {/* 新用户第一次进来给一次极简说明（3 条），点「知道了」后不再出现 */}
           <CoverageIntroCard />
@@ -394,6 +399,8 @@ export function Coverage({ expandedGroupId, onToggleGroup, onGoImport }: Coverag
             onToggleGroupNature={toggleGroupNature}
             natureMode={filter.natureMode}
           />
+          </div>
+          </div>
         </>
       )}
 

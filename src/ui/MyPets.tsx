@@ -761,9 +761,11 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
   });
 
   return (
-    <main className="mx-auto max-w-md space-y-1 px-4 pb-4 pt-0.5">
-      {/* 搜索常显、独立于高级筛选（2026-10-24 统一控件） */}
-      <SearchField
+    <main className="mx-auto max-w-md space-y-1 px-4 pb-4 pt-0.5" data-testid="collection-inventory">
+      <div className="collection-layout">
+        <div className="collection-rail space-y-1">
+          {/* 搜索常显、独立于高级筛选（2026-10-24 统一控件） */}
+          <SearchField
         label="搜索精灵名"
         value={nameQuery}
         onValueChange={setNameQuery}
@@ -900,6 +902,8 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           />
         </div>
       </FilterPanel>
+        </div>
+        <div className="collection-main space-y-1">
       {visiblePets.length === 0 ? (
         <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
           没有符合条件的精灵，试试取消部分标签。
@@ -913,6 +917,8 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           columns={effectiveColumns}
         />
       )}
+        </div>
+      </div>
     </main>
   );
 }

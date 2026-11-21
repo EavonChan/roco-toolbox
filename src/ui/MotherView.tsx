@@ -508,7 +508,8 @@ export function MotherView({
   };
 
   return (
-    <div className="space-y-2" data-tour="collection-mothers">
+    <div className="collection-layout" data-tour="collection-mothers">
+      <div className="collection-rail space-y-2">
       {/* 搜索 + 蛋组筛选同一行：蛋组用页内下拉多选，不再单开一段面板（2026-10-25 用户要求） */}
       <div className="flex items-center gap-1.5">
         <SearchField
@@ -536,7 +537,9 @@ export function MotherView({
 
       {/* 母本页的奖牌组合与看板全局目标同一份：syncTargetGrade 让两处一起写 */}
       <MotherCriteriaMedals testIdPrefix="mother-criteria" syncTargetGrade />
+      </div>
 
+      <div className="collection-main space-y-2">
       {planGroups.length > 0 ? (
         <CollapsibleSection
           title="计划收集"
@@ -677,6 +680,8 @@ export function MotherView({
           </button>
         ) : null}
       </section>
+
+      </div>
 
       <GapFillDialog
         target={gapDialog?.target ?? null}

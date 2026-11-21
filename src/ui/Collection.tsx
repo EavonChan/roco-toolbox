@@ -25,6 +25,27 @@ export interface CollectionProps {
 
 type Kind = CollectionLocation['kind'];
 
+const RAIL_COLLAPSED_KEY = 'roco.collectionRailCollapsed';
+
+/** 筛选栏是否收起：只影响横屏分栏，竖屏没有右栏、保持原样。 */
+function readRailCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(RAIL_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveRailCollapsed(collapsed: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RAIL_COLLAPSED_KEY, collapsed ? '1' : '0');
+  } catch {
+    // 隐私模式 / 配额满：本次照样生效，只是下次打开不记住
+  }
+}
+
 function CollectionAccountSlot() {
   const { accounts } = useOwnedPets();
   return <AccountFilterBar accounts={accounts} compact />;
@@ -100,6 +121,13 @@ export function Collection({
 }: CollectionProps) {
   const searchIndex = useMemo(() => buildEggSearchIndex(species), []);
   const [inventoryCount, setInventoryCount] = useState(0);
+  const [railCollapsed, setRailCollapsed] = useState(readRailCollapsed);
+  const toggleRail = useCallback(() => {
+    setRailCollapsed((collapsed) => {
+      saveRailCollapsed(!collapsed);
+      return !collapsed;
+    });
+  }, []);
   const reportInventoryCount = useCallback((count: number) => setInventoryCount(count), []);
 
   const kind: Kind = location.kind;
@@ -115,7 +143,11 @@ export function Collection({
   };
 
   return (
-    <>
+    <div
+      className="collection-scope"
+      data-rail-collapsed={railCollapsed ? 'true' : 'false'}
+      data-testid="collection-scope"
+    >
       <nav className="mx-auto max-w-md px-3 pt-2" aria-label="收集视图">
         <div
           className="grid grid-cols-[minmax(76px,0.8fr)_repeat(3,minmax(0,1fr))] gap-1.5"
@@ -154,6 +186,17 @@ export function Collection({
             );
           })}
         </div>
+        <button
+          type="button"
+          onClick={toggleRail}
+          aria-expanded={!railCollapsed}
+          aria-label={railCollapsed ? '展开筛选' : '收起筛选'}
+          title={railCollapsed ? '展开筛选' : '收起筛选'}
+          data-testid="collection-rail-toggle"
+          className="collection-rail-toggle"
+        >
+          {railCollapsed ? '筛选' : '收起筛选'}
+        </button>
       </nav>
 
       {location.kind === 'mothers' ? (
@@ -172,6 +215,6 @@ export function Collection({
           />
         </>
       )}
-    </>
+    </div>
   );
 }
