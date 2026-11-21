@@ -1,5 +1,7 @@
 package com.localdatatool.toolbox.capture;
 
+import android.os.Build;
+
 import java.io.*;
 import java.nio.*;
 import java.nio.file.*;
@@ -80,13 +82,7 @@ public final class PcapWriter implements Closeable {
                 destination.getFD().sync();
             }
             output.close();
-            try {
-                // 原子替换：网页可能正在按旧快照读文件，不能出现「半个文件」
-                Files.move(temp.toPath(), file.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException fallback) {
-                Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            }
+            replaceFile(temp, file);
             open(true);
             // 标记只用于拒绝「完整导入」；写失败不影响继续采集
             try { CaptureFiles.markTrimmed(file); } catch (IOException ignored) { }
@@ -98,6 +94,36 @@ public final class PcapWriter implements Closeable {
             return size;
         }
         return size;
+    }
+    /** 原子替换：网页可能正在按旧快照读文件，不能出现「半个文件」。 */
+    private static void replaceFile(File source, File target) throws IOException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            replaceFileNio(source, target);
+            return;
+        }
+        if (source.renameTo(target)) return;
+
+        // Android 6/7 没有 java.nio.file；同目录 rename 通常是原子的，只在实现拒绝覆盖时兜底。
+        File backup = new File(target.getPath() + ".rename-backup");
+        if (backup.exists() || (target.exists() && !target.renameTo(backup))) {
+            throw new IOException("无法替换采集文件");
+        }
+        if (!source.renameTo(target)) {
+            if (backup.exists()) backup.renameTo(target);
+            throw new IOException("无法替换采集文件");
+        }
+        if (backup.exists() && !backup.delete()) {
+            throw new IOException("无法清理采集文件备份");
+        }
+    }
+    @android.annotation.TargetApi(Build.VERSION_CODES.O)
+    private static void replaceFileNio(File source, File target) throws IOException {
+        try {
+            Files.move(source.toPath(), target.toPath(),
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException fallback) {
+            Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
     }
     /** 第一条「保留区间起点」记录：最后一段不超过 keep 字节的完整记录起点。 */
     private long recordStartForKeep(long length) throws IOException {
