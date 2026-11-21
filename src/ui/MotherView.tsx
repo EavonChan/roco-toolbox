@@ -870,7 +870,7 @@ function MotherEggRow({
               className={`min-h-[13px] w-full truncate rounded-full border px-1 text-[7px] leading-[13px] ${
                 planned
                   ? 'border-sky-300 bg-sky-100 text-sky-700'
-                  : 'border-amber-300 bg-amber-100/70 text-amber-800'
+                  : 'border-slate-200 bg-white text-slate-600'
               }`}
               data-testid="mother-plan-toggle"
               aria-pressed={planned}

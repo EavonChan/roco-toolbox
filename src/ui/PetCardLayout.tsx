@@ -93,7 +93,7 @@ export function PetCardLayout({
    *  收集页母本卡传 status 时按收集状态上色（未收集白底 / 计划中淡蓝 / 已收集淡绿） */
   const statusTone =
     status === 'uncollected'
-      ? 'border-amber-200 bg-white'
+      ? 'border-slate-200 bg-white'
       : status === 'planned'
         ? 'border-sky-200 bg-sky-50'
         : status === 'collected'
@@ -108,6 +108,13 @@ export function PetCardLayout({
           ? 'border-slate-200 bg-slate-50'
           : 'border-emerald-300 bg-emerald-50/60';
   const tone = statusTone ?? genderTone;
+  /** 未收集白卡用灰边 hover；计划中蓝卡、已收集绿卡沿用同色系 hover。 */
+  const hoverBorder =
+    status === 'uncollected'
+      ? 'hover:border-slate-400'
+      : status === 'planned'
+        ? 'hover:border-sky-400'
+        : 'hover:border-emerald-500';
   const nameRef = useRef<HTMLHeadingElement | null>(null);
   const nameTextRef = useRef<HTMLSpanElement | null>(null);
 
@@ -149,7 +156,7 @@ export function PetCardLayout({
 
   return (
     <article
-      className={`relative ${tall || gap ? 'h-[104px]' : 'h-[98px]'} min-w-0 overflow-hidden rounded-xl border ${tone} p-1 shadow-sm ${onClick ? 'cursor-pointer hover:border-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500' : ''} ${className}`}
+      className={`relative ${tall || gap ? 'h-[104px]' : 'h-[98px]'} min-w-0 overflow-hidden rounded-xl border ${tone} p-1 shadow-sm ${onClick ? `cursor-pointer ${hoverBorder} focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500` : ''} ${className}`}
       data-testid={testId}
       data-academy={academy ? 'true' : undefined}
       title={title}
