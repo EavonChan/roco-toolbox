@@ -155,4 +155,49 @@ describe('MotherView', () => {
     });
     expect(onOpenInventory.mock.calls[0][0].heightRange).toBeUndefined();
   });
+
+  test('母本页提供未收集、收集中、已收集三页签', () => {
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={groups}
+        mode="perfect"
+        status="collecting"
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '未收集' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '收集中' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '已收集' })).toBeTruthy();
+    expect(screen.getByTestId('mother-collecting-view')).toBeTruthy();
+    expect(screen.queryByTestId('mother-chain-list')).toBeNull();
+  });
+
+  test('大列表首屏只渲染部分蛋组，其余按需展开', () => {
+    const manyGroups: MotherGroup[] = Array.from({ length: 120 }, (_, index) => ({
+      ...groups[0],
+      chainKey: `egg:${index + 1}`,
+      eggGameId: index + 1,
+      formLabel: `批量精灵${index + 1}`,
+      number: String(index + 1).padStart(3, '0'),
+      eggGroups: [1 + (index % 12)],
+    }));
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={manyGroups}
+        mode="perfect"
+        status="missing"
+      />,
+    );
+
+    expect(screen.getAllByTestId('mother-chain-row').length).toBeLessThan(60);
+    const more = screen.getByRole('button', { name: /显示更多蛋组/ });
+    fireEvent.click(more);
+    expect(screen.getAllByTestId('mother-chain-row').length).toBeGreaterThan(60);
+  });
 });

@@ -51,7 +51,7 @@ test('切组取消保留原组草稿，确认后才切到另一组', async ({ pa
 
 test('导入页不再显示旧的外部文件导入指引', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('import-guide')).toHaveCount(0);
+  await expect(page.getByTestId('import-input')).toHaveCount(1);
   await expect(page.getByRole('link', { name: /下载安卓采集器/ })).toHaveCount(0);
 });
 

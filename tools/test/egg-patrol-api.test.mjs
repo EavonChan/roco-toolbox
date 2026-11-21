@@ -79,6 +79,57 @@ test('owner-only expiring one-time group codes; internal auth fails before datab
   assert.equal(result.status,401);
   db.sql.close();
 });
+
+test('exchange requests and acceptances enter the real bot queue with concrete messages',async()=>{
+  const db=database();
+  await connect(db);
+  db.sql.prepare("UPDATE mother_group_members SET display_name='小甲' WHERE group_id='g' AND account_id='a'").run();
+  db.sql.prepare("UPDATE mother_group_members SET display_name='小乙' WHERE group_id='g' AND account_id='b'").run();
+  db.sql.prepare(`INSERT INTO mother_group_accounts(group_id,game_account_key,member_account_id,account_name,source_exported_at,egg_game_ids)
+    VALUES('g','uid:293145','a','小甲','2026-11-16T00:00:00Z','[]')`).run();
+  db.sql.prepare(`INSERT INTO mother_group_accounts(group_id,game_account_key,member_account_id,account_name,source_exported_at,egg_game_ids)
+    VALUES('g','uid:293146','b','小乙','2026-11-16T00:00:00Z','[]')`).run();
+  const egg=(id,accountId)=>({id,accountId,gameAccountKey:`uid:${accountId==='a'?'293145':'293146'}`,eggGameId:3062,
+    nature:'固执',body:'大块头',voice:'婉转声',provenance:'unknown',confidence:'manual',status:'available',
+    kind:'ordinary',listed:true,labelSource:'manual'});
+  const state={demands:[{id:'d',groupId:'g',demanderAccountId:'a',eggGameId:3062,natures:['固执'],
+    body:'大块头',voice:'婉转声',quantity:1,fulfilled:0,status:'open'}],
+    eggs:[egg('egg-a','a'),egg('egg-b','b')],trades:[],watermarks:{},orders:{}};
+  db.sql.prepare('INSERT INTO egg_matching_groups(group_id,state_json,version,updated_at) VALUES(?,?,0,1)')
+    .run('g',JSON.stringify(state));
+
+  const proposeResponse=await matching(new Request('https://local/api/collection-groups/g/egg-matching',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({baseVersion:0,action:{type:'propose',id:'trade',demandId:'d',giveId:'egg-b',receiveId:'egg-a'}}),
+  }),db.env,null,'b','g',time);
+  assert.equal(proposeResponse.status,200);
+  const requestClaim=await bot(db,'claim',{botId:'654321',qqGroupId:'123456'},time+1);
+  assert.equal(requestClaim.events.length,1);
+  assert.equal(requestClaim.events[0].kind,'exchange');
+  assert.equal(requestClaim.events[0].event,'request');
+  assert.equal(requestClaim.events[0].uid,'293145');
+  assert.match(requestClaim.events[0].message,/小乙 向 小甲 发起换蛋/);
+  await bot(db,'ack',{id:requestClaim.events[0].id,leaseToken:requestClaim.events[0].leaseToken,outcome:'sent'},time+2);
+
+  const acceptResponse=await matching(new Request('https://local/api/collection-groups/g/egg-matching',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({baseVersion:1,action:{type:'accept',id:'trade'}}),
+  }),db.env,null,'a','g',time+3);
+  assert.equal(acceptResponse.status,200);
+  const acceptedClaim=await bot(db,'claim',{botId:'654321',qqGroupId:'123456'},time+4);
+  assert.equal(acceptedClaim.events.length,1);
+  assert.equal(acceptedClaim.events[0].event,'accepted');
+  assert.equal(acceptedClaim.events[0].uid,'293146');
+  assert.match(acceptedClaim.events[0].message,/小甲 已接受与 小乙 的换蛋/);
+  await bot(db,'ack',{id:acceptedClaim.events[0].id,leaseToken:acceptedClaim.events[0].leaseToken,outcome:'failed'},time+5);
+  assert.equal((await bot(db,'claim',{botId:'654321',qqGroupId:'123456'},time+6)).events.length,0);
+  const retryClaim=await bot(db,'claim',{botId:'654321',qqGroupId:'123456'},time+60005);
+  assert.equal(retryClaim.events.length,1);
+  assert.equal(retryClaim.events[0].event,'accepted');
+  await bot(db,'ack',{id:retryClaim.events[0].id,leaseToken:retryClaim.events[0].leaseToken,outcome:'sent'},time+60006);
+  assert.equal(db.sql.prepare("SELECT count(*) n FROM egg_patrol_notifications WHERE side LIKE 'exchange-%' AND status='sent'").get().n,2);
+  db.sql.close();
+});
 test('quiet hours make no request; 30 minute cache; an egg on the ground queues once per 2 hours',async()=>{
   const db=database();await connect(db);tasks(db);
   let calls=0;const ids=['old'];const fetcher=async()=>{calls++;return Response.json(scene(ids));};

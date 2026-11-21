@@ -29,7 +29,7 @@ export const TOUR_HINT_STEP_ID = 'tour-hint';
  */
 export type TourPage = 'dashboard' | 'home' | 'collection' | 'nearby' | 'groups' | 'profile';
 export type TourCollection =
-  | { kind: 'mothers'; status: 'missing' | 'collected' | 'plan' }
+  | { kind: 'mothers'; status: 'missing' | 'collecting' | 'collected' }
   | { kind: 'studs'; view: 'coverage' }
   | { kind: 'inventory' };
 export type TourProfileSection = 'identity' | 'data' | 'sync';

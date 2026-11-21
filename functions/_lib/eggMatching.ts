@@ -6,6 +6,7 @@ import { rateLimit, type Env } from './util';
 import type { CollectionDemand, CollectionDemandFeed } from '../../src/shared/collectionGroups';
 import { readPatrolStatus } from './eggPatrolStore';
 import { prepareReminder, readReminderStatus } from './eggReminders';
+import { prepareExchangeNotification } from './eggExchangeNotifications';
 
 interface StateRow { version: number; state_json: string }
 
@@ -108,6 +109,15 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
     const version = current.version + 1;
     const mutation = crypto.randomUUID();
     const reminder = action.type === 'remind' ? await prepareReminder(env.DB, groupId, next, next.trades.find(t => t.id === action.id)!, accountId, mutation) : null;
+    const exchangeNotification = await prepareExchangeNotification(
+      env.DB,
+      groupId,
+      next,
+      action,
+      accountId,
+      mutation,
+      now,
+    );
     const statements = [env.DB.prepare(`UPDATE egg_matching_groups SET state_json=?,version=?,mutation_id=?,updated_at=?
       WHERE group_id=? AND version=? AND EXISTS (SELECT 1 FROM mother_group_members WHERE group_id=? AND account_id=?)`)
       .bind(stateJson, version, mutation, now, groupId, current.version, groupId, accountId),
@@ -139,6 +149,7 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
           SELECT 1 FROM egg_matching_locks l WHERE l.account_id=json_extract(value,'$.accountId') AND l.resource_id=json_extract(value,'$.resourceId') AND l.group_id=? AND l.trade_id=json_extract(value,'$.tradeId'))`).bind(groupId,JSON.stringify(lockRows),groupId,mutation,groupId));
     }
     if (reminder) statements.push(reminder);
+    if (exchangeNotification) statements.push(exchangeNotification);
     const result = await env.DB.batch(statements);
     if (!result[0].meta.changes) return failCode(origin, 409, 'REVISION_CONFLICT', '小组数据已变化或成员权限失效，请刷新');
     const visible = visibleState(next, accountId, members);

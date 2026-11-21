@@ -108,8 +108,11 @@ test('覆盖度页：分母只随蛋组变化（14 → 13），档位不再改�
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-studs').click();
   await openFilter(page);
-  // 覆盖度页只显示当前档位（只读、不再自己控制）
-  await expect(page.getByTestId('coverage-grade-readonly')).toContainText('满分小婉');
+  // 体型 / 声音是全局目标：看板选的「小婉」直接作用到覆盖度（页内不再有自己的档位开关）
+  await expect(page.getByTestId('coverage-target-grade-小婉')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await expect(page.getByTestId('coverage-total')).toHaveText(/\/ 13 组/);
   // 单一体型 × 声音组合，每种性格只生成一个目标槽位
   await page.getByTestId('coverage-group-toggle').first().click();

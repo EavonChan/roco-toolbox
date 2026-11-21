@@ -93,7 +93,9 @@ const openSharing = async (page: Page) => {
   await expect(page.getByTestId('collection-groups')).toBeVisible();
 };
 
-test('真实 Functions + D1：三个身份、A 两设备共享同一成员与资源目录', async ({ browser }) => {
+// 2026-11-19：小组资源浏览 / 缺口视图已从界面下线（GroupPlanHub 现在只挂换蛋流程），
+// 本用例依赖的 mother-view-* / mother-resource-row 已无对应功能，先跳过，恢复该界面时再启用。
+test.skip('真实 Functions + D1：三个身份、A 两设备共享同一成员与资源目录', async ({ browser }) => {
   const a = await register('live-A');
   const b = await register('live-B');
   const c = await register('live-C');

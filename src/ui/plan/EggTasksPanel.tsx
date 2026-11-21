@@ -45,7 +45,7 @@ export function EggTasksPanel({state,me,members,species,busy,mutate,snapshots=[]
   },[]);
   const run=(action:unknown,done?:()=>void)=>{setError('');void mutate(action).then(done).catch(e=>setError(e instanceof Error?e.message:'操作失败'));};
   const name=(id:number)=>species.find(s=>s.gameId===id)?.name??'未收录精灵';
-  const half=(egg:EggRecord|null,label:string)=>egg?<div className="flex min-w-0 items-center gap-1"><EggArt eggGameId={egg.eggGameId} name={name(egg.eggGameId)} size={32}/><div className="min-w-0"><strong className="block truncate text-[11px]">{name(egg.eggGameId)}</strong><div className="text-[10px] text-slate-400">{label} · {egg.nature||'未标注'}</div><EggMedals body={egg.body} voice={egg.voice}/></div></div>:<span className="text-[10px] text-slate-400">旧单无换回记录</span>;
+  const half=(egg:EggRecord|null,label:string)=>egg?<div className="flex min-w-0 items-center gap-1"><EggArt eggGameId={egg.eggGameId} name={name(egg.eggGameId)} size={32} kind={egg.kind} itemConfId={egg.itemConfId}/><div className="min-w-0"><strong className="block truncate text-[11px]">{name(egg.eggGameId)}</strong><div className="text-[10px] text-slate-400">{label} · {egg.nature||'未标注'}</div><EggMedals body={egg.body} voice={egg.voice}/></div></div>:<span className="text-[10px] text-slate-400">旧单无换回记录</span>;
   const ready=eggTaskReady;
   const allocating=state.trades.find(t=>t.id===allocation);
   const target=allocating?(allocating.supplierAccountId===me?allocating.give:allocating.receive):null;

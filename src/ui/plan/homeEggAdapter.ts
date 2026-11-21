@@ -175,6 +175,7 @@ export function homeStockFromSnapshot(snapshot: AccountSnapshot, _accountId?: st
       body,
       voice: (voiceValue || 'unknown') as EggObservation['voice'],
       provenance: 'self-bred',
+      ...(academy.length === 1 ? { greenNest: true } : {}),
       confidence: labeled ? 'system' : 'unknown',
       labelSource: labeled ? 'system' : 'unknown',
       kind: 'ordinary',

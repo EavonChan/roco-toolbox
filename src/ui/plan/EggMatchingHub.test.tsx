@@ -12,11 +12,15 @@ vi.mock('./useEggMatching', () => ({ useEggMatching: () => ({ data: { version: 0
 const props = { groupId: 'g', viewerAccountId: 'a', species: [{ gameId: 3227, eggGameId: 3227, name: '菊花梨',
   key: '3227', number: '1', eggGroups: [2] }], members: [{ accountId: 'a', displayName: '我' }], snapshots: [] };
 test('uses approved hub levels and species names, with stock and tasks as utility entries', () => {
-  render(<EggMatchingHub {...props} />);
+  const onGoPlan = vi.fn();
+  render(<EggMatchingHub {...props} onGoPlan={onGoPlan} />);
   expect(screen.getByText('我的收集')).toBeTruthy();
   expect(screen.getByText('组内广场')).toBeTruthy();
   expect(screen.getByText('蛋仓')).toBeTruthy();
   expect(screen.getByText('菊花梨')).toBeTruthy();
+  expect(screen.queryByText('＋ 添加想收')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '去计划添加' }));
+  expect(onGoPlan).toHaveBeenCalledTimes(1);
   expect(screen.queryByText('菊花梨蛋')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /菊花梨/ }));
   expect(screen.getByRole('dialog', { name: '需求详情' })).toBeTruthy();
@@ -24,6 +28,46 @@ test('uses approved hub levels and species names, with stock and tasks as utilit
   expect(screen.getByRole('button', { name: '撤回' })).toBeTruthy();
   expect(screen.queryByText('去旧需求中心')).toBeNull();
   expect(screen.getAllByRole('img',{name:'大块头'}).length).toBeGreaterThan(1);
+});
+
+test('收到别人意向时卡片写明谁想换，不使用模糊占用提示', () => {
+  const data = state as typeof state & { trades: unknown[] };
+  data.trades = [{
+    id: 'incoming',
+    groupId: 'g',
+    demandId: 'd',
+    supplierAccountId: 'b',
+    demanderAccountId: 'a',
+    give: {
+      id: 'egg-b',
+      accountId: 'b',
+      gameAccountKey: 'uid:b',
+      eggGameId: 3227,
+      nature: '固执',
+      body: '大块头',
+      voice: '婉转声',
+      kind: 'ordinary',
+      status: 'available',
+      listed: true,
+      provenance: 'unknown',
+      confidence: 'manual',
+      labelSource: 'unknown',
+    },
+    receive: null,
+    type: 'spot',
+    status: 'proposed',
+    placed: false,
+    createdAt: 1,
+    initiatorAccountId: 'b',
+  }];
+  try {
+    render(<EggMatchingHub {...props} members={[...props.members, { accountId: 'b', displayName: '小布' }]} />);
+    expect(screen.getByText('小布想换')).toBeTruthy();
+    expect(screen.queryByText(/已被其他交换占用/)).toBeNull();
+    expect(screen.queryByText(/需求已满/)).toBeNull();
+  } finally {
+    data.trades = [];
+  }
 });
 
 test('a home scene alone syncs its eggs with homeComplete',async()=>{

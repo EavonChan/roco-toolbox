@@ -54,7 +54,11 @@ export interface EggRecord {
   confidence: 'system' | 'manual' | 'unknown';
   /** Ordinary is the default under the user's 2026-11-16 circulation policy. */
   kind?: 'ordinary' | 'shiny' | 'special';
+  /** 不可交换蛋的具体来源；异色优先于活动等叠分类。 */
+  specialCategory?: 'shiny' | 'boss' | 'activity' | 'rare' | 'special';
   status: 'available' | 'reserved' | 'transferred';
+  /** 是否来自学院小窝（绿窝）；未标注时按未勾选显示。 */
+  greenNest?: boolean;
   /** 蛋所在位置；旧记录没有 = 背包。 */
   location?: 'bag' | 'home';
   /** 最近一次在采集快照里看到它的时间（ms）。 */
@@ -63,6 +67,11 @@ export interface EggRecord {
   labelSource?: 'system' | 'manual' | 'unknown';
   /** 家园蛋的实际（当前候选）父母。 */
   parents?: EggParentsInfo;
+  /** 从背包实物采集到的蛋高（厘米）与蛋重（克）。 */
+  heightCm?: number;
+  weightGrams?: number;
+  /** 游戏蛋道具编号；特殊蛋的实物图标按它区分普通蛋与异色蛋。 */
+  itemConfId?: number;
 }
 
 export interface EggTrade {

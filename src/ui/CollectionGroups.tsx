@@ -38,6 +38,7 @@ import {
 export interface CollectionGroupsProps {
   onGoAccount?: () => void;
   onDraftDirtyChange?: (dirty: boolean) => void;
+  onNavigate?: (intent: import('./navigation').NavigationIntent) => void;
   /** 从看板 / 收集页直达：进入同类型的小组（个人求蛋已删除，2026-10-30）。 */
   focus?: { groupType?: CollectionGroupType } | null;
 }
@@ -48,7 +49,7 @@ export interface CollectionGroupsProps {
  * 2026-10-30 用户口径：个人求蛋已删除——不在组里时只留「新建 / 加入小组」。
  * 小组模式要求成员资格；本机数据只在用户手动选号发布时上传。
  */
-export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: CollectionGroupsProps) {
+export function CollectionGroups({ onGoAccount, onDraftDirtyChange, onNavigate, focus }: CollectionGroupsProps) {
   const { snapshots } = useSnapshots();
   const summary = useCollectionSummary();
   const personalNatures = useNatureOverrides();
@@ -421,6 +422,12 @@ export function CollectionGroups({ onGoAccount, onDraftDirtyChange, focus }: Col
             onClaimDemand={hook.claimDemand}
             onReleaseDemand={hook.releaseDemand}
             onCompleteDemand={hook.completeDemand}
+            onGoPlan={() =>
+              onNavigate?.({
+                type: 'open-collection',
+                location: { kind: 'mothers', status: 'collecting' },
+              })
+            }
           />
         </>
       ) : null}

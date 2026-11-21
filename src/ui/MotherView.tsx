@@ -34,6 +34,8 @@ import { MotherCriteriaMedals, selectedGradesFor } from './MotherCriteriaMedals'
 import { findMotherGapFill, type GapFill } from '../domain/gapFill';
 import type { MotherNestAccount } from '../domain/motherNest';
 import { GapFillDialog, type GapTargetView } from './GapFillDialog';
+import { MotherCollectingView } from './plan/MotherCollectingView';
+import type { NavigationIntent } from './navigation';
 
 /** 每节的分页大小：母本视角的每一节动辄上百条，必须分页 */
 const PAGE_SIZE = 20;
@@ -52,7 +54,7 @@ export interface MotherViewProps {
   motherGroups: MotherGroup[];
   mode: TargetMode;
   /** 从收集页直达的状态（未收集 / 已收集）；计划分区独立展示 */
-  status?: 'missing' | 'collected' | 'plan';
+  status?: 'missing' | 'collecting' | 'collected' | 'plan';
   /** 点卡片底部「查看」：带到精灵背包的筛选条件 */
   onOpenInventory?: (jump: MotherInventoryJump) => void;
   /** 母本配窝建议（与看板同一份口径）：未收集卡点开悬浮窗时找「本号直配 / 跨号传蛋」 */
@@ -68,6 +70,8 @@ export interface MotherViewProps {
   };
   /** 悬浮窗里的「去求蛋」：打开小组求助 */
   onSeekHelp?: () => void;
+  /** 收集中页发布/查看小组需求 */
+  onNavigate?: (intent: NavigationIntent) => void;
 }
 
 interface SectionProps {
@@ -216,9 +220,12 @@ function CollapsibleSection({
 /** 链清单的收/未收开关（2026-10-06 用户拍板：由「只看未收集」开关改成两态分段） */
 const CHAIN_FILTERS = [
   { value: 'uncollected', label: '未收集' },
+  { value: 'collecting', label: '收集中' },
   { value: 'collected', label: '已收集' },
 ] as const;
 type ChainFilter = (typeof CHAIN_FILTERS)[number]['value'];
+const INITIAL_CHAIN_SECTIONS = 2;
+const CHAIN_SECTION_BATCH = 5;
 
 /**
  * 母本视角：
@@ -241,6 +248,7 @@ export function MotherView({
   accountNames = [],
   gapTarget,
   onSeekHelp,
+  onNavigate,
 }: MotherViewProps) {
   /** 「未收集母本怎么补」悬浮窗（2026-11-19 用户口径）：与看板共用同一块内容 */
   const [gapDialog, setGapDialog] = useState<{ chainKey: string; target: GapTargetView; fill: GapFill } | null>(
@@ -260,10 +268,12 @@ export function MotherView({
   const setQuery = (value: string) => setPersonalQuery('mothers', value);
   // 默认看「未收集」（待补齐才是主场景；看板「母本全收集」卡跳过来也是它）
   const [chainFilter, setChainFilter] = useState<ChainFilter>('uncollected');
+  const [visibleSectionCount, setVisibleSectionCount] = useState(INITIAL_CHAIN_SECTIONS);
 
   // 收集页的「未收集 / 已收集」直达：同步到本页的状态开关
   useEffect(() => {
     if (status === 'missing') setChainFilter('uncollected');
+    else if (status === 'collecting') setChainFilter('collecting');
     else if (status === 'collected') setChainFilter('collected');
   }, [status]);
 
@@ -318,6 +328,39 @@ export function MotherView({
     };
   }, [criteria, mode]);
 
+  const plannedSet = useMemo(() => new Set(plan), [plan]);
+
+  const targetBody = criteria.bodies.includes('小不点') && !criteria.bodies.includes('大块头')
+    ? '小不点'
+    : '大块头';
+  const targetVoice =
+    mode === 'perfect'
+      ? activeVoices.includes('-100') && !activeVoices.includes('+100')
+        ? '-100'
+        : '+100'
+      : activeVoices.includes('粗嗓门') && !activeVoices.includes('婉转声')
+        ? '粗嗓门'
+        : '婉转声';
+
+  const missingNaturesByEgg = useMemo(() => {
+    const map = new Map<number, readonly string[]>();
+    for (const group of motherGroups) {
+      const natures = eggNatures(catalogSpecies, group.eggGameId, natureOverrides);
+      map.set(
+        group.eggGameId,
+        natures.filter(
+          (nature) =>
+            !group.memberIndexes.some(
+              (index) =>
+                owned[index]?.nature === nature &&
+                isQualifiedMother(owned[index]),
+            ),
+        ),
+      );
+    }
+    return map;
+  }, [motherGroups, owned, criteria, activeVoices.join(','), naturesOf, natureOverrides]);
+
   /** 搜索（进化链全员命中）+ 蛋组筛选：同时作用于已收集 / 计划 / 待补齐 */
   const keyword = query.trim().toLowerCase();
   const [eggGroupFilter, setEggGroupFilter] = useState<string[]>([]);
@@ -366,9 +409,12 @@ export function MotherView({
    * 按**主蛋组**（链的最小可孵蛋组）分区，组内按图鉴号排序；每条链一行。
    */
   const chainSections = useMemo(() => {
-    const list = matchedGroups.filter((group) =>
-      chainFilter === 'uncollected' ? !isChainCollected(group) : isChainCollected(group),
-    );
+    const list = matchedGroups.filter((group) => {
+      const collected = isChainCollected(group);
+      if (chainFilter === 'uncollected') return !collected && !plannedSet.has(group.chainKey);
+      if (chainFilter === 'collected') return collected;
+      return false;
+    });
     const byGroup = new Map<number, MotherGroup[]>();
     for (const group of list) {
       const primary = group.eggGroups[0];
@@ -389,15 +435,17 @@ export function MotherView({
         ),
       }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchedGroups, chainFilter, owned, criteria, activeVoices.join(','), naturesOf]);
-
-  const plannedSet = useMemo(() => new Set(plan), [plan]);
+  }, [matchedGroups, chainFilter, owned, criteria, activeVoices.join(','), naturesOf, plannedSet]);
+  useEffect(() => {
+    setVisibleSectionCount(INITIAL_CHAIN_SECTIONS);
+  }, [chainFilter, keyword, eggGroupFilter.join(',')]);
+  const visibleChainSections = chainSections.slice(0, visibleSectionCount);
+  const hiddenChainSections = Math.max(0, chainSections.length - visibleChainSections.length);
   const planGroups = useMemo(
     () => matchedGroups.filter((group) => plannedSet.has(group.chainKey)),
     [matchedGroups, plannedSet],
   );
   const achievedGroups = planGroups.filter((group) => isChainCollected(group));
-
   const renderPlanRow = (group: MotherGroup): ReactNode => {
     const achieved = isChainCollected(group);
     return (
@@ -508,8 +556,11 @@ export function MotherView({
         />
       ) : null}
 
-      {/* 链清单按蛋组分区，每行四只；搜索即刻看到已收集 / 未收集 */}
-      <section className="space-y-2" data-testid="mother-chain-list">
+      {/* 链清单按蛋组分区，每行四只；收集中使用同一母本卡但不按蛋组分区 */}
+      <section
+        className="space-y-2"
+        data-testid={chainFilter === 'collecting' ? 'mother-collecting-shell' : 'mother-chain-list'}
+      >
         <div className="flex flex-wrap items-center justify-between gap-1 px-1">
           <span className="text-[11px] text-slate-400" data-testid="mother-chain-summary">
             共 {matchedGroups.length} 条链 · 已收集 {collectedChainCount}
@@ -544,11 +595,21 @@ export function MotherView({
               options={CHAIN_FILTERS.map((item) => ({ value: item.value, label: item.label }))}
               onValueChange={(next) => setChainFilter(next as ChainFilter)}
               optionTestId={(value) => `mother-chain-filter-${value}`}
-              className="w-[124px]"
+              className="w-[186px]"
             />
           </div>
         </div>
-        {chainSections.length === 0 ? (
+        {chainFilter === 'collecting' ? (
+          <MotherCollectingView
+            motherGroups={motherGroups}
+            missingNaturesByEgg={missingNaturesByEgg}
+            eggGroupNames={eggGroupNames}
+            targetBody={targetBody}
+            targetVoice={targetVoice}
+            mode={mode}
+            onNavigate={onNavigate ?? (() => {})}
+          />
+        ) : chainSections.length === 0 ? (
           <p
             className="rounded-2xl bg-white p-3 text-xs text-slate-400 shadow-sm"
             data-testid="mother-chain-empty"
@@ -556,10 +617,11 @@ export function MotherView({
             当前筛选下没有匹配的母本链。
           </p>
         ) : (
-          chainSections.map((section) => (
+          visibleChainSections.map((section) => (
             <div
               key={section.groupId}
               className="overflow-hidden rounded-2xl bg-white shadow-sm"
+              style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 180px' }}
               data-testid={`mother-chain-group-${section.groupId}`}
             >
               <p className="flex items-center justify-between bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500">
@@ -594,6 +656,20 @@ export function MotherView({
             </div>
           ))
         )}
+        {chainFilter !== 'collecting' && hiddenChainSections > 0 ? (
+          <button
+            type="button"
+            onClick={() =>
+              setVisibleSectionCount((current) =>
+                Math.min(chainSections.length, current + CHAIN_SECTION_BATCH),
+              )
+            }
+            className="min-h-[36px] w-full rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-600"
+            data-testid="mother-chain-show-more"
+          >
+            显示更多蛋组（{hiddenChainSections}）
+          </button>
+        ) : null}
       </section>
 
       <GapFillDialog

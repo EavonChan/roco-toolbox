@@ -36,3 +36,13 @@ test('captured obtained time is forwarded to the stock sync payload',()=>{
   const result=inventoryFromSnapshot({...snapshot,eggs:[{petName:'菊花梨',speciesPetId:3227,externalEggId:'1',weightGrams:2320,obtainedAt:'2026-11-17T22:31:00Z'}]},'a');
   expect(result.eggs[0].obtainedAt).toBe('2026-11-17T22:31:00Z');
 });
+
+test('captured egg measurements and concrete unavailable category are forwarded',()=>{
+  const result=inventoryFromSnapshot({...snapshot,eggs:[{
+    petName:'异色粉粉星',speciesPetId:3198,externalEggId:'2',weightGrams:900,obtainedAt:'2026-11-17T22:31:00Z',
+    heightCm:23,isShiny:true,sourceType:'活动',activityEggType:'赛季异色活动蛋',
+  }]},'a');
+  expect(result.eggs[0]).toMatchObject({
+    kind:'shiny', specialCategory:'shiny', heightCm:23, weightGrams:900,
+  });
+});

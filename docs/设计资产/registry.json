@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "reviewedOn": "2026-11-17",
+  "reviewedOn": "2026-11-21",
   "productionBaseline": "release/prod-1.5.0 @ 88bce8dfbe5f9e5f7bcd6151a21417bdbf2d47b2",
   "verification": "朋友改页面分支只保留可直接修改的当前稿、共用外壳和必要参考；明确已被替代的页面已删除，重复分享包与个人数据不带入。",
   "assets": [
@@ -570,6 +570,47 @@
         {
           "path": "docs/superpowers/specs/2026-11-16-家园巡查与QQ提醒-design.md",
           "detail": "用户确认群关联码、多UID绑定、半小时巡查与00–08静默。"
+        }
+      ],
+      "supersededBy": []
+    },
+    {
+      "id": "group-egg-request-review",
+      "title": "小组求蛋简单版",
+      "status": "评审中",
+      "releaseScope": "仅原型",
+      "scope": "母本缺口与种公缺口共用小组求蛋弹层：标题统一、性格按缺口预填、删除我的需求与性别、按大块头/小不点展示100%/0%可选体重、勾选绿窝并选择发布小组。",
+      "remaining": "待用户审核原型；确认后再落test业务代码。小组“添加想收”页面不在本轮范围。",
+      "files": [
+        {
+          "path": "docs/prototypes/group-egg-request/2026-11-21/index.html",
+          "sha256": "ee3ebaaa307a5ae0b5971702886bc523a24c338e89684aebdc04e0e23b7ccd92"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/prototypes/group-egg-request/2026-11-21/index.html",
+          "detail": "可切换母本/种公、大块头/小不点、100%/0%和绿窝的交互原型；声音随目标切换，性格竖排在谁能补我左侧；已核对375/390真实屏宽。"
+        },
+        {
+          "path": "docs/产品交互规范.md",
+          "detail": "沿用主按钮36px、次按钮、芯片28~30px、emerald选中态与绿窝图标口径。"
+        },
+        {
+          "path": "output/playwright/collecting-tab-375-v2.png",
+          "detail": "实现后的收集·母本·收集中页面，375屏宽。"
+        },
+        {
+          "path": "output/playwright/collecting-tab-390-v2.png",
+          "detail": "实现后的收集·母本·收集中页面，390屏宽。"
+        },
+        {
+          "path": "output/playwright/group-egg-mother-375-v2.png",
+          "detail": "修正声音自动填入与性格竖排后的母本小组求蛋原型，375屏宽。"
+        },
+        {
+          "path": "output/playwright/group-egg-stud-390-v2.png",
+          "detail": "修正声音自动填入、零体重与性格竖排后的种公小组求蛋原型，390屏宽。"
         }
       ],
       "supersededBy": []

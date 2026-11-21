@@ -36,6 +36,7 @@ export interface BackupEgg {
   specialEggConfId?: number;
   appearanceType?: number;
   extensionType?: number;
+  activityEggType?: string;
   nature?: string;
   voiceDb?: number;
   heightCm?: number;
@@ -291,6 +292,7 @@ export function parseBackup(raw: unknown, importedAt: string): AccountSnapshot {
           specialEggConfId: asOptionalNumber(egg.specialEggConfId),
           appearanceType: asOptionalNumber(egg.appearanceType),
           extensionType: asOptionalNumber(egg.extensionType),
+          activityEggType: asOptionalString(egg.activityEggType),
           nature: asOptionalString(egg.nature),
           voiceDb: asOptionalNumber(egg.voiceDb),
           heightCm: asOptionalNumber(egg.heightCm),
