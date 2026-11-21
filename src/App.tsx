@@ -163,6 +163,11 @@ export default function App() {
   }, []);
   // 页签曝光：只在页签名变化时上报（同一次进页不重复），引导期间不上报
   useTabViewTracking(navigation.page, activeTab, Boolean(tour));
+  /** 切页签回顶部：横屏页面各自很长，停在上一个页的滚动位置会显得像内容被吞了（2026-11-21）。 */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.scrollTo({ top: 0, left: 0 });
+  }, [navigation.page]);
   useEffect(() => {
     // 记住停留的页签：关后台后重开不会莫名其妙回到「导入数据」。
     // **不把四个新 page 字符串直接写进旧键**：旧版安装升级 / 降级都要能理解。

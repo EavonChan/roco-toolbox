@@ -541,7 +541,7 @@ export function MotherView({
           <span className="text-[11px] text-slate-400" data-testid="mother-chain-summary">
             共 {matchedGroups.length} 条链 · 已收集 {collectedChainCount}
           </span>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
             <button
               type="button"
               aria-pressed={criteria.recommendedNatures === true}
