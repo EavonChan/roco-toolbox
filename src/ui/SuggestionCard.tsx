@@ -71,22 +71,24 @@ export function SuggestionCard({ items, emptyNote, onOpenGap }: SuggestionCardPr
 
   const visiblePending = useMemo(
     () =>
-      groupedRecommendations.filter(
-        (group) => !group.records.every((item) => item.id in doneAt),
-      ),
-    [doneAt, groupedRecommendations],
+      onOpenGap
+        ? groupedRecommendations
+        : groupedRecommendations.filter(
+            (group) => !group.records.every((item) => item.id in doneAt),
+          ),
+    [doneAt, groupedRecommendations, onOpenGap],
   );
 
   const doneItems = useMemo(
     () =>
-      groupedRecommendations
+      (onOpenGap ? [] : groupedRecommendations)
         .filter((group) => group.records.every((item) => item.id in doneAt))
         .sort((a, b) => {
           const aDoneAt = Math.max(...a.records.map((item) => doneAt[item.id] ?? 0));
           const bDoneAt = Math.max(...b.records.map((item) => doneAt[item.id] ?? 0));
           return bDoneAt - aDoneAt;
         }),
-    [doneAt, groupedRecommendations],
+    [doneAt, groupedRecommendations, onOpenGap],
   );
 
   return (

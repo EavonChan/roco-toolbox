@@ -18,6 +18,7 @@ import {
   isValidPassword,
   isValidUsername,
   json,
+  needsPasswordUpgrade,
   newId,
   newRecoveryCode,
   newToken,
@@ -152,10 +153,19 @@ export async function handleLogin(request: Request, env: Env, origin: string | n
   }
 
   const row = await findByUsername(env, lower);
-  if (!row || !(await verifyPassword(password, row.password_hash))) return fail('用户名或密码不对', 401, origin);
-  await env.DB.prepare('UPDATE accounts SET last_seen_at = ? WHERE id = ?').bind(Date.now(), row.id).run();
+  if (!row?.password_hash || !(await verifyPassword(password, row.password_hash))) return fail('用户名或密码不对', 401, origin);
+  const nextHash = needsPasswordUpgrade(row.password_hash) ? await hashPassword(password) : row.password_hash;
+  const token = newToken();
+  const now = Date.now();
+  const [, issued] = await env.DB.batch([
+    env.DB.prepare('UPDATE accounts SET last_seen_at = ?, password_hash = ? WHERE id = ? AND password_hash = ?')
+      .bind(now, nextHash, row.id, row.password_hash),
+    env.DB.prepare(`INSERT INTO tokens (token_hash, account_id, created_at, last_used_at)
+      SELECT ?, id, ?, ? FROM accounts WHERE id = ? AND password_hash = ?`)
+      .bind(await sha256Hex(token), now, now, row.id, nextHash),
+  ]);
+  if (!issued.meta.changes) return fail('用户名或密码不对', 401, origin);
   await touchDevice(env, (body.deviceId ?? '').slice(0, 64) || null, row.id);
-  const token = await issueToken(env, row.id);
   return json({ ok: true, accountId: row.id, token, username: row.username ?? username }, 200, origin);
 }
 
@@ -206,11 +216,19 @@ export async function handleChangePassword(request: Request, env: Env, origin: s
     .bind(accountId)
     .first<{ password_hash: string | null }>();
   if (!row?.password_hash) return fail('这个账号还没有设置密码', 400, origin);
-  if (!(await verifyPassword(body.oldPassword ?? '', row.password_hash))) return fail('原密码不对', 401, origin);
+  if (!(await verifyPassword(body.oldPassword ?? '', row.password_hash))) return fail('原密码不对', 400, origin);
   if (!isValidPassword(body.newPassword ?? '')) return fail('新密码需为 8-32 位', 400, origin);
-  await env.DB.prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')
-    .bind(await hashPassword(body.newPassword as string), accountId)
-    .run();
+  const tokenHash = await sha256Hex((request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim());
+  const nextHash = await hashPassword(body.newPassword as string);
+  const [changed] = await env.DB.batch([
+    env.DB.prepare(`UPDATE accounts SET password_hash = ? WHERE id = ? AND password_hash = ?
+      AND EXISTS (SELECT 1 FROM tokens WHERE token_hash = ? AND account_id = accounts.id)`)
+      .bind(nextHash, accountId, row.password_hash, tokenHash),
+    env.DB.prepare(`DELETE FROM tokens WHERE account_id = ? AND token_hash <> ?
+      AND EXISTS (SELECT 1 FROM accounts WHERE id = tokens.account_id AND password_hash = ?)`)
+      .bind(accountId, tokenHash, nextHash),
+  ]);
+  if (!changed.meta.changes) return fail('密码或会话已变更，请重新登录后再试', 409, origin);
   return json({ ok: true }, 200, origin);
 }
 

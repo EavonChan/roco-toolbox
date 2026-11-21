@@ -104,6 +104,20 @@ test('large rounded nest GUID cannot override exact parent evidence or select a 
   expect(observe(raw([value, collision]))).toEqual([]);
 });
 
+test('脏配窝只跳过它自己，蛋与合法配窝照常解析', () => {
+  const valid = { female: parent(motherPet, 'n1'), male_partners: [parent(fatherPet, 'n2')] };
+  const dirty = [
+    { female: { pet_cfg_id: 3810, nature: 2, voice: 100 }, male_partners: [] },
+    { female: parent(motherPet, 'n3'), male_partners: [{ pet_cfg_id: 3215 }] },
+    null,
+  ];
+  const scene = parsePatrolScene(raw([egg()], [motherPet, fatherPet], [...dirty, valid]), 1);
+  expect(scene.eggs).toHaveLength(1);
+  expect(scene.pairs).toHaveLength(1);
+  expect(scene.skippedPairs).toBe(3);
+  expect(observeScenePlacements(scene, [task], speciesIndex)).toEqual([task]);
+});
+
 test('已上窝：家园排着能孵目标蛋的一对时命中，档位或性格不符不命中', () => {
   const pair = [{ female: parent(motherPet, 'n1'), male_partners: [parent(fatherPet, 'n2')] }];
   const scene = parsePatrolScene(raw([], [motherPet, fatherPet], pair), 1);

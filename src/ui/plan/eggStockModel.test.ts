@@ -68,6 +68,19 @@ describe('egg stock snapshots', () => {
     expect(empty.eggs).toEqual([]);
     expect(reconcileEggStock(empty, { accountId: 'me', capturedAt: 3, bag: part([egg()]) }).eggs[0].provenance).toBe('external');
   });
+  test('self-bred provenance survives later bag snapshots that cannot identify the source', () => {
+    const home = egg({ id: 'home1', provenance: 'self-bred', location: 'home' });
+    const state = reconcileEggStock(emptyEggStock(), {
+      accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([home]),
+    });
+    const bag = egg({ id: 'home1', provenance: 'unknown' });
+    const next = reconcileEggStock(state, {
+      accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+      bag: part([bag]),
+    });
+    expect(next.eggs[0]).toMatchObject({ location: 'bag', provenance: 'self-bred' });
+  });
   test('a partial home refresh cannot move an existing bag egg back to home', () => {
     const bag = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg()]) });
     const home = reconcileEggStock(bag, { accountId: 'me', capturedAt: 2, home: part([egg()]) });
@@ -111,5 +124,13 @@ describe('egg stock snapshots', () => {
     const home = egg({ id: 'h1', nature: '', labelSource: 'system', parents });
     const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 1, home: part([home]) });
     expect(state.eggs[0]).toMatchObject({ location: 'home', labelSource: 'system', parents });
+  });
+
+  test('concrete non-exchangeable category and egg measurements survive re-sync', () => {
+    const state = reconcileEggStock(emptyEggStock(), {
+      accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 1,
+      bag: part([egg({ id: 'special', kind: 'special', specialCategory: 'activity' })]),
+    });
+    expect(state.eggs[0].specialCategory).toBe('activity');
   });
 });

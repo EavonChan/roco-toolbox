@@ -13,6 +13,8 @@ const npcap = require('./npcap.cjs');
 
 const MAX_FILES = 10;
 const MAX_FILE_BYTES = 128 * 1024 * 1024;
+/** 到上限后的可读原因：桌面端不做滚动裁剪，只能提示用户停止后重新开始 */
+const CAP_MESSAGE = '已达 128MiB 上限，请停止后重新开始';
 
 const ID_PATTERN = /^capture-(\d+)\.pcap$/;
 
@@ -166,6 +168,11 @@ class CaptureManager {
       state.progressVersion = 1;
       state.fileId = session;
       state.savedBytes = this.activeId ? this.bytes : (files.find((file) => file.id === session)?.size ?? 0);
+      // 桌面端不做滚动裁剪：超过上限时网页侧不能再整份判无效，必须带上真实原因
+      if (state.savedBytes > MAX_FILE_BYTES) {
+        state.capped = true;
+        state.message = CAP_MESSAGE;
+      }
     }
     return JSON.stringify(state);
   }
@@ -180,6 +187,8 @@ class CaptureManager {
     } catch {
       return '';
     }
+    // 超过上限不再提供增量读取入口（网页 worker 本身也拒绝 >128MiB）；
+    // 状态里的 capped / message 负责把原因显示给用户。
     if (size <= 24 || size > MAX_FILE_BYTES) return '';
     return JSON.stringify({ id, size, url: `${this.origin}/capture/${id}` });
   }

@@ -336,6 +336,7 @@ export function computeFacetCounts(
   index: BuildResult['index'],
   selectedTagIds: string[],
   withinIndices?: readonly number[],
+  intersectingKind?: string,
 ): Record<string, number> {
   const byKind = groupSelectedByKind(selectedTagIds);
   const baseCache = new Map<string, Set<number> | null>();
@@ -345,8 +346,12 @@ export function computeFacetCounts(
     let base: Set<number> | null = withinIndices === undefined ? null : new Set(withinIndices);
     for (const [kind, ids] of byKind) {
       if (kind === excludeKind) continue;
-      const union = unionOf(index, ids);
-      base = base === null ? union : new Set<number>([...base].filter((i: number) => union.has(i)));
+      const matches = kind === intersectingKind
+        ? ids.map((id) => new Set(index[id] ?? []))
+        : [unionOf(index, ids)];
+      for (const match of matches) {
+        base = base === null ? match : new Set<number>([...base].filter((index) => match.has(index)));
+      }
     }
     baseCache.set(excludeKind, base);
     return base;

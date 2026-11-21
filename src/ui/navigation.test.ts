@@ -191,7 +191,7 @@ describe('legacyLocation：新页面写回旧键', () => {
       legacyLocation({ ...base, page: 'collection', collection: { kind: 'inventory' } }).lastTab,
     ).toBe('myPets');
     expect(
-      legacyLocation({ ...base, page: 'collection', collection: { kind: 'mothers', status: 'plan' } })
+      legacyLocation({ ...base, page: 'collection', collection: { kind: 'mothers', status: 'collecting' } })
         .lastTab,
     ).toBe('myPets');
     expect(legacyLocation({ ...base, page: 'profile' }).lastTab).toBe('import');

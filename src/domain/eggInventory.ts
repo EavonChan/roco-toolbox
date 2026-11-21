@@ -9,7 +9,7 @@ export interface CapturedStockEgg extends EggRecord {
   weightGrams: number;
   obtainedAt: string;
   listed: boolean;
-  isOrdinary?:boolean; isShiny?:boolean; preciousEggType?:number; specialEggConfId?:number; appearanceType?:number; extensionType?:number;
+  isOrdinary?:boolean; isShiny?:boolean; preciousEggType?:number; specialEggConfId?:number; appearanceType?:number; extensionType?:number; activityEggType?:string;
 }
 
 export function capturedEggKind(egg: BackupEgg): NonNullable<EggRecord['kind']> {
@@ -18,6 +18,16 @@ export function capturedEggKind(egg: BackupEgg): NonNullable<EggRecord['kind']> 
       (egg.specialEggConfId ?? 0) > 0 || (egg.appearanceType ?? 0) > 0 || (egg.extensionType ?? 0) > 0 ||
       ['特殊', '活动', '首领'].includes(egg.sourceType ?? '')) return 'special';
   return 'ordinary';
+}
+
+export function capturedEggSpecialCategory(egg: BackupEgg): EggRecord['specialCategory'] {
+  const kind = capturedEggKind(egg);
+  if (kind === 'shiny') return 'shiny';
+  if (egg.sourceType === '首领') return 'boss';
+  if (egg.sourceType === '稀有') return 'rare';
+  if (egg.sourceType === '活动' || egg.activityEggType) return 'activity';
+  if (kind === 'special') return 'special';
+  return undefined;
 }
 
 /** No synthetic IDs, no inferred nature/voice/parents; ordinary defaults follow user policy. */
@@ -44,9 +54,10 @@ export function inventoryFromSnapshot(snapshot: AccountSnapshot, accountId: stri
     eggs.push({ id: JSON.stringify([gameAccountKey, instance]), accountId, gameAccountKey, accountName: snapshot.accountName,
       eggGameId: raw.speciesPetId!, nature: raw.nature ?? '', body, voice,
       provenance: raw.sourceType === '交换' || raw.sourceType === '赠送' ? 'external' : 'unknown',
-      confidence: 'system', kind: capturedEggKind(raw), status: 'available', listed: false,
-      isOrdinary:raw.isOrdinary,isShiny:raw.isShiny,preciousEggType:raw.preciousEggType,specialEggConfId:raw.specialEggConfId,appearanceType:raw.appearanceType,extensionType:raw.extensionType,
-      weightGrams: raw.weightGrams, obtainedAt: raw.obtainedAt, itemConfId: raw.itemConfId });
+      confidence: 'system', kind: capturedEggKind(raw), specialCategory: capturedEggSpecialCategory(raw),
+      status: 'available', listed: false,
+      isOrdinary:raw.isOrdinary,isShiny:raw.isShiny,preciousEggType:raw.preciousEggType,specialEggConfId:raw.specialEggConfId,appearanceType:raw.appearanceType,extensionType:raw.extensionType,activityEggType:raw.activityEggType,
+      heightCm: raw.heightCm, weightGrams: raw.weightGrams, obtainedAt: raw.obtainedAt, itemConfId: raw.itemConfId });
   }
   return { gameAccountKey, capturedAt: Date.parse(snapshot.exportedAt || snapshot.importedAt),
     complete: snapshot.eggInventoryComplete === true && unresolvedCount === 0, eggs, unresolvedCount };

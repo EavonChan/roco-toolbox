@@ -75,21 +75,22 @@ describe('GapFillDialog', () => {
     expect(
       within(screen.getByTestId('gap-target-card')).getByTitle('婉转声'),
     ).toHaveAttribute('src', '/ui/medals/1026-max.png');
-    // 已有两条线 → 求助卡写「已有 2 条 30% 的线」
-    expect(screen.getByTestId('gap-help-main').textContent).toBe('已有 2 条 30% 的线');
+    // 两条线同概率 → 求助卡写最高概率与路线数（上游评审版文案）
+    expect(screen.getByTestId('gap-help-main').textContent).toBe('最高 30%，共 2 条路线');
     expect(screen.getByTestId('gap-route-self')).toBeTruthy();
     expect(screen.getByTestId('gap-route-transfer')).toBeTruthy();
     expect(screen.getByTestId('gap-route-flow').textContent).toBe('云舟 → 昭昭');
     expect(screen.queryByTestId('gap-unpairable')).toBeNull();
   });
 
-  test('两张卡等宽铺满一行，不再给求助卡留右边空位（母本 / 种公两条复用线同一套）', () => {
+  test('目标卡吃满剩余宽度、求助卡固定 112px，网页宽屏也不留右边空位（母本 / 种公两条复用线同一套）', () => {
     const { unmount } = render(
       <GapFillDialog target={target} fill={emptyFill} onClose={() => {}} />,
     );
     const row = screen.getByTestId('gap-top-row');
-    expect(row).toHaveClass('grid-cols-2');
-    // 两张卡都吃满各自那一列：宽度必须一样，且不能有 max-w 把整行截短（网页宽屏会留一大块空位）
+    // 布局用上游评审版的 grid：目标卡那列 minmax(0,1fr)，求助卡那列固定 112px
+    expect(row).toHaveClass('grid-cols-[minmax(0,1fr)_112px]');
+    // 两张卡都吃满各自那一列：不能被 max-w 把整行截短（网页宽屏会留一大块空位）
     expect(row).not.toHaveClass('max-w-[326px]');
     expect(screen.getByTestId('gap-target-card')).toHaveClass('w-full');
     expect(screen.getByTestId('gap-help-card')).toHaveClass('w-full');
@@ -104,8 +105,23 @@ describe('GapFillDialog', () => {
         onClose={() => {}}
       />,
     );
-    expect(screen.getByTestId('gap-top-row')).toHaveClass('grid-cols-2');
+    expect(screen.getByTestId('gap-top-row')).toHaveClass('grid-cols-[minmax(0,1fr)_112px]');
     expect(screen.getByTestId('gap-help-card')).toHaveClass('w-full');
+  });
+
+  test('两条路线概率不同时，求助卡写最高概率和总路线数', () => {
+    render(
+      <GapFillDialog
+        target={target}
+        fill={{
+          ...emptyFill,
+          self: route({ chance: 0.6 }),
+          transfer: route({ kind: 'transfer', sourceAccount: '云舟', chance: 0.3 }),
+        }}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('gap-help-main').textContent).toBe('最高 60%，共 2 条路线');
   });
 
   test('声音奖牌按目标档位取图：满分大粗用 -100 的 MAX 图，追双牌用普通婉转声', () => {

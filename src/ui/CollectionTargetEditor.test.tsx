@@ -47,7 +47,7 @@ describe('CollectionTargetEditor', () => {
     expect(getCoverageFilter().grades).toEqual(gradesBefore);
   });
 
-  test('组合奖牌强制单选：换档位只留最后点的那个，点已选中的不会清空', () => {
+  test('组合奖牌强制单选：换档位只留最后点的那个，再点已选中的 = 取消选择', () => {
     renderEditor('mothers');
     fireEvent.click(screen.getByTestId('editor-mother-grade-大粗'));
     expect(getMotherCriteria().grades).toEqual(['大粗']);
@@ -55,9 +55,9 @@ describe('CollectionTargetEditor', () => {
     fireEvent.click(screen.getByTestId('editor-mother-grade-小粗'));
     expect(getMotherCriteria().grades).toEqual(['小粗']);
 
-    // 再点已选中的那个：保持选中，不会变成「一个都不选」
+    // 再点已选中的那个 = 取消选择（与看板目标卡同一口径）
     fireEvent.click(screen.getByTestId('editor-mother-grade-小粗'));
-    expect(getMotherCriteria().grades).toEqual(['小粗']);
+    expect(getMotherCriteria().grades).toEqual([]);
 
     // 恢复默认按钮才把它改回默认
     fireEvent.click(screen.getByTestId('editor-reset-mothers'));
@@ -70,6 +70,8 @@ describe('CollectionTargetEditor', () => {
     const perfectVoice = screen.getByTestId('editor-mother-grade-大婉').querySelectorAll('img')[1];
     expect(perfectVoice).toHaveAttribute('src', '/ui/medals/1026-max.png');
 
+    // 旧数据没有组合时不假装选中「大婉」：先明确选一档，再验证切模式会换声音条件
+    fireEvent.click(screen.getByTestId('editor-mother-grade-大婉'));
     fireEvent.click(screen.getByTestId('editor-mother-mode-medal'));
 
     expect(getMotherCriteria().voices).toEqual(['婉转声']);

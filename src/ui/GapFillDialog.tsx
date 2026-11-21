@@ -177,27 +177,31 @@ function HelpCard({
 }) {
   const main =
     routeCount > 0 && bestChance != null
-      ? `已有 ${routeCount} 条 ${percent(bestChance)} 的线`
+      ? routeCount === 1
+        ? `已有 1 条 ${percent(bestChance)} 的线`
+        : `最高 ${percent(bestChance)}，共 ${routeCount} 条路线`
       : fill.helpChance != null
         ? `对性母 ${percent(fill.helpChance)}`
         : null;
   return (
     <div
-      className="flex w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white p-2 text-center"
+      className="flex w-full min-w-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-1.5"
       data-testid="gap-help-card"
     >
-      <span className="text-[12px] leading-4 font-medium text-slate-500">小组求助</span>
+      <span className="text-[10px] font-medium leading-3 text-slate-500">小组求助</span>
       {main ? (
-        <p className="text-[13px] leading-4 font-semibold text-slate-800" data-testid="gap-help-main">
+        <p className="mt-1 text-[11px] leading-4 font-semibold text-slate-700" data-testid="gap-help-main">
           {main}
         </p>
-      ) : null}
+      ) : (
+        <span />
+      )}
       {onSeekHelp ? (
         <button
           type="button"
           onClick={onSeekHelp}
           data-testid="gap-help-action"
-          className="mt-0.5 min-h-[26px] rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[12px] font-medium text-emerald-700 active:bg-emerald-100"
+          className="mt-1 min-h-[24px] rounded-lg border border-emerald-200 bg-emerald-50 px-1.5 text-[11px] font-medium text-emerald-700 active:bg-emerald-100"
         >
           小组求蛋 ›
         </button>
@@ -364,7 +368,7 @@ export function GapFillDialog({
             </div>
           ) : (
           <div
-            className="mt-2 grid grid-cols-2 gap-1.5"
+            className="mt-2 grid grid-cols-[minmax(0,1fr)_112px] gap-2"
             data-testid="gap-top-row"
           >
             <TargetCard target={target} />

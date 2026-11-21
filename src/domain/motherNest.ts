@@ -500,6 +500,9 @@ export function buildMotherNestSuggestions(input: MotherNestInput): Map<string, 
       if (servedEggs.has(eggGameId) || index.qualifiedEggs.has(eggGameId)) continue;
       const eggGroups = (egg.eggGroups ?? []).filter(isBreedableGroup);
       const recommended = [...naturesOf(eggGameId)];
+      // 推荐性格为空的蛋不参与跨号传蛋：本号内配对与 helps 都跳过它，
+      // 这里不跳过会把「没有推荐性格」的蛋推成传蛋任务（与另两处口径不一致）。
+      if (recommended.length === 0) continue;
       const femaleChance = genderShareOf(egg, '母');
       let bestTask: MotherNestTask | null = null;
       for (const [sourceAccount, source] of indexes) {

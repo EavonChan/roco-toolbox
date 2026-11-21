@@ -497,6 +497,21 @@ describe('NestPlanCard 配窝建议（2026-11-18）', () => {
     expect(firstCard.querySelector('[title="拟人组"]')).not.toBeNull();
   });
 
+  test('缺口清单与跨号兜底清单不再出现在配窝卡里（2026-11-19 用户口径）', () => {
+    const plan: NestPlan = {
+      ...planOf([]),
+      unfilled: [{ groupId: 3, natureName: '认真', grade: '大婉', reason: 'has-mother' }],
+      delegated: [
+        { groupId: 2, natureName: '固执', grade: '大婉' as const, byAccount: '账号乙' },
+      ],
+    };
+    render(<NestPlanCard plans={[plan]} />);
+    expect(screen.queryByTestId('breed-unfilled')).toBeNull();
+    expect(screen.queryByTestId('breed-delegated')).toBeNull();
+    expect(screen.queryByText('缺带这个性格的公')).toBeNull();
+    expect(screen.queryByText('由 账号乙 出蛋，孵好传过来')).toBeNull();
+  });
+
   test('缺口页签显示本号种公推荐（按本号缺口算），不混进高概率', () => {
     const recommendations = [
       {

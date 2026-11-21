@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -23,4 +23,18 @@ test('custom build paths keep production authorization and forbidden feature gua
  assert.notEqual(fixture().run().status,0);
  const r=fixture('RocoServer 收集计划').run(['--approve-production']);
  assert.notEqual(r.status,0);assert.match(r.stderr,/内容断言/);
+});
+test('npm deploy scripts only go through the guarded release script',()=>{
+ const pkg=JSON.parse(readFileSync(resolve('package.json'),'utf8'));
+ for(const name of ['deploy:test','deploy:prod']){
+  assert.match(pkg.scripts[name],/node scripts\/deploy-web\.mjs/,`${name} 必须走 scripts/deploy-web.mjs`);
+  assert.doesNotMatch(pkg.scripts[name],/wrangler pages deploy/,`${name} 不允许直连 wrangler`);
+ }
+ assert.match(pkg.scripts['deploy:test'],/--branch test\b/);
+ assert.match(pkg.scripts['deploy:prod'],/--branch main\b/);
+ assert.doesNotMatch(pkg.scripts['deploy:prod'],/--approve-production/, '正式放行参数只能手动追加，不能写死');
+});
+test('npm verify still runs the copy gate',()=>{
+ const pkg=JSON.parse(readFileSync(resolve('package.json'),'utf8'));
+ assert.match(pkg.scripts.verify,/node tools\/lint-copy\.mjs/, 'verify 必须包含文案闸门');
 });

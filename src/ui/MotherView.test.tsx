@@ -61,7 +61,7 @@ describe('MotherView', () => {
     expect(within(list).getAllByTestId('mother-card-egg-groups')[0]).toHaveClass('flex-col');
   });
 
-  test('未收集卡点开「怎么补」悬浮窗，计划入口已移除', () => {
+  test('未收集卡点开「怎么补」悬浮窗；点底部计划按钮不打开悬浮窗', () => {
     render(
       <MotherView
         owned={[]}
@@ -72,28 +72,27 @@ describe('MotherView', () => {
         status="missing"
         motherSuggestions={new Map()}
         accountNames={['昭昭']}
-        gapTarget={{ label: '目标 满分大婉', bodyMedal: '大块头', voiceDb: 100, weightPercent: 100 }}
+        gapTarget={{ label: '目标 大块头 · 婉转声', bodyMedal: '大块头', voiceDb: 100, weightPercent: 100 }}
       />,
     );
 
-    // 「计划收集」整段与卡底「计划 / 已计划」按钮都不再出现
-    expect(screen.queryByTestId('mother-plan')).toBeNull();
-    expect(screen.queryByTestId('mother-plan-toggle')).toBeNull();
-    expect(screen.queryByText('计划收集')).toBeNull();
-
     const rows = screen.getAllByTestId('mother-chain-row');
-    fireEvent.click(within(rows[0]).getByRole('button'));
+    // 行内有两个可点元素：整张卡（怎么补）和底部「计划」按钮，这里点卡本身
+    fireEvent.click(within(rows[0]).getAllByRole('button')[0]);
     expect(screen.getByRole('dialog', { name: '怎么补' })).toBeTruthy();
     expect(screen.getByTestId('gap-fill-eyebrow').textContent).toBe('母本缺口 · 怎么补');
     expect(screen.getByTestId('gap-unpairable').textContent).toContain('本号、跨号都无法配对');
-    // 母本页的悬浮窗不再提供「加入配窝建议」（计划入口只留看板侧）
-    expect(screen.queryByTestId('gap-add-to-plan')).toBeNull();
 
     fireEvent.click(screen.getByTestId('gap-fill-close'));
     expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
+
+    // 计划按钮只切计划，不打开悬浮窗
+    const planButton = within(screen.getAllByTestId('mother-chain-row')[1]).getByTestId('mother-plan-toggle');
+    fireEvent.click(planButton);
+    expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
   });
 
-  test('已收集卡去掉「查看」按钮，点卡片跳精灵背包并带齐筛选', () => {
+  test('已收集卡片只显示「查看」，按达标母本给性格上色，点击查看带齐背包筛选', () => {
     const recommended = eggNatures(species, 3003, {});
     const motherNature = recommended[0] ?? '固执';
     const owned: OwnedPet[] = [
@@ -134,17 +133,18 @@ describe('MotherView', () => {
     );
 
     const card = screen.getByTestId('mother-chain-row');
-    // 不再有「查看」按钮：整张卡就是跳转入口
-    expect(within(card).queryByTestId('mother-chain-open')).toBeNull();
+    const open = within(card).getByTestId('mother-chain-open');
+    expect(open).toHaveTextContent('查看');
+    expect(open).not.toHaveTextContent('只');
+    expect(within(card).queryByText(/只/)).toBeNull();
     const natures = within(card).getByTestId('mother-card-natures');
     expect(within(natures).getByText(motherNature)).toHaveClass('bg-emerald-100');
     const other = recommended.find((nature) => nature !== motherNature);
     if (other) expect(within(natures).getByText(other)).toHaveClass('bg-slate-100');
 
-    fireEvent.click(within(card).getByRole('button'));
+    fireEvent.click(open);
     expect(onOpenInventory).toHaveBeenCalledWith({
       name: '火花',
-      // 体型按「奖牌 或 身高到顶」取并集：无奖牌但身高 100% 的母本也要能筛到
       tags: expect.arrayContaining([
         'gender:母',
         'body:大块头',
@@ -153,8 +153,11 @@ describe('MotherView', () => {
         `nature:${motherNature}`,
       ]),
     });
+
+    expect(onOpenInventory.mock.calls[0][0].heightRange).toBeUndefined();
   });
 
+  // 本地保留（2026-11-20）：体型按「奖牌 或 身高到顶到底」取并集，小不点档要能筛到无奖牌但身高 0% 的个体
   test('小不点档位带「零身高」并集标签', () => {
     const owned: OwnedPet[] = [
       {
@@ -200,5 +203,50 @@ describe('MotherView', () => {
       name: '火花',
       tags: expect.arrayContaining(['body:小不点', 'body:零身高', 'voice:-100']),
     });
+  });
+
+  test('母本页提供未收集、收集中、已收集三页签', () => {
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={groups}
+        mode="perfect"
+        status="collecting"
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '未收集' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '收集中' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '已收集' })).toBeTruthy();
+    expect(screen.getByTestId('mother-collecting-view')).toBeTruthy();
+    expect(screen.queryByTestId('mother-chain-list')).toBeNull();
+  });
+
+  test('大列表首屏只渲染部分蛋组，其余按需展开', () => {
+    const manyGroups: MotherGroup[] = Array.from({ length: 120 }, (_, index) => ({
+      ...groups[0],
+      chainKey: `egg:${index + 1}`,
+      eggGameId: index + 1,
+      formLabel: `批量精灵${index + 1}`,
+      number: String(index + 1).padStart(3, '0'),
+      eggGroups: [1 + (index % 12)],
+    }));
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={manyGroups}
+        mode="perfect"
+        status="missing"
+      />,
+    );
+
+    expect(screen.getAllByTestId('mother-chain-row').length).toBeLessThan(60);
+    const more = screen.getByRole('button', { name: /显示更多蛋组/ });
+    fireEvent.click(more);
+    expect(screen.getAllByTestId('mother-chain-row').length).toBeGreaterThan(60);
   });
 });

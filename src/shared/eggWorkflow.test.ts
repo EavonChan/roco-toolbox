@@ -136,6 +136,71 @@ test('a special egg cannot be downgraded by a later ordinary import', () => {
   expect(state.eggs[0].kind).toBe('special');
 });
 
+test('stock sync cannot erase self-bred provenance or concrete egg labels', () => {
+  let state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,
+    eggs: [{ ...stock('e', 3227), provenance: 'self-bred', greenNest: true, heightCm: 23, weightGrams: 1234 }],
+  }, 1);
+  expect(state.eggs[0]).toMatchObject({
+    provenance: 'self-bred', greenNest: true, heightCm: 23, weightGrams: 1234,
+  });
+
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 2, complete: true,
+    eggs: [{ ...stock('e', 3227), provenance: 'unknown', greenNest: false }],
+  }, 2);
+  expect(state.eggs[0]).toMatchObject({ provenance: 'self-bred', greenNest: true });
+});
+
+test('manual labels include green nest and preserve concrete unavailable category', () => {
+  let state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,
+    eggs: [{ ...stock('e', 3227), specialCategory: 'activity' }],
+  }, 1);
+  state.eggs[0].kind = 'ordinary';
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'label', id: 'e', nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true,
+  }, 2);
+  expect(state.eggs[0]).toMatchObject({
+    nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true, labelSource: 'manual',
+  });
+});
+
+test('one action labels every available egg of the same species but leaves other species alone', () => {
+  let state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,
+    eggs: [stock('one', 3227), stock('two', 3227), stock('other', 3436)],
+  }, 1);
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'label-many', eggGameId: 3227, nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true,
+  }, 2);
+  expect(state.eggs.filter(egg => egg.eggGameId === 3227)).toMatchObject([
+    { nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true, labelSource: 'manual' },
+    { nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true, labelSource: 'manual' },
+  ]);
+  expect(state.eggs.find(egg => egg.id === 'other')).toMatchObject({ nature: '固执', labelSource: 'unknown' });
+});
+
+test('背包与家园各自记水印：较晚导入的旧家园快照不再被背包时间挡掉', () => {
+  const bagEgg = { ...stock('bag1', 3227), location: 'bag' as const, lastConfirmedAt: 12 * 3600_000 };
+  const homeEgg = { ...stock('home1', 3436), location: 'home' as const, lastConfirmedAt: 11 * 3600_000 + 50 * 60_000 };
+  let state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 12 * 3600_000, complete: true, eggs: [bagEgg],
+  }, 1);
+  expect(state.eggs.map(egg => egg.id)).toEqual(['bag1']);
+  // 家园快照比背包旧：只影响家园这一侧，家园蛋仍要入库
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 11 * 3600_000 + 50 * 60_000,
+    complete: false, homeComplete: true, eggs: [bagEgg, homeEgg],
+  }, 2);
+  expect(state.eggs.map(egg => egg.id).sort()).toEqual(['bag1', 'home1']);
+  // 再回放同一份旧家园快照：家园水印已推进，整批忽略
+  expect(applyEggAction(state, 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 11 * 3600_000 + 50 * 60_000,
+    complete: false, homeComplete: true, eggs: [bagEgg, homeEgg],
+  }, 3)).toBe(state);
+});
+
 test('batch publishing is atomic and marks green nest only with a chosen nature',()=>{
   const draft={id:'one',eggGameId:3227,natures:['固执'],body:'大块头',voice:'婉转声',quantity:2,greenNest:true};
   const state=applyEggAction(emptyEggWorkflow(),'g','a',{type:'publish-batch',demands:[draft,{...draft,id:'two',eggGameId:3436}]},1);

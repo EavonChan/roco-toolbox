@@ -161,6 +161,46 @@ describe('家园 · 接单上窝', () => {
     expect(stored).toContain('g1');
   });
 
+  test('取消「已上窝」时说明服务端不会撤回（本轮无撤回接口）', () => {
+    h.state.items = [demandItem()];
+    renderPanel([
+      pet({ gameId: egg.gameId, gender: '母', captureId: 'cap_academy' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公' }),
+    ]);
+
+    fireEvent.click(screen.getByTestId('home-demand-placed'));
+    fireEvent.click(screen.getByTestId('home-demand-placed'));
+
+    expect(screen.getByTestId('home-demand-place-notice')).toHaveTextContent(
+      '已同步到服务端的「已上窝」不会撤回',
+    );
+  });
+
+  test('已同步的固定任务显示不可撤回提示，不再给一个点不动的勾选框', () => {
+    h.state.items = [demandItem({
+      workflowTaskId: 'task-new',
+      workflowVersion: 7,
+      placedAt: 10,
+      workflowTask: {
+        id: 'task-new',
+        line: {
+          gameAccountKey: 'uid:1001',
+          motherId: 'cap_academy',
+          fatherId: `cap_${fatherSpecies.gameId}_公`,
+        },
+      },
+    })];
+    renderPanel([
+      pet({ gameId: egg.gameId, gender: '母', captureId: 'cap_academy' }),
+      pet({ gameId: fatherSpecies.gameId, gender: '公' }),
+    ]);
+
+    expect(screen.getByTestId('home-demand-placed-locked')).toHaveTextContent(
+      '已上窝（已同步，不可撤回）',
+    );
+    expect(screen.queryByTestId('home-demand-placed')).toBeNull();
+  });
+
   test('账号可以单独收起和展开', () => {
     h.state.items = [demandItem()];
     renderPanel([

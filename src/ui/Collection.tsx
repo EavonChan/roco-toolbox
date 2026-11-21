@@ -72,6 +72,8 @@ function MothersBranch({
         accountNames={accountNames}
         gapTarget={{ label: targetLabel, bodyMedal, voiceTarget, voiceDb, weightPercent }}
         onSeekHelp={() => onNavigate({ type: 'open-groups', groupType: 'mother' })}
+        /** 收集中页的「去小组 / 发布需求」也要能导航（上游收集中结构） */
+        onNavigate={onNavigate}
         onOpenInventory={(jump) => {
           // 点已收集卡 = 去精灵背包按这条进化链搜，带上奖牌 / 身高 / 性格条件
           clearInventoryFilters();

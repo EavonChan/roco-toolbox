@@ -1,6 +1,7 @@
 import { activePatrolTasks, patrolTaskKey, readPatrolStatus, type ActivePatrolTask } from './eggPatrolStore';
 import { runEggPatrol } from './eggPatrol';
 import { reminderCurrent, type ReminderPayload } from './eggReminders';
+import { exchangeNotificationCurrent, type ExchangeNotificationPayload } from './eggExchangeNotifications';
 import { type Env, json, newToken, newRecoveryCode, sha256Hex, rateLimit } from './util';
 
 type Row = Record<string, unknown>;
@@ -45,6 +46,7 @@ interface NotificationRow { id: string; group_id: string; binding_version: strin
 async function currentNotification(db: D1Database, row: NotificationRow, tasks: ActivePatrolTask[]): Promise<boolean> {
   const payload = JSON.parse(row.payload_json) as Row;
   if (payload.kind === 'reminder') return reminderCurrent(db, row.group_id, row.trade_id, payload as unknown as ReminderPayload);
+  if (payload.kind === 'exchange') return exchangeNotificationCurrent(db, row.group_id, row.trade_id, payload as unknown as ExchangeNotificationPayload);
   return tasks.some(task => task.groupId === row.group_id && task.tradeId === row.trade_id && task.side === row.side &&
     task.bindingVersion === row.binding_version && patrolTaskKey(task) === payload.taskKey);
 }
@@ -89,16 +91,17 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
   }
   if (action === 'claim') {
     if (!validId(input.botId) || !validId(input.qqGroupId)) return invalid(400, '参数无效');
-    const tasks = await activePatrolTasks(env.DB);
     const rows = await env.DB.prepare(`SELECT n.* FROM egg_patrol_notifications n JOIN egg_bot_bindings b
       ON b.group_id=n.group_id AND b.binding_version=n.binding_version AND b.enabled=1
       WHERE b.bot_id=? AND b.qq_group_id=? AND n.status IN ('pending','leased') AND n.next_at<=? AND n.lease_until<=? ORDER BY n.created_at LIMIT 20`)
       .bind(input.botId, input.qqGroupId, now, now).all<NotificationRow>();
+    // 只读这批通知所属的小组，不扫全站任务
+    const tasks = rows.results.length ? await activePatrolTasks(env.DB, rows.results.map(row => row.group_id)) : [];
     const events: Row[] = [];
     for (const row of rows.results) {
       if (typeof input.groupId === 'string' && row.group_id !== input.groupId) continue;
       if (typeof input.bindingVersion === 'string' && row.binding_version !== input.bindingVersion) continue;
-      if (row.side === 'reminder' && row.status !== 'pending') continue;
+      if ((row.side === 'reminder' || row.side.startsWith('exchange-')) && row.status !== 'pending') continue;
       if (!(await currentNotification(env.DB, row, tasks))) continue;
       const lease = newToken();
       const result = await env.DB.prepare(`UPDATE egg_patrol_notifications SET status='leased',lease_token=?,lease_until=?
@@ -113,7 +116,7 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
       ON b.group_id=n.group_id AND b.binding_version=n.binding_version AND b.enabled=1
       WHERE n.id=? AND n.lease_token=? AND n.status='leased' AND n.lease_until>? AND b.bot_id=? AND b.qq_group_id=?`)
       .bind(input.id, input.leaseToken, now, input.botId, input.qqGroupId).first<NotificationRow>();
-    const tasks = row ? await activePatrolTasks(env.DB) : [];
+    const tasks = row ? await activePatrolTasks(env.DB, [row.group_id]) : [];
     const valid = !!row && await currentNotification(env.DB, row, tasks);
     return json({ ok: true, valid }, 200, null);
   }
@@ -122,9 +125,27 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
     const row = await env.DB.prepare('SELECT * FROM egg_patrol_notifications WHERE id=? AND lease_token=?').bind(input.id, input.leaseToken).first<NotificationRow>();
     if (!row) return invalid(409, '提醒租约已失效');
     if (row.status === 'sent') return json({ ok: true }, 200, null);
-    const tasks = await activePatrolTasks(env.DB);
+    const tasks = await activePatrolTasks(env.DB, [row.group_id]);
     if (!(await currentNotification(env.DB, row, tasks))) return invalid(409, '任务或群关联已变化');
     const sent = input.outcome === 'sent';
+    if (row.side.startsWith('exchange-')) {
+      if (row.status !== 'leased') return json({ ok: true }, 200, null);
+      const sent = input.outcome === 'sent';
+      const retry = input.outcome === 'failed';
+      await env.DB.prepare(
+        `UPDATE egg_patrol_notifications
+         SET status=?,attempts=attempts+1,next_at=?,lease_until=0,sent_at=?,error_code=?
+         WHERE id=? AND lease_token=? AND status='leased'`,
+      ).bind(
+        sent ? 'sent' : retry ? 'pending' : 'failed',
+        retry ? now + Math.min(3600000, 60000 * 2 ** Math.min(row.attempts, 6)) : now,
+        sent ? now : null,
+        sent ? null : input.outcome,
+        row.id,
+        input.leaseToken,
+      ).run();
+      return json({ ok: true }, 200, null);
+    }
     if (row.side === 'reminder') {
       if (row.status !== 'leased') return json({ ok: true }, 200, null);
       await env.DB.prepare("UPDATE egg_patrol_notifications SET status=?,attempts=attempts+1,lease_until=0,sent_at=?,error_code=? WHERE id=? AND lease_token=? AND status='leased'")

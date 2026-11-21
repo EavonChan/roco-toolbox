@@ -159,4 +159,17 @@ describe('单一解码源（两个消费者共享一轮）', () => {
     expect(orb.inspectCalls()).toBeGreaterThan(calls);
     nearby.unmount();
   });
+
+  test('两个同优先级 live 实例共享进度：后挂的实例也能拿到结果', async () => {
+    // 附近页 1MiB 与悬浮球 2MiB 同分：先占着的继续解码，后挂的不能一直空着
+    const first = setup({ live: true, windowBytes: 1024 * 1024 });
+    await tick(0);
+    const second = renderHook(() => useCaptureProgress(state, { live: true, persist: false, windowBytes: 2 * 1024 * 1024 }));
+    await tick(0);
+    await tick(12000);
+    expect(second.result.current.progress?.stage).toBe('ready');
+    expect(second.result.current.sourceBytes).toBe(100);
+    first.unmount();
+    second.unmount();
+  });
 });

@@ -255,40 +255,41 @@ function HomePairCard({ cluster, index }: { cluster: HomePairCluster; index: num
   ) {
     return <SharedStudLayout cluster={cluster} males={males} females={females} index={index} />;
   }
+  const firstMother = females[0] ?? null;
+  const firstPartners = firstMother ? partnerMalesOf(cluster, firstMother) : males;
   /**
    * 住在家园、但背包里没有这只：大概率已经放生。
-   * 放生后这条配对不会再有后代，性格概率和平均声音都不该再算（2026-11-19 用户口径）。
+   * 放生后这条配对不会再有后代，性格概率和平均声音都不该再算（2026-11-19 用户口径）；
+   * 只影响这只母本自己那一行，不把同簇其他母本的概率和声音一起抹掉。
    */
-  const released = cluster.nodes.filter((node) => !node.missing && !node.pet);
-  const hasReleased = released.length > 0;
-  const voiceDb = hasReleased
-    ? null
-    : averageVoiceOf(
-        cluster.nodes.map((node) => ({ gender: node.gender, voiceDb: node.pet?.voiceDb })),
-      );
-  const firstMother = females[0] ?? null;
+  const firstReleased = firstMother ? releasedOfPair(firstMother, firstPartners) : [];
   return (
     <li
       className="rounded-xl border-l-4 bg-slate-50 px-1.5 py-1"
       style={{ borderLeftColor: pairingColor(index) }}
       data-testid="home-pair-card"
     >
-      {/* 有精灵可能已放生：提示放在整组上方，不再显示后代概率和声音 */}
-      {hasReleased ? <ReleasedNotice nodes={released} /> : null}
       {/*
        * 两行网格：卡头只占母本这一列的第一行；母本和右侧种公都从第二行开始，
        * 这样种公卡片和母本卡片顶边对齐，卡头又贴在母本正上方（2026-11-19 用户口径）。
        */}
       <div className="mt-0.5 grid grid-cols-2 items-start gap-1">
-        {firstMother && !hasReleased ? (
+        {firstMother && firstReleased.length === 0 ? (
           <div
             className="col-start-1 row-start-1 flex flex-wrap items-center gap-1"
             data-testid="home-pair-head"
           >
-            <NatureChips natures={pairNaturesOf(firstMother, males)} />
-            {voiceDb !== null ? (
-              <span className="text-[10px] leading-none text-slate-500">{voiceDb}dB</span>
+            <NatureChips natures={pairNaturesOf(firstMother, firstPartners)} />
+            {voiceOfPair(firstMother, firstPartners) !== null ? (
+              <span className="text-[10px] leading-none text-slate-500">
+                {voiceOfPair(firstMother, firstPartners)}dB
+              </span>
             ) : null}
+          </div>
+        ) : null}
+        {firstMother && firstReleased.length > 0 ? (
+          <div className="col-start-1 row-start-1">
+            <ReleasedNotice nodes={firstReleased} />
           </div>
         ) : null}
         <div
@@ -305,12 +306,18 @@ function HomePairCard({ cluster, index }: { cluster: HomePairCluster; index: num
           ) : null}
           {females.slice(1).map((female) => (
             <div key={female.actorId} className="flex min-w-0 flex-col gap-1">
-              {hasReleased ? null : (
+              {releasedOfPair(female, males).length === 0 ? (
                 <div className="flex flex-wrap items-center gap-1" data-testid="home-pair-head-extra">
                   <NatureChips natures={pairNaturesOf(female, males)} />
-                  {voiceDb !== null ? (
-                    <span className="text-[10px] leading-none text-slate-500">{voiceDb}dB</span>
+                  {voiceOfPair(female, males) !== null ? (
+                    <span className="text-[10px] leading-none text-slate-500">
+                      {voiceOfPair(female, males)}dB
+                    </span>
                   ) : null}
+                </div>
+              ) : (
+                <div data-testid="home-pair-head-extra">
+                  <ReleasedNotice nodes={releasedOfPair(female, males)} />
                 </div>
               )}
               <PairingPetCard

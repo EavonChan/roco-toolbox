@@ -83,10 +83,11 @@ export function normalizeRecoveryCode(input: string): string {
 
 /**
  * 密码哈希（2026-11-18）：PBKDF2-SHA256 + 16 字节随机盐。
- * 迭代次数压到 1 万，是为了守住 Pages Functions 的 CPU 上限（每次请求只有 10ms 量级）。
  * 存储格式：`pbkdf2$<迭代次数>$<盐hex>$<哈希hex>`，改算法时按前缀区分。
  */
-const PASSWORD_ITERATIONS = 10_000;
+const PASSWORD_ITERATIONS = 100_000;
+const LEGACY_PASSWORD_ITERATIONS = 10_000;
+const PASSWORD_HASH_PATTERN = /^pbkdf2\$(10000|100000)\$([a-f0-9]{32})\$([a-f0-9]{64})$/;
 
 function toHex(bytes: Uint8Array): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -114,10 +115,14 @@ export async function hashPassword(password: string): Promise<string> {
   return `pbkdf2$${PASSWORD_ITERATIONS}$${toHex(salt)}$${toHex(hash)}`;
 }
 
+export function needsPasswordUpgrade(stored: string): boolean {
+  return Number(PASSWORD_HASH_PATTERN.exec(stored)?.[1]) === LEGACY_PASSWORD_ITERATIONS;
+}
+
 export async function verifyPassword(password: string, stored: string | null): Promise<boolean> {
-  if (!stored) return false;
-  const [scheme, iterations, saltHex, hashHex] = stored.split('$');
-  if (scheme !== 'pbkdf2' || !iterations || !saltHex || !hashHex) return false;
+  const match = stored && PASSWORD_HASH_PATTERN.exec(stored);
+  if (!match || !isValidPassword(password)) return false;
+  const [, iterations, saltHex, hashHex] = match;
   const hash = await derivePasswordBits(password, fromHex(saltHex), Number(iterations));
   return timingSafeEqual(toHex(hash), hashHex);
 }

@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
 import { TARGET_MODE_LABELS, type TargetMode } from '../domain/petFilters';
-import { isChainCollected } from '../domain/motherCriteria';
+import {
+  effectiveMotherVoices,
+  isChainCollected,
+  type MotherCriteria,
+} from '../domain/motherCriteria';
 import { isStudCoverageComplete } from '../domain/studCoverage';
 import {
   computeStudRecommendations,
@@ -15,7 +19,7 @@ import { SuggestionCard } from './SuggestionCard';
 import { NestPlanCard, type StudRecommendationGroup } from './NestPlanCard';
 import { findMotherGapFill, findStudGapFill, type GapFill } from '../domain/gapFill';
 import { GapFillDialog, type GapTargetView } from './GapFillDialog';
-import { toggleMotherPlan } from './motherPlanStore';
+import { mergeMotherPlan } from './motherPlanStore';
 import { useMotherSuggestions } from './useMotherSuggestions';
 import { SourceNotice } from './SourceNotice';
 import { SegmentedControl } from './primitives/SegmentedControl';
@@ -23,8 +27,10 @@ import { useOwnedPets } from './useOwnedPets';
 import { sortAccountNames } from './accountOrder';
 import { useCollectionSummary } from './useCollectionSummary';
 import { setTargetGrade, useCoverageFilter } from './coverageFilterStore';
+import { useMotherCriteria } from './motherCriteriaStore';
 import { setTargetMode } from './targetModeStore';
 import { toggleAccount, toggleAllAccounts, useAccountFilter } from './accountFilterStore';
+import { removeStudTransferTask, useStudTransferTasks } from './studTransferTaskStore';
 import { TargetGradeSelector } from './TargetGradeSelector';
 import type { NavigationIntent } from './navigation';
 
@@ -73,7 +79,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
    */
   const {
     selectedGrade,
-    effectiveCriteria,
     naturesOf,
     suggestions: motherSuggestions,
     targetLabel: gapTargetLabel,
@@ -82,10 +87,30 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     voiceDb: gapTargetVoiceDb,
     weightPercent: gapTargetWeight,
   } = useMotherSuggestions({ owned, mode, coverageByAccount, plans });
+  const motherCriteria = useMotherCriteria();
+  /**
+   * 母本进度只认母本页自己的奖牌口径（上游 R7b-H01）：看板的目标档位是种公 / 覆盖度的，
+   * 拿它算母本会把「看板改档位 → 母本已收集数字跟着变」这种跨页联动带回来。
+   */
+  const motherEffectiveCriteria: MotherCriteria = useMemo(
+    () => ({
+      bodies: motherCriteria.bodies,
+      voices: effectiveMotherVoices(motherCriteria.voices, mode),
+      grades: motherCriteria.grades,
+      targetMode: mode,
+      recommendedNatures: motherCriteria.recommendedNatures === true,
+    }),
+    [motherCriteria, mode],
+  );
+  /** 种公阵列里手动加入的跨号补种公任务（2026-11-03） */
+  const transferTasks = useStudTransferTasks();
   /** 母本缺口只报**个人事实**；小组未加载时不在看板声称某成员拥有 */
   const missingMothers = useMemo(
-    () => motherGroups.filter((group) => !isChainCollected(group, owned, effectiveCriteria, naturesOf)),
-    [motherGroups, owned, effectiveCriteria, naturesOf],
+    () =>
+      motherGroups.filter((group) =>
+        !isChainCollected(group, owned, motherEffectiveCriteria, naturesOf),
+      ),
+    [motherGroups, owned, motherEffectiveCriteria, naturesOf],
   );
   const collectedMothers = motherGroups.length - missingMothers.length;
   /** 母本缺口卡（移进配窝卡的「缺口」横条，2026-11-20 用户口径） */
@@ -510,6 +535,40 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             }
             onSeekHelp={() => onNavigate({ type: 'open-groups', groupType: 'mother' })}
           />
+          {transferTasks.length > 0 ? (
+            <div
+              className="mt-2 border-t border-dashed border-slate-200 pt-2"
+              data-testid="transfer-task-list"
+            >
+              <h3 className="text-xs font-semibold text-slate-600">跨号传蛋</h3>
+              <ul className="mt-1 space-y-1">
+                {transferTasks.map((task) => (
+                  <li
+                    key={task.id}
+                    className="flex items-center gap-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800"
+                    data-testid="transfer-task-item"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">
+                        {task.sourceAccount} → {task.targetAccount}
+                      </p>
+                      <p className="truncate text-amber-700">
+                        {task.motherName} × {task.fatherName} · {task.natureName}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeStudTransferTask(task.id)}
+                      data-testid="transfer-task-remove"
+                      className="shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px]"
+                    >
+                      移除
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -531,13 +590,14 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         eyebrow={gapDialog?.eyebrow}
         targetReady={selectedGrade != null}
         onSeekHelp={() => {
+          const nextGroupType = gapDialog?.target.kind === 'stud' ? 'stud' : 'mother';
           setGapDialog(null);
-          onNavigate({ type: 'open-groups', groupType: 'mother' });
+          onNavigate({ type: 'open-groups', groupType: nextGroupType });
         }}
         onAddToPlan={
           gapDialog?.canAddToPlan
             ? () => {
-                toggleMotherPlan(gapDialog.chainKey);
+                mergeMotherPlan([gapDialog.chainKey]);
                 setGapDialog(null);
               }
             : undefined

@@ -56,7 +56,8 @@ export function MotherCriteriaMedals({ testIdPrefix, syncTargetGrade }: MotherCr
     const nextMode = value as TargetMode;
     if (nextMode === mode) return;
     const current = getMotherCriteria();
-    saveGrades(current, selectedGradesFor(current, mode), nextMode);
+    // 旧数据没有组合字段时保持「按体型 / 声音判定」，切模式不能顺手把它变成空选择。
+    if (current.grades !== undefined) saveGrades(current, current.grades, nextMode);
     setTargetMode(nextMode);
   };
 
@@ -88,6 +89,11 @@ export function MotherCriteriaMedals({ testIdPrefix, syncTargetGrade }: MotherCr
         label="母本达标奖牌组合"
         testIdPrefix={testIdPrefix}
       />
+      {selectedGrades.length === 0 ? (
+        <p className="text-[11px] text-slate-400" data-testid={`${testIdPrefix}-grade-unset`}>
+          未设置组合：当前按体型 / 声音条件判定。
+        </p>
+      ) : null}
     </div>
   );
 }

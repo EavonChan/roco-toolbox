@@ -13,7 +13,7 @@ import type { CollectionGroupType } from '../shared/collectionGroups';
 export type AppPage = 'dashboard' | 'home' | 'collection' | 'nearby' | 'groups' | 'profile';
 
 export type CollectionLocation =
-  | { kind: 'mothers'; status: 'missing' | 'collected' | 'plan'; eggGameId?: number }
+  | { kind: 'mothers'; status: 'missing' | 'collecting' | 'collected'; eggGameId?: number }
   | { kind: 'studs'; view: 'coverage' | 'eggs'; groupId?: number }
   /** 精灵背包只剩「全部精灵」（2026-10-29：「合格种公」页取消）。 */
   | { kind: 'inventory' };

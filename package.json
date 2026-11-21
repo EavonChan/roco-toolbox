@@ -1,5 +1,6 @@
 {
   "name": "roco-toolbox",
+  "productName": "小布助手",
   "private": true,
   "version": "1.5.6",
   "license": "GPL-3.0-only",
@@ -19,9 +20,9 @@
     "test:mother-groups:api": "node tools/test/run-mother-groups-local.mjs",
     "test:mother-groups:live": "node tools/test/run-mother-groups-local.mjs --live",
     "trim:catalog": "node tools/data-pipeline/trim-catalog.mjs",
-    "verify": "tsc -b && vitest run",
-    "deploy:test": "npm run verify && npm run build && wrangler pages deploy dist --project-name roco-toolbox --branch=test --commit-dirty=true",
-    "deploy:prod": "npm run verify && npm run build && wrangler pages deploy dist --project-name roco-toolbox --branch=main --commit-dirty=true",
+    "verify": "tsc -b && vitest run && node tools/lint-copy.mjs",
+    "deploy:test": "npm run verify && npm run build && node scripts/deploy-web.mjs --branch test",
+    "deploy:prod": "npm run verify && npm run build && node scripts/deploy-web.mjs --branch main",
     "desktop": "npm run build && node desktop/prepare-app.mjs && electron desktop/main.cjs",
     "desktop:build": "npm run build && node desktop/prepare-app.mjs && electron-builder --win --publish never"
   },

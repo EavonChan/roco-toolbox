@@ -38,6 +38,7 @@ import {
 export interface CollectionGroupsProps {
   onGoAccount?: () => void;
   onDraftDirtyChange?: (dirty: boolean) => void;
+  onNavigate?: (intent: import('./navigation').NavigationIntent) => void;
   /** 从看板 / 收集页直达：进入同类型的小组（个人求蛋已删除，2026-10-30）。 */
   focus?: { groupType?: CollectionGroupType } | null;
   /**
@@ -61,6 +62,7 @@ export interface CollectionGroupsProps {
 export function CollectionGroups({
   onGoAccount,
   onDraftDirtyChange,
+  onNavigate,
   focus,
   variant = 'feed',
   onGoProfileGroups,
@@ -445,6 +447,12 @@ export function CollectionGroups({
             onClaimDemand={hook.claimDemand}
             onReleaseDemand={hook.releaseDemand}
             onCompleteDemand={hook.completeDemand}
+            onGoPlan={() =>
+              onNavigate?.({
+                type: 'open-collection',
+                location: { kind: 'mothers', status: 'collecting' },
+              })
+            }
           />
           </>
           ) : null}

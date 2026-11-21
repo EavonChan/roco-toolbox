@@ -2,7 +2,8 @@ import { canCirculateEgg, type EggRecord } from '../../shared/eggMatching';
 
 /** Normalized trusted-adapter input, not raw capture JSON or user-edited form data. */
 export type EggObservation = Pick<EggRecord, 'id' | 'eggGameId' | 'nature' | 'body' | 'voice'> &
-  Partial<Pick<EggRecord, 'provenance' | 'confidence' | 'kind' | 'labelSource' | 'parents'>> & {
+  Partial<Pick<EggRecord, 'provenance' | 'confidence' | 'kind' | 'labelSource' | 'parents' |
+    'specialCategory' | 'greenNest' | 'heightCm' | 'weightGrams' | 'itemConfId' | 'location'>> & {
     gameAccountKey?: string;
   };
 export interface StockEgg extends EggRecord {
@@ -78,15 +79,21 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
     for (const observation of snapshot[location]?.eggs ?? []) {
       const old = previous.get(observation.id);
       const key = instanceKey(snapshot.accountId, observation.id);
-      const provenance: EggRecord['provenance'] = history[key] === 'external' || old?.provenance === 'external' || observation.provenance === 'external'
-        ? 'external' : observation.provenance ?? history[key] ?? old?.provenance ?? 'unknown';
+      const known = [observation.provenance, history[key], old?.provenance];
+      const provenance: EggRecord['provenance'] = known.includes('external') ? 'external'
+        : known.includes('self-bred') ? 'self-bred' : 'unknown';
       history[key] = provenance;
       if (location === 'home' && (currentBag.has(observation.id) || next.get(observation.id)?.location === 'bag')) {
         // Keep bag location, but retain restrictive classification from either observation.
         const current = next.get(observation.id);
         if (current) {
           const kind = observation.kind === 'special' || observation.kind === 'shiny' ? observation.kind : current.kind;
-          const updated = { ...current, provenance, kind,
+          const specialCategory = observation.specialCategory ?? current.specialCategory;
+          const updated = { ...current, provenance, kind, specialCategory,
+            greenNest: observation.greenNest ?? current.greenNest,
+            heightCm: observation.heightCm ?? current.heightCm,
+            weightGrams: observation.weightGrams ?? current.weightGrams,
+            itemConfId: observation.itemConfId ?? current.itemConfId,
             lastConfirmedAt: Math.max(current.lastConfirmedAt, snapshot[location]?.capturedAt ?? snapshot.capturedAt) };
           if (observation.parents) updated.parents = observation.parents;
           if (observation.labelSource === 'system' && updated.labelSource !== 'manual') updated.labelSource = 'system';
@@ -100,6 +107,11 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
         labelSource: observation.labelSource ?? (observation.confidence === 'system' ? 'system' : 'unknown'),
         parents: observation.parents ?? old?.parents,
         kind: observation.kind ?? old?.kind ?? 'ordinary',
+        specialCategory: observation.specialCategory ?? old?.specialCategory,
+        greenNest: observation.greenNest ?? old?.greenNest,
+        heightCm: observation.heightCm ?? old?.heightCm,
+        weightGrams: observation.weightGrams ?? old?.weightGrams,
+        itemConfId: observation.itemConfId ?? old?.itemConfId,
         gameAccountKey: observation.gameAccountKey ?? old?.gameAccountKey ?? snapshot.gameAccountKey,
         status: old?.status ?? 'available', location, lastConfirmedAt: snapshot[location]?.capturedAt ?? snapshot.capturedAt, listed: false };
       egg.listed = !!old?.listed && canCirculateEgg(egg);

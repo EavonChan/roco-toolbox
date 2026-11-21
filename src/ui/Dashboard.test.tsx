@@ -8,6 +8,10 @@ import { getCoverageFilter, setTargetGrade, toggleFilterGrade } from './coverage
 import { setTargetMode } from './targetModeStore';
 import { DEFAULT_MOTHER_CRITERIA } from '../domain/motherCriteria';
 import { setMotherCriteria } from './motherCriteriaStore';
+import {
+  addStudTransferTask,
+  resetStudTransferTasksForTest,
+} from './studTransferTaskStore';
 
 const h = vi.hoisted(() => ({
   summary: null as unknown as CollectionSummary,
@@ -75,6 +79,7 @@ const demoPlan: NestPlan = {
 };
 
 beforeEach(() => {
+  resetStudTransferTasksForTest();
   h.accounts = ['测试甲'];
   toggleAllAccounts([]);
   h.summary = {
@@ -261,6 +266,10 @@ describe('Dashboard（看板）', () => {
     expect(getCoverageFilter().grades).toEqual(['大粗']);
     expect(screen.queryByTestId('dashboard-target-multiple-note')).toBeNull();
     expect(screen.queryByTestId('dashboard-clear-studs-target')).toBeNull();
+
+    // 再点已选中的组合 = 取消选择（与母本页同一口径）
+    fireEvent.click(screen.getByTestId('dashboard-target-grade-大粗'));
+    expect(getCoverageFilter().grades).toEqual([]);
   });
 
   test('主页奖牌图标会随目标模式显示对应声音奖牌', () => {
@@ -278,10 +287,10 @@ describe('Dashboard（看板）', () => {
     );
   });
 
-  test('看板选择奖牌会同步筛选母本全收集进度和缺口', () => {
+  test('看板母本进度只跟母本页奖牌走，看板目标档位不再影响它', () => {
     setTargetMode('perfect');
     setTargetGrade('大婉');
-    setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA });
+    setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, grades: ['大婉'] });
     h.summary = {
       ...h.summary,
       owned: [
@@ -330,7 +339,16 @@ describe('Dashboard（看板）', () => {
 
     const progress = screen.getByTestId('progress-card-action-mother');
     expect(progress).toHaveTextContent('2 / 3');
+
+    // 看板目标档位是种公 / 覆盖度的目标：改了它，母本数字不动
     fireEvent.click(screen.getByTestId('dashboard-target-grade-大粗'));
+    expect(getCoverageFilter().grades).toEqual(['大粗']);
+    expect(progress).toHaveTextContent('2 / 3');
+
+    // 母本页把奖牌改成「大粗」后，看板随之变化（两页同一来源）
+    act(() => {
+      setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, grades: ['大粗'] });
+    });
     expect(progress).toHaveTextContent('1 / 3');
 
     fireEvent.click(screen.getByTestId('dashboard-action-mothers'));
@@ -340,6 +358,54 @@ describe('Dashboard（看板）', () => {
       setTargetGrade('大婉');
       setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA });
     });
+  });
+
+  test('母本页未设置组合时，看板按体型 / 声音判定（四档全含）', () => {
+    setTargetMode('perfect');
+    setTargetGrade('大婉');
+    setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA });
+    h.summary = {
+      ...h.summary,
+      owned: [
+        {
+          gameId: 3200,
+          gender: '母',
+          nature: '固执',
+          voiceDb: 100,
+          medalBody: '大块头',
+          isShiny: false,
+          account: '测试甲',
+        },
+        {
+          gameId: 3201,
+          gender: '母',
+          nature: '固执',
+          voiceDb: -100,
+          medalBody: '大块头',
+          isShiny: false,
+          account: '测试甲',
+        },
+        {
+          gameId: 3202,
+          gender: '母',
+          nature: '固执',
+          voiceDb: 100,
+          medalBody: '小不点',
+          isShiny: false,
+          account: '测试甲',
+        },
+      ] as never[],
+      motherGroups: Array.from({ length: 3 }, (_, index) => ({
+        chainKey: `c${index}`,
+        formLabel: `母本${index}`,
+        memberIndexes: [index],
+        eggGroups: [2],
+        motherClass: null,
+        eggGameId: 100 + index,
+      }) as never),
+    };
+    render(<Dashboard onNavigate={vi.fn()} />);
+    expect(screen.getByTestId('progress-card-action-mother')).toHaveTextContent('3 / 3');
   });
 
   test('看板用账号摘要替代蛋组与性格设置入口', () => {
@@ -407,6 +473,40 @@ describe('Dashboard（看板）', () => {
     expect(screen.queryByTestId('gap-add-to-plan')).toBeNull();
     fireEvent.click(screen.getByTestId('gap-fill-close'));
     expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
+  });
+
+  test('种公推荐里的小组求蛋跳到种公路由', () => {
+    const onNavigate = vi.fn();
+    render(<Dashboard onNavigate={onNavigate} />);
+    fireEvent.click(within(screen.getByTestId('recommend-item')).getByRole('button'));
+    fireEvent.click(screen.getByTestId('gap-help-action'));
+
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'open-groups', groupType: 'stud' });
+  });
+
+  test('手动加入的跨号传蛋任务在看板可见且可移除', () => {
+    addStudTransferTask({
+      targetAccount: '测试甲',
+      sourceAccount: '云舟',
+      eggGameId: 3002,
+      motherGameId: 3002,
+      motherName: '水蓝蓝',
+      motherNature: '聪明',
+      fatherGameId: 3003,
+      fatherName: '火花',
+      fatherNature: '固执',
+      natureName: '聪明',
+      grade: '大婉',
+      groupIds: [2],
+      chance: 0.3,
+    });
+    render(<Dashboard onNavigate={vi.fn()} />);
+
+    const list = screen.getByTestId('transfer-task-list');
+    expect(list).toHaveTextContent('云舟 → 测试甲');
+    expect(list).toHaveTextContent('水蓝蓝');
+    fireEvent.click(within(list).getByTestId('transfer-task-remove'));
+    expect(screen.queryByTestId('transfer-task-list')).toBeNull();
   });
 
   test('点母本缺口卡打开「怎么补」悬浮窗，没有可配的线时写本号跨号都无法配对', () => {

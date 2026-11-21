@@ -10,8 +10,18 @@ vi.mock('./useCollectionSummary', () => ({
     mode: 'perfect',
     mother: { collected: 0, total: 0 },
     stud: { cells: [], groupCount: 14, passedGroups: 0, total: 0, covered: 0, groupSummary: [] },
+    coverageByAccount: new Map(),
     plans: [],
     recommendations: [],
+  }),
+}));
+vi.mock('./useMotherSuggestions', () => ({
+  useMotherSuggestions: () => ({
+    suggestions: new Map(),
+    targetLabel: '目标未选',
+    bodyMedal: null,
+    voiceDb: null,
+    weightPercent: null,
   }),
 }));
 vi.mock('./MotherView', () => ({ MotherView: () => <div data-testid="stub-mother-view" /> }));

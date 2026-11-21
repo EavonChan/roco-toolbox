@@ -21,10 +21,11 @@ test('旧共享记忆不影响看板求蛋：点「全部」落到收集 · 种�
   await expect(page.getByTestId('personal-eggs')).toHaveCount(0);
 
   await page.getByRole('button', { name: '看板', exact: true }).click();
-  await page.getByTestId('recommend-quantity-all').click();
 
-  // 2026-11-01：种公入口改到「收集 · 种公阵列」（R2-3-06 修，原小组落点到不了种公页）。
+  // 旧「全部」数量按钮已随推荐卡改版删除（2026-11-19）：直接走「收集 · 种公阵列」入口。
   // 断言页签选中态 + 该页独有空态，不写成「某页可见」，否则跳错目标也能过（不会被上次的共享视图带偏）。
+  await page.getByRole('button', { name: '收集', exact: true }).click();
+  await page.getByTestId('collection-kind-studs').click();
   await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('empty-state')).toBeVisible();
 });

@@ -537,7 +537,8 @@ async function runSmoke(origin) {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  // 产品名改成「小布助手」后 userData 目录也跟着改名：首次启动把旧目录整体迁过来。
+  // 桌面版顶层 package.json 带 productName「小布助手」，userData 是 %APPDATA%\小布助手；
+  // 旧版本（只有 name=roco-toolbox，目录从未改过名）的数据按真实存在的旧目录迁移一次。
   // 放在拿到单实例锁之后，保证同一时刻只有一个进程在搬；迁移失败就退回旧目录继续用（老数据都在），不让启动失败。
   const userDataMigration = migrateUserData({
     appData: app.getPath('appData'),

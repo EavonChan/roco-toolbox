@@ -12,6 +12,8 @@ import {
   segmentOfPage,
   segmentPending,
   startTourPending,
+  syncTourSeen,
+  tourSuppressed,
   type TourSegment,
   type TourStep,
 } from './ui/tour';
@@ -38,6 +40,7 @@ import { getImportOutcome, useImportOutcome } from './ui/importOutcomeStore';
 import { usePlanBadge } from './ui/plan/usePlanBadge';
 import { useSnapshots } from './ui/useSnapshots';
 import { useDraftLeaveGuard } from './ui/useDraftLeaveGuard';
+import { useTabViewTracking } from './ui/useTabViewTracking';
 import { SnapshotRefreshNotice } from './ui/SnapshotRefreshNotice';
 
 export default function App() {
@@ -108,6 +111,8 @@ export default function App() {
    */
   const [tour, setTour] = useState<TourSegment | null>(() => {
     migrateLegacyTourSeen();
+    // 测试站（以及带「跳过引导」参数的预览）不自动弹，但顶部「教程」仍可手动重播
+    if (tourSuppressed()) return null;
     return startTourPending() ? 'start' : null;
   });
   const closeTour = () => {
@@ -131,6 +136,7 @@ export default function App() {
     if (tourPageRef.current === page) return;
     tourPageRef.current = page;
     if (tour) return;
+    if (tourSuppressed()) return;
     const segment = segmentOfPage(page);
     if (segmentPending(segment)) setTour(segment);
   }, [navigation.page, tour]);
@@ -151,13 +157,13 @@ export default function App() {
   // 匿名使用统计（2026-10-06 自建埋点）：启动报一次、切页签各报一次，页面隐藏前把队列发出去
   useEffect(() => {
     track('app_open', { platform: platform() });
+    // 把本环境已有的「看过教程」灌进壳：切服后壳里没有记录时会重新弹教程（R9-5b-M01）
+    syncTourSeen();
     return installFlushOnHide();
   }, []);
+  // 页签曝光：只在页签名变化时上报（同一次进页不重复），引导期间不上报
+  useTabViewTracking(navigation.page, activeTab, Boolean(tour));
   useEffect(() => {
-    // 引导自己会切好几页，别把这几次跳转算成用户行为
-    if (tour) return;
-    // 兼容桥阶段仍上报旧页签名（任务 9 再换新页面名，避免埋点口径提前断档）
-    track('tab_view', { tab: navigation.page });
     // 记住停留的页签：关后台后重开不会莫名其妙回到「导入数据」。
     // **不把四个新 page 字符串直接写进旧键**：旧版安装升级 / 降级都要能理解。
     const legacy = legacyLocation(navigation);
@@ -226,9 +232,6 @@ export default function App() {
             >
               教程
             </button>
-            <span className="text-[10px] text-slate-300" data-testid="app-version">
-              版本 {__APP_BUILD__}
-            </span>
           </div>
         </header>
         <TabNav active={activeTab} onChange={(page) => navigate({ type: 'tab', page })} />
@@ -254,6 +257,7 @@ export default function App() {
       ) : navigation.page === 'groups' ? (
         <CollectionGroups
           onDraftDirtyChange={setGroupsDraftDirty}
+          onNavigate={navigate}
           focus={{ groupType: navigation.groupType }}
           onGoProfileGroups={() => navigate({ type: 'open-profile', section: 'groups' })}
           onGoAccount={() =>

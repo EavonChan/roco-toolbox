@@ -7,7 +7,7 @@ export interface ReminderPayload {
 }
 interface Member { account_id: string; display_name: string }
 
-async function targetUids(db: D1Database, groupId: string, trade: WorkflowTrade, target: string, state: EggWorkflowState): Promise<string[]> {
+export async function targetUidsForTrade(db: D1Database, groupId: string, trade: WorkflowTrade, target: string, state: EggWorkflowState): Promise<string[]> {
   const supplier = target === trade.supplierAccountId;
   const line = supplier ? trade.line : trade.returnLine;
   const egg = supplier ? trade.give : trade.receive;
@@ -29,7 +29,7 @@ export async function prepareReminder(db: D1Database, groupId: string, state: Eg
   const members = await db.prepare('SELECT account_id,display_name FROM mother_group_members WHERE group_id=? AND account_id IN (?,?)')
     .bind(groupId, actor, target).all<Member>();
   if (members.results.length !== 2) throw new Error('换蛋成员已退出小组');
-  const uids = await targetUids(db, groupId, trade, target, state);
+  const uids = await targetUidsForTrade(db, groupId, trade, target, state);
   if (!uids.length) throw new Error('对方尚未发布可关联QQ的游戏UID');
   const payload: ReminderPayload = { kind: 'reminder', uid: uids[0], uids, eggName: catalog.species.find(s => s.gameId === trade.give.eggGameId)?.name ?? '任务精灵',
     recipientName: '', requesterName: members.results.find(m => m.account_id === actor)!.display_name,
@@ -52,7 +52,7 @@ export async function reminderCurrent(db: D1Database, groupId: string, tradeId: 
   const members = await db.prepare('SELECT account_id FROM mother_group_members WHERE group_id=? AND account_id IN (?,?)')
     .bind(groupId, payload.requesterAccountId, target).all<{ account_id: string }>();
   if (members.results.length !== 2) return false;
-  const uids = await targetUids(db, groupId, trade, target, state);
+  const uids = await targetUidsForTrade(db, groupId, trade, target, state);
   return uids.length > 0 && uids.length === payload.uids.length && uids.every(uid => payload.uids.includes(uid));
 }
 

@@ -50,19 +50,50 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     const males = within(cards[0]).getByTestId('home-pair-males');
     expect(within(females).getAllByTestId('breed-pet-card')).toHaveLength(2);
     expect(within(males).getAllByTestId('breed-pet-card')).toHaveLength(1);
-    // 学院 100%：卡头和第二个母本上方各一枚；声音只写一次
-    // 每个母本上方都写性格% + 声音（第二只母本用 extra 那一行）
+    // 学院 100%：卡头和第二个母本上方各一枚
+    // 声音按每个母本自己那一行算（f1 97 → 98dB，f2 100 → 100dB），不能把两位母本混成同一份
     const heads = [
       within(cards[0]).getByTestId('home-pair-head'),
       within(cards[0]).getByTestId('home-pair-head-extra'),
     ];
-    for (const head of heads) {
-      expect(head).toHaveTextContent('100%固执');
-      expect(head).toHaveTextContent('99dB');
-    }
+    expect(heads[0]).toHaveTextContent('100%固执');
+    expect(heads[0]).toHaveTextContent('98dB');
+    expect(heads[1]).toHaveTextContent('100%固执');
+    expect(heads[1]).toHaveTextContent('100dB');
     expect(within(cards[0]).getAllByTestId('home-pair-nature')).toHaveLength(2);
     // 学院那只（公）绿框
     expect(within(males).getByTestId('breed-pet-card').className).toContain('border-emerald-500');
+  });
+
+  test('1 公 2 母中只有一只母本缺失时，只隐藏这一只的概率和声音', () => {
+    const residents = [
+      resident({ actorId: 'f1', name: '缺失喵', gender: '母', nature: '胆小' }),
+      resident({ actorId: 'f2', name: '喵喵', gender: '母', nature: '开朗' }),
+      resident({ actorId: 'm1', name: '火花', gender: '公', nature: '固执' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_f2', owned({ gameId: 3001, name: '喵喵', gender: '母', nature: '开朗', voiceDb: 100 })],
+      ['ins_m1', owned({ gameId: 3003, name: '火花', gender: '公', nature: '固执', voiceDb: 100 })],
+    ]);
+
+    render(
+      <HomePairCards
+        couples={[
+          { femaleActorId: 'f1', maleActorIds: ['m1'] },
+          { femaleActorId: 'f2', maleActorIds: ['m1'] },
+        ]}
+        residents={residents}
+        pets={pets}
+      />,
+    );
+
+    const card = screen.getByTestId('home-pair-card');
+    expect(within(card).getByTestId('home-pair-released')).toHaveTextContent('缺失喵');
+    expect(within(card).queryByTestId('home-pair-head')).toBeNull();
+    const extra = within(card).getByTestId('home-pair-head-extra');
+    expect(extra).toHaveTextContent('30%固执');
+    expect(extra).toHaveTextContent('30%开朗');
+    expect(extra).toHaveTextContent('100dB');
   });
 
   test('母本在背包里缺失时仍按 femaleActorId 放左列，不冒充种公', () => {

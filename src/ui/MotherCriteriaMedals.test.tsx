@@ -11,13 +11,13 @@ beforeEach(() => {
 });
 
 describe('MotherCriteriaMedals', () => {
-  test('与看板使用相同的四种组合奖牌，且强制单选', () => {
+  test('与看板使用相同的四种组合奖牌，强制单选且不会清空', () => {
     render(<MotherCriteriaMedals testIdPrefix="mother-criteria" />);
 
     expect(screen.getByRole('group', { name: '母本达标奖牌组合' })).toHaveClass('grid-cols-4');
     expect(screen.queryByText('体型（空 = 不限）')).toBeNull();
     expect(screen.queryByText('声音（空 = 不限）')).toBeNull();
-    // 默认只勾「大婉」，与种公 / 看板口径一致
+    // 2026-11-20 本地口径：默认只勾「大婉」，与种公 / 看板一致
     expect(screen.getByTestId('mother-criteria-grade-大婉')).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -29,25 +29,40 @@ describe('MotherCriteriaMedals', () => {
       );
     }
 
-    // 点另一个就是换过去，不累加
+    // 点一个 = 换过去，不累加
     fireEvent.click(screen.getByTestId('mother-criteria-grade-小粗'));
     expect(getMotherCriteria().grades).toEqual(['小粗']);
+    expect(screen.getByTestId('mother-criteria-grade-小粗')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     expect(screen.getByTestId('mother-criteria-grade-大婉')).toHaveAttribute(
       'aria-pressed',
       'false',
     );
-    expect(screen.getByTestId('mother-criteria-grade-小粗')).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
 
-    // 再点已选中的那个不会清空：始终保留一个选中档位
+    // 再点已选中的那个 = 保持选中，不清空（母本页会把全局目标一起写）
     fireEvent.click(screen.getByTestId('mother-criteria-grade-小粗'));
     expect(getMotherCriteria().grades).toEqual(['小粗']);
     expect(screen.getByTestId('mother-criteria-grade-小粗')).toHaveAttribute(
       'aria-pressed',
       'true',
     );
+  });
+
+  test('旧数据的多选组合只显示第一个，不会被改写成默认「大婉」', () => {
+    setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, grades: ['小婉', '小粗'] });
+    render(<MotherCriteriaMedals testIdPrefix="mother-criteria" />);
+
+    expect(screen.getByTestId('mother-criteria-grade-小婉')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('mother-criteria-grade-小粗')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(getMotherCriteria().grades).toEqual(['小婉', '小粗']);
   });
 
   test('切换满分 / 双牌时保留已选组合并更新声音条件', () => {

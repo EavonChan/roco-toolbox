@@ -37,9 +37,6 @@ export function TargetGradeSelector({
           mode === 'perfect' ? (voice === '婉转声' ? '+100' : '-100') : voice;
         const bodyIcon = bodyMedalIconByLabel(body);
         const voiceIcon = voiceMedalIconByLabel(voiceTarget);
-        if (!bodyIcon || !voiceIcon) {
-          throw new Error(`Missing medal icon for target ${grade}`);
-        }
         const selected = selectedGrades.includes(grade);
 
         return (
@@ -56,13 +53,21 @@ export function TargetGradeSelector({
             }`}
           >
             <span className="flex items-center gap-0.5">
-              <img src={bodyIcon} alt="" title={body} className="h-5 w-5 object-contain" />
-              <img
-                src={voiceIcon}
-                alt=""
-                title={mode === 'perfect' ? `${voice} ${voiceTarget}` : voice}
-                className="h-5 w-5 object-contain"
-              />
+              {bodyIcon ? (
+                <img src={bodyIcon} alt="" title={body} className="h-5 w-5 object-contain" />
+              ) : (
+                <span className="text-[9px] text-slate-400">{body}</span>
+              )}
+              {voiceIcon ? (
+                <img
+                  src={voiceIcon}
+                  alt=""
+                  title={mode === 'perfect' ? `${voice} ${voiceTarget}` : voice}
+                  className="h-5 w-5 object-contain"
+                />
+              ) : (
+                <span className="text-[9px] text-slate-400">{voice}</span>
+              )}
             </span>
             <span className="mt-1 flex flex-col">
               <span>{body}</span>

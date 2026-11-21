@@ -91,22 +91,22 @@ test('种公推荐：勾选移入已换到折叠区，可展开还原', async ({
   await waitImported(page);
   await openTab(page, '看板');
 
-  // 勾选第一条：条目收进「已换到」折叠区（默认收起），主列表数量截断不受影响
+  // 首页推荐卡就是精灵卡：点卡面 = 标记「已换到」，条目收进折叠区（默认收起）
   await expect(page.getByTestId('recommend-done-toggle')).toHaveCount(0);
-  await page.getByTestId('recommend-item').first().getByTestId('recommend-item-check').click();
-  await expect(page.getByTestId('recommend-done-toggle')).toContainText('已换到 1 条');
-  // 展开折叠区：能看到已勾选条目（删除线）
+  await page
+    .getByTestId('recommend-item')
+    .first()
+    .getByRole('button', { name: /已换到/ })
+    .click();
+  await expect(page.getByTestId('recommend-done-toggle')).toContainText('已换到 1 只');
+  // 展开折叠区：能看到已换到条目（划掉样式）
   await page.getByTestId('recommend-done-toggle').click();
   const doneItems = page.getByTestId('recommend-done').getByTestId('recommend-item');
   await expect(doneItems).toHaveCount(1);
-  await expect(doneItems.first()).toHaveClass(/line-through/);
-  // 取消勾选 → 还原回主列表
-  await doneItems.first().getByTestId('recommend-item-check').click();
+  await expect(doneItems.first().getByRole('button')).toHaveAttribute('aria-pressed', 'true');
+  // 再点一次 → 还原回主列表
+  await doneItems.first().getByRole('button', { name: /已换到/ }).click();
   await expect(page.getByTestId('recommend-done-toggle')).toHaveCount(0);
-  // 数量按钮改为 3/15/全部（看板每类最多 3 条行动）
-  await expect(page.getByTestId('recommend-quantity-3')).toBeVisible();
-  await expect(page.getByTestId('recommend-quantity-15')).toBeVisible();
-  await expect(page.getByTestId('recommend-quantity-all')).toBeVisible();
 });
 
 test('重置按钮一键清空已导入的数据', async ({ page }) => {
@@ -390,23 +390,24 @@ test('账号筛选：三页共用一份，取消账号后看板进度跟着变',
   await waitImported(page);
   await openTab(page, '看板');
 
-  await expect(page.getByTestId('account-filter')).toContainText('账号（2/2）');
+  await expect(page.getByTestId('dashboard-account-summary')).toContainText('(2/2)');
 
   // 覆盖度页是同一个 store：那边取消一个账号，看板这边也是 1/2
   await openTab(page, '收集');
   await page.getByTestId('collection-kind-studs').click();
-  await expect(page.getByTestId('account-filter')).toContainText('账号（2/2）');
-  await page.getByTestId('account-chip-测试乙').click();
-  await openTab(page, '看板');
-  await expect(page.getByTestId('account-filter')).toContainText('账号（1/2）');
+  await expect(page.getByTestId('account-filter-summary')).toContainText('(2/2)');
+  await page.getByTestId('account-filter-summary').click();
+  await page.getByTestId('account-filter-测试乙').click();
+  await expect(page.getByTestId('account-filter-summary')).toContainText('(1/2)');
 
-  // 全不选 → 没有精灵可算，进度归零
-  // 注意按钮语义：当前有排除项时它是「全选」，再点一次才是「全不选」
-  await page.getByTestId('account-filter-toggle-all').click();
-  await expect(page.getByTestId('account-filter')).toContainText('账号（2/2）');
-  await page.getByTestId('account-filter-toggle-all').click();
-  await expect(page.getByTestId('account-filter')).toContainText('账号（0/2）');
-  expect((await progressOf(page, 'progress-card-action-stud')).numerator).toBe(0);
+  await openTab(page, '看板');
+  await expect(page.getByTestId('dashboard-account-summary')).toContainText('(1/2)');
+
+  // 「全不选」已被禁止：只剩一个账号时不可再取消，改点「全选」恢复
+  await page.getByTestId('dashboard-account-summary').click();
+  await expect(page.getByTestId('dashboard-account-测试甲')).toBeDisabled();
+  await page.getByTestId('dashboard-account-select-all').click();
+  await expect(page.getByTestId('dashboard-account-summary')).toContainText('(2/2)');
 });
 
 test('种公全收集卡可点：跳收集 · 种公阵列', async ({ page }) => {
@@ -420,7 +421,10 @@ test('种公全收集卡可点：跳收集 · 种公阵列', async ({ page }) =>
   // 只有「收集 · 种公阵列」这个落点才成立的强断言（旧「我的精灵 · 种公视角」已删除）
   await expect(page.getByTestId('collection-kind-studs')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('stud-matrix')).toBeVisible();
-  await expect(page.getByTestId('stud-view-hint')).toHaveCount(0);
+  await expect(page.getByTestId('collection-kind-inventory')).not.toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
 });
 
 test('跳转后落在目标页顶部：切页签会重置滚动位置', async ({ page }) => {
