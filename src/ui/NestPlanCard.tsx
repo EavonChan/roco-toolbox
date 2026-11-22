@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { eggGroupNames, species, targetNatureNames } from '../data/catalog';
 import { heightMetersOf, weightKgOf } from '../domain/petFilters';
 import { petBodyMedalIcon, petVoiceMedalIcon } from '../domain/petIcons';
