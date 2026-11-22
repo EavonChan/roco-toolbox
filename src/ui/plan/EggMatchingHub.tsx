@@ -184,13 +184,20 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   };
 
   const tabBar = <div className="grid min-w-0 flex-1 grid-cols-2 rounded-lg bg-slate-100 p-1">{(['mine','square'] as const).map(t => <button key={t} type="button" aria-pressed={tab === t} onClick={() => { setTab(t); setQuery(''); }} className={'min-h-8 rounded-md text-xs ' + (tab === t ? 'bg-white font-semibold text-emerald-700 shadow-sm' : 'text-slate-500')}>{t === 'mine' ? '我的收集' : '组内广场'}</button>)}</div>;
-  const pageButtons = (full: boolean) => <>
-    <Button variant="secondary" size="sm" className={'shrink-0 px-2' + (full ? ' w-full' : '')} onClick={() => setPage('stock')}>蛋仓 <span className="ml-1 text-slate-400">{ownEggs.length}</span></Button>
-    <Button variant="secondary" size="sm" className={'shrink-0 px-2' + (full ? ' w-full' : '')} onClick={() => setPage('tasks')}>我的换蛋 <span className="ml-1 text-amber-600">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></Button>
+  const pageButtons = <>
+    <Button variant="secondary" size="sm" className="shrink-0 px-2" onClick={() => setPage('stock')}>蛋仓 <span className="ml-1 text-slate-400">{ownEggs.length}</span></Button>
+    <Button variant="secondary" size="sm" className="shrink-0 px-2" onClick={() => setPage('tasks')}>我的换蛋 <span className="ml-1 text-amber-600">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></Button>
   </>;
   const searchField = <SearchField label="搜索需求" value={query} onValueChange={setQuery} placeholder="搜索精灵名" className="text-left [&_input]:text-left" />;
   const onlyAfford = tab === 'square' ? <div className="flex flex-wrap gap-1"><button type="button" aria-pressed={onlyAffordable} onClick={() => setOnlyAffordable(v => !v)} className={'min-h-7 rounded-md px-2 text-[11px] ' + (onlyAffordable ? 'bg-emerald-50 font-semibold text-emerald-700' : 'text-slate-500')}>只看我能接</button></div> : null;
-  const headingRow = <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">{tab === 'mine' ? '想收' : '组内需求'}</h3>{tab === 'mine' ? <Button variant="text" size="sm" disabled={!onGoPlan} onClick={onGoPlan}>去计划添加</Button> : <span className="text-[10px] text-slate-400">{visible.length} 项</span>}</div>;
+  // 「想收」不再占一行：我的收集直接铺卡；组内广场保留标题与数量
+  const headingRow = tab === 'square'
+    ? <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">组内需求</h3><span className="text-[10px] text-slate-400">{visible.length} 项</span></div>
+    : null;
+  // 去计划添加放在搜索框右下方；我的收集才有，组内广场不显示
+  const planAction = tab === 'mine'
+    ? <div className="flex items-center justify-end"><Button variant="text" size="sm" disabled={!onGoPlan} onClick={onGoPlan}>去计划添加</Button></div>
+    : null;
   const cardList = api.loading ? <div className={empty}>正在读取…</div> : visible.length ? <div className="egg-demand-grid grid grid-cols-3 gap-[7px]">{visible.map(d => <EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} ownerLabel={tab === 'square' ? owner(d.demanderAccountId) : undefined}
     statusLabel={tab === 'square' ? (supplyOf(d) === 'give' ? '我能给蛋' : supplyOf(d) === 'hatch' ? '我能孵' : '接不了') : statusOfMine(d)}
     onOpen={d => { setDetailId(d.id); setError(''); }} />)}</div> : <div className={empty}>{tab === 'mine' ? '还没有想收的精灵' : '暂无组内需求'}</div>;
@@ -205,12 +212,27 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
       onClick={() => { setTab(t); setQuery(''); }}
     >{t === 'mine' ? '我的收集' : '组内广场'}</RailNavItem>)}
   </RailNav>;
+  // 蛋仓 / 我的换蛋也是换蛋页的一级入口，横屏同样进标题栏（纯文本，不画按钮）
+  const railPages = <RailNav label="换蛋页面">
+    <RailNavItem
+      active={false}
+      title="蛋仓"
+      testId="egg-hub-page-stock"
+      onClick={() => setPage('stock')}
+    >蛋仓<span className="rail-nav-count">{ownEggs.length}</span></RailNavItem>
+    <RailNavItem
+      active={false}
+      title="我的换蛋"
+      testId="egg-hub-page-tasks"
+      onClick={() => setPage('tasks')}
+    >我的换蛋<span className="rail-nav-count">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></RailNavItem>
+  </RailNav>;
   const rail = <RailAside
     title="换蛋"
     hideTitle
     collapse={{ collapsed: swapRail.collapsed, toggle: swapRail.toggle }}
     testIds={{ aside: 'egg-hub-rail', toggle: 'egg-hub-rail-toggle' }}
-  >{railTabs}</RailAside>;
+  >{railTabs}{railPages}</RailAside>;
 
   return <div className="flex min-w-0 flex-col gap-2" data-testid="egg-matching-hub" data-tour="egg-matching-hub">
     {stock.syncError||lineError?<div role="alert" className="flex items-center justify-between rounded-lg bg-amber-50 p-2 text-xs text-amber-800"><span>{stock.syncError?`蛋仓同步失败：${stock.syncError}`:`产线同步失败：${lineError}`}</span><Button size="sm" variant="text" disabled={api.busy} onClick={()=>{lineAttempt.current='';setLineError('');setRetryTick(n=>n+1);stock.retrySync();}}>重试同步</Button></div>:null}
@@ -219,7 +241,7 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     {page ? (landscape && page === 'stock' ? null : <div className="flex items-center gap-2"><Button variant="text" size="sm" onClick={() => setPage(null)}>‹ 返回</Button><h3 className="text-sm font-semibold">{page === 'stock' ? '我的蛋仓' : '我的换蛋'}</h3></div>) : landscape ? (
       <RailLayout
         collapsed={swapRail.collapsed}
-        filters={<>{searchField}{pageButtons(true)}{onlyAfford}</>}
+        filters={<>{searchField}{planAction}{onlyAfford}</>}
         aside={rail}
         testIds={{ scope: 'egg-hub-scope', main: 'egg-hub-main', filters: 'egg-hub-filters' }}
       >
@@ -229,9 +251,10 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
       </RailLayout>
     ) : <>
       {/* 2026-11-21：蛋仓 / 我的换蛋 挪到「组内广场」右边，和视图切换同一行 */}
-      <div className="flex items-center gap-2">{tabBar}{pageButtons(false)}</div>
+      <div className="flex items-center gap-2">{tabBar}{pageButtons}</div>
       {searchField}
       {headingRow}
+      {planAction}
       {onlyAfford}
       {cardList}
       {completedList}
