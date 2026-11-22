@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+﻿import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { MotherGroup } from '../domain/petFilters';
 import type { OwnedPet } from '../domain/types';
@@ -50,7 +50,7 @@ describe('MotherView', () => {
     expect(within(list).getAllByTestId('pet-avatar')).toHaveLength(4);
     // 2026-11-22：母本卡与看板四列卡统一（48px 头像、10px 名字、104px 高、白底灰边、满宽融合底条）
     expect(within(list).getAllByTestId('pet-card-avatar')[0]).toHaveClass(
-      'top-[18px]',
+      'top-[16px]',
       'h-12',
       'w-12',
     );
@@ -265,4 +265,5 @@ describe('MotherView', () => {
     expect(screen.getAllByTestId('mother-chain-row').length).toBeGreaterThan(60);
   });
 });
+
 

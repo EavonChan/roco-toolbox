@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+﻿import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import type { OwnedPet, SpeciesEntry } from '../domain/types';
 import { setMyPetsSizeUnit } from './myPetsFilterStore';
@@ -37,9 +37,9 @@ describe('PetCard 头像', () => {
       'top-[16px]',
       '-translate-x-1/2',
     );
-    expect(screen.getByTestId('pet-avatar').className).toContain('h-11');
+    expect(screen.getByTestId('pet-avatar').className).toContain('h-12');
     expect(screen.getByTestId('pet-avatar').parentElement).toHaveClass('items-center', 'justify-center');
-    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('top-[62px]', 'text-[8px]');
+    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('top-[68px]', 'text-[10px]');
     expect(screen.getByTestId('pet-card-egg-groups')).toHaveClass('flex-col');
     expect(screen.getByTestId('pet-card-natures')).toHaveClass('flex-col', 'items-end');
     expect(card).not.toHaveTextContent('已收集');
@@ -148,3 +148,4 @@ describe('PetCard 头像', () => {
     setMyPetsSizeUnit('percent');
   });
 });
+

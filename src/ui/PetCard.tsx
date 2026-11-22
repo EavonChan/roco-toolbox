@@ -111,12 +111,12 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
         ) : null
       }
       avatar={
-        <span className="relative inline-flex h-11 w-11 items-center justify-center">
+        <span className="relative inline-flex h-12 w-12 items-center justify-center">
           <PetAvatar
             gameId={avatarGameId}
             name={displayName}
             shiny={Boolean(pet.isShiny)}
-            size={44}
+            size={48}
           />
         </span>
       }
@@ -140,3 +140,4 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
     />
   );
 }
+

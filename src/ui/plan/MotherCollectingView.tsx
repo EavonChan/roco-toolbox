@@ -81,8 +81,6 @@ function CollectingCards({
             size="tall"
             status="planned"
             fitName
-            fitNameBase={8}
-            fitNameMin={6}
             avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={48} />}
             title={card.statusDetail}
             onClick={() => onOpen(card)}

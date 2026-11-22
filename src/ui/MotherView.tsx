@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { GRADE_BODY, GRADE_VOICE, type MotherGroup, type TargetMode } from '../domain/petFilters';
 import type { OwnedPet } from '../domain/types';
 import { species as catalogSpecies } from '../data/catalog';
@@ -837,8 +837,6 @@ function MotherEggRow({
         size="gap"
         status={cardStatus}
         fitName
-        fitNameBase={10}
-        fitNameMin={8}
         avatar={<PetAvatar gameId={eggGameId} name={eggName} size={48} />}
         eggGroupsTestId="mother-card-egg-groups"
         naturesTestId="mother-card-natures"
@@ -883,5 +881,6 @@ function MotherEggRow({
     </li>
   );
 }
+
 
 

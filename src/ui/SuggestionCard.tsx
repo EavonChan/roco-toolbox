@@ -163,8 +163,6 @@ function SuggestionItem({
         className="w-full"
         size="suggest"
         fitName
-        fitNameBase={9}
-        fitNameMin={8}
         avatar={<PetAvatar gameId={group.gameId} name={group.displayName} size={48} />}
         onClick={() =>
           onOpenGap

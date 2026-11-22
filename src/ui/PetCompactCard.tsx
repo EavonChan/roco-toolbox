@@ -1,4 +1,4 @@
-import { eggGroupNames } from '../data/catalog';
+﻿import { eggGroupNames } from '../data/catalog';
 import { isBreedableGroup } from '../domain/eggs';
 import { petBodyMedalIcon, petVoiceMedalIcon, rarityIcon, voiceMedalName } from '../domain/petIcons';
 import { GenderMark } from './GenderMark';
@@ -81,7 +81,7 @@ export function PetCompactCard({
       title={name}
       avatar={
         <span className="relative inline-flex h-11 w-11 items-center justify-center">
-          <PetAvatar gameId={gameId} name={name} shiny={isShiny} size={44} />
+          <PetAvatar gameId={gameId} name={name} shiny={isShiny} size={48} />
           {raritySrc ? (
             <img src={raritySrc} alt="" className="absolute -right-1 -top-1 h-3 w-3 drop-shadow-sm" />
           ) : null}
@@ -118,4 +118,5 @@ export function PetCompactCard({
     />
   );
 }
+
 

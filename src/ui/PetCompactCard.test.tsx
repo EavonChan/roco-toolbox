@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+﻿import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { PetCompactCard } from './PetCompactCard';
 
@@ -16,18 +16,18 @@ describe('紧凑精灵卡', () => {
     render(<PetCompactCard {...base} variant="home" />);
     const home = screen.getByTestId('pet-compact-card');
     expect(home.className).toContain('w-[160px]');
-    expect(home.className).toContain('h-[98px]');
-    expect(screen.getByTestId('pet-card-avatar')).toHaveClass('left-1/2', 'top-1/2');
-    expect(screen.getByTestId('pet-avatar').className).toContain('h-11');
+    expect(home.className).toContain('h-[104px]');
+    expect(screen.getByTestId('pet-card-avatar')).toHaveClass('left-1/2');
+    expect(screen.getByTestId('pet-avatar').className).toContain('h-12');
     expect(screen.getByTestId('pet-avatar').parentElement).toHaveClass('items-center', 'justify-center');
-    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('text-[6px]');
+    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('text-[10px]');
 
     cleanup();
     render(<PetCompactCard {...base} variant="demand" />);
     const demand = screen.getByTestId('pet-compact-card');
     expect(demand.className).toContain('w-[160px]');
-    expect(demand.className).toContain('h-[98px]');
-    expect(screen.getByTestId('pet-avatar').className).toContain('h-11');
+    expect(demand.className).toContain('h-[104px]');
+    expect(screen.getByTestId('pet-avatar').className).toContain('h-12');
   });
 
   test('编号与蛋组纵向显示在左上角，性格纵向显示在右上角', () => {
@@ -95,3 +95,4 @@ describe('紧凑精灵卡', () => {
     expect(name).not.toHaveTextContent('夏天的样子');
   });
 });
+
