@@ -3,6 +3,7 @@ import type { EggParentInfo, EggParentsInfo } from './eggMatching';
 import type { EggWorkflowState, WorkflowEgg } from './eggWorkflow';
 import type { BodySize } from './bodySize.js';
 import type { PatrolEgg, PatrolObservation, PatrolParent, PatrolTask } from './eggPatrol';
+import { ACADEMY_NEST_CONFIG_ID, ORDINARY_NEST_CONFIG_ID } from './eggPatrol';
 import { averageVoice, bodyMedalOfWeight, voiceLabelOf } from './eggLabels';
 
 /** 机器人「生蛋了吗」上报的一颗家园蛋。 */
@@ -33,6 +34,8 @@ function bodyOf(parent: PatrolParent, index?: EggLabelIndex): DemandBody | 'unkn
 }
 
 function parentInfo(parent: PatrolParent, index?: EggLabelIndex): EggParentInfo {
+  const academy = parent.nestConfigId === ACADEMY_NEST_CONFIG_ID;
+  const ordinary = parent.nestConfigId === ORDINARY_NEST_CONFIG_ID;
   return {
     id: parent.petId,
     gameId: parent.speciesGameId ?? 0,
@@ -40,6 +43,7 @@ function parentInfo(parent: PatrolParent, index?: EggLabelIndex): EggParentInfo 
     nature: natureOf(parent, index),
     body: bodyOf(parent, index),
     voice: voiceLabelOf(parent.voiceDb),
+    ...(academy ? { nestName: '学院小窝', academy: true } : ordinary ? { nestName: '普通小窝' } : {}),
   };
 }
 
@@ -72,8 +76,15 @@ export function inferEggLabels(egg: PatrolEgg, index: EggLabelIndex): InferredLa
 
   const motherNature = mother ? natureOf(mother, index) : '';
   const fatherNatures = fathers.map(father => natureOf(father, index));
-  const nature = motherNature && fatherNatures.length > 0 &&
-    fatherNatures.every(value => value === motherNature) ? motherNature : '';
+  // 学院小窝（绿窝）那只的当前性格 100% 遗传；只有一只且它有性格时优先按它标。
+  const academy = [mother, ...fathers].filter(
+    (parent): parent is PatrolParent => !!parent &&
+      parent.nestConfigId === ACADEMY_NEST_CONFIG_ID && !!natureOf(parent, index),
+  );
+  const nature = academy.length === 1
+    ? natureOf(academy[0], index)
+    : motherNature && fatherNatures.length > 0 &&
+      fatherNatures.every(value => value === motherNature) ? motherNature : '';
 
   const motherBody = mother ? bodyOf(mother, index) : 'unknown';
   const fatherBodies = fathers.map(father => bodyOf(father, index));
@@ -148,6 +159,8 @@ function fillParents(existing: EggParentsInfo, incoming: EggParentsInfo): EggPar
     nature: existing.mother.nature || incoming.mother.nature,
     body: existing.mother.body || incoming.mother.body,
     voice: existing.mother.voice || incoming.mother.voice,
+    nestName: existing.mother.nestName || incoming.mother.nestName,
+    academy: existing.mother.academy ?? incoming.mother.academy,
   } : existing.mother ?? incoming.mother;
   const fathers = (existing.fathers ?? []).map((father, i) => {
     const next = incoming.fathers?.[i];
@@ -158,6 +171,8 @@ function fillParents(existing: EggParentsInfo, incoming: EggParentsInfo): EggPar
       nature: father.nature || next.nature,
       body: father.body || next.body,
       voice: father.voice || next.voice,
+      nestName: father.nestName || next.nestName,
+      academy: father.academy ?? next.academy,
     };
   });
   if (fathers.length === 0 && incoming.fathers?.length) return { ...existing, ...(mother ? { mother } : {}) };
