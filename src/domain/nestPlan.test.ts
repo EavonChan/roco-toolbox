@@ -301,6 +301,34 @@ describe('buildNestPlans（第一期：可配建议 / 补齐种公，M1 多路�
     ]);
   });
 
+  test('种公全齐的号也进方案：用自己的母 × 公给别的号补缺口，蛋传过去', () => {
+    // 2026-11-20 用户口径：全齐的号不该从配窝建议里消失——它还有余力替别的号出蛋。
+    // 账号甲公母都有固执（这一格全齐）；账号乙只有母、没有公，自己配不出。
+    const motherYi = mk(801, '母方兽', '母', '固执', '账号乙');
+    const plans = buildNestPlans({
+      species,
+      owned: [fA, mA, motherYi],
+      coverage: coverage(cell(2, '固执', 'covered')),
+      coverageByAccount: new Map([
+        ['账号甲', coverage(cell(2, '固执', 'covered'))],
+        ['账号乙', coverage(cell(2, '固执', 'missingStud'))],
+      ]),
+      mode: 'perfect',
+    });
+    const jia = plans.find((plan) => plan.account === '账号甲')!;
+    const yi = plans.find((plan) => plan.account === '账号乙')!;
+    // 甲自己的缺口是 0，但仍有供蛋配对
+    expect(jia.unfilled).toEqual([]);
+    expect(jia.pairings).toHaveLength(1);
+    expect(jia.pairings[0].natureName).toBe('固执');
+    expect(jia.pairings[0].groupIds).toContain(2);
+    // 乙这一格没人自己配得出，记成甲出蛋
+    expect(yi.pairings).toEqual([]);
+    expect(yi.delegated).toEqual([
+      { groupId: 2, natureName: '固执', grade: '大婉', byAccount: '账号甲' },
+    ]);
+  });
+
   test('孵蛋不能跨账号：另一个账号的精灵不参与', () => {
     const otherMother = mk(801, '母方兽', '母', '固执', '账号乙');
     const plans = buildNestPlans({

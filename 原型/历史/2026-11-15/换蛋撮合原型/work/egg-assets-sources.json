@@ -1,0 +1,20 @@
+{
+  "source": "data/pets.json image.egg + Wiki imageinfo",
+  "assets": [
+    {
+      "speciesId": "3227",
+      "filename": "Item_107086.png",
+      "url": "https://patchwiki.biligame.com/images/nrc/d/db/iqn3zcpbhouasvg7ovf8osjagzuzfnh.png"
+    },
+    {
+      "speciesId": "3436",
+      "filename": "Item_107161.png",
+      "url": "https://patchwiki.biligame.com/images/nrc/3/35/t8xb12b4mudx01oqch6gd2tvx8j6mmb.png"
+    },
+    {
+      "speciesId": "3215",
+      "filename": "Item_107083.png",
+      "url": "https://patchwiki.biligame.com/images/nrc/e/ea/rkyivb7lp8b2s3nc6q1to0qnosljex5.png"
+    }
+  ]
+}

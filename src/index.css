@@ -28,3 +28,456 @@ h3,
 span {
   overflow-wrap: anywhere;
 }
+
+/* 身高区间输入框收窄：一行能放下 零身高 / 满身高 / 清除，不被裁掉
+   （竖屏和横屏右栏共用，2026-11-21 用户口径） */
+[data-testid="height-filter-controls"] label { width: 4rem; }
+
+/* 精灵背包卡片：窄卡（手机四列 / 三列放大）里分贝会被精灵图压住，缩到 5px
+   并把奖牌列贴到卡片右缘；宽卡（五六列）保持 6px（2026-11-21 用户口径）。 */
+[data-testid="pet-list-items"] > li > article { container-type: inline-size; }
+
+@container (max-width: 110px) {
+  [data-testid="pet-card-voice"] { font-size: 5px; line-height: 6px; }
+}
+
+/* 更窄的卡（≤80px）：头像收 6px，把右上角让给分贝，避免精灵图压住文字 */
+@container (max-width: 70px) {
+  [data-testid="pet-card-avatar"] { width: 2.375rem; height: 2.375rem; }
+  [data-testid="pet-card-avatar"] img { width: 100%; height: 100%; }
+}
+
+/* 折叠控件默认只在横屏出现（竖屏仍是原来的单列布局） */
+.dashboard-left-tools { display: none; }
+.collection-rail-toggle { display: none; }
+
+/* 家园竖屏：一张卡里三只（学院 1:2）改成两列排，保持和普通配窝卡一样的宽高比；
+   三列会把卡片压成 107px 宽、子代性格那行换行（2026-11-21 用户口径）。 */
+@media (orientation: portrait) {
+  [data-testid="home-pair-triple"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ==========================================================================
+   横屏 / 平板适配（2026-11-21）
+   竖屏完全不受影响：所有规则都包在 (orientation: landscape) 里。
+   目标：底部页签改成左侧竖栏；看板左栏固定 448px = 竖屏同宽，右栏放双面板。
+   ========================================================================== */
+@media (orientation: landscape) {
+  /* 随屏宽放大字号与控件：Tailwind 全是 rem，改根字号即整体缩放 */
+  html { font-size: clamp(15px, calc(9px + 0.55vw), 21px); }
+
+  /* ---- 左侧竖栏：小布助手 / 页签 / 刷新·教程·版本 ---- */
+  div.sticky.top-0 {
+    position: fixed; inset: 0 auto 0 0; width: 6.2rem; z-index: 60;
+    display: flex; flex-direction: column;
+    background: #fff; border-right: 1px solid #e2e8f0;
+  }
+  div.sticky.top-0 > header { display: contents; }
+  div.sticky.top-0 header h1 {
+    order: 1; width: 100%; text-align: center; font-size: 0.92rem;
+    padding: 0.7rem 0 0.6rem; border-bottom: 1px solid #e2e8f0;
+  }
+  div.sticky.top-0 nav[data-tour="tab-nav"] {
+    order: 2; position: static; width: 100%;
+    flex-direction: column; padding: 0.3rem 0; border: 0;
+  }
+  div.sticky.top-0 nav[data-tour="tab-nav"] > button {
+    flex: 0 0 auto; width: 100%; min-height: 2.9rem; font-size: 0.88rem;
+    border: 0; border-left: 3px solid transparent; border-radius: 0;
+  }
+  div.sticky.top-0 nav[data-tour="tab-nav"] > button + button { border-top: 1px solid #f1f5f9; }
+  div.sticky.top-0 nav[data-tour="tab-nav"] > button[aria-current="page"] {
+    border-left-color: #059669; background: #ecfdf5;
+  }
+  div.sticky.top-0 header > div {
+    order: 3; margin-top: auto; width: 100%;
+    display: flex; flex-direction: column; gap: 0.4rem;
+    padding: 0.5rem 0.45rem 0.6rem; border-top: 1px solid #e2e8f0;
+  }
+  div.sticky.top-0 header > div > * + * { padding-top: 0.4rem; border-top: 1px solid #f1f5f9; }
+  div.sticky.top-0 header button {
+    width: 100%; min-height: 2.5rem; font-size: 0.82rem;
+    padding: 0 0.3rem; border-radius: 0.5rem;
+  }
+  [data-testid="app-version"] { font-size: 0.62rem; line-height: 1.3; text-align: center; }
+
+  /* ---- 通用：页面让开竖栏 ---- */
+  main.mx-auto.max-w-md, div.mx-auto.max-w-md {
+    max-width: none; margin: 0; padding: 0 0.9rem 0.8rem 7rem;
+  }
+
+  /* ---- 看板：左栏固定 24rem（=384px），右栏双面板；三块各自独立滚动 ----
+     左栏（账号 / 奖牌 / 进度 / 本次新增）和右侧两个面板互不牵扯：
+     页面本身不滚，里面的三列各滚各的，标题栏放在滚动区外，卡片滚不上去。 */
+  main[data-testid="dashboard-page"] {
+    display: grid;
+    /* 配窝卡在左、账号 / 进度信息栏在右（2026-11-21 用户口径：左右互换） */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
+    column-gap: 1rem; row-gap: 0;
+    align-items: stretch;
+    height: 100vh; height: 100dvh;
+    overflow: hidden;
+    padding-bottom: 0.4rem;
+  }
+  main[data-testid="dashboard-page"] > * { margin-top: 0; }
+  main[data-testid="dashboard-page"] > .dashboard-left {
+    grid-column: 2; grid-row: 1;
+    min-width: 0; min-height: 0; height: 100%;
+    overflow-y: auto; overscroll-behavior: contain;
+    padding-left: 0.35rem;
+  }
+  /* 左栏收起：右栏独占整宽，改成「切换条 + 单面板」，配窝卡一行两组（2026-11-21 用户口径） */
+  main[data-testid="dashboard-page"][data-left-collapsed="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  main[data-testid="dashboard-page"][data-left-collapsed="true"] > .dashboard-left {
+    display: none;
+  }
+  main[data-testid="dashboard-page"][data-left-collapsed="true"] > .dashboard-narrow-body,
+  main[data-testid="dashboard-page"][data-left-collapsed="true"] > .dashboard-panels {
+    grid-column: 1;
+  }
+  .dashboard-left-tools { display: flex; justify-content: flex-end; padding-top: 0.25rem; }
+  .dashboard-left-tools > button { min-width: 0; }
+  main[data-testid="dashboard-page"] > .dashboard-panels {
+    grid-column: 1; grid-row: 1;
+    min-width: 0; min-height: 0; height: 100%;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 0;
+  }
+  .dashboard-panels > .dashboard-panel {
+    display: flex; flex-direction: column;
+    min-width: 0; min-height: 0;
+  }
+  .dashboard-panels > .dashboard-panel:first-child { padding-right: 0.9rem; }
+  .dashboard-panels > .dashboard-panel + .dashboard-panel {
+    border-left: 1px solid #e2e8f0; padding-left: 0.9rem;
+  }
+  .dashboard-panel-title { flex: 0 0 auto; background: #fff; }
+  .dashboard-panel-scroll {
+    flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+  /* 窄横屏 / 4:3：右栏是「切换条 + 当前页」，切换条固定在滚动区上方 */
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body {
+    grid-column: 1; grid-row: 1;
+    min-width: 0; min-height: 0; height: 100%;
+    display: flex; flex-direction: column;
+  }
+  .dashboard-narrow-switch {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem;
+    background: #fff; padding-bottom: 0.35rem;
+  }
+  .dashboard-narrow-switch > button { flex: 0 0 auto; }
+  .dashboard-narrow-scroll {
+    flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+  /* 左栏收起后右栏很宽：配窝卡一行两组（2026-11-21 用户口径） */
+  main[data-testid="dashboard-page"][data-left-collapsed="true"]
+    .dashboard-narrow-scroll [data-testid="breed-list"],
+  main[data-testid="dashboard-page"][data-left-collapsed="true"]
+    .dashboard-narrow-scroll [data-testid="mother-high"],
+  main[data-testid="dashboard-page"][data-left-collapsed="true"]
+    .dashboard-narrow-scroll [data-testid="mother-low"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: start;
+  }
+  main[data-testid="dashboard-page"][data-left-collapsed="true"]
+    .dashboard-narrow-scroll [data-testid="breed-list"] > *,
+  main[data-testid="dashboard-page"][data-left-collapsed="true"]
+    .dashboard-narrow-scroll [data-testid="mother-high"] > *,
+  main[data-testid="dashboard-page"][data-left-collapsed="true"]
+    .dashboard-narrow-scroll [data-testid="mother-low"] > * {
+    margin-top: 0 !important;
+    min-width: 0;
+  }
+  main[data-testid="dashboard-page"][data-left-collapsed="true"]
+    .dashboard-narrow-scroll .shared-stud-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  /* ---- 收集：右侧纵向视图栏（账号 / 精灵背包 / 母本 / 种公）常驻，不参与折叠 ----
+     筛选栏在它左边，可单独收起；收起后卡片区一直铺到视图栏边缘（2026-11-21 用户口径）。 */
+  .collection-scope { padding-right: 5.6rem; }
+  .collection-rail-toggle {
+    display: flex; align-items: center; justify-content: center;
+    /* 在右侧纵向栏里上下居中（2026-11-21 用户口径） */
+    position: absolute; left: 0.3rem; right: 0.3rem; top: 50%;
+    transform: translateY(-50%);
+    width: auto; min-height: 2.6rem;
+    border: 1px solid #e2e8f0; border-radius: 0.6rem; background: #f8fafc;
+    color: #475569; font-size: 0.72rem; line-height: 1;
+  }
+  .collection-rail-toggle[aria-expanded="false"] {
+    color: #047857; border-color: #a7f3d0; background: #ecfdf5;
+  }
+  .collection-scope[data-rail-collapsed="true"] .collection-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .collection-scope[data-rail-collapsed="true"] .collection-rail { display: none; }
+
+  /* ---- 家园：标题上方不留白；「按游戏实际配对」对齐第一张配窝卡右缘 ---- */
+  div.mx-auto.max-w-md { padding-top: 0; }
+  header[data-testid="home-header"] { margin-bottom: 0.4rem; }
+  /* 精灵卡：宽度固定、比例不变；三只一组就并排三张（不压扁卡片） */
+  [data-testid="home-pair-triple"] { grid-template-columns: repeat(3, 10rem); align-items: end; }
+  [data-testid="home-pair-card"] > div.grid.grid-cols-2 {
+    grid-template-columns: repeat(2, 10rem); align-items: start;
+  }
+  [data-testid="home-pair-card"] .grid.grid-cols-3 {
+    grid-template-columns: repeat(3, 10rem); align-items: end;
+  }
+  /* 卡头标签换行时自动缩字号，避免把卡顶撑高（2026-11-21 用户口径） */
+  [data-testid="home-pair-head"],
+  [data-testid="home-pair-head-extra"] {
+    font-size: 0.58rem; line-height: 1.3; gap: 0.2rem;
+  }
+  [data-testid="home-pair-head"] span,
+  [data-testid="home-pair-head-extra"] span {
+    font-size: inherit; line-height: inherit;
+  }
+
+  /* 「按游戏实际配对」对齐配窝卡块的右上角：容器按内容宽，表头撑满该宽度 */
+  [data-testid="home-pair-cards"] { width: fit-content; max-width: 100%; }
+  [data-testid="home-pair-cards"] > div:first-child { width: 100%; }
+
+  /* 收集页精灵卡里的编号 / 蛋组 / 性格字号放大（只作用在收集页，不动家园卡） */
+  [data-testid="mother-chain-list"] [data-testid="breed-pet-card"] .text-\[9px\] {
+    font-size: 0.8rem; line-height: 1.15;
+  }
+  [data-testid="mother-chain-list"] [data-testid="breed-pet-card"] .text-\[10px\] {
+    font-size: 0.85rem; line-height: 1.2;
+  }
+
+  /* 配窝卡整块跟着内容宽度走，不再拉满整屏 */
+  [data-testid="home-pair-card-list"] {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem;
+  }
+  [data-testid="home-pair-card"] { width: fit-content; }
+  /* 顶栏：账号选择器固定宽度，刷新/问号紧跟在后面，不被推到最右 */
+  header[data-testid="home-header"] { justify-content: flex-start; gap: 0.5rem; }
+  header[data-testid="home-header"] > section { flex: 0 0 18rem; max-width: 18rem; }
+  header[data-testid="home-header"] > div { flex: 0 0 auto; margin-left: 0; }
+
+  /* ---- 收集：视图切换改成贴右侧的纵向栏；搜索 / 筛选在它左边的右栏、卡片在左栏 ----
+     用显式的 .collection-layout 分工，避免从前那种按 DOM 顺序猜的规则
+     误伤 PetList 等其它列表（2026-11-21）。 */
+  nav[aria-label="收集视图"] {
+    position: fixed; inset: 0 0 0 auto; width: 5.6rem; z-index: 60;
+    display: flex; flex-direction: column;
+    max-width: none; margin: 0; padding: 0.45rem 0.3rem 0.5rem;
+    background: #fff; border-left: 1px solid #e2e8f0;
+  }
+  nav[aria-label="收集视图"] > div {
+    display: flex; flex-direction: column; gap: 0.35rem; width: 100%;
+  }
+  nav[aria-label="收集视图"] > div > * { width: 100%; min-width: 0; }
+  nav[aria-label="收集视图"] > div > button {
+    min-height: 2.9rem; padding: 0.2rem; font-size: 0.8rem; line-height: 1.2;
+  }
+  nav[aria-label="收集视图"] > div > button span { font-size: inherit; }
+  /* 矮屏（手机横屏）：菜单收一点高度，给中间居中的筛选按钮让出位置 */
+  @media (max-height: 520px) {
+    nav[aria-label="收集视图"] { padding-top: 0.3rem; }
+    nav[aria-label="收集视图"] > div { gap: 0.25rem; }
+    nav[aria-label="收集视图"] > div > button { min-height: 2.4rem; font-size: 0.76rem; }
+    nav[aria-label="收集视图"] [data-testid="account-filter-summary"] { min-height: 2.2rem; }
+  }
+  /* 账号下拉从栏里向左弹出，不能被屏幕右缘裁掉 */
+  nav[aria-label="收集视图"] #account-filter-options {
+    left: auto; right: calc(100% + 0.4rem); top: 0; margin-top: 0;
+    width: 16rem; max-width: 70vw;
+  }
+  .collection-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    column-gap: 1rem; row-gap: 0;
+    align-items: start;
+  }
+  .collection-main { grid-column: 1; grid-row: 1; min-width: 0; }
+  .collection-rail {
+    grid-column: 2; grid-row: 1; min-width: 0; overflow-x: hidden;
+    /* 筛选条件不跟左栏一起滚：右栏自己停在视口里，超高时栏内滚动（2026-11-21 用户口径） */
+    position: sticky; top: 0; align-self: start;
+    max-height: 100vh; max-height: 100dvh;
+    overflow-y: auto;
+    padding-top: 0.4rem; padding-bottom: 0.4rem;
+  }
+  /* 精灵背包右栏：身高区间在窄栏里换行排，满身高 / 清除不能挤出栏外
+     （2026-11-21 用户口径：右侧按钮不能被遮挡） */
+  .collection-rail [data-testid="height-filter-controls"] > div {
+    flex-wrap: wrap; overflow-x: visible; row-gap: 0.25rem;
+  }
+
+  /* 种公：矩阵贴着左缘，蛋组列左侧不再留一条空白（2026-11-21 用户口径） */
+  main.mx-auto.max-w-md[data-testid="collection-studs"] { padding-left: 6.4rem; }
+  main.mx-auto.max-w-md[data-testid="collection-studs"] .collection-main > [data-testid="stud-matrix"] {
+    padding-left: 0;
+  }
+}
+
+/* ---- 母本精灵卡：按屏宽定 5 / 6 张一行（2026-11-21 用户口径） ----
+   竖屏和窄横屏保持四列；1000px 起五列，1250px 起六列。 */
+@media (orientation: landscape) and (min-width: 1000px) {
+  [data-testid="mother-chain-list"] [data-testid^="mother-chain-group-list-"] {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+@media (orientation: landscape) and (min-width: 1250px) {
+  [data-testid="mother-chain-list"] [data-testid^="mother-chain-group-list-"] {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+/* 4:3 这类窄横屏：双面板上下叠，避免右侧配窝卡被压扁 */
+@media (orientation: landscape) and (max-width: 1120px) {
+  /* 单面板：一次显示一页（切换条在 .dashboard-narrow-switch 里） */
+  .dashboard-panels { grid-template-columns: 1fr; row-gap: 0.6rem; }
+  .dashboard-panels > .dashboard-panel:first-child { padding-right: 0; }
+  .dashboard-panels > .dashboard-panel + .dashboard-panel { border-left: 0; padding-left: 0; }
+
+  /* 4:3 单面板时右栏够宽，共用种公三张并排；宽屏两栏放不下，保持两列 */
+  .shared-stud-cards { grid-template-columns: repeat(3, 10rem); }
+}
+
+
+/* 共用种公卡：和家园页一致——横屏三张并排、固定 10rem、不改变卡片比例 */
+@media (orientation: landscape) {
+  .shared-stud-cards { align-items: end; }
+
+  /* 子代性格 / 性别比例 / 声音这一行：不换行，字号收一点（和家园一致） */
+  [data-testid="pairing-head"] {
+    flex-wrap: nowrap; gap: 0.15rem; font-size: 0.5rem; line-height: 1.2;
+    min-width: 0; white-space: nowrap;
+  }
+  [data-testid="pairing-head"] > * { font-size: inherit; line-height: inherit; }
+}
+
+/* 4:3 / 窄横屏配窝卡：列数随可用宽度走，不再写死 10rem×2。
+   2026-11-22 修：窄横屏（609×340 实测）右栏仍占固定宽度，主区只剩 86px，
+   而写死的 `repeat(2, 10rem)`（300px）会把卡片撑出容器 237px，
+   在截图里就是「配窝建议把卡片撑开、右侧被裁」。
+   `minmax(min(100%, 9.5rem), 1fr)` + auto-fit：容器比 9.5rem 还窄时退成 1 列，
+   够宽时 2~3 列，任何宽度都不横向溢出。 */
+@media (orientation: landscape) and (max-width: 1120px) {
+  .dashboard-narrow-body [data-testid="breed-suggestion"] > .grid:not(.shared-stud-cards) {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)) !important;
+    align-items: end;
+  }
+  .dashboard-narrow-body .shared-stud-cards {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)) !important;
+  }
+  /* 卡片自己也要允许收缩，否则内部 min-content 会把轨道顶宽 */
+  .dashboard-narrow-body [data-testid="breed-suggestion"] > .grid > *,
+  .dashboard-narrow-body .shared-stud-cards > * {
+    min-width: 0;
+  }
+}
+
+/* ---- 家园配窝卡：看横屏高度决定单列 / 双列（2026-11-22 用户口径） ----
+   手机横屏高度只有 360~540，一行两列少滚动；宽屏高度 720 以上空间够，保持单列。
+   宽度不到 760 时两列会横向溢出（每只卡 10rem 不压缩），所以仍回退单列。 */
+@media (orientation: landscape) and (max-height: 600px) and (min-width: 760px) {
+  [data-testid="home-pair-card-list"] {
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    column-gap: 0.75rem;
+    row-gap: 0.35rem;
+    align-items: start;
+    justify-content: start;
+    width: max-content;
+    max-width: 100%;
+  }
+  /* space-y 的 margin 在网格里会把第二列整体压低，这里交回 row-gap 控制 */
+  [data-testid="home-pair-card-list"] > * { margin-top: 0 !important; }
+}
+
+/* ---- 收集 · 母本：蛋组一行两个分组，卡片缩小（2026-11-21 用户口径） ----
+   每个分组占半栏，组内按「最小 5rem」自动排；卡片比原来小，一屏看到更多蛋组。 */
+@media (orientation: landscape) and (min-width: 1000px) {
+  [data-testid="mother-chain-list"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: start;
+  }
+  [data-testid="mother-chain-list"] > * { margin-top: 0 !important; min-width: 0; }
+  [data-testid="mother-chain-list"] [data-testid^="mother-chain-group-list-"] {
+    grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
+  }
+}
+
+/* ==========================================================================
+   宽横屏（≥1120）：看板把「推荐 / 配窝」并排成两栏，切换条占整行
+   （2026-11-21 用户口径；窄横屏仍是单栏 + 切换条）
+   ========================================================================== */
+@media (orientation: landscape) and (min-width: 1120px) {
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 1rem;
+    height: 100%;
+    min-height: 0;
+  }
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body > .dashboard-narrow-switch {
+    grid-column: 1 / -1;
+  }
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body > .dashboard-narrow-scroll {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    overflow-y: auto;
+  }
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body > .dashboard-narrow-scroll > * {
+    min-width: 0;
+    margin-top: 0;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 1120px) {
+  /* 推荐面板为空（如看板停在「母本缺口」）时，配窝面板独占整行，不留空栏 */
+  main[data-testid="dashboard-page"] > .dashboard-narrow-body
+    > .dashboard-narrow-scroll:has(> .dashboard-panel:empty) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 精灵卡：身高体重一行放不下时略缩字号；账号与背包位置各占一行（2026-11-21 用户口径） */
+@container (max-width: 120px) {
+  [data-testid="pet-card-sizes"] { font-size: 7px; line-height: 9px; }
+}
+@container (max-width: 92px) {
+  [data-testid="pet-card-sizes"] { font-size: 6px; line-height: 8px; }
+  [data-testid="pet-card-position"] { font-size: 6px; line-height: 8px; }
+}
+
+/* ---- 收集 · 母本卡片：与精灵背包同款卡片（2026-11-21 用户口径） ----
+   三态底色由卡片组件的 status 传（未收集白底灰边 / 计划中淡蓝 / 已收集淡绿），
+   这里不再单独覆盖高度与头像。 */
+
+
+/* 竖屏保留引导卡与档位按钮；横屏空间紧张，按 2026-11-21 用户口径隐藏
+   （档位跟全局目标走，矩阵直接铺满）。 */
+@media (orientation: landscape) {
+  [data-testid="coverage-intro"],
+  [data-testid="stud-grade-row"],
+  [data-testid="stud-matrix-hint"] {
+    display: none !important;
+  }
+}
+
+/* 收起筛选且屏幕够宽、两列一屏放不下全部蛋组时，母本蛋组排三列
+   （2026-11-21 用户口径；是否放不下由 MotherView 按真实高度判定）
+   3:2（1200px）也算够宽，实测三列能一屏放下全部蛋组。 */
+@media (orientation: landscape) and (min-width: 1200px) {
+  .collection-scope[data-rail-collapsed="true"]
+    [data-testid="mother-chain-list"][data-three-columns="true"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

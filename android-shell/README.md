@@ -1,4 +1,4 @@
-# 洛克工具箱 Android 壳与本机采集
+# 小布助手 Android 壳与本机采集
 
 网页界面仍来自 `https://roco-toolbox.pages.dev/`。1.2.0 增加本机采集桥，必须配套部署包含 `NativeCollectorPanel` 的网页才能显示入口；旧网页、旧 APK 继续支持原来的分享与文件导入。
 

@@ -29,12 +29,13 @@ describe('覆盖矩阵的筛选与槽位', () => {
     expect(Math.max(...ALL_EGG_GROUP_IDS)).toBe(15);
   });
 
-  test('默认筛选：蛋组全选、八大性格、档位只勾大婉', () => {
+  test('默认筛选：蛋组全选、推荐性格、档位只勾大婉', () => {
     const filter = buildDefaultFilter(targets);
 
     expect(filter.groupIds).toHaveLength(14);
-    // 2026-11-19 用户口径：默认就是「八大性格」，推荐前 3 只作为切换推荐模式时的组内默认
-    expect(filter.natureMode).toBe('eight');
+    // 2026-11-22 用户口径：默认改成「推荐性格」（每组推荐前 3 就是组内默认值）；
+    // 八大性格仍可手动切，模式本身没取消
+    expect(filter.natureMode).toBe('recommended');
     expect(filter.naturesByGroup[2]).toEqual(['固执', '平和', '开朗']);
     // 没有推荐数据的蛋组默认不勾任何性格，不会强行塞满
     expect(filter.naturesByGroup[6]).toEqual([]);
@@ -43,9 +44,9 @@ describe('覆盖矩阵的筛选与槽位', () => {
     expect(ALL_GRADES).toHaveLength(4);
   });
 
-  test('槽位 = 蛋组 × 性格 × 档位（默认八大性格 = 整池 8 个）', () => {
-    const filter = buildDefaultFilter(targets);
-    const slots = buildCoverageSlots(filter, pool);
+  test('槽位 = 蛋组 × 性格 × 档位（八大性格 = 整池）', () => {
+    const eight = { ...buildDefaultFilter(targets), natureMode: 'eight' as const };
+    const slots = buildCoverageSlots(eight, pool);
 
     // 14 个蛋组 × 4 个性格（本用例的池子）× 1 个档位
     expect(slots).toHaveLength(14 * 4);
@@ -53,10 +54,11 @@ describe('覆盖矩阵的筛选与槽位', () => {
   });
 
   test('性格三模式：八大=整池、推荐=每组前 3、自选=勾选的性格', () => {
-    const eight = buildDefaultFilter(targets);
+    const eight = { ...buildDefaultFilter(targets), natureMode: 'eight' as const };
     expect(buildCoverageSlots(eight, pool)).toHaveLength(14 * 4);
 
-    const recommended = { ...eight, natureMode: 'recommended' as const };
+    // 默认就是推荐模式
+    const recommended = buildDefaultFilter(targets);
     expect(buildCoverageSlots(recommended, pool)).toHaveLength(4);
 
     const custom = {
@@ -70,7 +72,12 @@ describe('覆盖矩阵的筛选与槽位', () => {
   });
 
   test('多勾档位时格数按倍数展开', () => {
-    const filter = { ...buildDefaultFilter(targets), grades: [...ALL_GRADES] };
+    // 用八大模式验证「档位倍数」本身，跟默认模式解耦
+    const filter = {
+      ...buildDefaultFilter(targets),
+      natureMode: 'eight' as const,
+      grades: [...ALL_GRADES],
+    };
     const slots = buildCoverageSlots(filter, pool);
 
     expect(slots).toHaveLength(14 * 4 * 4);
@@ -82,7 +89,8 @@ describe('覆盖矩阵的筛选与槽位', () => {
     const slots = buildCoverageSlots(filter, pool);
 
     expect(slots.every((s) => s.groupId === 2)).toBe(true);
-    expect(slots).toHaveLength(4);
+    // 默认推荐模式：该组取自己的推荐前 3
+    expect(slots).toHaveLength(3);
   });
 
   test('性格池里没有的名字给出 id 0，不会崩', () => {

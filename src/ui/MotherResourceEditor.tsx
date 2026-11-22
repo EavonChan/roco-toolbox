@@ -3,6 +3,7 @@ import { isBreedableGroup } from '../domain/eggs';
 import { accountKeyOf, type AccountSnapshot } from '../domain/parseBackup';
 import type { SpeciesEntry } from '../domain/types';
 import type { MotherGroupsHook } from './useMotherGroups';
+import { sortByAccountName } from './accountOrder';
 
 const timeText = (ms: number | null | undefined): string =>
   ms ? new Date(ms).toLocaleString() : '—';
@@ -118,7 +119,12 @@ export function MotherResourceEditor({
     preview.resource?.criteriaId === published.criteriaId &&
     preview.resource?.schemaVersion === published.schemaVersion;
   const localKeys = new Set(snapshots.map((snapshot) => snapshot.accountKey ?? accountKeyOf(snapshot)));
-  const missingAccounts = published?.accounts.filter((account) => !localKeys.has(account.accountKey)) ?? [];
+  /** 选号列表与「本机缺少的账号」都按数字排序（2026-11-20 用户口径）。 */
+  const localSnapshots = sortByAccountName(snapshots, (snapshot) => snapshot.accountName);
+  const missingAccounts = sortByAccountName(
+    published?.accounts.filter((account) => !localKeys.has(account.accountKey)) ?? [],
+    (account) => account.accountName,
+  );
   const canPublish =
     !busy &&
     preview.error === '' &&
@@ -162,7 +168,7 @@ export function MotherResourceEditor({
         </div>
       ) : (
         <ul className="mt-2 space-y-1">
-          {snapshots.map((snapshot) => {
+          {localSnapshots.map((snapshot) => {
             const key = snapshot.accountKey ?? accountKeyOf(snapshot);
             const on = selection.includes(key);
             return (

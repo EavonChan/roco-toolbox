@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>恢复码找回账号 · 评审预览</title>
+<link rel="stylesheet" href="shared/toolbox-shell.css">
+<link rel="stylesheet" href="shared/toolbox-modal.css">
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+  .toolbox-group, .toolbox-hub-tabs { display: none; }
+  .identity { margin: 12px; padding: 14px; background: white; border: 1px solid #e2e8f0; border-radius: 14px; color: #0f172a; }
+  .identity h2 { font-size: 16px; margin: 0 0 12px; }
+  .identity-fields, .recovery-form { display: grid; gap: 8px; }
+  .identity input, .recovery-form input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
+  .primary, .secondary { width: 100%; min-height: 40px; border: 0; border-radius: 8px; font-size: 14px; cursor: pointer; }
+  .primary { color: white; background: #047857; font-weight: 600; }
+  .secondary { background: transparent; color: #047857; }
+  .identity p, .recovery-form p { font-size: 13px; margin: 0 0 8px; color: #475569; }
+  .recovery-form label { font-size: 14px; font-weight: 600; }
+  .recovery-form [role=alert] { color: #be123c; }
+  .preview-only { margin: 14px 16px; color: #475569; font-size: 12px; }
+</style>
+<main id="app"></main>
+<script src="shared/toolbox-shell.js"></script>
+<script>
+  let recovered = false;
+  const demoCode = 'R7K2XM8P4T6N';
+  const shell = ToolboxShell.mount('#app', {renderHub: () => `
+    <section class="identity" aria-labelledby="identity-title">
+      <h2 id="identity-title">我的身份</h2>
+      ${recovered ? `<p role="status">已找回原账号</p><button class="primary" type="button" data-setup>设置用户名和密码</button>` : `
+      <div class="identity-fields">
+        <input aria-label="用户名" placeholder="用户名" disabled>
+        <input aria-label="密码" placeholder="密码（8-32 位）" type="password" disabled>
+        <button class="primary" type="button" disabled>登录</button>
+        <button class="secondary" type="button" data-recover>用恢复码找回账号</button>
+      </div>`}
+    </section>
+    <p class="preview-only">仅评审，不连接服务器。示例码 R7K2-XM8P-4T6N，请勿输入真实恢复码。</p>`});
+  document.querySelector('[data-app-tab=groups]').removeAttribute('aria-current');
+  document.querySelector('[data-app-tab=profile]').setAttribute('aria-current', 'page');
+  document.querySelector('#app').addEventListener('click', event => {
+    if (event.target.closest('[data-setup]')) {
+      shell.toast('正式实现将进入现有的用户名和密码设置');
+    }
+    if (!event.target.closest('[data-recover]')) return;
+    shell.openModal({title: '用恢复码找回账号', html: `
+      <form class="recovery-form" novalidate>
+        <label for="recovery-code">原账号的恢复码</label>
+        <input id="recovery-code" placeholder="XXXX-XXXX-XXXX" type="password" autocomplete="off" spellcheck="false" aria-describedby="recovery-error">
+        <p id="recovery-error" role="alert" hidden></p>
+        <button class="primary" type="submit">找回账号</button>
+        <button class="secondary" type="button" data-cancel>返回登录</button>
+      </form>`});
+    document.querySelector('[data-cancel]').onclick = () => shell.closeModal();
+  });
+  document.querySelector('#app').addEventListener('submit', event => {
+    if (!event.target.matches('.recovery-form')) return;
+    event.preventDefault();
+    const input = event.target.querySelector('input');
+    const code = input.value.replace(/[\s-]/g, '').toUpperCase();
+    if (code !== demoCode) {
+      const error = event.target.querySelector('[role=alert]');
+      error.hidden = false;
+      error.textContent = code.length === 12 ? '恢复码不正确或已失效。' : '请输入 12 位恢复码。';
+      input.setAttribute('aria-invalid', 'true');
+      input.focus();
+      return;
+    }
+    recovered = true;
+    shell.closeModal();
+    shell.refresh();
+    document.querySelector('[data-setup]').focus();
+  });
+</script>
+</html>

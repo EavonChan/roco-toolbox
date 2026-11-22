@@ -39,3 +39,15 @@ playwright-report/
 .trae/
 # IDE 导出的 HTML 分享包（本地产物）
 .trae-html-share-packages/
+
+# 本地产物与临时目录（2026-11-22 清理）
+/.preview/
+/2026-11-*/
+/.review-pr2-*/
+/.playwright-cli/
+/output/
+/$null
+/tmp-inspect-pcap.mjs
+
+# 待清理：历史产物集中区（只归档，不删）
+/待清理/

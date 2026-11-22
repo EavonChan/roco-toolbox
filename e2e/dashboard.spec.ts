@@ -1,4 +1,4 @@
-﻿﻿import { mkdirSync, writeFileSync } from 'node:fs';
+﻿import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { expectProgressZero, progressOf } from './progress';
 
@@ -46,9 +46,8 @@ test('看板首页展示两块进度卡与署名', async ({ page }) => {
   // 两块进度卡都从 0 起（分母随图鉴变化，从卡上读，不写死）
   await expectProgressZero(page);
 
-  const source = page.getByText('CC BY-SA 4.0');
-  await expect(source).toBeVisible();
-  await expect(page.getByRole('link', { name: '洛克王国：世界 Wiki' })).toBeVisible();
+  // 2026-11-22 用户口径：看板去掉「数据来源」说明块，CC BY-SA 署名只在导入数据页出现
+  await expect(page.getByText('CC BY-SA 4.0')).toHaveCount(0);
 });
 
 test('导入抓包数据后看板给出进度与建议', async ({ page }) => {

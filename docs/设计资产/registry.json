@@ -584,7 +584,7 @@
       "files": [
         {
           "path": "docs/prototypes/group-egg-request/2026-11-21/index.html",
-          "sha256": "ee3ebaaa307a5ae0b5971702886bc523a24c338e89684aebdc04e0e23b7ccd92"
+          "sha256": "87f36df7fa040d5ca8aad34d8a49af23741f1cb0770792308aa15ba61686a296"
         }
       ],
       "evidence": [
@@ -605,12 +605,28 @@
           "detail": "实现后的收集·母本·收集中页面，390屏宽。"
         },
         {
+          "path": "output/playwright/collecting-tab-clean-375.png",
+          "detail": "移除旧计划横条后，收集中仅保留三页签、当前小组与可移除任务卡，375屏宽。"
+        },
+        {
+          "path": "output/playwright/collecting-tab-clean-390.png",
+          "detail": "移除旧计划横条后的收集中页面，390屏宽。"
+        },
+        {
           "path": "output/playwright/group-egg-mother-375-v2.png",
           "detail": "修正声音自动填入与性格竖排后的母本小组求蛋原型，375屏宽。"
         },
         {
           "path": "output/playwright/group-egg-stud-390-v2.png",
           "detail": "修正声音自动填入、零体重与性格竖排后的种公小组求蛋原型，390屏宽。"
+        },
+        {
+          "path": "output/playwright/group-egg-auto-invite-375.png",
+          "detail": "存在双向匹配时的小组求蛋，主操作为发布并邀请最优组员，375屏宽。"
+        },
+        {
+          "path": "output/playwright/group-egg-auto-invite-390.png",
+          "detail": "存在双向匹配时的小组求蛋，390屏宽。"
         }
       ],
       "supersededBy": []

@@ -4,8 +4,8 @@ import { averageVoiceOf, PairingPetCard, type PairCardPet } from './NestPlanCard
 import { pairingColor } from './pairingColors';
 
 /**
- * 家园「配窝卡片」（2026-11-19 用户口径）：复用补全计划那张紧凑精灵卡（蛋组 / 奖牌 /
- * 分贝 / 身高 / 体重 / 名字），家园版 70px、不写盒子；补全计划版 86px，卡底多一行盒子位置。
+ * 家园「配窝卡片」（2026-11-19 用户口径）：复用配窝建议那张紧凑精灵卡（蛋组 / 奖牌 /
+ * 分贝 / 身高 / 体重 / 名字），家园版 70px、不写盒子；配窝建议版 86px，卡底多一行盒子位置。
  *
  * - **一个窝一只精灵**：母本一个窝、种公也一个窝；学院 1:2 = 一公两母三个窝，公本只出现一次；
  * - 普通的一公一母 / 一公两母：卡头贴在母本上方，种公和母本顶边对齐；
@@ -18,8 +18,6 @@ import { pairingColor } from './pairingColors';
  * 数据只来自抓包里的实际配对（`layEggCouples`），不重新计算配对。
  */
 const natureOf = (node: HomePairNode): string => node.nature || node.pet?.nature || '';
-
-const displayNameOf = (node: HomePairNode): string => node.name.split('_')[0] || node.name;
 
 interface NatureChance {
   nature: string;
@@ -68,8 +66,8 @@ const voiceOfPair = (female: HomePairNode, partners: readonly HomePairNode[]): n
     ...partners.map((male) => ({ gender: male.gender, voiceDb: male.pet?.voiceDb })),
   ]);
 
-/** 住在家园、但背包里没有这只：大概率已经放生；放生后不再算后代性格和声音。 */
-const releasedOfPair = (
+/** 住在家园、但背包里没有这只的实例：后代性格和声音未知，先不算（2026-11-22 不再提示「已放生」）。 */
+const missingPetsOfPair = (
   female: HomePairNode,
   partners: readonly HomePairNode[],
 ): HomePairNode[] => [female, ...partners].filter((node) => !node.missing && !node.pet);
@@ -105,17 +103,6 @@ function NatureChips({ natures }: { natures: NatureChance[] }) {
         </span>
       ))}
     </>
-  );
-}
-
-function ReleasedNotice({ nodes }: { nodes: readonly HomePairNode[] }) {
-  const names = nodes.map(displayNameOf).join('、');
-  return (
-    <div className="flex flex-wrap items-center gap-1" data-testid="home-pair-released">
-      <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] leading-none font-medium text-amber-800">
-        {names} 可能已被放生，不计算后代性格和声音
-      </span>
-    </div>
   );
 }
 
@@ -160,17 +147,15 @@ function SharedStudLayout({
 
   const motherCard = (female: HomePairNode) => {
     const partners = partnerMap.get(female.actorId) ?? [];
-    const released = releasedOfPair(female, partners);
-    const voiceDb = released.length > 0 ? null : voiceOfPair(female, partners);
+    const missing = missingPetsOfPair(female, partners);
+    const voiceDb = missing.length > 0 ? null : voiceOfPair(female, partners);
     // 一只母本配超过 3 只种公：后代性格和声音不再显示（2026-11-19 用户口径）
     const manyStuds = partners.length > 3;
     // 标签只写数量，不列名字：极端配对时名字会把半宽的卡头文字挤坏（2026-11-19 用户口径）
     const partnerLabel = males.length > 1 ? `配 ${partners.length} 只种公` : null;
     return (
       <div key={female.actorId} className="flex min-w-0 flex-col gap-1">
-        {released.length > 0 ? (
-          <ReleasedNotice nodes={released} />
-        ) : (
+        {missing.length === 0 ? (
           <div className="flex flex-wrap items-center gap-1" data-testid="home-pair-head">
             {manyStuds ? (
               <span className="text-[10px] leading-none text-slate-500">
@@ -188,7 +173,7 @@ function SharedStudLayout({
               </>
             )}
           </div>
-        )}
+        ) : null}
         <PairingPetCard
           pet={petCardOf(female)}
           collectedGroupIds={new Set()}
@@ -257,7 +242,11 @@ function HomePairCard({ cluster, index }: { cluster: HomePairCluster; index: num
   }
   const firstMother = females[0] ?? null;
   const firstPartners = firstMother ? partnerMalesOf(cluster, firstMother) : males;
-  const firstReleased = firstMother ? releasedOfPair(firstMother, firstPartners) : [];
+  /**
+   * 住在家园、但背包里没有这只的实例：后代数据未知，先不显示性格概率和平均声音。
+   * 只影响这只母本自己那一行，不把同簇其他母本的概率和声音一起抹掉。
+   */
+  const firstMissing = firstMother ? missingPetsOfPair(firstMother, firstPartners) : [];
   return (
     <li
       className="rounded-xl border-l-4 bg-slate-50 px-1.5 py-1"
@@ -269,7 +258,7 @@ function HomePairCard({ cluster, index }: { cluster: HomePairCluster; index: num
        * 这样种公卡片和母本卡片顶边对齐，卡头又贴在母本正上方（2026-11-19 用户口径）。
        */}
       <div className="mt-0.5 grid grid-cols-2 items-start gap-1">
-        {firstMother && firstReleased.length === 0 ? (
+        {firstMother && firstMissing.length === 0 ? (
           <div
             className="col-start-1 row-start-1 flex flex-wrap items-center gap-1"
             data-testid="home-pair-head"
@@ -280,11 +269,6 @@ function HomePairCard({ cluster, index }: { cluster: HomePairCluster; index: num
                 {voiceOfPair(firstMother, firstPartners)}dB
               </span>
             ) : null}
-          </div>
-        ) : null}
-        {firstMother && firstReleased.length > 0 ? (
-          <div className="col-start-1 row-start-1">
-            <ReleasedNotice nodes={firstReleased} />
           </div>
         ) : null}
         <div
@@ -301,7 +285,7 @@ function HomePairCard({ cluster, index }: { cluster: HomePairCluster; index: num
           ) : null}
           {females.slice(1).map((female) => (
             <div key={female.actorId} className="flex min-w-0 flex-col gap-1">
-              {releasedOfPair(female, males).length === 0 ? (
+              {missingPetsOfPair(female, males).length === 0 ? (
                 <div className="flex flex-wrap items-center gap-1" data-testid="home-pair-head-extra">
                   <NatureChips natures={pairNaturesOf(female, males)} />
                   {voiceOfPair(female, males) !== null ? (
@@ -310,11 +294,7 @@ function HomePairCard({ cluster, index }: { cluster: HomePairCluster; index: num
                     </span>
                   ) : null}
                 </div>
-              ) : (
-                <div data-testid="home-pair-head-extra">
-                  <ReleasedNotice nodes={releasedOfPair(female, males)} />
-                </div>
-              )}
+              ) : null}
               <PairingPetCard
                 pet={petCardOf(female)}
                 collectedGroupIds={new Set()}

@@ -63,8 +63,8 @@ const plan = (account: string, nestsUsed = 0, slots: Array<{ key: string }> = []
 });
 
 describe('母本配窝建议', () => {
-  test('本号只能 30%（公不同性格）→ 不占窝，改「向小组求助」', () => {
-    // 母带开朗、公带踏实：推荐性格只能带 30%，不值得占窝（2026-11-19 用户口径）
+  test('本号只能 30%（公不同性格）→ 不占窝，只列低概率灰卡（2026-11-20 用户口径）', () => {
+    // 母带开朗、公带踏实：推荐性格只能带 30%，纯母蛋也要求 60%，不值得占窝
     const mother = mk(801, '母', '开朗', '甲');
     const father = mk(801, '公', '踏实', '甲');
     const result = buildMotherNestSuggestions({
@@ -80,11 +80,11 @@ describe('母本配窝建议', () => {
     const account = result.get('甲')!;
     expect(account.pairings).toEqual([]);
     expect(account.nestsUsed).toBe(0);
-    expect(account.helps).toHaveLength(1);
-    expect(account.helps[0].eggName).toBe('喵喵');
-    // 性格 30% × 出母 50% = 15%：求助条目要带上公母比例，和卡头一个口径
-    expect(account.helps[0].bestNatureChance).toBeCloseTo(0.3);
-    expect(account.helps[0].femaleChance).toBeCloseTo(0.5);
+    expect(account.lowPairings).toHaveLength(1);
+    expect(account.lowPairings![0].eggName).toBe('喵喵');
+    expect(account.lowPairings![0].motherGain).toBeCloseTo(0.15);
+    // 已经有低概率灰卡，不在求助里重复
+    expect(account.helps).toEqual([]);
   });
 
   test('母本体型不达标 → 本号内不给线（换公也补不回来）', () => {
@@ -167,7 +167,7 @@ describe('母本配窝建议', () => {
     expect(help.femaleChance).toBeCloseTo(0.2);
   });
 
-  test('只出母的蛋（出母 100%）：性格 30% 也有 30% → 本号自己排', () => {
+  test('只出母的蛋（出母 100%）：性格 30% 不够 60% → 不占窝，只列低概率（2026-11-20 用户口径）', () => {
     const mother = mk(804, '母', '开朗', '甲');
     const father = mk(804, '公', '踏实', '甲');
     const result = buildMotherNestSuggestions({
@@ -181,9 +181,12 @@ describe('母本配窝建议', () => {
       plans: [plan('甲')],
     });
     const account = result.get('甲')!;
+    // 只有一方带推荐性格 = 30%，纯母蛋 30% 太低，要双方都带（60%）才算推荐
+    expect(account.pairings).toEqual([]);
+    expect(account.lowPairings).toHaveLength(1);
+    expect(account.lowPairings![0].motherGain).toBeCloseTo(0.3);
+    // 已经有低概率本号内线，不在求助里重复
     expect(account.helps).toEqual([]);
-    expect(account.pairings).toHaveLength(1);
-    expect(account.pairings[0].motherGain).toBeCloseTo(0.3);
   });
 
   test('跨号只收真实概率 ≥ 30% 的那对：只能 15% 的源号不再进方案', () => {
@@ -264,7 +267,7 @@ describe('母本配窝建议', () => {
     expect(result.get('甲')!.helps).toEqual([]);
   });
 
-  test('不要求推荐性格 → 本号内不排母本线；2:8 的蛋按出母 20% 判，仍不到 30% → 求助', () => {
+  test('不要求推荐性格只影响母本达标条件，配窝建议仍按推荐性格挑（2026-11-20 用户口径）', () => {
     const mother = mk(801, '母', '开朗', '甲');
     const father = mk(801, '公', '踏实', '甲');
     const receiver = mk(802, '公', '固执', '甲');
@@ -282,9 +285,9 @@ describe('母本配窝建议', () => {
     });
     const account = result.get('甲')!;
     expect(account.pairings).toEqual([]);
-    // 不要求性格时性格概率按 100% 算，但 2:8 的蛋出母只有 20%，真实概率仍不到 30% → 求助
+    // 802 推荐「固执」：乙号只有母带开朗、公带固执 = 30%，不到 60%；出母 20% 也到不了 30% → 求助
     const help = account.helps.find((item) => item.eggGameId === 802)!;
-    expect(help.bestNatureChance).toBeCloseTo(1);
+    expect(help.bestNatureChance).toBeCloseTo(0.3);
     expect(help.femaleChance).toBeCloseTo(0.2);
   });
 });

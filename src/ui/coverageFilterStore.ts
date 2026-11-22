@@ -38,6 +38,10 @@ const sortNatures = (names: string[]): string[] =>
 const isGrade = (value: unknown): value is PetGrade =>
   (ALL_GRADES as readonly string[]).includes(value as string);
 
+/** 性格模式合法性校验：只认三种模式，其它（含缺失 / 云同步脏值）都算「没选过」 */
+const isNatureMode = (value: unknown): value is CoverageFilter['natureMode'] =>
+  value === 'eight' || value === 'recommended' || value === 'custom';
+
 /** 只保留合法的可孵蛋组 id；`undefined`/非数组返回 null 表示「字段缺失」 */
 const toGroupIds = (value: unknown): number[] | null => {
   if (!Array.isArray(value)) return null;
@@ -78,9 +82,10 @@ const store = createModuleStore<CoverageFilter>(buildDefaultFilter(targetNatures
         // 奖牌目标改成单选（2026-11-18）：旧数据 / 云同步里残留的多个档位只保留最后一个
         ? loaded.grades.filter(isGrade).slice(-1)
         : defaults.grades,
-      // 2026-11-19：新增「八大性格」并改为默认。旧的「推荐性格」是上一版默认值、
-      // 分不清是没改过还是特意选的，统一迁到新默认；只有「自选性格」是用户显式选择，保留。
-      natureMode: loaded.natureMode === 'custom' ? 'custom' : 'eight',
+      // 2026-11-22：默认改成「推荐性格」，并且**用户显式选过的模式一律保留**。
+      // 旧实现把非自选的值统一改写成「八大」，等于每次打开都吞掉用户的选择（选推荐 → 重启变八大），
+      // 这正是"老玩家要反复切回八大"的成因。现在只有缺失 / 脏值才回落到新默认。
+      natureMode: isNatureMode(loaded.natureMode) ? loaded.natureMode : defaults.natureMode,
       customNatures: toStringArray(loaded.customNatures),
     };
   },

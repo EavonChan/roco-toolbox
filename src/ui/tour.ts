@@ -32,7 +32,7 @@ export type TourCollection =
   | { kind: 'mothers'; status: 'missing' | 'collecting' | 'collected' }
   | { kind: 'studs'; view: 'coverage' }
   | { kind: 'inventory' };
-export type TourProfileSection = 'identity' | 'data' | 'sync';
+export type TourProfileSection = 'groups' | 'identity' | 'data';
 
 /** 引导分段：`start` 是首启主线，其余与页签名一一对应。 */
 export type TourSegment = 'start' | TourPage;
@@ -153,20 +153,22 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       id: 'group-setup',
       title: '和朋友一起收集',
       body: '登录后新建小组，或填邀请码加入。组内共享母本与种公清单，不用各自重复收集。',
-      page: 'groups',
+      profileSection: 'groups',
       anchor: 'group-setup',
     },
     {
       id: 'group-card',
       title: '资源自动同步',
       body: '导入数据后会自动同步到小组，不用手动发布；只想共享部分账号，可以在这里调选号。',
+      profileSection: 'groups',
       anchor: 'group-card',
     },
     {
       id: 'group-demands',
-      title: '我缺的 / 需求中心 / 共同寻找',
-      body: '「我缺的」发需求，「需求中心」接别人的单，「共同寻找」一起认领全组都没有的缺口。',
-      anchor: 'group-demands',
+      title: '我的收集 / 组内广场',
+      body: '「我的收集」管理想收的精灵，「组内广场」接别人的需求；蛋仓和我的换蛋也在这里。',
+      page: 'groups',
+      anchor: 'egg-matching-hub',
     },
   ],
   home: [

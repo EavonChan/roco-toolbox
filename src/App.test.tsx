@@ -63,7 +63,7 @@ describe('App', () => {
     expect(screen.getByText('导入游戏数据')).toBeTruthy();
   });
 
-  test('没有登录时小组页只给登录提示（个人求蛋已删除）', async () => {
+  test('没有登录时小组页指向「我的 · 小组」（个人求蛋已删除）', async () => {
     presetFirstRunSeen();
     await saveSnapshot(snapshot('账号甲'));
     resetSnapshotCacheForTest();
@@ -71,7 +71,10 @@ describe('App', () => {
     window.localStorage.setItem('roco.swapView', 'sharing');
 
     render(<App />);
-    // 启动落回小组页；未登录只有登录提示，不再有「个人求蛋」
+    // 2026-11-21：登录与管理入口搬到「我的 · 小组」，小组页签只剩广场的空态引导
+    expect(screen.getByTestId('group-feed-hint')).toBeTruthy();
+    expect(screen.queryByTestId('group-login-hint')).toBeNull();
+    fireEvent.click(screen.getByTestId('group-go-profile'));
     expect(screen.getByTestId('group-login-hint')).toBeTruthy();
     expect(screen.queryByTestId('personal-eggs')).toBeNull();
     expect(screen.queryByTestId('group-personal')).toBeNull();
