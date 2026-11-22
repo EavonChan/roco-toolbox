@@ -8,10 +8,12 @@ import {
 } from '../domain/nestPlan';
 import type { MotherNestPairing } from '../domain/motherNest';
 import { NestPlanCard } from './NestPlanCard';
+import { resetNestPicksForTest } from './nestPicksStore';
 
-/** 勾选占窝会写 localStorage：每个用例从 0 开始，避免串味 */
+/** 勾选占窝是模块级 store + localStorage：每个用例从 0 开始，避免串味 */
 beforeEach(() => {
   localStorage.clear();
+  resetNestPicksForTest();
 });
 
 const nestPet = (key: string, name: string): NestPet => ({
@@ -1212,4 +1214,43 @@ describe('NestPlanCard section 联动（2026-11-20 用户口径）', () => {
     expect(screen.getByTestId('breed-empty')).toHaveTextContent('没有能自己孵的方案');
   });
 
+});
+
+/**
+ * 看板宽横屏（≥1120px）会同时挂两份 `NestPlanCard`（左「种公推荐」、右「母本缺口」）。
+ * 窝数勾选必须只有**一份**状态：一边勾了，另一边立刻同步，不能各记一份、后写的覆盖先写的。
+ */
+describe('宽横屏两栏共用一份窝数（R2-P1-02）', () => {
+  const female = { ...nestPet('m', '乙兽'), gender: '母' as const };
+  const male = { ...nestPet('f', '甲兽'), gender: '公' as const };
+  const plan = planOf([pairingOf(female, male)]);
+
+  test('两栏同时存在时勾选不丢：左栏勾一窝，右栏同账号窝数同步，刷新后仍是同一数字', () => {
+    const view = render(
+      <>
+        <NestPlanCard plans={[plan]} section="studs" />
+        <NestPlanCard plans={[plan]} section="studs" />
+      </>,
+    );
+
+    const heads = () => screen.getAllByTestId('breed-account-name').map((node) => node.textContent);
+    expect(heads()).toHaveLength(2);
+    expect(heads()[0]).toContain('用 0/11 个窝');
+    expect(heads()[1]).toContain('用 0/11 个窝');
+
+    // 左栏勾一对（母 + 公）= 两个窝
+    fireEvent.click(screen.getAllByTestId('nest-pick')[0]);
+
+    expect(heads()[0]).toContain('用 2/11 个窝');
+    expect(heads()[1]).toContain('用 2/11 个窝');
+
+    // 落盘在旧 key 上：重开页面（重新挂载、只从存储读）仍是同一个数字
+    expect(
+      Object.values(JSON.parse(localStorage.getItem('roco.nestPicks.v1') ?? '{}')),
+    ).toEqual([true]);
+
+    view.unmount();
+    render(<NestPlanCard plans={[plan]} section="studs" />);
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 2/11 个窝');
+  });
 });

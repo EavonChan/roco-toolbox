@@ -12,10 +12,20 @@ import {
   addStudTransferTask,
   resetStudTransferTasksForTest,
 } from './studTransferTaskStore';
+import { resetNestPicksForTest } from './nestPicksStore';
 
 const h = vi.hoisted(() => ({
   summary: null as unknown as CollectionSummary,
   accounts: ['测试甲'],
+  /** 宽横屏：看板会同时挂两栏（左「种公推荐」、右「母本缺口」） */
+  wide: false,
+  landscape: false,
+}));
+
+vi.mock('./useWideLandscape', () => ({
+  useWideLandscape: () => h.wide,
+  useLandscape: () => h.landscape,
+  useTabletLandscape: () => false,
 }));
 
 vi.mock('./useCollectionSummary', () => ({ useCollectionSummary: () => h.summary }));
@@ -80,6 +90,9 @@ const demoPlan: NestPlan = {
 
 beforeEach(() => {
   resetStudTransferTasksForTest();
+  resetNestPicksForTest();
+  h.wide = false;
+  h.landscape = false;
   h.accounts = ['测试甲'];
   toggleAllAccounts([]);
   h.summary = {
@@ -596,5 +609,30 @@ describe('Dashboard（看板）', () => {
     // 切回种公推荐：种公配对回来
     fireEvent.click(screen.getByTestId('dashboard-action-studs'));
     expect(screen.getByTestId('breed-list')).toBeTruthy();
+  });
+
+  /**
+   * R2-P1-02（2026-11-22）：宽横屏两栏各挂一份配窝卡，窝数勾选以前各记一份、
+   * 后写的覆盖先写的（刷新后勾选消失）。
+   *
+   * 这条只守**结构**：宽横屏确实同时挂两栏，且勾选落在同一份存储上；
+   * 「一栏勾、另一栏立刻同步」的行为用例在 `NestPlanCard.test.tsx`
+   * （两栏同时渲染的同一棵树上断言，本文件里母本栏没有内容可报窝数）。
+   */
+  test('宽横屏同时挂两栏配窝卡，窝数勾选落在同一份存储上', () => {
+    h.wide = true;
+    h.landscape = true;
+    h.summary = { ...h.summary, plans: [demoPlan] };
+    render(<Dashboard onNavigate={vi.fn()} />);
+
+    const panels = screen.getAllByTestId('nest-summary');
+    expect(panels).toHaveLength(2);
+
+    fireEvent.click(within(panels[0]).getByTestId('nest-pick'));
+
+    // 两栏共用同一个 key（老 key roco.nestPicks.v1），只记这一份：后写不再覆盖先写
+    const stored = JSON.parse(localStorage.getItem('roco.nestPicks.v1') ?? '{}');
+    expect(Object.values(stored)).toEqual([true]);
+    expect(within(panels[0]).getByTestId('breed-account-name')).toHaveTextContent('用 2/11 个窝');
   });
 });

@@ -18,32 +18,11 @@ import { PetAvatar } from './PetAvatar';
 import { pairingColor, pairingDashed } from './pairingColors';
 import { formatPercent } from './formatPercent';
 import { getMyPetsSizeUnit } from './myPetsFilterStore';
+import { setNestPicked, useNestPicks } from './nestPicksStore';
 
 const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
 /** 玩家说的「八大性格」：只有这些性格才配在母本卡头上单独写概率 */
 const EIGHT_NATURES = new Set(targetNatureNames);
-
-/**
- * 勾选占窝存本地：去「收集」转一圈再回看板，勾过的窝不能清零。
- * 默认读不到就是空 = 0 个窝（2026-11-20 用户口径）。
- */
-const NEST_PICKS_STORAGE_KEY = 'roco.nestPicks.v1';
-const readNestPicks = (): Record<string, boolean> => {
-  try {
-    if (typeof localStorage === 'undefined') return {};
-    const raw = localStorage.getItem(NEST_PICKS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return {};
-    const picks: Record<string, boolean> = {};
-    for (const [key, picked] of Object.entries(parsed as Record<string, unknown>)) {
-      if (picked === true) picks[key] = true;
-    }
-    return picks;
-  } catch {
-    return {};
-  }
-};
 
 export const groupName = (groupId: number): string => eggGroupNames[groupId] ?? `蛋组${groupId}`;
 
@@ -1188,32 +1167,24 @@ export function NestPlanCard({
   /**
    * 占窝勾选（2026-11-20 用户口径）：默认 **零个窝**，不按方案自动算；
    * 用户在对应号的配窝卡右上角自己点圆圈，种公卡和母本卡记在同一份窝数里。
+   *
+   * 2026-11-22（R2-P1-02）：状态提到 `nestPicksStore`，做到**唯一一份**。
+   * 看板宽横屏两边各挂一个本组件，以前各持一份 useState、各自整份回写，
+   * 后写会覆盖先写（刷新后勾选凭空消失）；现在两个实例订阅同一份 store。
    */
-  const [nestPicks, setNestPicks] = useState<Record<string, boolean>>(readNestPicks);
+  const nestPicks = useNestPicks();
   /** 账号格那一行的实际宽度：决定一行 3 个还是 2 个（还没量到时先按 3 个排） */
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [tabsWidth, setTabsWidth] = useState(0);
-  useEffect(() => {
-    try {
-      localStorage.setItem(NEST_PICKS_STORAGE_KEY, JSON.stringify(nestPicks));
-    } catch {
-      // 隐私模式 / 存储满：只影响跨页面保留，不影响当前页勾选
-    }
-  }, [nestPicks]);
   const pickKeyOf = (account: string, cardKey: string): string => `${account}|${cardKey}`;
   const isPicked = (account: string, cardKey: string): boolean =>
     nestPicks[pickKeyOf(account, cardKey)] === true;
   /** 一次改一组卡的勾选：共用种公卡勾一次就把这几窝一起勾上 / 一起取消（2026-11-20） */
   const setPicks = (account: string, cardKeys: readonly string[], picked: boolean): void => {
-    setNestPicks((prev) => {
-      const next = { ...prev };
-      for (const cardKey of cardKeys) {
-        const key = pickKeyOf(account, cardKey);
-        if (picked) next[key] = true;
-        else delete next[key];
-      }
-      return next;
-    });
+    setNestPicked(
+      cardKeys.map((cardKey) => pickKeyOf(account, cardKey)),
+      picked,
+    );
   };
   const togglePick = (account: string, cardKey: string): void => {
     setPicks(account, [cardKey], !isPicked(account, cardKey));
