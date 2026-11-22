@@ -2,7 +2,7 @@
   "name": "roco-toolbox",
   "productName": "小布助手",
   "private": true,
-  "version": "1.5.8",
+  "version": "1.6.0",
   "license": "GPL-3.0-only",
   "type": "module",
   "main": "desktop/main.cjs",
