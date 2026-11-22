@@ -63,7 +63,7 @@
 | M-6（P2） | 删掉了「怎么做」的动作指引 | 已修 | `src/ui/ImportPanel.tsx:485` 已恢复「采集器里点『分享』选『小布助手』会自动导入」 |
 | E-1（P1） | 收集计划没写进更新说明 | 已作废 | 收集计划下线；changelog 无需补该功能 |
 | E-2（P2） | 版本号三套并存、无说明 | 仍有效（部分） | 版本已统一为 `1.5.6`（`package.json:4`、`build.gradle:36-37`）；但 `package.json:7` `"main": "desktop/main.cjs"` 仍在，README 无协议版本说明 |
-| E-3（P2） | `.gitignore` 忽略的原型已入库、规则空转 | 已修 | `.gitignore` 已无「预览/原型」规则；`手机悬浮窗原型.html` 已入库 |
+| E-3（P2） | `.gitignore` 忽略的原型已入库、规则空转 | 已修 | `.gitignore` 已无「预览/原型」规则；`../../../原型/预览稿/手机悬浮窗原型.html` 已入库 |
 | D-1（P1） | e2e mock 判定写反 | 已作废 | spec 删除、mock 瘦身、无 `matchableEggIds` |
 | D-2（P2） | 文档写批量接口不存在 | 已作废 | 收集计划下线；文档成为历史方案 |
 | D-3（P2） | 数据字段说明图鉴版本过期 | 仍有效 | `docs/domain/数据字段说明.md:8` 仍 625 / `s4-2026-09-24`；`catalog.gen.json` 为 `s5-2026-10-31` |

@@ -48,3 +48,6 @@ playwright-report/
 /output/
 /$null
 /tmp-inspect-pcap.mjs
+
+# 待清理：历史产物集中区（只归档，不删）
+/待清理/
