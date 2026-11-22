@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+﻿import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { eggGroupNames, species, targetNatureNames } from '../data/catalog';
 import { heightMetersOf, weightKgOf } from '../domain/petFilters';
 import { petBodyMedalIcon, petVoiceMedalIcon } from '../domain/petIcons';
@@ -1156,7 +1156,7 @@ function MotherGapGrid({
                 title={card.title}
                 size="gap"
                 fitName
-                avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={52} />}
+                avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={48} />}
                 onClick={() => onOpen?.(card.chainKey)}
               />
             </li>
@@ -1944,3 +1944,4 @@ export function NestPlanCard({
     </div>
   );
 }
+

@@ -834,12 +834,12 @@ function MotherEggRow({
         eggGroups={eggGroupLabels}
         natures={recommendedNatures}
         natureCollected={(nature) => collectedNatures.has(nature)}
-        size="tall"
+        size="gap"
         status={cardStatus}
         fitName
-        fitNameBase={8}
-        fitNameMin={6}
-        avatar={<PetAvatar gameId={eggGameId} name={eggName} size={44} />}
+        fitNameBase={10}
+        fitNameMin={8}
+        avatar={<PetAvatar gameId={eggGameId} name={eggName} size={48} />}
         eggGroupsTestId="mother-card-egg-groups"
         naturesTestId="mother-card-natures"
         title={collected || !onOpenGap ? eggName : `${eggName} · 点卡片看怎么补`}
@@ -855,7 +855,7 @@ function MotherEggRow({
                 })
               }
               data-testid="mother-chain-open"
-              className="min-h-[13px] w-full truncate rounded-full bg-emerald-100 px-1 text-[7px] font-medium leading-[13px] text-emerald-700"
+              className="h-full w-full truncate bg-emerald-50 px-1 text-center text-[10px] font-medium leading-[18px] text-emerald-700"
             >
               查看
             </button>
@@ -867,10 +867,10 @@ function MotherEggRow({
                 event.stopPropagation();
                 onTogglePlan();
               }}
-              className={`min-h-[13px] w-full truncate rounded-full border px-1 text-[7px] leading-[13px] ${
+              className={`h-full w-full truncate px-1 text-center text-[10px] leading-[18px] ${
                 planned
-                  ? 'border-sky-300 bg-sky-100 text-sky-700'
-                  : 'border-slate-200 bg-white text-slate-600'
+                  ? 'bg-sky-50 font-medium text-sky-700'
+                  : 'bg-emerald-50 font-medium text-emerald-700'
               }`}
               data-testid="mother-plan-toggle"
               aria-pressed={planned}
@@ -883,3 +883,5 @@ function MotherEggRow({
     </li>
   );
 }
+
+

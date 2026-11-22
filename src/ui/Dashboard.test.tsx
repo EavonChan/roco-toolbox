@@ -453,7 +453,8 @@ describe('Dashboard（看板）', () => {
     expect(within(screen.getByTestId('mother-actions')).getAllByTestId('pet-avatar')).toHaveLength(5);
     expect(screen.getAllByTestId('mother-action-nature')).toHaveLength(5);
     expect(within(items[0]).getByTestId('mother-action-nature').textContent).toBeTruthy();
-    expect(within(items[0]).getByTestId('pet-avatar').className).toContain('h-[52px]');
+    // 2026-11-22：缺口卡与收集母本统一到 48px 头像
+    expect(within(items[0]).getByTestId('pet-avatar').className).toContain('h-12');
     expect(screen.getByTestId('mother-actions').className).not.toContain('p-4');
     expect(screen.queryByRole('heading', { name: '母本缺口' })).toBeNull();
     expect(items[0]).toHaveAttribute('aria-label', expect.stringContaining('还没有达标母本'));

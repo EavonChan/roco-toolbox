@@ -48,16 +48,16 @@ describe('MotherView', () => {
     expect(list).toHaveClass('grid-cols-4');
     expect(within(list).getAllByTestId('mother-chain-row')).toHaveLength(4);
     expect(within(list).getAllByTestId('pet-avatar')).toHaveLength(4);
-    // 2026-11-21：母本卡改成精灵背包同款（44px 头像、8px 名字、104px 高），未收集白底灰边
+    // 2026-11-22：母本卡与看板四列卡统一（48px 头像、10px 名字、104px 高、白底灰边、满宽融合底条）
     expect(within(list).getAllByTestId('pet-card-avatar')[0]).toHaveClass(
-      'top-[16px]',
-      'h-11',
-      'w-11',
+      'top-[18px]',
+      'h-12',
+      'w-12',
     );
-    expect(within(list).getAllByTestId('pet-avatar')[0]).toHaveClass('h-11', 'w-11');
+    expect(within(list).getAllByTestId('pet-avatar')[0]).toHaveClass('h-12', 'w-12');
     expect(within(list).getAllByRole('heading', { level: 3 })[0]).toHaveClass(
-      'top-[62px]',
-      'text-[8px]',
+      'top-[68px]',
+      'text-[10px]',
       'font-bold',
     );
     expect(within(list).getAllByTestId('mother-chain-row')[0]).toHaveAttribute(
@@ -100,9 +100,9 @@ describe('MotherView', () => {
     const planButton = within(planRow).getByTestId('mother-plan-toggle');
     fireEvent.click(planButton);
     expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
-    // 计划中换成淡蓝底（2026-11-21 用户口径）
+    // 计划中换成淡蓝底（2026-11-22：改成满宽融合条，底色统一 sky-50）
     expect(planRow).toHaveAttribute('data-mother-status', 'planned');
-    expect(within(planRow).getByTestId('mother-plan-toggle')).toHaveClass('bg-sky-100');
+    expect(within(planRow).getByTestId('mother-plan-toggle')).toHaveClass('bg-sky-50');
   });
 
   test('已收集卡片只显示「查看」，按达标母本给性格上色，点击查看带齐背包筛选', () => {
@@ -265,3 +265,4 @@ describe('MotherView', () => {
     expect(screen.getAllByTestId('mother-chain-row').length).toBeGreaterThan(60);
   });
 });
+

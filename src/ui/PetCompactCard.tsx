@@ -75,6 +75,7 @@ export function PetCompactCard({
       eggGroups={groups}
       natures={[nature || '未知']}
       className="w-[160px] shrink-0"
+      size="compact"
       testId={testId}
       academy={academy}
       title={name}
@@ -117,3 +118,4 @@ export function PetCompactCard({
     />
   );
 }
+

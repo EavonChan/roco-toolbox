@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { CATALOG_VERSION, species } from '../../data/catalog';
 import type { MotherGroup, TargetMode } from '../../domain/petFilters';
 import { buildCollectionPlanCards, type CollectionPlanCard } from '../../domain/collectionPlan';
@@ -83,12 +83,12 @@ function CollectingCards({
             fitName
             fitNameBase={8}
             fitNameMin={6}
-            avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={44} />}
+            avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={48} />}
             title={card.statusDetail}
             onClick={() => onOpen(card)}
             footer={
               <span
-                className="w-full truncate rounded-full bg-sky-100 px-1 text-[7px] font-medium leading-[13px] text-sky-700"
+                className="h-full w-full truncate bg-sky-50 px-1 text-center text-[10px] font-medium leading-[18px] text-sky-700"
                 title={card.statusDetail}
               >
                 {card.statusLabel}
@@ -330,3 +330,4 @@ export function MotherCollectingView({
     />
   );
 }
+

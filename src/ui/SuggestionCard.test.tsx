@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+﻿import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { species as catalog } from '../data/catalog';
 import type { StudRecommendation } from '../domain/suggestions';
@@ -51,9 +51,9 @@ describe('SuggestionCard', () => {
     expect(within(displayedItems[0]).queryByRole('checkbox')).toBeNull();
     expect(within(displayedItems[0]).getByText(`No.${recommendationSpecies.number}`)).toBeInTheDocument();
     expect(within(displayedItems[0]).getByRole('button')).toHaveAttribute('aria-pressed', 'false');
-    expect(within(displayedItems[0]).getByTestId('pet-avatar').className).toContain('h-11');
+    expect(within(displayedItems[0]).getByTestId('pet-avatar').className).toContain('h-12');
     // 名字 9px（以前 6px 太小），长名字再逐档缩到 8px
-    expect(within(displayedItems[0]).getByRole('heading', { level: 3 })).toHaveClass('text-[9px]');
+    expect(within(displayedItems[0]).getByRole('heading', { level: 3 })).toHaveClass('text-[10px]');
     expect(within(displayedItems[0]).getByTestId('recommend-item-nature')).toHaveClass('items-end');
     expect(screen.getByTestId('recommend-list').className).not.toContain('p-4');
     expect(screen.queryByTestId('recommend-quantity')).toBeNull();
@@ -96,7 +96,7 @@ describe('SuggestionCard', () => {
     expect(card).toHaveTextContent('固执');
     expect(card).toHaveTextContent('动物组');
     expect(card).toHaveTextContent('植物组');
-    expect(within(card).getByTestId('pet-avatar').className).toContain('h-11');
+    expect(within(card).getByTestId('pet-avatar').className).toContain('h-12');
     fireEvent.click(within(card).getByRole('button', { name: /标记.*已换到/ }));
     expect(screen.queryByTestId('recommend-items')).toBeNull();
     expect(screen.getByTestId('recommend-done-toggle')).toHaveTextContent('已换到 1 只');
@@ -107,3 +107,4 @@ describe('SuggestionCard', () => {
     expect(screen.queryByTestId('recommend-done')).toBeNull();
   });
 });
+

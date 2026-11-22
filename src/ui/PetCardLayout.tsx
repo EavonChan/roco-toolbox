@@ -43,7 +43,7 @@ export interface PetCardLayoutProps {
   ariaPressed?: boolean;
 }
 
-export type PetCardSize = 'default' | 'tall' | 'gap' | 'suggest';
+export type PetCardSize = 'default' | 'tall' | 'gap' | 'suggest' | 'compact';
 
 /** 收集页母本卡的收集状态：未收集 / 计划中 / 已收集（2026-11-21 用户口径）。 */
 export type PetCardStatus = 'uncollected' | 'planned' | 'collected';
@@ -85,10 +85,12 @@ export function PetCardLayout({
   const showDetails = details != null && details !== false;
   const showFooter = footer != null && footer !== false;
   const tall = size === 'tall';
-  /** 看板四列缺口卡：52px 头像 + 12px 名字（2026-11-19 原型） */
-  const gap = size === 'gap';
-  /** 看板「种公推荐」卡：44px 头像居中、名字 9px（2026-11-19 用户口径） */
-  const suggest = size === 'suggest';
+  /**
+   * 紧凑卡（2026-11-22）：只有 `PetCompactCard` 用（固定 160px 宽，写在 家园配对 / 需求中心）。
+   * 它要同时放「头像 + 名字 + dB/身高/体重 + 底注」，104 的统一档位塞不下这些行，
+   * 所以保留 98px 老几何；其余四列卡（种公推荐 / 母本缺口 / 收集母本）统一到 104。
+   */
+  const compact = size === 'compact';
   /** 与配窝卡（NestPlanCard）同一套性别色：母粉、公蓝、未知灰；
    *  收集页母本卡传 status 时按收集状态上色（未收集白底 / 计划中淡蓝 / 已收集淡绿） */
   const statusTone =
@@ -99,14 +101,17 @@ export function PetCardLayout({
         : status === 'collected'
           ? 'border-emerald-200 bg-emerald-50'
           : null;
-  const genderTone =
-    gender === '母'
+  const genderTone = academy
+    ? /* 学院小窝：整卡变绿，和普通窝区分（2026-11-21 用户口径） */
+      'border-emerald-300 bg-emerald-50/60'
+    : gender === '母'
       ? 'border-pink-200 bg-pink-50'
       : gender === '公'
         ? 'border-sky-200 bg-sky-50'
         : gender === '未知'
           ? 'border-slate-200 bg-slate-50'
-          : 'border-emerald-300 bg-emerald-50/60';
+          : /* 2026-11-22 用户口径：看板四列卡不再用绿底，统一白底 */
+            'border-slate-200 bg-white';
   const tone = statusTone ?? genderTone;
   /** 未收集白卡用灰边 hover；计划中蓝卡、已收集绿卡沿用同色系 hover。 */
   const hoverBorder =
@@ -156,7 +161,7 @@ export function PetCardLayout({
 
   return (
     <article
-      className={`relative ${tall || gap ? 'h-[104px]' : 'h-[98px]'} min-w-0 overflow-hidden rounded-xl border ${tone} p-1 shadow-sm ${onClick ? `cursor-pointer ${hoverBorder} focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500` : ''} ${className}`}
+      className={`relative ${compact ? 'h-[98px]' : 'h-[104px]'} min-w-0 overflow-hidden rounded-xl border ${tone} p-1 shadow-sm ${onClick ? `cursor-pointer ${hoverBorder} focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500` : ''} ${className}`}
       data-testid={testId}
       data-academy={academy ? 'true' : undefined}
       title={title}
@@ -217,11 +222,7 @@ export function PetCardLayout({
 
       <div
         className={`absolute left-1/2 z-0 flex -translate-x-1/2 items-center justify-center ${
-          gap
-            ? 'top-[8px] h-[52px] w-[52px]'
-            : tall
-              ? 'top-[16px] h-11 w-11'
-              : 'top-1/2 h-11 w-11 -translate-y-1/2'
+          tall ? 'top-[16px] h-11 w-11' : compact ? 'top-1/2 h-11 w-11 -translate-y-1/2' : 'top-[18px] h-12 w-12'
         }`}
         data-testid="pet-card-avatar"
       >
@@ -231,13 +232,7 @@ export function PetCardLayout({
       <h3
         ref={nameRef}
         className={`absolute inset-x-1 flex items-center justify-center truncate text-center font-bold text-slate-900 ${
-          gap
-            ? 'top-[64px] h-4 text-[12px] leading-4'
-            : suggest
-              ? 'top-[72px] h-[12px] text-[9px] leading-3'
-              : tall
-                ? 'top-[62px] h-2.5 text-[8px] leading-[10px]'
-                : 'top-[70px] h-2 text-[6px] leading-2'
+          tall ? 'top-[62px] h-2.5 text-[8px] leading-[10px]' : compact ? 'top-[70px] h-2 text-[6px] leading-2' : 'top-[68px] h-3 text-[10px] leading-3'
         }`}
         title={title ?? name}
       >
@@ -257,18 +252,24 @@ export function PetCardLayout({
       {showDetails ? (
         <div
           className={`absolute inset-x-1 flex items-center justify-center overflow-hidden text-center ${
-            gap ? 'top-[84px] h-2.5' : tall ? 'top-[74px] h-2.5' : 'top-[80px] h-2'
+            tall ? 'top-[74px] h-2.5' : 'top-[80px] h-2'
           }`}
         >
           {details}
         </div>
       ) : null}
 
+      {/*
+        底部控件（2026-11-22 用户口径）：从「贴片小胶囊」改成**满宽融合条**——
+        通栏、贴底、圆角跟着卡片的 overflow-hidden 走，和换蛋页需求卡底部那条一致。
+        内容由调用方给（计划 / 收集中 / 已收集 / 查看），卡片只负责给出这条通栏槽位。
+      */}
       {showFooter ? (
         <div
-          className={`absolute inset-x-1 flex items-center justify-center ${
-            gap ? 'bottom-[4px] h-3' : tall ? 'top-[86px] h-[15px]' : 'bottom-1 h-1.5'
+          className={`absolute flex items-center justify-center overflow-hidden ${
+            tall ? 'inset-x-1 top-[86px] h-[15px]' : compact ? 'inset-x-1 bottom-1 h-1.5' : 'inset-x-0 bottom-0 h-[18px]'
           }`}
+          data-testid="pet-card-footer"
         >
           {footer}
         </div>
@@ -276,3 +277,5 @@ export function PetCardLayout({
     </article>
   );
 }
+
+

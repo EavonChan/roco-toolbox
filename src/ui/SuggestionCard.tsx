@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+﻿import { useMemo } from 'react';
 import { species } from '../data/catalog';
 import type { StudRecommendation } from '../domain/suggestions';
 import { PetAvatar } from './PetAvatar';
@@ -165,7 +165,7 @@ function SuggestionItem({
         fitName
         fitNameBase={9}
         fitNameMin={8}
-        avatar={<PetAvatar gameId={group.gameId} name={group.displayName} size={44} />}
+        avatar={<PetAvatar gameId={group.gameId} name={group.displayName} size={48} />}
         onClick={() =>
           onOpenGap
             ? onOpenGap(group)
@@ -179,3 +179,4 @@ function SuggestionItem({
     </li>
   );
 }
+
