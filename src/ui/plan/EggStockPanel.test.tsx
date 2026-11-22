@@ -216,6 +216,27 @@ test('横屏蛋仓：搜索与条件在右侧折叠栏，收起后蛋卡加列',
   expect(screen.getByTestId('egg-stock-scope')).toHaveAttribute('data-rail-collapsed', 'true');
 });
 
+test('横屏：右侧筛选栏能按游戏角色筛选，选中后只留该角色的蛋', () => {
+  setOrientation(true);
+  window.localStorage.clear();
+  const onCharacterChange = vi.fn();
+  const characters = [{ key: 'uid:1', name: '阿甲' }, { key: 'uid:2', name: '阿乙' }];
+  const props = { eggs: [
+    { ...ordinary, id: 'a1', gameAccountKey: 'uid:1', accountName: '阿甲' },
+    { ...ordinary, id: 'a2', gameAccountKey: 'uid:1', accountName: '阿甲' },
+    { ...ordinary, id: 'b1', gameAccountKey: 'uid:2', accountName: '阿乙' },
+  ], species: stockSpecies, busy: false, mutate: vi.fn(), collapsibleFilterRail: true, characters, onCharacterChange };
+  const view = render(<EggStockPanel {...props} character="" />);
+  const filters = screen.getByTestId('egg-stock-filters');
+  const select = within(filters).getByRole('combobox', { name: '按游戏角色筛选' });
+  expect(within(select).getAllByRole('option').map((option) => option.textContent))
+    .toEqual(['全部角色', '阿甲', '阿乙']);
+  fireEvent.change(select, { target: { value: 'uid:2' } });
+  expect(onCharacterChange).toHaveBeenCalledWith('uid:2');
+  view.rerender(<EggStockPanel {...props} character="uid:2" />);
+  expect(screen.getAllByTestId('stock-card')).toHaveLength(1);
+});
+
 test('竖屏不出现右侧折叠栏，搜索与条件仍在蛋卡上方', () => {
   setOrientation(false);
   window.localStorage.clear();

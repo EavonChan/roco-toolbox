@@ -11,6 +11,8 @@ import { ModalSurface } from '../primitives/ModalSurface';
 import { useLandscape } from '../useWideLandscape';
 import { SearchField } from '../primitives/SearchField';
 import { Button } from '../primitives/Button';
+import { EggCharacterSelect } from './EggCharacterSelect';
+import type { EggCharacter } from './eggCharacter';
 import eggIconUrls from '../../data/eggIconUrls.json';
 import { allNatureNames, eggGroupNames, targetNatureNames } from '../../data/catalog';
 
@@ -60,7 +62,7 @@ export function EggArt({ eggGameId, name, size=43, kind='ordinary', itemConfId }
 export function EggMedals({body,voice}:{body:string;voice:string}) {
   return <span className="inline-flex items-center justify-center gap-0.5">{[[body,bodyMedalIconByLabel(body)],[voice,voiceMedalIconByLabel(voice)]].map(([label,src],i)=>src?<img key={i} src={src} alt={label??''} className="size-4 object-contain"/>:null)}</span>;
 }
-export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRail=false, railBack }: { eggs:readonly WorkflowEgg[];species:readonly SpeciesEntry[];busy:boolean;mutate:(action:unknown)=>Promise<unknown>;/** 横屏把搜索与条件收进右侧折叠栏（家园页蛋仓屏用） */collapsibleFilterRail?:boolean;/** 横屏标题栏里的返回动作（家园页传入「返回家园」） */railBack?:{onClick:()=>void} }) {
+export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRail=false, railBack, character, characters, onCharacterChange }: { eggs:readonly WorkflowEgg[];species:readonly SpeciesEntry[];busy:boolean;mutate:(action:unknown)=>Promise<unknown>;/** 横屏把搜索与条件收进右侧折叠栏（家园页蛋仓屏用） */collapsibleFilterRail?:boolean;/** 横屏标题栏里的返回动作（家园页传入「返回家园」） */railBack?:{onClick:()=>void};/** 游戏角色筛选：'' = 全部角色（家园蛋仓屏传入，组内广场不传就不出这一项） */character?:string;characters?:readonly EggCharacter[];onCharacterChange?:(key:string)=>void }) {
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState<StockFilter>('全部');
   const [selected,setSelected]=useState<string|null>(null);
@@ -96,7 +98,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const status=(e:WorkflowEgg)=>special(e)?unavailableLabel(e):e.location==='home'?'':e.status==='reserved'?'换蛋中':e.listed?'已挂出':'未挂出';
   const matchesFilter=(e:WorkflowEgg)=>filter==='不可交换'?special(e):!special(e)&&(
     filter==='全部'||filter==='已标注'&&annotated(e)||filter==='未标注'&&!annotated(e)||filter==='自产'&&e.provenance==='self-bred');
-  const visible=eggs.filter(e=>e.status!=='transferred'&&(!query||name(e.eggGameId).includes(query))&&matchesFilter(e))
+  const visible=eggs.filter(e=>e.status!=='transferred'&&(!character||e.gameAccountKey===character)&&(!query||name(e.eggGameId).includes(query))&&matchesFilter(e))
     .sort((a,b)=>Number(b.provenance==='self-bred')-Number(a.provenance==='self-bred')||Number(Boolean(b.greenNest))-Number(Boolean(a.greenNest)));
   const egg=eggs.find(e=>e.id===selected);
   const selectedExtraNatures=natures.filter(value=>!targetNatureNames.includes(value));
@@ -136,6 +138,9 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
         voice:(target.voice==='unknown'||!target.voice?'婉转声':target.voice),
         greenNest:target.greenNest===true,
       };
+  const characterBlock=characters&&characters.length>1&&onCharacterChange
+    ? <EggCharacterSelect compact testId="egg-stock-character-rail" value={character??''} characters={characters} onChange={onCharacterChange}/>
+    : null;
   const searchBlock=<SearchField label="搜索蛋名" value={query} onValueChange={setQuery} placeholder="搜索蛋名" className="[&_input]:text-left"/>;
   const filterBlock=<div className="flex flex-wrap gap-1" data-testid="egg-stock-filter-chips">{(['全部','已标注','未标注','自产','不可交换'] as const).map(f=><button key={f} type="button" aria-pressed={filter===f} onClick={()=>setFilter(f)} className={'min-h-7 rounded-md px-2 text-[11px] '+(filter===f?'bg-emerald-50 font-semibold text-emerald-700':'text-slate-500')}>{f}</button>)}</div>;
   const cards=visible.length?<div className="egg-stock-grid grid grid-cols-4 gap-1.5" data-testid="egg-stock-grid">{visible.map(e=>{
@@ -168,7 +173,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
       <div className="egg-stock-main flex min-w-0 flex-col gap-2" data-testid="egg-stock-main">
         {cards}
       </div>
-      {railCollapsed?null:<div className="egg-stock-filters flex min-w-0 flex-col gap-2" data-testid="egg-stock-filters">{searchBlock}{filterBlock}</div>}
+      {railCollapsed?null:<div className="egg-stock-filters flex min-w-0 flex-col gap-2" data-testid="egg-stock-filters">{characterBlock}{searchBlock}{filterBlock}</div>}
       <aside className="egg-stock-rail" data-testid="egg-stock-rail" aria-label="蛋仓标题栏">
         {railBack?<button
           type="button"

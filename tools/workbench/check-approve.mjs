@@ -117,20 +117,63 @@ function diffLines(before, after) {
   return out;
 }
 
-/** 给「进行中」那张表加一列「详情」，验证"有该列就用"。 */
-function addDetailColumn(text, cellValue) {
-  const lines = text.split('\n');
-  const start = lines.findIndex((l) => /^##\s+/.test(l) && /进行中/.test(l));
+/** 找某个章节里的第一张表：表头 / 分隔线 / 数据行范围。 */
+function findTable(lines, headingRe) {
+  const start = lines.findIndex((l) => /^##\s+/.test(l) && headingRe.test(l));
   if (start < 0) return null;
   let sep = -1;
   for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^##\s+/.test(lines[i])) break;
     if (/^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i]) && lines[i].includes('-')) { sep = i; break; }
   }
   if (sep < 1) return null;
-  const push = (line, cell) => line.replace(/\|\s*$/, `| ${cell} |`);
-  lines[sep - 1] = push(lines[sep - 1], '详情');
-  lines[sep] = push(lines[sep], '---');
-  lines[sep + 1] = push(lines[sep + 1], cellValue);
+  let end = sep + 1;
+  while (end < lines.length && /^\s*\|/.test(lines[end])) end += 1;
+  return { header: sep - 1, sep, firstRow: sep + 1, end };
+}
+
+function cellsOfRow(line) {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|')) s = s.slice(0, -1);
+  return s.split('|').map((c) => c.trim());
+}
+
+const rowOf = (cells) => `| ${cells.join(' | ')} |`;
+
+/** 把「进行中」表的「详情」列设成给定值：有这列就改第一行，没这列就整列加上。 */
+function withDetailValue(text, value, headingRe = /进行中/) {
+  const lines = text.split('\n');
+  const t = findTable(lines, headingRe);
+  if (!t) return null;
+  const header = cellsOfRow(lines[t.header]);
+  const idx = header.findIndex((h) => /^详情/.test(h));
+  if (idx >= 0) {
+    const cells = cellsOfRow(lines[t.firstRow]);
+    if (idx >= cells.length) return null;
+    cells[idx] = value;
+    lines[t.firstRow] = rowOf(cells);
+    return lines.join('\n');
+  }
+  const add = (line, cell) => rowOf([...cellsOfRow(line), cell]);
+  lines[t.header] = add(lines[t.header], '详情');
+  lines[t.sep] = add(lines[t.sep], '---');
+  for (let i = t.firstRow; i < t.end; i += 1) lines[i] = add(lines[i], value);
+  return lines.join('\n');
+}
+
+/** 去掉「进行中」表的「详情」列（用来验"没有该列也不报错"）。 */
+function withoutDetailColumn(text, headingRe = /进行中/) {
+  const lines = text.split('\n');
+  const t = findTable(lines, headingRe);
+  if (!t) return null;
+  const idx = cellsOfRow(lines[t.header]).findIndex((h) => /^详情/.test(h));
+  if (idx < 0) return text;
+  for (let i = t.header; i < t.end; i += 1) {
+    const cells = cellsOfRow(lines[i]);
+    if (cells.length > idx) cells.splice(idx, 1);
+    lines[i] = rowOf(cells);
+  }
   return lines.join('\n');
 }
 
@@ -139,28 +182,59 @@ function addDetailColumn(text, cellValue) {
 const servers = [];
 const tmpDirs = [];
 
+/**
+ * 起一个工作台实例。这台机器上偶尔会有别的东西把刚起来的 node 子进程杀掉
+ * （exit code -1、没有任何 stderr），所以启动失败自动重试一次；真崩的会两次都失败。
+ */
 function startServer(env) {
-  const child = spawn(process.execPath, [SERVER], {
-    cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
   let out = '';
   let err = '';
-  child.stderr.on('data', (b) => { err += b; });
-  const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`服务 8 秒没起来。stderr:\n${err}`)), 8000);
-    child.stdout.on('data', (buf) => {
-      out += buf.toString('utf8');
-      const m = /\[ready\]\s+(http:\/\/\S+)/.exec(out);
-      if (m) { clearTimeout(timer); resolve(m[1].replace(/\/$/, '')); }
+  const handle = {
+    child: null,
+    ready: null,
+    log: () => out,
+    stop: () => { try { if (handle.child) handle.child.kill(); } catch (_) { /* 已退出 */ } },
+  };
+  const attempt = (n) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [SERVER], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.on('exit', (code) => {
+    handle.child = child;
+    let own = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill(); } catch (_) { /* 已退出 */ }
+      reject(new Error(`服务 8 秒没起来。stderr:\n${err}`));
+    }, 8000);
+    child.stderr.on('data', (b) => { err += b; });
+    child.stdout.on('data', (buf) => {
+      const text = buf.toString('utf8');
+      own += text;
+      out += text;
+      const m = /\[ready\]\s+(http:\/\/\S+)/.exec(own);
+      if (m && !settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(m[1].replace(/\/$/, ''));
+      }
+    });
+    child.on('exit', (code, signal) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      reject(new Error(`服务提前退出（code=${code}）。输出:\n${out}\n${err}`));
+      if (n < 1) {
+        console.log(`  · 服务被提前终止（code=${code}${signal ? `，signal=${signal}` : ''}），自动重试一次`);
+        attempt(n + 1).then(resolve, reject);
+        return;
+      }
+      reject(new Error(`服务提前退出（code=${code}${signal ? `，signal=${signal}` : ''}）。输出:\n${out}\n${err}`));
     });
   });
-  const handle = { child, ready, log: () => out, stop: () => { try { child.kill(); } catch (_) { /* 已退出 */ } } };
+  handle.ready = attempt(0);
   servers.push(handle);
   return handle;
 }
@@ -252,6 +326,7 @@ const progressBefore = await (async () => {
 })();
 let siteA = null;
 let siteReadonly = null;
+let approvedKey = null;
 
 try {
   siteA = await makeSite('a', boardText, ledgerText);
@@ -372,11 +447,12 @@ try {
   step(3, 8, '面板点「确认已完成」：卡片 5 秒内变 🟢，且不是整页刷新');
   {
     const { page, errors } = await openPage(urlA);
-    await page.waitForSelector('.col[data-col="waiting"] .card', { timeout: 10000 });
+    await page.waitForSelector('.col[data-col="waiting"] .card[data-status="waiting"]', { timeout: 10000 });
     await page.evaluate(() => { window.__w2NoReload = 'kept'; });
-    const card = page.locator('.col[data-col="waiting"] .card').first();
+    const card = page.locator('.col[data-col="waiting"] .card[data-status="waiting"]').first();
     const key = await card.getAttribute('data-key');
     const id = await card.getAttribute('data-id');
+    approvedKey = key;
     const title = (await card.locator('.title').innerText()).trim();
     const approveLabel = (await card.locator('[data-act="approve"]').innerText()).trim();
     const rejectLabel = (await card.locator('[data-act="reject"]').innerText()).trim();
@@ -422,6 +498,24 @@ try {
     const snapsAfter = await listSnapshots(siteA.progress);
     if (snapsAfter.length === snapsBefore.length + 1) ok(`快照多了一个：${snapsAfter.filter((f) => !snapsBefore.includes(f))[0]}`);
     else bad('快照没有按预期新增');
+
+    // 标题里带 🔴 的行（真实看板就有，当"这条要紧"的标记用）：审批只能写状态位，绝不许改标题
+    const all = (await getJson(urlA + '/api/board')).body.columns.flatMap((c) => c.tasks);
+    const titled = all.find((t) => t.statusKey === 'blocked' && /^[🔴🟡🔵⚪🟢]/.test(t.title));
+    if (!titled) {
+      ok('（当前看板没有"标题里带状态符号"的行，跳过标题保护检查）');
+    } else {
+      const beforeTitle = await readFile(siteA.board, 'utf8');
+      const { res, body } = await postApprove(urlA, { id: titled.id, key: titled.key, action: 'approve' });
+      const afterTitle = await readFile(siteA.board, 'utf8');
+      const d = diffLines(beforeTitle, afterTitle);
+      const titleKept = afterTitle.includes(titled.title);
+      if (res.status === 200 && body && body.ok && d.length === 1 && titleKept && d[0].after.includes('🟢')) {
+        ok(`标题带 🔴 的行（${titled.title.slice(0, 18)}…）审批后：标题原样保留，只在状态位写 🟢`);
+      } else {
+        bad(`标题保护没生效：HTTP ${res.status}，变化 ${d.length} 行，标题保留=${titleKept}`);
+      }
+    }
     if (errors.length) bad(`任务视图有页面错误：${errors.join(' | ')}`);
     await page.close();
   }
@@ -430,9 +524,10 @@ try {
   step(4, 8, '面板点「打回」：变 🔴 + 红色阻塞条 + 备注进日志');
   {
     const { page } = await openPage(urlA);
-    await page.waitForSelector('.col[data-col="waiting"] .card', { timeout: 10000 });
-    const card = page.locator('.col[data-col="waiting"] .card').first();
-    const key = await card.getAttribute('data-key');
+    if (!approvedKey) throw new Error('第 3 步没拿到审批过的行，第 4 步没法接着测');
+    await page.waitForSelector(`.col[data-col="waiting"] .card[data-key="${approvedKey}"]`, { timeout: 10000 });
+    const card = page.locator(`.col[data-col="waiting"] .card[data-key="${approvedKey}"]`);
+    const key = approvedKey;
     await card.locator('.title').click();
     await page.waitForSelector(`.card[data-key="${key}"].is-open .note`, { timeout: 3000 });
     const note = '验收打回：截图对不上，还差一张 390';
@@ -515,53 +610,99 @@ try {
   }
 
   // ── 6 ──
-  step(6, 8, '卡片详情：约定新列「详情」有就用、没有就跳过（都不报错）');
+  step(6, 8, '卡片详情：约定新列「详情」支持路径 / URL / markdown 链接；没有该列就跳过（都不报错）');
   {
-    const siteC = await makeSite('detail', boardText, ledgerText);
-    const withDetail = addDetailColumn(boardText, 'docs/任务看板.md');
-    if (!withDetail) {
+    const mdLink = '[方案 HTML](docs/preview/方案示例.html)';
+    const startSite = async (name, board, port) => {
+      const site = await makeSite(name, board, ledgerText);
+      const srv = startServer({
+        PORT: String(port),
+        WORKBENCH_BOARD: site.board,
+        WORKBENCH_LEDGER: site.ledger,
+        WORKBENCH_PROGRESS: site.progress,
+      });
+      return { site, url: await srv.ready };
+    };
+
+    // a) markdown 链接 → 标签 + 目标路径（看板里最常见的就是这种写法）
+    const withMd = withDetailValue(boardText, mdLink);
+    if (!withMd) {
       bad('构造「详情」列失败（看板结构变了？）');
     } else {
-      await writeFile(siteC.board, withDetail, 'utf8');
-      const C = startServer({
-        PORT: String(BASE_PORT + 2),
-        WORKBENCH_BOARD: siteC.board,
-        WORKBENCH_LEDGER: siteC.ledger,
-        WORKBENCH_PROGRESS: siteC.progress,
-      });
-      const urlC = await C.ready;
-      const { body } = await getJson(urlC + '/api/board');
+      const { url } = await startSite('detail-md', withMd, BASE_PORT + 2);
+      const { body } = await getJson(url + '/api/board');
       const task = body.columns.find((c) => c.key === 'doing').tasks[0];
       const link = task && task.detailLink;
-      if (link && link.kind === 'path' && link.raw === 'docs/任务看板.md') {
-        ok(`有「详情」列时解析成 ${link.kind}：${link.raw}`);
+      if (link && link.kind === 'path' && link.raw === 'docs/preview/方案示例.html' && link.label === '方案 HTML') {
+        ok(`markdown 链接 → 标签「${link.label}」+ 路径 ${link.raw}`);
       } else {
-        bad(`「详情」列没解析对：${JSON.stringify(link)}`);
+        bad(`markdown 链接没解析对：${JSON.stringify(link)}`);
       }
-      if (body.counts.total === boardRows.doing + boardRows.waiting + boardRows.done + boardRows.backlog) {
-        ok('加一列不影响行数（不是靠位置读的）');
-      } else {
-        bad(`加列后行数变了：${body.counts.total}`);
-      }
-      const { page } = await openPage(urlC);
+      const total = boardRows.doing + boardRows.waiting + boardRows.done + boardRows.backlog;
+      if (body.counts.total === total) ok('有「详情」列不影响行数（按表头识别，不靠位置）');
+      else bad(`有详情列后行数变了：${body.counts.total} != ${total}`);
+
+      const { page, errors } = await openPage(url);
       await page.waitForSelector('.col[data-col="doing"] .card', { timeout: 10000 });
       const card = page.locator('.col[data-col="doing"] .card').first();
       const key = await card.getAttribute('data-key');
       await card.locator('.title').click();
       await page.waitForSelector(`.card[data-key="${key}"].is-open .card-more`, { timeout: 3000 });
-      const copyBtn = page.locator(`.card[data-key="${key}"] .card-more [data-copy="docs/任务看板.md"]`);
+      const copyBtn = page.locator(`.card[data-key="${key}"] .card-more [data-copy="docs/preview/方案示例.html"]`);
       if (await copyBtn.count()) {
-        ok('展开后「详情」是可点的（本地路径 → 点击复制）');
+        const text = (await copyBtn.innerText()).trim();
+        if (text === '方案 HTML') ok(`展开后「详情」按钮用 md 里的标签「${text}」（本地路径，点击复制目标路径）`);
+        else bad(`详情按钮文案不是 md 标签：${text}`);
         if (await page.locator(`.card[data-key="${key}"] .kv dt`, { hasText: '详情' }).count()) ok('详情出现在完整字段里');
       } else {
         bad('展开后没有详情链接');
       }
+      if (errors.length) bad(`详情页有页面错误：${errors.join(' | ')}`);
       await page.close();
-      // 没有该列的那份（A 站）不应报错、也不该出现详情
-      const plain = await getJson(urlA + '/api/board');
-      const plainTask = plain.body.columns.find((c) => c.key === 'doing').tasks[0];
-      if (plainTask && plainTask.detailLink === null) ok('没有「详情」列时 detailLink=null，页面不报错');
-      else bad(`没有详情列却解析出了：${JSON.stringify(plainTask && plainTask.detailLink)}`);
+
+      // b) 值是 URL → 真的 <a href>，新标签打开
+      const withUrl = withDetailValue(boardText, 'https://example.com/x');
+      const { url: urlU } = await startSite('detail-url', withUrl, BASE_PORT + 4);
+      const urlBody = (await getJson(urlU + '/api/board')).body;
+      const uTask = urlBody.columns.find((c) => c.key === 'doing').tasks[0];
+      if (uTask.detailLink && uTask.detailLink.kind === 'url' && uTask.detailLink.href === 'https://example.com/x') {
+        ok('值是 URL 时解析成 kind=url 并带 href');
+      } else {
+        bad(`URL 值没解析对：${JSON.stringify(uTask.detailLink)}`);
+      }
+      const urlPage = await openPage(urlU);
+      await urlPage.page.waitForSelector('.col[data-col="doing"] .card', { timeout: 10000 });
+      const uCard = urlPage.page.locator('.col[data-col="doing"] .card').first();
+      const uKey = await uCard.getAttribute('data-key');
+      await uCard.locator('.title').click();
+      const anchor = urlPage.page.locator(`.card[data-key="${uKey}"] .card-more a.linkbtn[href="https://example.com/x"]`);
+      if (await anchor.count()) ok('URL 详情渲染成可点的链接（新标签打开）');
+      else bad('URL 详情没有渲染成链接');
+      await urlPage.page.close();
+
+      // c) 没有「详情」列的板子 → 不报错、也不出现详情行
+      const without = withoutDetailColumn(boardText);
+      const { url: urlW } = await startSite('detail-none', without, BASE_PORT + 5);
+      const wBody = (await getJson(urlW + '/api/board')).body;
+      const wTask = wBody.columns.find((c) => c.key === 'doing').tasks[0];
+      if (wTask && wTask.detailLink === null) ok('没有「详情」列时 detailLink=null，不报错');
+      else bad(`没有详情列却解析出了：${JSON.stringify(wTask && wTask.detailLink)}`);
+      const wPage = await openPage(urlW);
+      await wPage.page.waitForSelector('.col[data-col="doing"] .card', { timeout: 10000 });
+      const wCard = wPage.page.locator('.col[data-col="doing"] .card').first();
+      const wKey = await wCard.getAttribute('data-key');
+      await wCard.locator('.title').click();
+      await wPage.page.waitForSelector(`.card[data-key="${wKey}"].is-open .card-more`, { timeout: 3000 });
+      const dtCount = await wPage.page.locator(`.card[data-key="${wKey}"] .kv dt`, { hasText: '详情' }).count();
+      if (dtCount === 0 && wPage.errors.length === 0) ok('展开后没有「详情」这一行，页面也没有报错');
+      else bad(`没有详情列时表现不对（详情行 ${dtCount}，错误 ${wPage.errors.join(' | ')}）`);
+      await wPage.page.close();
+
+      // d) 真实看板上值写「—」的行 → 当成没有详情，不硬造链接
+      const aTask = (await getJson(urlA + '/api/board')).body.columns
+        .find((c) => c.key === 'doing').tasks.find((t) => t.detailLink === null);
+      if (aTask) ok(`真实看板里详情写「—」的行（${aTask.code || aTask.id}）不生成链接`);
+      else ok('真实看板里暂时没有「—」的详情行（跳过）');
     }
   }
 
@@ -583,9 +724,11 @@ try {
 
   // ── 8 ──
   step(8, 8, '375 / 1440 截图（任务 + 会话 + 展开详情），落 docs/preview/W2-*.png');
-  {
+  if (process.env.SKIP_SHOTS) {
+    console.log('  · SKIP_SHOTS=1：跳过截图（只验功能，不碰 docs/preview）');
+  } else {
     await mkdir(PREVIEW, { recursive: true });
-    const D = startServer({ PORT: String(BASE_PORT + 3), WORKBENCH_BOARD: '', WORKBENCH_LEDGER: '', WORKBENCH_PROGRESS: '' });
+    const D = startServer({ PORT: String(BASE_PORT + 6), WORKBENCH_BOARD: '', WORKBENCH_LEDGER: '', WORKBENCH_PROGRESS: '' });
     const urlD = await D.ready;
     const shots = [
       { width: 375, height: 812, label: '375' },
@@ -607,11 +750,13 @@ try {
         await page.close();
       }
     }
-    // 再补一张展开后的卡片详情，留证据
+    // 再补一张展开后的卡片详情，留证据（优先挑有「详情」列的那张：进行中第二行）
     {
       const { page } = await openPage(urlD, { viewport: { width: 1440, height: 900 } });
-      await page.waitForSelector('.col[data-col="waiting"] .card', { timeout: 10000 });
-      await page.locator('.col[data-col="waiting"] .card .title').first().click();
+      await page.waitForSelector('.col[data-col="doing"] .card', { timeout: 10000 });
+      const doingCards = page.locator('.col[data-col="doing"] .card');
+      const n = await doingCards.count();
+      await doingCards.nth(n > 1 ? 1 : 0).locator('.title').click();
       await page.waitForSelector('.card.is-open .card-more', { timeout: 3000 });
       await page.locator('.card.is-open').first().scrollIntoViewIfNeeded();
       const file = path.join(PREVIEW, 'W2-1440-卡片详情.png');

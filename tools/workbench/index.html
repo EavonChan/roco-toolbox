@@ -623,6 +623,12 @@
     return `<span class="dim">${esc(text)}</span>`;
   }
 
+  /** 「详情」按钮上的字：markdown 给了标签就用标签，否则统称「打开详情」。 */
+  function detailLabel(link) {
+    if (link && link.label && link.label !== link.raw) return link.label;
+    return '打开详情';
+  }
+
   function card(task) {
     const status = task.statusKey || 'doing';
     const open = state.open.has(task.key);
@@ -651,7 +657,7 @@
       ['所在列', esc(task.section || '')],
       ['更新时间', `${esc(exact(task.updatedAt))} <span class="dim">（${esc(srcLabel(task.updatedSource))}）</span>`],
     ];
-    if (task.detailLink) kv.push(['详情', linkHtml(task.detailLink, '打开详情')]);
+    if (task.detailLink) kv.push(['详情', linkHtml(task.detailLink, detailLabel(task.detailLink))]);
 
     return `<article class="card${open ? ' is-open' : ''}" data-status="${esc(status)}" data-key="${esc(task.key)}" ` +
       `data-id="${esc(task.id)}" tabindex="0" aria-expanded="${open ? 'true' : 'false'}">` +
