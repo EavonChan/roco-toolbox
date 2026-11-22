@@ -62,6 +62,22 @@ export interface StudCoverageResult {
 export const isGroupPassed = (row: { covered: number; total: number }): boolean =>
   row.total > 0 && row.covered === row.total;
 
+/**
+ * 这个号的种公目标是否已经全齐（2026-11-20 用户口径）。
+ *
+ * 「全齐」= 有目标格、且每一格都 `covered`。没有设目标（0 格）不算全齐，
+ * 否则看板会把「还没设目标」误报成「全都收齐了」。
+ */
+export function isStudCoverageComplete(
+  coverage: Pick<StudCoverageResult, 'cells'> | null | undefined,
+): boolean {
+  return (
+    coverage != null &&
+    coverage.cells.length > 0 &&
+    coverage.cells.every((cell) => cell.state === 'covered')
+  );
+}
+
 // 状态优先级：covered 最好，empty 最差
 const STATE_RANK: Record<CoverageState, number> = {
   covered: 0,

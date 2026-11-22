@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GRADE_BODY, gradeLabel, type PetGrade, type TargetMode } from '../domain/petFilters';
 import {
   buildStudMatrix,
@@ -156,6 +156,38 @@ export function StudMatrix({
       buildStudMatrix({ slots, owned, species, speciesByGameId, eggGroupNames, mode, grade }),
     [slots, owned, species, speciesByGameId, eggGroupNames, mode, grade],
   );
+
+  /**
+   * 矩阵卡片按左侧空白等比放大（2026-11-21 用户口径）。
+   * 表格基础宽 = 蛋组列 + 性格列；容器还有空宽时整体 zoom 放大，比例不变；
+   * 窄屏（基础宽都放不下）保持 100%，照旧横向滑动。
+   */
+  const matrixScrollRef = useRef<HTMLDivElement | null>(null);
+  const [matrixScale, setMatrixScale] = useState(1);
+  const baseTableWidth = EGG_GROUP_COL_WIDTH + matrix.natures.length * NATURE_COL_WIDTH;
+  useLayoutEffect(() => {
+    const scroller = matrixScrollRef.current;
+    if (!scroller || matrix.natures.length === 0) {
+      setMatrixScale(1);
+      return;
+    }
+    const measure = () => {
+      const available = scroller.clientWidth;
+      if (!available) return;
+      // 留 1% 余量，避免 sub-pixel 四舍五入后多出一条横向滚动条
+      const next = Math.floor(Math.min(available / baseTableWidth, 2.5) * 100) / 100;
+      setMatrixScale(next > 1 ? next : 1);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [baseTableWidth, matrix.natures.length]);
+
   /** 缺口格里，其他号能出哪颗蛋（每个源号只留概率最高的一对）。 */
   const transferByCell = useMemo(() => {
     if (!transferPets) return new Map<string, StudTransferPair[]>();
@@ -287,7 +319,7 @@ export function StudMatrix({
       {/* 卡片标题与副标题去掉（2026-11-19 用户口径）：导航已经是「收集 · 种公」 */}
 
       {grades.length > 0 ? (
-        <div className="flex items-center gap-1" role="group" aria-label="阵列档位">
+        <div className="flex items-center gap-1" role="group" aria-label="阵列档位" data-testid="stud-grade-row">
           {grades.map((item) => (
             <button
               key={item}
@@ -302,7 +334,7 @@ export function StudMatrix({
               {GRADE_LABEL[item]}
             </button>
           ))}
-          <span className="ml-auto truncate text-[10px] text-slate-400">
+          <span className="ml-auto truncate text-[10px] text-slate-400" data-testid="stud-matrix-hint">
             左右滑动看更多性格
             {onPublishStudDemand ? ' · 点缺口格可求蛋' : ''}
           </span>
@@ -319,10 +351,15 @@ export function StudMatrix({
           当前奖牌组合下没有选中的目标性格。
         </p>
       ) : (
-        <div className="mt-2 overflow-x-auto overscroll-x-contain" data-testid="stud-matrix-scroll">
+        <div
+          ref={matrixScrollRef}
+          className="mt-2 overflow-x-auto overscroll-x-contain"
+          data-testid="stud-matrix-scroll"
+          data-matrix-scale={matrixScale}
+        >
           <table
             className="table-fixed border-separate border-spacing-0 text-[10px]"
-            style={{ width: `${EGG_GROUP_COL_WIDTH + matrix.natures.length * NATURE_COL_WIDTH}px` }}
+            style={{ width: `${baseTableWidth}px`, zoom: matrixScale }}
           >
             <colgroup>
               <col style={{ width: `${EGG_GROUP_COL_WIDTH}px` }} />

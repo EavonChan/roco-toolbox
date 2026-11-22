@@ -7,8 +7,8 @@ export interface PetListProps {
   speciesByGameId: Map<number, SpeciesEntry>;
   eggGroupNames: Record<number, string>;
   showCount?: boolean;
-  /** 卡片网格列数（2026-11-18 用户口径：三列时卡片内容整体放大、一行铺满） */
-  columns?: 3 | 4;
+  /** 卡片网格列数（2026-11-18 用户口径：三列时卡片内容整体放大、一行铺满；宽横屏可到 5/6） */
+  columns?: 3 | 4 | 5 | 6;
 }
 
 /**
@@ -69,7 +69,8 @@ export function PetList({
 
       {/* 一行四张 / 三张：移动端保持紧凑卡片网格 */}
       <ul
-        className={`grid gap-1.5 ${columns === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}
+        className={`grid gap-1.5 ${columns === 3 ? 'grid-cols-3' : columns === 4 ? 'grid-cols-4' : ''}`}
+        style={columns > 4 ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}
         data-testid="pet-list-items"
         data-columns={columns}
       >

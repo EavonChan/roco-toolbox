@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { GRADE_BODY, GRADE_VOICE, type MotherGroup, type TargetMode } from '../domain/petFilters';
 import type { OwnedPet } from '../domain/types';
 import { species as catalogSpecies } from '../data/catalog';
@@ -10,8 +10,10 @@ import {
   type MotherCriteria,
 } from '../domain/motherCriteria';
 import { AccountSection } from './AccountSection';
+import { useTabletLandscape, useWideLandscape } from './useWideLandscape';
 import { PetAvatar } from './PetAvatar';
-import { PetCardLayout } from './PetCardLayout';
+import { PetCardLayout, type PetCardStatus } from './PetCardLayout';
+import { shouldUseThreeColumns } from './motherColumnLayout';
 import { SearchField } from './primitives/SearchField';
 import { InlineMultiSelect } from './primitives/InlineMultiSelect';
 import { SegmentedControl } from './primitives/SegmentedControl';
@@ -40,7 +42,7 @@ import type { NavigationIntent } from './navigation';
 /** 每节的分页大小：母本视角的每一节动辄上百条，必须分页 */
 const PAGE_SIZE = 20;
 
-/** 点「查看」带到精灵背包的筛选：进化链名 + 标签 + 身高范围（大块头强制满身高） */
+/** 点「查看」带到精灵背包的筛选：进化链名 + 标签（不再带身高范围，见 jumpBase）。 */
 export interface MotherInventoryJump {
   name: string;
   tags: string[];
@@ -53,8 +55,8 @@ export interface MotherViewProps {
   eggGroupNames: Record<number, string>;
   motherGroups: MotherGroup[];
   mode: TargetMode;
-  /** 从收集页直达的状态（未收集 / 已收集）；计划分区独立展示 */
-  status?: 'missing' | 'collecting' | 'collected' | 'plan';
+  /** 从收集页直达的状态（未收集 / 收集中 / 已收集）；计划分区独立展示 */
+  status?: 'missing' | 'collecting' | 'collected';
   /** 点卡片底部「查看」：带到精灵背包的筛选条件 */
   onOpenInventory?: (jump: MotherInventoryJump) => void;
   /** 母本配窝建议（与看板同一份口径）：未收集卡点开悬浮窗时找「本号直配 / 跨号传蛋」 */
@@ -65,6 +67,8 @@ export interface MotherViewProps {
   gapTarget?: {
     label: string;
     bodyMedal: string | null;
+    /** 声音目标标签（+100 / -100 / 婉转声 / 粗嗓门）：悬浮窗按它区分满分与双牌 */
+    voiceTarget?: string | null;
     voiceDb: number | null;
     weightPercent: number | null;
   };
@@ -72,6 +76,8 @@ export interface MotherViewProps {
   onSeekHelp?: () => void;
   /** 收集中页发布/查看小组需求 */
   onNavigate?: (intent: NavigationIntent) => void;
+  /** 收集页右侧筛选栏是否收起：收起后才考虑把蛋组排成三列（2026-11-21 用户口径） */
+  filterCollapsed?: boolean;
 }
 
 interface SectionProps {
@@ -234,7 +240,9 @@ const CHAIN_SECTION_BATCH = 5;
  * - **计划收集**：用户从「待补齐母本」里挑出来的待办（存 localStorage / 随备份走），
  *   自动判定达成（该链已有合格母本）并支持「清除已达成」；
  * - **待补齐母本**：所有还没有合格母本的链（无母本 ∪ 有母本但不够档），
- *   默认收起、可搜索、勾选即加入计划。
+ *   默认收起、可搜索、勾选即加入计划；
+ * - **收集中**（2026-11-20 好友 UI）：挑中的链按收集计划卡展示求蛋进度，
+ *   与小组需求联动，可直接发布 / 查看。
  */
 export function MotherView({
   owned,
@@ -249,6 +257,7 @@ export function MotherView({
   gapTarget,
   onSeekHelp,
   onNavigate,
+  filterCollapsed = false,
 }: MotherViewProps) {
   /** 「未收集母本怎么补」悬浮窗（2026-11-19 用户口径）：与看板共用同一块内容 */
   const [gapDialog, setGapDialog] = useState<{ chainKey: string; target: GapTargetView; fill: GapFill } | null>(
@@ -268,9 +277,20 @@ export function MotherView({
   const setQuery = (value: string) => setPersonalQuery('mothers', value);
   // 默认看「未收集」（待补齐才是主场景；看板「母本全收集」卡跳过来也是它）
   const [chainFilter, setChainFilter] = useState<ChainFilter>('uncollected');
-  const [visibleSectionCount, setVisibleSectionCount] = useState(INITIAL_CHAIN_SECTIONS);
+  /**
+   * 首屏蛋组数（2026-11-21 用户口径）：宽横屏 10 组；4:3 这类 1000px 起的横屏给 6 组，
+   * 避免只渲染 2 组、半屏空白；竖屏仍是 2 组。
+   */
+  const wideLandscape = useWideLandscape();
+  const tabletLandscape = useTabletLandscape();
+  const initialSections = wideLandscape
+    ? 10
+    : tabletLandscape
+      ? 6
+      : INITIAL_CHAIN_SECTIONS;
+  const [visibleSectionCount, setVisibleSectionCount] = useState(initialSections);
 
-  // 收集页的「未收集 / 已收集」直达：同步到本页的状态开关
+  // 收集页的「未收集 / 收集中 / 已收集」直达：同步到本页的状态开关
   useEffect(() => {
     if (status === 'missing') setChainFilter('uncollected');
     else if (status === 'collecting') setChainFilter('collecting');
@@ -311,20 +331,20 @@ export function MotherView({
 
   /**
    * 「查看」带到精灵背包的公共条件：按钮上显示的那一档奖牌（强制单选）。
-   * 大块头 / 小不点同时强制满身高 / 零身高，跟母本判定口径一致。
+   *
+   * 体型按**奖牌 或 身高到顶 / 到底**取并集，与母本达标口径（`breedingBodyGradeOf`）一致：
+   * - 有奖牌：真实数据里存在身高不是 100% / 0% 的个体（如大块头 98.48%），只按身高筛会漏；
+   * - 无奖牌：身高 100% / 0% 也算大块头 / 小不点，只按奖牌标签筛会漏。
+   * 两个标签同属 body 类，`filterByTags` 内取并集，所以不再额外设身高范围。
    */
   const jumpBase = useMemo(() => {
     const grade = selectedGradesFor(criteria, mode)[0] ?? '大婉';
     const body = GRADE_BODY[grade];
     const voice =
       mode === 'medal' ? GRADE_VOICE[grade] : GRADE_VOICE[grade] === '婉转声' ? '+100' : '-100';
+    const heightTag = body === '大块头' ? 'body:满身高' : 'body:零身高';
     return {
-      tags: [
-        'gender:母',
-        `body:${body}`,
-        `body:${body === '大块头' ? '满身高' : '零身高'}`,
-        `voice:${voice}`,
-      ],
+      tags: ['gender:母', `body:${body}`, heightTag, `voice:${voice}`],
     };
   }, [criteria, mode]);
 
@@ -411,7 +431,9 @@ export function MotherView({
   const chainSections = useMemo(() => {
     const list = matchedGroups.filter((group) => {
       const collected = isChainCollected(group);
-      if (chainFilter === 'uncollected') return !collected && !plannedSet.has(group.chainKey);
+      // 计划中的蛋组仍留在「未收集」清单里，用淡蓝卡表示进度（2026-11-21 用户口径）；
+      // 上方「计划收集」只做汇总，不再把卡片从清单里抽走。
+      if (chainFilter === 'uncollected') return !collected;
       if (chainFilter === 'collected') return collected;
       return false;
     });
@@ -437,10 +459,72 @@ export function MotherView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchedGroups, chainFilter, owned, criteria, activeVoices.join(','), naturesOf, plannedSet]);
   useEffect(() => {
-    setVisibleSectionCount(INITIAL_CHAIN_SECTIONS);
-  }, [chainFilter, keyword, eggGroupFilter.join(',')]);
+    setVisibleSectionCount(initialSections);
+  }, [chainFilter, keyword, eggGroupFilter.join(','), initialSections]);
   const visibleChainSections = chainSections.slice(0, visibleSectionCount);
   const hiddenChainSections = Math.max(0, chainSections.length - visibleChainSections.length);
+
+  /**
+   * 三列蛋组（2026-11-21 用户口径）：收起筛选且屏幕够宽时，
+   * 只有「两列一屏放不下全部蛋组」才排三列；两列能一屏放下就保持两列大卡。
+   */
+  const [threeColumns, setThreeColumns] = useState(false);
+  const [layoutTick, setLayoutTick] = useState(0);
+  const chainListRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onResize = () => setLayoutTick((tick) => tick + 1);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useLayoutEffect(() => {
+    if (!filterCollapsed || chainFilter === 'collecting') {
+      setThreeColumns(false);
+      return;
+    }
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      setThreeColumns(false);
+      return;
+    }
+    if (!window.matchMedia('(orientation: landscape) and (min-width: 1200px)').matches) {
+      setThreeColumns(false);
+      return;
+    }
+    const list = chainListRef.current;
+    if (!list) {
+      setThreeColumns(false);
+      return;
+    }
+    // 还有「显示更多蛋组」= 两列本来就没展示完全部蛋组
+    if (hiddenChainSections > 0) {
+      setThreeColumns(true);
+      return;
+    }
+    // 同步按两列量一次真实高度，量完立刻还原，绘制前完成不会闪
+    const previous = list.style.gridTemplateColumns;
+    list.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+    const heights = Array.from(list.children)
+      .filter(
+        (child): child is HTMLElement =>
+          child instanceof HTMLElement &&
+          child.getAttribute('data-testid')?.startsWith('mother-chain-group-') === true,
+      )
+      .map((child) => child.getBoundingClientRect().height);
+    list.style.gridTemplateColumns = previous;
+    const gap = Number.parseFloat(getComputedStyle(list).rowGap) || 0;
+    // 列表上方还有计划汇总等块：按列表在文档里的顶部算真实可用高度，
+    // 否则 3:2 这类屏会把「列表刚好 800px」误判成一屏放得下。
+    const listTop = list.getBoundingClientRect().top + window.scrollY;
+    const availableHeight = window.innerHeight - Math.max(0, listTop);
+    setThreeColumns(
+      shouldUseThreeColumns({
+        sectionHeights: heights,
+        totalSections: chainSections.length,
+        gap,
+        viewportHeight: availableHeight,
+      }),
+    );
+  }, [filterCollapsed, chainFilter, chainSections, hiddenChainSections, layoutTick, plan.length]);
+
   const planGroups = useMemo(
     () => matchedGroups.filter((group) => plannedSet.has(group.chainKey)),
     [matchedGroups, plannedSet],
@@ -495,6 +579,7 @@ export function MotherView({
         tag: '未收集',
         targetLabel: gapTarget.label,
         bodyMedal: gapTarget.bodyMedal,
+        voiceTarget: gapTarget.voiceTarget ?? null,
         voiceDb: gapTarget.voiceDb,
         weightPercent: gapTarget.weightPercent,
       },
@@ -503,7 +588,8 @@ export function MotherView({
   };
 
   return (
-    <div className="space-y-2" data-tour="collection-mothers">
+    <div className="collection-layout" data-tour="collection-mothers">
+      <div className="collection-rail space-y-2">
       {/* 搜索 + 蛋组筛选同一行：蛋组用页内下拉多选，不再单开一段面板（2026-10-25 用户要求） */}
       <div className="flex items-center gap-1.5">
         <SearchField
@@ -529,43 +615,13 @@ export function MotherView({
         />
       </div>
 
-      <MotherCriteriaMedals testIdPrefix="mother-criteria" />
-
-      {planGroups.length > 0 ? (
-        <CollapsibleSection
-          title="计划收集"
-          titleClass="text-emerald-700"
-          groups={planGroups}
-          defaultOpen
-          testId="mother-plan"
-          renderRow={renderPlanRow}
-          toolbar={
-            achievedGroups.length > 0 ? (
-              <button
-                type="button"
-                onClick={() =>
-                  removeManyFromMotherPlan(achievedGroups.map((group) => group.chainKey))
-                }
-                className="min-h-[28px] rounded-md border border-emerald-500 px-2 text-xs font-medium text-emerald-700"
-                data-testid="mother-plan-clear-done"
-              >
-                清除已达成（{achievedGroups.length}）
-              </button>
-            ) : undefined
-          }
-        />
-      ) : null}
-
-      {/* 链清单按蛋组分区，每行四只；收集中使用同一母本卡但不按蛋组分区 */}
-      <section
-        className="space-y-2"
-        data-testid={chainFilter === 'collecting' ? 'mother-collecting-shell' : 'mother-chain-list'}
-      >
+      {/* 母本页的奖牌组合与看板全局目标同一份：syncTargetGrade 让两处一起写 */}
+      <MotherCriteriaMedals testIdPrefix="mother-criteria" syncTargetGrade />
         <div className="flex flex-wrap items-center justify-between gap-1 px-1">
           <span className="text-[11px] text-slate-400" data-testid="mother-chain-summary">
             共 {matchedGroups.length} 条链 · 已收集 {collectedChainCount}
           </span>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
             <button
               type="button"
               aria-pressed={criteria.recommendedNatures === true}
@@ -599,6 +655,41 @@ export function MotherView({
             />
           </div>
         </div>
+      </div>
+
+      <div className="collection-main space-y-2">
+      {planGroups.length > 0 ? (
+        <CollapsibleSection
+          title="计划收集"
+          titleClass="text-emerald-700"
+          groups={planGroups}
+          defaultOpen
+          testId="mother-plan"
+          renderRow={renderPlanRow}
+          toolbar={
+            achievedGroups.length > 0 ? (
+              <button
+                type="button"
+                onClick={() =>
+                  removeManyFromMotherPlan(achievedGroups.map((group) => group.chainKey))
+                }
+                className="min-h-[28px] rounded-md border border-emerald-500 px-2 text-xs font-medium text-emerald-700"
+                data-testid="mother-plan-clear-done"
+              >
+                清除已达成（{achievedGroups.length}）
+              </button>
+            ) : undefined
+          }
+        />
+      ) : null}
+
+      {/* 链清单按蛋组分区，每行四只；收集中使用同一母本卡但不按蛋组分区 */}
+      <section
+        ref={chainListRef}
+        className="space-y-2"
+        data-testid={chainFilter === 'collecting' ? 'mother-collecting-shell' : 'mother-chain-list'}
+        data-three-columns={threeColumns ? 'true' : undefined}
+      >
         {chainFilter === 'collecting' ? (
           <MotherCollectingView
             motherGroups={motherGroups}
@@ -672,6 +763,8 @@ export function MotherView({
         ) : null}
       </section>
 
+      </div>
+
       <GapFillDialog
         target={gapDialog?.target ?? null}
         fill={gapDialog?.fill ?? null}
@@ -730,17 +823,23 @@ function MotherEggRow({
     .filter((nature) => collectedNatures.has(nature))
     .map((nature) => `nature:${nature}`);
 
+  /** 三态底色（2026-11-21 用户口径）：未收集白底 / 计划中淡蓝 / 已收集淡绿 */
+  const cardStatus: PetCardStatus = collected ? 'collected' : planned ? 'planned' : 'uncollected';
+
   return (
-    <li data-testid="mother-chain-row" className="min-w-0">
+    <li data-testid="mother-chain-row" data-mother-status={cardStatus} className="min-w-0">
       <PetCardLayout
         name={eggName}
         number={number}
         eggGroups={eggGroupLabels}
         natures={recommendedNatures}
         natureCollected={(nature) => collectedNatures.has(nature)}
-        size="mother"
+        size="tall"
+        status={cardStatus}
         fitName
-        avatar={<PetAvatar gameId={eggGameId} name={eggName} size={62} />}
+        fitNameBase={8}
+        fitNameMin={6}
+        avatar={<PetAvatar gameId={eggGameId} name={eggName} size={44} />}
         eggGroupsTestId="mother-card-egg-groups"
         naturesTestId="mother-card-natures"
         title={collected || !onOpenGap ? eggName : `${eggName} · 点卡片看怎么补`}
@@ -756,7 +855,7 @@ function MotherEggRow({
                 })
               }
               data-testid="mother-chain-open"
-              className="min-h-3 w-full truncate rounded-full bg-emerald-100 px-1 text-[8px] font-medium leading-3 text-emerald-700"
+              className="min-h-[13px] w-full truncate rounded-full bg-emerald-100 px-1 text-[7px] font-medium leading-[13px] text-emerald-700"
             >
               查看
             </button>
@@ -768,10 +867,10 @@ function MotherEggRow({
                 event.stopPropagation();
                 onTogglePlan();
               }}
-              className={`min-h-3 w-full rounded-full border px-1 text-[8px] leading-3 ${
+              className={`min-h-[13px] w-full truncate rounded-full border px-1 text-[7px] leading-[13px] ${
                 planned
-                  ? 'border-emerald-500 bg-emerald-100 text-emerald-700'
-                  : 'border-emerald-200 bg-white text-slate-500'
+                  ? 'border-sky-300 bg-sky-100 text-sky-700'
+                  : 'border-slate-200 bg-white text-slate-600'
               }`}
               data-testid="mother-plan-toggle"
               aria-pressed={planned}

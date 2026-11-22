@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { computeStudCoverage, computeStudCoverageByAccount, type CoverageSlot } from './studCoverage';
+import {
+  computeStudCoverage,
+  computeStudCoverageByAccount,
+  isStudCoverageComplete,
+  type CoverageSlot,
+} from './studCoverage';
 import type { PetGrade } from './petFilters';
 import type { OwnedPet, SpeciesEntry } from './types';
 
@@ -37,6 +42,20 @@ const pet = (partial: Partial<OwnedPet>): OwnedPet => ({
   isShiny: false,
   account: '账号A',
   ...partial,
+});
+
+
+describe('全齐判定', () => {
+  test('没有目标格不算全齐；每一格都 covered 才算', () => {
+    expect(isStudCoverageComplete(null)).toBe(false);
+    expect(isStudCoverageComplete({ cells: [] })).toBe(false);
+    expect(isStudCoverageComplete({ cells: [{ state: 'covered' } as never] })).toBe(true);
+    expect(
+      isStudCoverageComplete({
+        cells: [{ state: 'covered' } as never, { state: 'breedable' } as never],
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('computeStudCoverage（槽位带满分档位）', () => {

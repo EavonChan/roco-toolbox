@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { eggGroupNames, species, targetNatureNames } from '../data/catalog';
 import { heightMetersOf, weightKgOf } from '../domain/petFilters';
 import { petBodyMedalIcon, petVoiceMedalIcon } from '../domain/petIcons';
@@ -11,8 +11,11 @@ import {
   type MotherNestTask,
 } from '../domain/motherNest';
 import { GenderMark } from './GenderMark';
+import { accountTabColumns, compareAccountNames } from './accountOrder';
 import { genderShareOf } from '../domain/genderRatio';
+import type { StudRecommendation } from '../domain/suggestions';
 import { PetAvatar } from './PetAvatar';
+import { PetCardLayout } from './PetCardLayout';
 import { pairingColor, pairingDashed } from './pairingColors';
 import { formatPercent } from './formatPercent';
 import { getMyPetsSizeUnit } from './myPetsFilterStore';
@@ -20,6 +23,28 @@ import { getMyPetsSizeUnit } from './myPetsFilterStore';
 const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
 /** 玩家说的「八大性格」：只有这些性格才配在母本卡头上单独写概率 */
 const EIGHT_NATURES = new Set(targetNatureNames);
+
+/**
+ * 勾选占窝存本地：去「收集」转一圈再回看板，勾过的窝不能清零。
+ * 默认读不到就是空 = 0 个窝（2026-11-20 用户口径）。
+ */
+const NEST_PICKS_STORAGE_KEY = 'roco.nestPicks.v1';
+const readNestPicks = (): Record<string, boolean> => {
+  try {
+    if (typeof localStorage === 'undefined') return {};
+    const raw = localStorage.getItem(NEST_PICKS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const picks: Record<string, boolean> = {};
+    for (const [key, picked] of Object.entries(parsed as Record<string, unknown>)) {
+      if (picked === true) picks[key] = true;
+    }
+    return picks;
+  } catch {
+    return {};
+  }
+};
 
 export const groupName = (groupId: number): string => eggGroupNames[groupId] ?? `蛋组${groupId}`;
 
@@ -60,6 +85,50 @@ interface PairingView {
  */
 const viewChance = (view: Pick<PairingView, 'natures'>): number =>
   view.natures.reduce((sum, item) => sum + item.chance, 0);
+
+/**
+ * 种公推荐的高/低概率分界（2026-11-20 用户口径）：看卡片上写的**实际概率**
+ * （性格概率 × 出公比例），和母本那条 30% 线一致——界面上不到 30% 的进低概率。
+ */
+const STUD_HIGH_CHANCE = 0.3;
+/** 这张卡最高的那个性格实际能拿到多少（多个性格各自算，取最高） */
+const viewTopChance = (view: PairingView): number =>
+  view.natures.reduce((best, item) => Math.max(best, item.chance * view.genderShare), 0);
+
+/** 种公推荐按精灵合并：同一只精灵的多个性格 / 蛋组合成一张卡（和看板推荐卡同口径） */
+export interface StudRecommendationGroup {
+  gameId: number;
+  displayName: string;
+  natureNames: string[];
+  groupLabels: string[];
+  /** 原始推荐条目：点卡开「怎么补」要拿第一条的蛋组 / 性格 / 档位定位 */
+  records: StudRecommendation[];
+}
+const groupStudRecommendations = (
+  items: readonly StudRecommendation[],
+): StudRecommendationGroup[] => {
+  const groups = new Map<number, StudRecommendationGroup>();
+  for (const item of items) {
+    let group = groups.get(item.gameId);
+    if (!group) {
+      group = {
+        gameId: item.gameId,
+        displayName: item.displayName,
+        natureNames: [],
+        groupLabels: [],
+        records: [],
+      };
+      groups.set(item.gameId, group);
+    }
+    group.records.push(item);
+    if (!group.natureNames.includes(item.natureName)) group.natureNames.push(item.natureName);
+    for (const label of item.groupLabels) {
+      if (!group.groupLabels.includes(label)) group.groupLabels.push(label);
+    }
+  }
+  return [...groups.values()];
+};
+
 
 const percentLabel = (chance: number): string => `${Math.round(chance * 100)}%`;
 
@@ -139,6 +208,58 @@ const mergePairings = (pairings: NestPairing[]): PairingView[] => {
   return views;
 };
 
+/** 种公建议的一张卡：普通一对，或者同一只种公配多个母本的「共用种公」卡 */
+interface SharedStudGroup {
+  kind: 'shared';
+  /** 共用的那只种公（按个体 key，不是同名物种） */
+  stud: NestPet;
+  views: PairingView[];
+}
+interface SingleStudView {
+  kind: 'single';
+  view: PairingView;
+}
+type StudCardLayout = SharedStudGroup | SingleStudView;
+
+/**
+ * 种公建议里**同一只种公**配多只母本时并成一张卡（2026-11-20 用户口径，和家园一样）：
+ * 种公只画一次，母本并排画，勾一次就把这几个窝一起占上。
+ *
+ * 只合并「一只公 + 一只母」的普通卡；学院 1:2 的三只卡本来就把公只画一次，保持原样。
+ * 同名但不同个体的公（盒子位置不同）不合并。
+ */
+const groupSharedStudViews = (views: readonly PairingView[]): StudCardLayout[] => {
+  const studOf = (view: PairingView): NestPet | null => {
+    const cards = [view.left, ...view.partners];
+    if (cards.length !== 2) return null;
+    const males = cards.filter((pet) => pet.gender === '公');
+    return males.length === 1 ? males[0] : null;
+  };
+  const groups = new Map<string, SharedStudGroup>();
+  const layouts: StudCardLayout[] = [];
+  for (const view of views) {
+    const stud = studOf(view);
+    if (!stud) {
+      layouts.push({ kind: 'single', view });
+      continue;
+    }
+    const existing = groups.get(stud.key);
+    if (existing) {
+      existing.views.push(view);
+      continue;
+    }
+    const group: SharedStudGroup = { kind: 'shared', stud, views: [view] };
+    groups.set(stud.key, group);
+    layouts.push(group);
+  }
+  // 只有一张卡的「共用种公」没有共用对象，退回普通卡，不写多余的标题
+  return layouts.map((layout) =>
+    layout.kind === 'shared' && layout.views.length === 1
+      ? { kind: 'single', view: layout.views[0] }
+      : layout,
+  );
+};
+
 /**
  * 一行「概率 + 性格 + 性别」：**每个性格一枚「50%固执 ♂」**。
  *
@@ -156,7 +277,9 @@ function PairingHead({
       {natures.map(({ name, chance }) => (
         <span
           key={name}
-          className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] leading-none font-semibold text-amber-700"
+          className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] leading-none font-semibold ${
+            chance > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
+          }`}
         >
           {percentLabel(chance * genderShare)}
           {name}
@@ -176,12 +299,12 @@ function PairingHead({
 const NO_COLLECTED_GROUPS: ReadonlySet<number> = new Set();
 
 /**
- * 配窝卡里的一只精灵（2026-11-19 用户口径）：补全计划与家园共用同一张紧凑卡。
+ * 配窝卡里的一只精灵（2026-11-19 用户口径）：配窝建议卡与家园共用同一张紧凑卡。
  *
  * - 蛋组在左上角（编号不再显示）：**这个号已收齐的组显示绿色**，没收齐的保持原来的蓝色；
  * - 体型 / 声音奖牌放在蛋组下方；
  * - 分贝、身高、体重纵向排在性格下方；
- * - 头像 44、名字 11px；补全计划的卡高 86px，卡底留一行盒子位置；
+ * - 头像 44、名字 11px；配窝建议的卡高 86px，卡底留一行盒子位置；
  *   家园卡高 70px，不写盒子（数据里也没有）。
  */
 export interface PairCardPet {
@@ -196,7 +319,7 @@ export interface PairCardPet {
   medalBody?: string | null;
   heightPercent?: number | null;
   weightPercent?: number | null;
-  /** 卡底小字：补全计划是盒子位置；家园不写 */
+  /** 卡底小字：配窝建议是盒子位置；家园不写 */
   box?: string;
 }
 
@@ -205,14 +328,17 @@ export function PairingPetCard({
   collectedGroupIds,
   academy = false,
   home = false,
+  hideMeasurements = false,
   testId = 'breed-pet-card',
 }: {
   pet: PairCardPet;
   collectedGroupIds: ReadonlySet<number>;
   /** 住学院小窝：绿框，和普通窝的卡片区分开 */
   academy?: boolean;
-  /** 家园版：70px（补全计划 86px，多一行盒子位置） */
+  /** 家园版：70px（配窝建议 86px，多一行盒子位置） */
   home?: boolean;
+  /** 只有物种没有个体（母本缺口）：奖牌照画（目标奖牌），不写分贝/身高/体重，避免假装有数据 */
+  hideMeasurements?: boolean;
   /** 覆盖默认 data-testid（接单上窝复用这张卡时用 `home-demand-parent`） */
   testId?: string;
 }) {
@@ -306,11 +432,15 @@ export function PairingPetCard({
               {pet.nature}
             </span>
           </span>
-          <span className="whitespace-nowrap">
-            {pet.voiceDb != null ? `${pet.voiceDb}dB` : '—'}
-          </span>
-          <span className="whitespace-nowrap">高{heightText}</span>
-          <span className="whitespace-nowrap">重{weightText}</span>
+          {!hideMeasurements ? (
+            <>
+              <span className="whitespace-nowrap">
+                {pet.voiceDb != null ? `${pet.voiceDb}dB` : '—'}
+              </span>
+              <span className="whitespace-nowrap">高{heightText}</span>
+              <span className="whitespace-nowrap">重{weightText}</span>
+            </>
+          ) : null}
         </div>
       </header>
       <div className="absolute left-1/2 top-[6px] flex h-11 w-11 -translate-x-1/2 items-center justify-center">
@@ -359,7 +489,9 @@ const motherNatureChances = (
     (nature) => nature && (bothNonEight || EIGHT_NATURES.has(nature)),
   );
   const byNature = new Map<string, number>();
-  for (const nature of [...recommendedNatures, ...parentNatures]) {
+  // 2026-11-20 用户口径：有推荐性格就只按推荐写，不再把双亲自己的性格混进来
+  const natures = recommendedNatures.length > 0 ? recommendedNatures : parentNatures;
+  for (const nature of natures) {
     if (!nature) continue;
     const chance = chanceOf(nature);
     if (chance > 0) byNature.set(nature, Math.max(byNature.get(nature) ?? 0, chance));
@@ -384,16 +516,49 @@ const NonEightStudNote = ({ nature }: { nature: string }) =>
     </span>
   );
 
-/** 母本卡头：性格概率 + 平均分贝 + 非八大公标记（与补全计划卡同一套卡头，2026-11-19 统一） */
+/** 少母精灵（出母 < 50%）才标出母率：这是游戏写死的公母比例（2026-11-20 用户口径） */
+function FemaleScarceNote({
+  femaleChance,
+  effectiveChance,
+}: {
+  femaleChance: number;
+  /** 性格概率 × 出母比例的实际到手概率；传了就在「出母」后面补「到手」 */
+  effectiveChance?: number;
+}) {
+  if (!(femaleChance > 0 && femaleChance < 0.5)) return null;
+  return (
+    <span
+      className="inline-flex shrink-0 items-center whitespace-nowrap rounded bg-rose-50 px-1.5 py-0.5 text-[10px] leading-none font-semibold text-rose-600"
+      title="这个蛋出母比例低（游戏写死的公母比例）"
+      data-testid="mother-female-rate"
+    >
+      出母 {percentLabel(femaleChance)}
+      {effectiveChance != null ? ` · 到手 ${percentLabel(effectiveChance)}` : ''}
+    </span>
+  );
+}
+
+/** 母本卡头：性格概率 + 平均分贝 + 非八大公标记（与配窝建议卡同一套卡头，2026-11-19 统一） */
 function MotherCardHead({
   natures,
   voiceDb,
   fatherNature,
+  femaleChance,
+  moreNatures = 0,
+  naturesTitle,
+  effectiveChance,
   testId,
 }: {
   natures: Array<{ nature: string; chance: number }>;
   voiceDb: number | null;
-  fatherNature: string;
+  /** 公的性格；求助卡没有具体公，传空字符串，不显示「非八大公」 */
+  fatherNature?: string;
+  femaleChance: number;
+  /** 求助卡推荐性格不止一个时，卡头补「+N」，完整列表放 title */
+  moreNatures?: number;
+  naturesTitle?: string;
+  /** 性格概率 × 出母比例的实际到手概率（求助卡写「到手 12%」） */
+  effectiveChance?: number;
   testId: string;
 }) {
   return (
@@ -401,17 +566,30 @@ function MotherCardHead({
       {natures.map(({ nature, chance }) => (
         <span
           key={nature}
-          className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] leading-none font-semibold text-amber-700"
+          className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] leading-none font-semibold ${
+            chance > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
+          }`}
         >
           {percentLabel(chance)}
           {nature}
           <GenderMark gender="母" />
         </span>
       ))}
+      {natures.length > 1 ? (
+        <span className="text-[10px] leading-none text-slate-400">
+          合计 {percentLabel(natures.reduce((sum, item) => sum + item.chance, 0))}
+        </span>
+      ) : null}
       {voiceDb !== null ? (
         <span className="text-[10px] leading-none text-slate-500">{voiceDb}dB</span>
       ) : null}
-      <NonEightStudNote nature={fatherNature} />
+      <FemaleScarceNote femaleChance={femaleChance} effectiveChance={effectiveChance} />
+      {moreNatures > 0 ? (
+        <span className="text-[10px] leading-none text-slate-400" title={naturesTitle}>
+          +{moreNatures}
+        </span>
+      ) : null}
+      {fatherNature ? <NonEightStudNote nature={fatherNature} /> : null}
     </div>
   );
 }
@@ -425,16 +603,67 @@ function MotherCardHead({
 function SeekGroupButton({ onSeekHelp }: { onSeekHelp?: () => void }) {
   if (!onSeekHelp) return null;
   return (
-    <div className="mt-1 flex justify-end">
-      <button
-        type="button"
-        onClick={onSeekHelp}
-        data-testid="mother-seek-help"
-        className="min-h-[24px] rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-medium text-slate-500 active:bg-slate-50"
+    <button
+      type="button"
+      onClick={onSeekHelp}
+      data-testid="mother-seek-help"
+      className="min-h-[24px] shrink-0 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-medium text-slate-500 active:bg-slate-50"
+    >
+      小组求助
+    </button>
+  );
+}
+
+/**
+ * 配窝卡右上角的「占窝」圆圈（2026-11-20 用户口径）：
+ * 默认不勾 = 不占窝；种公卡和母本卡勾的是同一个窝数，由 NestPlanCard 统一记。
+ */
+function NestPickButton({
+  picked,
+  onToggle,
+  label,
+}: {
+  picked: boolean;
+  onToggle?: () => void;
+  /** 读屏用：写清勾的是哪一对，不只是一个空圆圈 */
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={picked}
+      aria-label={label}
+      title={picked ? '取消勾选' : '勾选这组配窝'}
+      data-testid="nest-pick"
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle?.();
+      }}
+      className="absolute right-0.5 top-0.5 z-20 flex h-7 w-7 items-center justify-center"
+    >
+      {/* 视觉圆圈 18px，点击区域 28px：手机上不用瞄准 */}
+      <span
+        className={`flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 transition-colors ${
+          picked
+            ? 'border-emerald-500 bg-emerald-500 text-white'
+            : 'border-slate-300 bg-white active:bg-slate-100'
+        }`}
       >
-        问小组
-      </button>
-    </div>
+        {picked ? (
+          <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden="true">
+            <path
+              d="M2.5 6.2 4.9 8.6 9.5 3.6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        ) : null}
+      </span>
+    </button>
   );
 }
 
@@ -443,10 +672,18 @@ function MotherPairingCard({
   pairing,
   collectedGroupIds,
   onSeekHelp,
+  low = false,
+  picked = false,
+  onTogglePick,
 }: {
   pairing: MotherNestPairing;
   collectedGroupIds: ReadonlySet<number>;
   onSeekHelp?: () => void;
+  /** 本号内概率不到 30% 的线：列出来，勾选后同样占窝（2026-11-20 用户口径） */
+  low?: boolean;
+  /** 卡片右上角的占窝圆圈（2026-11-20） */
+  picked?: boolean;
+  onTogglePick?: () => void;
 }) {
   /** 每个推荐性格单独算「出母 × 拿到这个性格」：6~30 个百分点的独立目标 */
   const natureChances = motherNatureChances(
@@ -458,18 +695,30 @@ function MotherPairingCard({
   const voiceDb = averageVoiceOf([pairing.mother, pairing.father]);
   return (
     <li
-      className="rounded-xl border-l-4 border-amber-400 bg-slate-50 px-2 py-2"
+      className={`relative list-none rounded-xl border-l-4 bg-slate-50 px-2 py-2 ${
+        low ? 'border-slate-300' : 'border-amber-400'
+      } ${picked ? 'ring-1 ring-emerald-300' : ''}`}
       data-testid="mother-pairing"
+      data-low={low ? 'true' : undefined}
+      data-picked={picked ? 'true' : undefined}
     >
-      <div className="flex items-start gap-1.5">
+      <NestPickButton
+        picked={picked}
+        onToggle={onTogglePick}
+        label={`${picked ? '取消勾选' : '勾选'}：${pairing.mother.name} × ${pairing.father.name}`}
+      />
+      <div className="flex items-start gap-1.5 pr-7">
         <span
-          className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-amber-400"
+          className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${
+            low ? 'bg-slate-300' : 'bg-amber-400'
+          }`}
           aria-hidden="true"
         />
         <MotherCardHead
           natures={natureChances}
           voiceDb={voiceDb}
           fatherNature={pairing.father.nature}
+          femaleChance={pairing.femaleChance}
           testId="mother-pairing-head"
         />
       </div>
@@ -477,7 +726,21 @@ function MotherPairingCard({
         <PairingPetCard pet={pairing.mother} collectedGroupIds={collectedGroupIds} />
         <PairingPetCard pet={pairing.father} collectedGroupIds={collectedGroupIds} />
       </div>
-      <SeekGroupButton onSeekHelp={onSeekHelp} />
+      {low ? (
+        <div className="mt-1 flex justify-end">
+          <SeekGroupButton onSeekHelp={onSeekHelp} />
+        </div>
+      ) : (
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p
+            className="min-w-0 truncate text-[11px] font-medium text-amber-700"
+            data-testid="mother-pairing-action"
+          >
+            本号自己配
+          </p>
+          <SeekGroupButton onSeekHelp={onSeekHelp} />
+        </div>
+      )}
     </li>
   );
 }
@@ -485,12 +748,20 @@ function MotherPairingCard({
 /** 跨号母本建议：源号最高概率的一对 → 传蛋过来 */
 function MotherTaskCard({
   task,
+  targets,
   collectedGroupIds,
   onSeekHelp,
+  picked = false,
+  onTogglePick,
 }: {
   task: MotherNestTask;
+  /** 这一对要传给哪些号（同一对只出现一次，2026-11-20） */
+  targets: string[];
   collectedGroupIds: ReadonlySet<number>;
   onSeekHelp?: () => void;
+  /** 卡片右上角的占窝圆圈（2026-11-20） */
+  picked?: boolean;
+  onTogglePick?: () => void;
 }) {
   const natureChances = motherNatureChances(
     task.mother,
@@ -502,10 +773,18 @@ function MotherTaskCard({
 
   return (
     <li
-      className="rounded-xl border-l-4 border-sky-400 bg-slate-50 px-2 py-2"
+      className={`relative list-none rounded-xl border-l-4 border-sky-400 bg-slate-50 px-2 py-2 ${
+        picked ? 'ring-1 ring-emerald-300' : ''
+      }`}
       data-testid="mother-task"
+      data-picked={picked ? 'true' : undefined}
     >
-      <div className="flex items-start gap-1.5">
+      <NestPickButton
+        picked={picked}
+        onToggle={onTogglePick}
+        label={`${picked ? '取消勾选' : '勾选'}：${task.mother.name} × ${task.father.name}`}
+      />
+      <div className="flex items-start gap-1.5 pr-7">
         <span
           className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-sky-400"
           aria-hidden="true"
@@ -514,6 +793,7 @@ function MotherTaskCard({
           natures={natureChances}
           voiceDb={voiceDb}
           fatherNature={task.father.nature}
+          femaleChance={task.femaleChance}
           testId="mother-task-head"
         />
       </div>
@@ -521,63 +801,108 @@ function MotherTaskCard({
         <PairingPetCard pet={task.mother} collectedGroupIds={collectedGroupIds} />
         <PairingPetCard pet={task.father} collectedGroupIds={collectedGroupIds} />
       </div>
-      <p
-        className="mt-1 text-center text-[11px] font-semibold text-sky-700"
-        data-testid="mother-task-flow"
-      >
-        {task.sourceAccount} → {task.account}
-      </p>
-      <SeekGroupButton onSeekHelp={onSeekHelp} />
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <p
+          className="min-w-0 truncate text-[11px] font-semibold text-sky-700"
+          data-testid="mother-task-flow"
+        >
+          传给 {targets.slice(0, 2).join('、')}
+          {targets.length > 2 ? ` 等 ${targets.length} 个号` : ''}
+        </p>
+        <SeekGroupButton onSeekHelp={onSeekHelp} />
+      </div>
     </li>
   );
 }
 
+/** 没有这只母本时，右边的种公卡换成小组求助卡（和精灵卡同高，2026-11-20 用户口径） */
+function SeekHelpCard({ onSeekHelp }: { onSeekHelp?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSeekHelp}
+      data-testid="mother-help-action-card"
+      className="flex h-[86px] flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-emerald-300 bg-emerald-50/60 p-1.5 text-emerald-700 active:bg-emerald-100"
+    >
+      <span className="text-[11px] font-semibold">小组求助</span>
+    </button>
+  );
+}
+
 /**
- * 向小组求助的母本缺口（2026-11-19 用户口径）。
- *
- * 本号自己只能 30%、别的号也没有更稳的一对：不占窝，集中成一小段，配一个「向小组求助」入口。
- * 每条写「最好 30%」而不是不写，让用户知道这不是漏算。
+ * 求助里的一只母本（2026-11-20 用户口径）：
+ * - 本号有这只母本：左右两张真实精灵卡（母本 + 配对种公）；
+ * - 本号没有这只母本：左边只写缺口物种卡（不编分贝/身高/体重/奖牌），右边换成小组求助卡。
+ * 卡头写子代推荐性格概率、出母比例和实际到手概率。
  */
-function MotherHelpList({
-  helps,
+function MotherHelpCard({
+  help,
+  collectedGroupIds,
+  targetBodyMedal,
+  targetVoiceDb,
   onSeekHelp,
 }: {
-  helps: MotherHelpItem[];
+  help: MotherHelpItem;
+  collectedGroupIds: ReadonlySet<number>;
+  targetBodyMedal?: string | null;
+  targetVoiceDb?: number | null;
   onSeekHelp?: () => void;
 }) {
+  const mother = help.mother;
+  const father = help.father;
+  /** 卡头按推荐性格逐个写「到手概率」（已乘出母比例） */
+  const natureChances =
+    help.natureChances ?? [
+      {
+        nature: help.recommendedNatures[0] ?? '不限',
+        chance: help.bestNatureChance * help.femaleChance,
+      },
+    ];
+  /** 缺口物种卡上写卡头第一个有概率的性格，避免卡头写急躁、卡上写胆小 */
+  const nature =
+    natureChances.find((item) => item.chance > 0)?.nature ??
+    natureChances[0]?.nature ??
+    help.recommendedNatures[0] ??
+    '不限';
+  const missingPet: PairCardPet = {
+    key: `help-${help.eggGameId}`,
+    gameId: help.eggGameId,
+    name: help.eggName,
+    gender: '母',
+    nature,
+    voiceDb: targetVoiceDb ?? null,
+    medalBody: targetBodyMedal ?? null,
+    box: '未收集',
+  };
   return (
-    <div
-      className="mt-1.5 rounded-xl border-l-4 border-slate-300 bg-slate-50 px-2 py-2"
-      data-testid="mother-helps"
-    >
-      <p className="text-[11px] leading-relaxed text-slate-600">
-        这些蛋最好的配法也不到 30%：占窝不划算，去小组问问有没有更稳的一对，或直接换蛋。
-      </p>
-      <ul className="mt-1 space-y-0.5">
-        {helps.map((help) => (
-          <li
-            key={help.eggGameId}
-            className="flex items-center justify-between gap-2 text-[11px] text-slate-500"
-            data-testid="mother-help"
-          >
-            <span className="truncate">{help.eggName}</span>
-            <span className="shrink-0" data-testid="mother-help-chance">
-              最好 {percentLabel(help.bestNatureChance * help.femaleChance)}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {onSeekHelp ? (
-        <button
-          type="button"
-          onClick={onSeekHelp}
-          data-testid="mother-help-action"
-          className="mt-1.5 min-h-[28px] rounded-lg border border-emerald-200 bg-white px-2 text-[11px] font-medium text-emerald-700 active:bg-emerald-50"
-        >
-          向小组求助
-        </button>
-      ) : null}
-    </div>
+    <li className="list-none rounded-xl border-l-4 border-slate-300 bg-slate-50 px-2 py-2" data-testid="mother-help">
+      <div className="flex items-start gap-1.5">
+        <span
+          className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-300"
+          aria-hidden="true"
+        />
+        <MotherCardHead
+          natures={natureChances}
+          voiceDb={mother && father ? averageVoiceOf([mother, father]) : null}
+          fatherNature={father?.nature ?? ''}
+          femaleChance={1}
+          testId="mother-help-head"
+        />
+      </div>
+      <div className="mt-1.5 grid grid-cols-2 gap-1">
+        {mother && father ? (
+          <>
+            <PairingPetCard pet={mother} collectedGroupIds={collectedGroupIds} />
+            <PairingPetCard pet={father} collectedGroupIds={collectedGroupIds} />
+          </>
+        ) : (
+          <>
+            <PairingPetCard pet={missingPet} collectedGroupIds={collectedGroupIds} hideMeasurements />
+            <SeekHelpCard onSeekHelp={onSeekHelp} />
+          </>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -587,6 +912,8 @@ function PairingCard({
   testId,
   receivers,
   collectedGroupIds,
+  picked = false,
+  onTogglePick,
 }: {
   view: PairingView;
   testId: string;
@@ -594,16 +921,29 @@ function PairingCard({
   receivers: string[];
   /** 本号已经收齐的蛋组（卡里标绿） */
   collectedGroupIds: ReadonlySet<number>;
+  /** 卡片右上角的占窝圆圈（2026-11-20） */
+  picked?: boolean;
+  onTogglePick?: () => void;
 }) {
   const cards = [view.left, ...view.partners];
   const voiceDb = averageVoiceOf(cards);
   return (
     <li
-      className="rounded-xl border-l-4 bg-slate-50 px-2 py-2"
+      className={`relative rounded-xl border-l-4 bg-slate-50 px-2 py-2 ${
+        picked ? 'ring-1 ring-emerald-300' : ''
+      }`}
       style={{ borderLeftColor: view.color }}
       data-testid={testId}
+      data-picked={picked ? 'true' : undefined}
     >
-      <div className="flex items-start gap-1.5">
+      <NestPickButton
+        picked={picked}
+        onToggle={onTogglePick}
+        label={`${picked ? '取消勾选' : '勾选'}：${view.mother.name} × ${view.partners
+          .map((partner) => partner.name)
+          .join('、')}`}
+      />
+      <div className="flex items-start gap-1.5 pr-7">
         <span
           className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
           style={
@@ -648,6 +988,198 @@ function PairingCard({
 }
 
 /**
+ * 「共用种公」卡（2026-11-20 用户口径，和家园一样）：同一只种公配 2~3 只母本时，
+ * 种公只画一次放在上面，母本两列并排在下面；右上角一个圆圈把这几个窝一起勾上。
+ */
+function SharedStudCard({
+  stud,
+  views,
+  account,
+  receiversOf,
+  collectedGroupIds,
+  picked = false,
+  onTogglePick,
+}: {
+  stud: NestPet;
+  views: PairingView[];
+  /** 出蛋的号（卡片底部写「本号 → 收蛋方」） */
+  account: string;
+  receiversOf: (view: PairingView) => string[];
+  collectedGroupIds: ReadonlySet<number>;
+  picked?: boolean;
+  onTogglePick?: () => void;
+}) {
+  const motherNames = views.map((view) => view.mother.name).join('、');
+  /** 这几窝合起来能帮到的号：同一个号只写一次，按账号名自然排序 */
+  const receivers = [...new Set(views.flatMap((view) => receiversOf(view)))].sort(
+    compareAccountNames,
+  );
+  return (
+    <li
+      className={`relative rounded-xl border-l-4 bg-slate-50 px-2 py-2 ${
+        picked ? 'ring-1 ring-emerald-300' : ''
+      }`}
+      style={{ borderLeftColor: views[0]?.color }}
+      data-testid="breed-suggestion"
+      data-layout="shared-stud"
+      data-picked={picked ? 'true' : undefined}
+    >
+      <NestPickButton
+        picked={picked}
+        onToggle={onTogglePick}
+        label={`${picked ? '取消勾选' : '勾选'}：共用种公 ${stud.name} 的 ${views.length} 个窝（${motherNames}）`}
+      />
+      <div className="flex items-center gap-1.5 pr-7">
+        <span className="flex shrink-0 items-center gap-1">
+          {/* 每种母本一条线：保留摆位图里的颜色，合卡后也能对上号 */}
+          {views.map((view) => (
+            <span
+              key={view.key}
+              className="inline-block h-2 w-2 rounded-full"
+              style={
+                view.dashed
+                  ? { border: `2px solid ${view.color}` }
+                  : { backgroundColor: view.color }
+              }
+              aria-hidden="true"
+            />
+          ))}
+        </span>
+        <span className="flex-1 text-[11px] font-medium text-slate-600">共用种公</span>
+        <span className="shrink-0 text-[10px] text-slate-400">
+          1 只 · 配 {views.length} 只母本
+        </span>
+      </div>
+      <div className="mt-1.5 grid grid-cols-2 gap-1">
+        <PairingPetCard
+          pet={stud}
+          collectedGroupIds={collectedGroupIds}
+          academy={views.some((view) => view.academyParent?.key === stud.key)}
+        />
+      </div>
+      <div className="mt-1.5 grid grid-cols-2 items-start gap-1">
+        {views.map((view) => (
+          <div key={view.key} className="flex min-w-0 flex-col gap-1">
+            <PairingHead
+              natures={view.natures}
+              genderShare={view.genderShare}
+              voiceDb={averageVoiceOf([view.left, ...view.partners])}
+            />
+            <PairingPetCard
+              pet={view.mother}
+              collectedGroupIds={collectedGroupIds}
+              academy={view.academyParent?.key === view.mother.key}
+            />
+          </div>
+        ))}
+      </div>
+      {/* 这几个窝合起来能帮到哪些号：并成一行写在卡底，和普通配窝卡同一个位置 */}
+      {receivers.length > 0 ? (
+        <p
+          className="mt-1 text-center text-[11px] font-medium text-sky-700"
+          data-testid="shared-stud-receivers"
+        >
+          {account} → {receivers.slice(0, 3).join('、')}
+          {receivers.length > 3 ? ` 等 ${receivers.length} 个号` : ''}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
+/** 只在母本建议里出现的源号（测试 / 极端数据）没有种公方案，给一个空壳，避免整段消失 */
+const emptyNestPlan = (account: string): NestPlan => ({
+  account,
+  pairings: [],
+  blockedLinks: [],
+  slots: [],
+  nestsUsed: 0,
+  nestsTotal: 0,
+  clusters: [],
+  unfilled: [],
+  delegated: [],
+  alternatives: [],
+});
+
+/** 跨号传蛋按「出蛋号 + 这一对」合并：同一对只出现一次，后面写要传给哪些号（2026-11-20） */
+interface SourceTransfer {
+  task: MotherNestTask;
+  targets: string[];
+}
+
+const transferKeyOf = (task: MotherNestTask): string =>
+  `${task.eggGameId}|${task.mother.key}|${task.father.key}`;
+
+/** 占窝勾选的卡片身份：同一张卡跨一次排序 / 切换分区都还能对上（2026-11-20） */
+const motherPickKeyOf = (pairing: MotherNestPairing, low = false): string =>
+  `${low ? 'low' : 'mother'}:${pairing.eggGameId}:${pairing.mother.key}:${pairing.father.key}`;
+const transferPickKeyOf = (task: MotherNestTask): string => `transfer:${transferKeyOf(task)}`;
+
+/** 「缺口」横条里的母本缺口卡（看板构建，配窝卡只负责画） */
+export interface MotherGapCard {
+  chainKey: string;
+  name: string;
+  number?: string;
+  eggGameId: number;
+  eggGroups: string[];
+  natures: string[];
+  title: string;
+  ariaLabel?: string;
+}
+
+/** 母本缺口四列卡 + 去收集入口（缺口横条和没有配窝方案时的兜底共用） */
+function MotherGapGrid({
+  cards,
+  onOpen,
+  onOpenAll,
+}: {
+  cards: MotherGapCard[];
+  onOpen?: (chainKey: string) => void;
+  onOpenAll?: () => void;
+}) {
+  return (
+    <>
+      {cards.length > 0 ? (
+        <ul className="grid grid-cols-4 gap-1" data-testid="mother-action-items">
+          {cards.map((card) => (
+            <li
+              key={card.chainKey}
+              aria-label={card.ariaLabel ?? card.title}
+              data-testid="mother-action-item"
+            >
+              <PetCardLayout
+                name={card.name}
+                number={card.number}
+                eggGroups={card.eggGroups}
+                natures={card.natures}
+                naturesTestId="mother-action-nature"
+                title={card.title}
+                size="gap"
+                fitName
+                avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={52} />}
+                onClick={() => onOpen?.(card.chainKey)}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[11px] text-emerald-700">个人母本目标已全部收集。</p>
+      )}
+      {onOpenAll ? (
+        <button
+          type="button"
+          onClick={onOpenAll}
+          className="mx-1 mt-2 min-h-[28px] text-xs font-medium text-emerald-700"
+          data-testid="mother-actions-more"
+        >
+          去收集看母本缺口 ›
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+/**
  * 「一键配窝」卡片：按账号给出**哪只进哪个窝、和谁配、小窝怎么摆**。
  * 数据来自 `buildNestPlans`（第一期：可配建议）。候选配对默认收起，用户可自行替换。
  *
@@ -661,42 +1193,265 @@ export function NestPlanCard({
   collectedGroupIdsByAccount,
   motherSuggestions,
   onSeekHelp,
+  section,
+  targetBodyMedal,
+  targetVoiceDb,
+  motherGaps,
+  onOpenMotherGap,
+  onOpenMotherGaps,
+  studRecommendationsByAccount,
+  onOpenStudRecommendation,
+  studCompleteAccounts,
 }: {
   plans: NestPlan[];
   emptyNote?: string;
   /** 每个号自己还差几个种公目标（按号各算，2026-11-18） */
   gapsByAccount?: ReadonlyMap<string, number>;
+  /**
+   * 种公已经全齐的号（2026-11-20 用户口径：全齐的号不能从配窝建议里消失）。
+   * 它们会常驻账号格，并带上替别的号出蛋的配对。
+   */
+  studCompleteAccounts?: ReadonlySet<string>;
   /** 每个号已经收齐的蛋组（配窝卡里标绿；没传就全是原来的蓝色） */
   collectedGroupIdsByAccount?: ReadonlyMap<string, ReadonlySet<number>>;
   /** 母本配窝建议（2026-11-18）：本号内母本线 + 跨号传蛋；按账号索引 */
   motherSuggestions?: ReadonlyMap<string, MotherNestAccount>;
   /** 「向小组求助」：去小组发需求（2026-11-19） */
   onSeekHelp?: () => void;
+  /** 只看种公配对 / 只看母本配窝；不传 = 两段都显示（看板按「看板行动」开关联动，2026-11-20） */
+  section?: 'studs' | 'mothers';
+  /** 求助卡的奖牌按当前目标写（只画奖牌，不编分贝/身高/体重） */
+  targetBodyMedal?: string | null;
+  targetVoiceDb?: number | null;
+  /** 种公推荐「缺口」页签：每个号自己的种公推荐（按本号缺口算，不是全设备合并的） */
+  studRecommendationsByAccount?: ReadonlyMap<string, StudRecommendation[]>;
+  /** 点缺口页签的推荐卡：按这个号开「怎么补」 */
+  onOpenStudRecommendation?: (account: string, group: StudRecommendationGroup) => void;
+  /** 上方的母本缺口卡移进「缺口」横条（2026-11-20 用户口径） */
+  motherGaps?: MotherGapCard[];
+  onOpenMotherGap?: (chainKey: string) => void;
+  onOpenMotherGaps?: () => void;
 }) {
-  /** 当前看哪个号（多账号滑条切换；默认第一个有内容的号） */
+  /** 只看种公 / 只看母本：不传 = 两段都显示（2026-11-20 用户口径：跟「看板行动」开关联动） */
+  const showStuds = section !== 'mothers';
+  const showMothers = section !== 'studs';
+  /** 当前看哪个号（多账号账号格切换；默认第一个有内容的号） */
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
-  const entries = plans.map((plan) => ({ plan, views: mergePairings(plan.pairings) }));
-  /** 这个号实际占几个窝：种公方案 + 母本配窝（2026-11-19：tab 写窝数，不写对数） */
-  const nestsOf = (plan: NestPlan): number =>
-    plan.nestsUsed + (motherSuggestions?.get(plan.account)?.nestsUsed ?? 0);
-  /** 这个号有几条母本建议（本号内 + 跨号） */
-  const motherCountOf = (account: string): number => {
+  /** 母本区分组横条：高概率 / 低概率（含原来的牢五门）/ 缺口（2026-11-20 用户口径） */
+  const [motherTab, setMotherTab] = useState<'high' | 'low' | 'gap'>('high');
+  /** 种公推荐分组横条：高概率 / 低概率 / 缺口（2026-11-20 用户口径） */
+  const [studTab, setStudTab] = useState<'high' | 'low' | 'gap'>('high');
+  /**
+   * 占窝勾选（2026-11-20 用户口径）：默认 **零个窝**，不按方案自动算；
+   * 用户在对应号的配窝卡右上角自己点圆圈，种公卡和母本卡记在同一份窝数里。
+   */
+  const [nestPicks, setNestPicks] = useState<Record<string, boolean>>(readNestPicks);
+  /** 账号格那一行的实际宽度：决定一行 3 个还是 2 个（还没量到时先按 3 个排） */
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  const [tabsWidth, setTabsWidth] = useState(0);
+  useEffect(() => {
+    try {
+      localStorage.setItem(NEST_PICKS_STORAGE_KEY, JSON.stringify(nestPicks));
+    } catch {
+      // 隐私模式 / 存储满：只影响跨页面保留，不影响当前页勾选
+    }
+  }, [nestPicks]);
+  const pickKeyOf = (account: string, cardKey: string): string => `${account}|${cardKey}`;
+  const isPicked = (account: string, cardKey: string): boolean =>
+    nestPicks[pickKeyOf(account, cardKey)] === true;
+  /** 一次改一组卡的勾选：共用种公卡勾一次就把这几窝一起勾上 / 一起取消（2026-11-20） */
+  const setPicks = (account: string, cardKeys: readonly string[], picked: boolean): void => {
+    setNestPicks((prev) => {
+      const next = { ...prev };
+      for (const cardKey of cardKeys) {
+        const key = pickKeyOf(account, cardKey);
+        if (picked) next[key] = true;
+        else delete next[key];
+      }
+      return next;
+    });
+  };
+  const togglePick = (account: string, cardKey: string): void => {
+    setPicks(account, [cardKey], !isPicked(account, cardKey));
+  };
+  /**
+   * 这个号一共占几个窝：**一窝一只精灵**，所以勾一对 = 母 + 公两个窝；
+   * 种公卡和母本卡共用同一份窝数，同一只精灵被勾的多张卡共用只算一次（2026-11-20 用户口径）。
+   */
+  const pickedNestsOf = (account: string): number => {
+    const pets = new Set<string>();
+    for (const card of selectableCardsOf(account)) {
+      if (!isPicked(account, card.key)) continue;
+      for (const petKey of card.petKeys) pets.add(petKey);
+    }
+    return pets.size;
+  };
+
+  /**
+   * 账号全集：配窝方案里的号 + 母本建议里出现的源号 / 目标号。
+   * 2026-11-20 用户口径：母本配窝按**出蛋的号**分组；源号可能不在种公方案里，
+   * 只从 plans 取会把卡片整段弄丢。
+   */
+  const planByAccount = new Map(plans.map((plan) => [plan.account, plan]));
+  const accountNames = [
+    ...new Set([
+      ...plans.map((plan) => plan.account),
+      ...(motherSuggestions ? [...motherSuggestions.keys()] : []),
+      ...(motherSuggestions
+        ? [...motherSuggestions.values()].flatMap((suggestion) =>
+            suggestion.tasks.map((task) => task.sourceAccount),
+          )
+        : []),
+    ]),
+  ];
+  const entries = accountNames.map((account) => {
+    const plan = planByAccount.get(account);
+    return {
+      plan: plan ?? emptyNestPlan(account),
+      views: plan ? mergePairings(plan.pairings) : [],
+    };
+  });
+  const viewsByAccount = new Map(entries.map((entry) => [entry.plan.account, entry.views]));
+
+  /** 母本建议里属于这个号的「本号内」线：达到门槛的 + 概率低的 */
+  const localPairingsOf = (
+    account: string,
+  ): { accepted: MotherNestPairing[]; low: MotherNestPairing[] } => {
     const suggestion = motherSuggestions?.get(account);
-    return (
-      (suggestion?.pairings.length ?? 0) +
-      (suggestion?.tasks.length ?? 0) +
-      (suggestion?.helps.length ?? 0)
+    return { accepted: suggestion?.pairings ?? [], low: suggestion?.lowPairings ?? [] };
+  };
+
+  /**
+   * 这个号作为**出蛋方**的跨号线（2026-11-20 用户口径：卡片归到出蛋的号下面，
+   * 同一对只出现一次，后面写传给哪些号）。
+   */
+  const sourceTransfersOf = (account: string): SourceTransfer[] => {
+    if (!motherSuggestions) return [];
+    // 同一颗蛋只留这个源号最高概率的一对：不同目标号可能算出不同的公，
+    // 但给用户的配窝数应按「蛋」算，不能同一颗蛋出现两张卡（2026-11-20 用户口径）
+    const byEgg = new Map<number, SourceTransfer>();
+    for (const suggestion of motherSuggestions.values()) {
+      for (const task of suggestion.tasks) {
+        if (task.sourceAccount !== account) continue;
+        const existing = byEgg.get(task.eggGameId);
+        if (existing) {
+          if (!existing.targets.includes(task.account)) existing.targets.push(task.account);
+          if (task.natureChance > existing.task.natureChance) existing.task = task;
+        } else {
+          byEgg.set(task.eggGameId, { task, targets: [task.account] });
+        }
+      }
+    }
+    return [...byEgg.values()].sort(
+      (a, b) =>
+        b.task.chance - a.task.chance ||
+        a.task.eggName.localeCompare(b.task.eggName, 'zh-Hans-CN'),
     );
   };
-  /** 有内容的号才进滑条：出窝的、等蛋的、还有缺口的、或者有母本建议的 */
+
+  const helpsOf = (account: string): MotherHelpItem[] =>
+    motherSuggestions?.get(account)?.helps ?? [];
+
+  /**
+   * 这个号当前能勾的卡片：种公卡 + 本号内母本卡（含低概率）+ 跨号传蛋卡，
+   * 每张卡带上它要摆的精灵。统计窝数时只认这些，上一次数据留下的旧勾选不会虚增；
+   * 同一只精灵出现在多张卡里时按一只算（共用小窝数）。
+   */
+  const selectableCardsOf = (account: string): Array<{ key: string; petKeys: string[] }> => {
+    const cards = (viewsByAccount.get(account) ?? []).map((view) => ({
+      key: `stud:${view.key}`,
+      petKeys: [view.left, ...view.partners].map((pet) => pet.key),
+    }));
+    const local = localPairingsOf(account);
+    for (const pairing of local.accepted) {
+      cards.push({
+        key: motherPickKeyOf(pairing),
+        petKeys: [pairing.mother.key, pairing.father.key],
+      });
+    }
+    for (const pairing of local.low) {
+      cards.push({
+        key: motherPickKeyOf(pairing, true),
+        petKeys: [pairing.mother.key, pairing.father.key],
+      });
+    }
+    for (const { task } of sourceTransfersOf(account)) {
+      cards.push({
+        key: transferPickKeyOf(task),
+        petKeys: [task.mother.key, task.father.key],
+      });
+    }
+    return cards;
+  };
+
+  /** 这个号作为目标能从别的号收哪些蛋：按源号汇总，只写一行，不重复画卡（2026-11-20） */
+  const incomingOf = (account: string): Array<{ source: string; count: number }> => {
+    const tasks = motherSuggestions?.get(account)?.tasks ?? [];
+    const bySource = new Map<string, number>();
+    for (const task of tasks) {
+      bySource.set(task.sourceAccount, (bySource.get(task.sourceAccount) ?? 0) + 1);
+    }
+    return [...bySource]
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count);
+  };
+
+  /** 这个号作为出蛋方有几个**正经配窝**（达到门槛的本号内线 + 跨号线；低概率线不算“可配”） */
+  const mainCardCountOf = (account: string): number => {
+    const { accepted } = localPairingsOf(account);
+    return accepted.length + sourceTransfersOf(account).length;
+  };
+
+  /** 这个号一共几张母本卡（含低概率线，用来判断要不要进账号格） */
+  const sourceCardCountOf = (account: string): number =>
+    mainCardCountOf(account) + localPairingsOf(account).low.length;
+
+  /** 这个号有没有种公方案内容（出窝的、等蛋的、还有缺口的） */
+  const hasStudContent = (entry: (typeof entries)[number]): boolean =>
+    entry.views.length > 0 || entry.plan.unfilled.length > 0 || entry.plan.delegated.length > 0;
+  /**
+   * 种公已全齐的号（2026-11-20 用户口径）：即使这一次没有可排的配对，
+   * 也要留在账号格里，点开写「种公都收齐了」，不能从配窝建议里消失。
+   */
+  const isCompleteOf = (account: string): boolean =>
+    studCompleteAccounts?.has(account) === true;
+  /** 有内容（或种公已全齐）的号才进账号格：按 section 只看种公或只看母本 */
   const visible = entries.filter(
     (entry) =>
-      entry.views.length > 0 ||
-      entry.plan.unfilled.length > 0 ||
-      entry.plan.delegated.length > 0 ||
-      motherCountOf(entry.plan.account) > 0,
+      (showStuds && (hasStudContent(entry) || isCompleteOf(entry.plan.account))) ||
+      (showMothers &&
+        (sourceCardCountOf(entry.plan.account) > 0 || helpsOf(entry.plan.account).length > 0)),
   );
   const hasContent = visible.length > 0;
+  /** 量账号格那一行的宽度：决定一行放 3 个还是 2 个（不靠横向滑动） */
+  useLayoutEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const update = () => setTabsWidth(el.clientWidth);
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [visible.length]);
+
+  /**
+   * 账号格上的小字：种公和母本**共用**已勾选的窝数（2026-11-20 用户口径），默认 0。
+   * 种公都收齐的号不再挂小字；一张可勾的配窝卡都没有时，才写「待补」。
+   */
+  const tabBadgeOf = (plan: NestPlan): string => {
+    const picked = pickedNestsOf(plan.account);
+    // 种公都收齐的号不再挂「全齐」小字（母本不一定齐，容易误读），统一写窝数
+    if (isCompleteOf(plan.account)) return `${picked} 窝`;
+    const selectable =
+      (showStuds && plan.pairings.length > 0) ||
+      (showMothers &&
+        (localPairingsOf(plan.account).accepted.length > 0 ||
+          localPairingsOf(plan.account).low.length > 0 ||
+          sourceTransfersOf(plan.account).length > 0));
+    if (!selectable) return '待补';
+    return `${picked} 窝`;
+  };
 
   /** 每一格还有哪些号在等蛋：来自别的号的 delegated 清单（2026-11-18 多账号） */
   const receiversByCell = new Map<string, string[]>();
@@ -716,40 +1471,123 @@ export function NestPlanCard({
         for (const account of receiversByCell.get(key) ?? []) set.add(account);
       }
     }
-    return [...set];
+    // 收蛋方也按账号名自然排序（账号2 在 账号10 前面），和账号格一致
+    return [...set].sort(compareAccountNames);
   };
 
   if (!hasContent) {
+    // 没有配窝方案，但母本缺口还有：缺口横条仍要能看（2026-11-20 用户口径）
+    if (section === 'mothers' && motherGaps && motherGaps.length > 0) {
+      return (
+        <section className="rounded-2xl bg-white shadow-sm" data-testid="mother-actions">
+          <MotherGapGrid
+            cards={motherGaps}
+            onOpen={onOpenMotherGap}
+            onOpenAll={onOpenMotherGaps}
+          />
+        </section>
+      );
+    }
     return (
       <p className="mt-1 text-sm text-slate-400" data-testid="breed-empty">
         {emptyNote ?? '当前没有能排的配窝方案——先到「覆盖度」挑要补的缺口，或缺的配对方/母本还没到位。'}
       </p>
     );
   }
-  // 默认看「要出的窝最多」的那个号，而不是按账号名排第一个（多号时第一个往往是空壳）
-  const defaultAccount = visible.reduce(
-    (best, entry) =>
-      entry.views.length + motherCountOf(entry.plan.account) >
-      best.views.length + motherCountOf(best.plan.account)
-        ? entry
-        : best,
-    visible[0],
+  // 默认看「要出的窝最多」的那个号，而不是按账号名排第一个（多号时第一个往往是空壳）。
+  // 种公全齐的号没有自己的缺口，种公侧权重记 0，不抢默认选中；母本侧照常按母本内容算。
+  const weightOf = (entry: (typeof entries)[number]): number => {
+    const studWeight = showStuds
+      ? isCompleteOf(entry.plan.account)
+        ? 0
+        : entry.views.length + entry.plan.unfilled.length
+      : 0;
+    const motherWeight = showMothers
+      ? mainCardCountOf(entry.plan.account) * 2 + helpsOf(entry.plan.account).length
+      : 0;
+    return studWeight + motherWeight;
+  };
+  const ranked = [...visible].sort(
+    (a, b) =>
+      weightOf(b) - weightOf(a) ||
+      compareAccountNames(a.plan.account, b.plan.account),
   );
-  const active =
-    visible.find((entry) => entry.plan.account === activeAccount) ?? defaultAccount;
-  /** 当前号的母本配窝：pairings = 本号内要占窝的线；tasks = 跨号传蛋建议 */
+  /** 账号格按账号名自然排序（名字里的数字按数值），默认选中仍是内容最多的号 */
+  const tabOrder = [...visible].sort((a, b) =>
+    compareAccountNames(a.plan.account, b.plan.account),
+  );
+  const tabColumns = accountTabColumns(
+    tabOrder.map((entry) => `${entry.plan.account} ${tabBadgeOf(entry.plan)}`),
+    tabsWidth,
+  );
+  const defaultAccount = ranked[0];
+  const active = visible.find((entry) => entry.plan.account === activeAccount) ?? defaultAccount;
+  /** 当前号作为出蛋方的母本配窝：本号内线 + 跨号传蛋 + 只能求助 */
   const mother = active ? motherSuggestions?.get(active.plan.account) ?? null : null;
-  const motherNests = mother?.nestsUsed ?? 0;
+  const activeName = active?.plan.account ?? '';
+  /** 当前号已勾选的窝数：种公 + 母本同一份（2026-11-20） */
+  const activePicked = pickedNestsOf(activeName);
+  const activeLocal = localPairingsOf(activeName);
+  const activeTransfers = sourceTransfersOf(activeName);
+  const activeHelps = helpsOf(activeName);
+  /**
+   * 低概率里的求助卡（2026-11-20 用户口径修正）：只放**本号已经有这只母本**的线，
+   * 按出母比例从高到低排；未收集的母本不进低概率，去「缺口」页签里看。
+   */
+  const lowHelps = activeHelps
+    .filter((help) => help.mother != null && help.father != null)
+    .sort(
+      (a, b) =>
+        b.femaleChance - a.femaleChance ||
+        a.eggName.localeCompare(b.eggName, 'zh-Hans-CN'),
+    );
+  const activeIncoming = incomingOf(activeName);
+  const hasMotherContent =
+    activeLocal.accepted.length +
+      activeLocal.low.length +
+      activeTransfers.length +
+      activeHelps.length >
+    0;
+  /** 种公推荐：实际概率 ≥30% 进高概率，其余进低概率；缺口 = 本号没排上 + 等别的号出蛋 */
+  /**
+   * 种公推荐先按「同一只种公」并卡（2026-11-20 用户口径），再看这张卡进高概率还是低概率：
+   * 组里只要有一窝是高概率，整张卡就进高概率——低概率的那只母本既然共用这只种公，
+   * 也跟到高概率卡里一起勾（用户 2026-11-20 补充口径），不再在低概率里单独占一张。
+   */
+  const activeStudCards = groupSharedStudViews(active?.views ?? []);
+  const isHighStudCard = (layout: StudCardLayout): boolean =>
+    layout.kind === 'shared'
+      ? layout.views.some((view) => viewTopChance(view) >= STUD_HIGH_CHANCE)
+      : viewTopChance(layout.view) >= STUD_HIGH_CHANCE;
+  /** 页签数量按合并后的卡片数算 */
+  const activeHighLayouts = activeStudCards.filter(isHighStudCard);
+  const activeLowLayouts = activeStudCards.filter((layout) => !isHighStudCard(layout));
+  /** 本号的种公推荐（按本号自己的缺口算）；没传时退回计划里没排上的条目当缺口提示 */
+  const activeRecommendations = studRecommendationsByAccount?.get(activeName) ?? [];
+  const activeGapTargets = gapsByAccount?.get(activeName) ?? activeRecommendations.length;
+  const activeGapCount = activeGapTargets;
+  /** 当前号的种公是否已全齐（看板按选中账号给集合） */
+  const activeComplete = isCompleteOf(activeName);
+  /** 当前号的供蛋配对能帮到哪些号（显示在标题里，点开还有每张卡的「源 → 目标」） */
+  const activeReceiverNames = [
+    ...new Set((active?.views ?? []).flatMap((view) => receiversOf(view))),
+  ];
+  const activeRecGroups = groupStudRecommendations(activeRecommendations);
+  const activeStudLayouts =
+    studTab === 'high' ? activeHighLayouts : studTab === 'low' ? activeLowLayouts : [];
 
   return (
     <div className="mt-1">
       {visible.length > 1 ? (
         <div
-          className="-mx-1 mb-1.5 flex gap-1.5 overflow-x-auto px-1 pb-1"
+          ref={tabsRef}
+          className="mb-1.5 grid gap-1.5"
+          style={{ gridTemplateColumns: `repeat(${tabColumns}, minmax(0, 1fr))` }}
           data-testid="breed-account-tabs"
         >
-          {visible.map((entry) => {
+          {tabOrder.map((entry) => {
             const selected = entry.plan.account === active?.plan.account;
+            const badge = tabBadgeOf(entry.plan);
             return (
               <button
                 key={entry.plan.account}
@@ -757,16 +1595,22 @@ export function NestPlanCard({
                 onClick={() => setActiveAccount(entry.plan.account)}
                 data-testid="breed-account-tab"
                 aria-pressed={selected}
-                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                className={`flex w-full min-w-0 items-center justify-center whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium transition-colors ${
                   selected
                     ? 'bg-emerald-600 text-white'
                     : 'bg-slate-100 text-slate-600 active:bg-slate-200'
                 }`}
               >
                 {entry.plan.account}
-                <span className={`ml-1 text-[10px] ${selected ? 'text-emerald-100' : 'text-slate-400'}`}>
-                  {nestsOf(entry.plan) > 0 ? `${nestsOf(entry.plan)} 窝` : '待补'}
-                </span>
+                {badge ? (
+                  <span
+                    className={`ml-1 shrink-0 text-[10px] ${
+                      selected ? 'text-emerald-100' : 'text-slate-400'
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -776,62 +1620,233 @@ export function NestPlanCard({
       {active ? (
         <div data-testid="breed-account">
           <h3 className="mb-1 text-sm font-medium text-slate-700" data-testid="breed-account-name">
-            {active.plan.account} · 用 {active.plan.nestsUsed + motherNests}/{active.plan.nestsTotal} 个窝
-            {motherNests > 0 ? (
-              <span className="ml-1 text-[10px] font-normal text-amber-700">
-                种公 {active.plan.nestsUsed} + 母本 {motherNests}
-              </span>
-            ) : null}
-            {gapsByAccount?.get(active.plan.account) != null ? (
+            {active.plan.account}
+            {active.plan.nestsTotal > 0
+              ? ` · 用 ${activePicked}/${active.plan.nestsTotal} 个窝`
+              : activePicked > 0
+                ? ` · 用 ${activePicked} 个窝`
+                : ''}
+            {showStuds && (activeComplete || gapsByAccount?.get(active.plan.account) != null) ? (
               <span className="ml-1 text-xs font-normal text-slate-500">
-                · 差 <b className="text-rose-600">{gapsByAccount.get(active.plan.account)}</b> 个种公目标
+                {activeComplete || gapsByAccount?.get(active.plan.account) === 0 ? (
+                  <>
+                    · 种公都收齐了
+                    {activeReceiverNames.length > 0
+                      ? ` · 可帮 ${activeReceiverNames.length} 个号补种公`
+                      : ''}
+                  </>
+                ) : (
+                  <>
+                    · 差{' '}
+                    <b className="text-rose-600">{gapsByAccount?.get(active.plan.account)}</b>{' '}
+                    个种公目标
+                  </>
+                )}
               </span>
             ) : null}
           </h3>
-          {active.views.length === 0 && (mother?.pairings.length ?? 0) === 0 ? (
+          {showStuds &&
+          active.views.length === 0 &&
+          activeGapCount === 0 &&
+          (!showMothers || !hasMotherContent) ? (
             <p className="mt-1 text-xs text-slate-400" data-testid="breed-idle">
-              这个号不用出窝：缺口由别的号补，孵好再把蛋传过来。
+              {activeComplete
+                ? '本号种公都收齐了；暂时没有能从本号补的号。'
+                : '这个号不用出窝：缺口由别的号补，孵好再把蛋传过来。'}
             </p>
           ) : null}
-          {active.views.length > 0 ? (
-            <ul className="mt-1.5 space-y-1.5" data-testid="breed-list">
-              {active.views.map((view) => (
-                <PairingCard
-                  key={view.key}
-                  view={view}
-                  testId="breed-suggestion"
-                  receivers={receiversOf(view)}
-                  collectedGroupIds={
-                    collectedGroupIdsByAccount?.get(active.plan.account) ?? NO_COLLECTED_GROUPS
-                  }
-                />
-              ))}
-            </ul>
+          {showStuds && (active.views.length > 0 || activeGapCount > 0) ? (
+            <>
+              <div
+                className="-mx-1 mt-1.5 flex gap-1 overflow-x-auto px-1 pb-1"
+                data-testid="stud-tabs"
+              >
+                {(
+                  [
+                    { key: 'high', label: '配窝建议', count: activeHighLayouts.length },
+                    { key: 'low', label: '低概率', count: activeLowLayouts.length },
+                    { key: 'gap', label: '缺口', count: activeGapCount },
+                  ] as const
+                ).map((item) => {
+                  const selected = studTab === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setStudTab(item.key)}
+                      aria-pressed={selected}
+                      data-testid={`stud-tab-${item.key}`}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        selected
+                          ? 'bg-sky-600 text-white'
+                          : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                      }`}
+                    >
+                      {item.label}
+                      {item.count != null ? (
+                        <span
+                          className={`ml-1 text-[10px] ${
+                            selected ? 'text-sky-100' : 'text-slate-400'
+                          }`}
+                        >
+                          {item.count}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {studTab !== 'gap' ? (
+                activeStudLayouts.length > 0 ? (
+                  <ul className="mt-1.5 space-y-1.5" data-testid="breed-list">
+                    {activeStudLayouts.map((layout) => {
+                      const collectedGroupIds =
+                        collectedGroupIdsByAccount?.get(active.plan.account) ??
+                        NO_COLLECTED_GROUPS;
+                      if (layout.kind === 'single') {
+                        const view = layout.view;
+                        const pickKey = `stud:${view.key}`;
+                        return (
+                          <PairingCard
+                            key={view.key}
+                            view={view}
+                            testId="breed-suggestion"
+                            receivers={receiversOf(view)}
+                            collectedGroupIds={collectedGroupIds}
+                            picked={isPicked(active.plan.account, pickKey)}
+                            onTogglePick={() => togglePick(active.plan.account, pickKey)}
+                          />
+                        );
+                      }
+                      const pickKeys = layout.views.map((view) => `stud:${view.key}`);
+                      const picked = pickKeys.every((key) => isPicked(active.plan.account, key));
+                      return (
+                        <SharedStudCard
+                          key={`shared:${layout.stud.key}`}
+                          stud={layout.stud}
+                          views={layout.views}
+                          account={active.plan.account}
+                          receiversOf={receiversOf}
+                          collectedGroupIds={collectedGroupIds}
+                          picked={picked}
+                          onTogglePick={() =>
+                            setPicks(active.plan.account, pickKeys, !picked)
+                          }
+                        />
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-slate-400" data-testid="stud-empty">
+                    {studTab === 'high' ? '本号没有配窝建议。' : '没有低概率种公配对。'}
+                  </p>
+                )
+              ) : (
+                <div className="mt-1.5 space-y-1.5" data-testid="stud-gap">
+                  {activeGapTargets > 0 ? (
+                    <p className="text-[11px] text-slate-500">
+                      本号还差 <b className="text-rose-600">{activeGapTargets}</b> 个种公目标
+                      {activeRecGroups.length > 0 ? (
+                        <span className="text-slate-400"> · 推荐 {activeRecGroups.length} 只</span>
+                      ) : null}
+                    </p>
+                  ) : null}
+                  {activeRecGroups.length === 0 ? (
+                    <p className="text-[11px] text-slate-400">本号没有要换的种公推荐。</p>
+                  ) : (
+                    <ul className="grid grid-cols-4 gap-1" data-testid="stud-gap-cards">
+                      {activeRecGroups.map((group) => {
+                        const detail = `${group.natureNames.join('、')}${group.displayName}（${group.groupLabels.join(' × ')}）`;
+                        return (
+                          <li key={group.gameId} title={detail} data-testid="stud-gap-card">
+                            <PetCardLayout
+                              onClick={
+                                onOpenStudRecommendation
+                                  ? () => onOpenStudRecommendation(activeName, group)
+                                  : undefined
+                              }
+                              ariaLabel={
+                                onOpenStudRecommendation ? `看 ${detail} 怎么补` : detail
+                              }
+                              name={group.displayName}
+                              number={speciesByGameId.get(group.gameId)?.number}
+                              eggGroups={group.groupLabels}
+                              natures={group.natureNames}
+                              naturesTestId="stud-gap-nature"
+                              title={detail}
+                              size="suggest"
+                              fitName
+                              fitNameBase={9}
+                              fitNameMin={8}
+                              avatar={
+                                <PetAvatar gameId={group.gameId} name={group.displayName} size={44} />
+                              }
+                            />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </>
           ) : null}
 
-          {mother &&
-          (mother.pairings.length > 0 || mother.tasks.length > 0 || mother.helps.length > 0) ? (
+          {showMothers && hasMotherContent ? (
             <div className="mt-2 border-t border-dashed border-slate-200 pt-2" data-testid="mother-nest">
-              <div className="flex items-center gap-1.5">
-                <h4 className="text-xs font-semibold text-slate-700">母本配窝</h4>
-                <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                  本号未收集 {mother.gapCount} · 可补 {mother.pairings.length + mother.tasks.length}
-                </span>
-                {mother.helps.length > 0 ? (
-                  <span
-                    className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
-                    data-testid="mother-help-count"
-                  >
-                    求助 {mother.helps.length}
-                  </span>
-                ) : null}
-                {motherNests > 0 ? (
-                  <span className="text-[10px] text-slate-400">本号内线占 {motherNests} 个窝</span>
-                ) : null}
+              <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" data-testid="mother-tabs">
+                {(
+                  [
+                    {
+                      key: 'high',
+                      label: '配窝建议',
+                      count: activeLocal.accepted.length + activeTransfers.length,
+                    },
+                    {
+                      key: 'low',
+                      label: '低概率',
+                      count: activeLocal.low.length + lowHelps.length,
+                    },
+                    // 母本缺口：写本号还没收集的母本蛋数，和缺口页签里「本号未收集 N 个」同一口径
+                    { key: 'gap', label: '缺口', count: mother?.gapCount ?? 0 },
+                  ] as const
+                ).map((item) => {
+                  const selected = motherTab === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setMotherTab(item.key)}
+                      aria-pressed={selected}
+                      data-testid={`mother-tab-${item.key}`}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        selected
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                      }`}
+                    >
+                      {item.label}
+                      {item.count != null ? (
+                        <span
+                          className={`ml-1 text-[10px] ${
+                            selected ? 'text-amber-100' : 'text-slate-400'
+                          }`}
+                        >
+                          {item.count}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
-              {mother.pairings.length > 0 ? (
-                <ul className="mt-1.5 space-y-1.5" data-testid="mother-pairings">
-                  {mother.pairings.map((pairing) => (
+
+              {motherTab === 'high' ? (
+                <div className="space-y-1.5" data-testid="mother-high">
+                  {activeLocal.accepted.length === 0 && activeTransfers.length === 0 ? (
+                    <p className="text-[11px] text-slate-400">本号没有配窝建议。</p>
+                  ) : null}
+                  {activeLocal.accepted.map((pairing) => (
                     <MotherPairingCard
                       key={`${pairing.eggGameId}-${pairing.mother.key}-${pairing.father.key}`}
                       pairing={pairing}
@@ -839,31 +1854,86 @@ export function NestPlanCard({
                         collectedGroupIdsByAccount?.get(active.plan.account) ?? NO_COLLECTED_GROUPS
                       }
                       onSeekHelp={onSeekHelp}
+                      picked={isPicked(active.plan.account, motherPickKeyOf(pairing))}
+                      onTogglePick={() => togglePick(active.plan.account, motherPickKeyOf(pairing))}
                     />
                   ))}
-                </ul>
-              ) : null}
-              {mother.tasks.length > 0 ? (
-                <ul className="mt-1.5 space-y-1.5" data-testid="mother-tasks">
-                  {mother.tasks.map((task) => (
+                  {activeTransfers.map(({ task, targets }) => (
                     <MotherTaskCard
-                      key={`${task.eggGameId}-${task.sourceAccount}`}
+                      key={transferKeyOf(task)}
                       task={task}
+                      targets={targets}
                       collectedGroupIds={
                         collectedGroupIdsByAccount?.get(active.plan.account) ?? NO_COLLECTED_GROUPS
                       }
                       onSeekHelp={onSeekHelp}
+                      picked={isPicked(active.plan.account, transferPickKeyOf(task))}
+                      onTogglePick={() => togglePick(active.plan.account, transferPickKeyOf(task))}
                     />
                   ))}
-                </ul>
+                </div>
               ) : null}
-              {mother.helps.length > 0 ? (
-                <MotherHelpList helps={mother.helps} onSeekHelp={onSeekHelp} />
+
+              {motherTab === 'low' ? (
+                <div className="space-y-1.5" data-testid="mother-low">
+                  {activeLocal.low.length === 0 && lowHelps.length === 0 ? (
+                    <p className="text-[11px] text-slate-400">没有低概率配窝。</p>
+                  ) : null}
+                  {activeLocal.low.map((pairing) => (
+                    <MotherPairingCard
+                      key={`low-${pairing.eggGameId}-${pairing.mother.key}-${pairing.father.key}`}
+                      pairing={pairing}
+                      low
+                      collectedGroupIds={
+                        collectedGroupIdsByAccount?.get(active.plan.account) ?? NO_COLLECTED_GROUPS
+                      }
+                      onSeekHelp={onSeekHelp}
+                      picked={isPicked(active.plan.account, motherPickKeyOf(pairing, true))}
+                      onTogglePick={() =>
+                        togglePick(active.plan.account, motherPickKeyOf(pairing, true))
+                      }
+                    />
+                  ))}
+                  {lowHelps.map((help) => (
+                    <MotherHelpCard
+                      key={help.eggGameId}
+                      help={help}
+                      collectedGroupIds={
+                        collectedGroupIdsByAccount?.get(active.plan.account) ?? NO_COLLECTED_GROUPS
+                      }
+                      targetBodyMedal={targetBodyMedal}
+                      targetVoiceDb={targetVoiceDb}
+                      onSeekHelp={onSeekHelp}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              {motherTab === 'gap' ? (
+                <div className="mt-1.5 space-y-1.5" data-testid="mother-gap">
+                  <p className="text-[11px] text-slate-500">
+                    种公目标：本号还差{' '}
+                    <b className="text-rose-600">{gapsByAccount?.get(activeName) ?? 0}</b> 个
+                    <span className="mx-1 text-slate-300">·</span>
+                    母本缺口：本号未收集 <b className="text-rose-600">{mother?.gapCount ?? 0}</b> 个
+                  </p>
+                  {activeIncoming.length > 0 ? (
+                    <p className="text-[11px] text-slate-500">
+                      本号可收 {activeIncoming.reduce((sum, item) => sum + item.count, 0)} 个蛋：
+                      {activeIncoming.map((item) => `${item.source} ${item.count}`).join('、')}
+                    </p>
+                  ) : null}
+                  <MotherGapGrid
+                    cards={motherGaps ?? []}
+                    onOpen={onOpenMotherGap}
+                    onOpenAll={onOpenMotherGaps}
+                  />
+                </div>
               ) : null}
             </div>
           ) : null}
 
-          {active.plan.blockedLinks.length > 0 ? (
+          {showStuds && active.plan.blockedLinks.length > 0 ? (
             <p className="mt-1 text-[11px] text-rose-600" data-testid="breed-blocked">
               注意：有 {active.plan.blockedLinks.length} 条连线会产出非目标蛋
             </p>

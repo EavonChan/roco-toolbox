@@ -2,6 +2,9 @@ import type { NavigationIntent, ProfileSection } from './navigation';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { appUpdateSnapshot, checkAppUpdate, hasAppUpdateShell, installAppUpdateBridge, seedAppUpdate, subscribeAppUpdate } from '../collector/appUpdate';
 import { AccountPanel } from './AccountPanel';
+import { CollectionGroups } from './CollectionGroups';
+import { Nearby } from './Nearby';
+import { NearbyErrorBoundary } from './NearbyErrorBoundary';
 import { ImportOutcomeNotice } from './ImportOutcomeNotice';
 import { ImportPanel } from './ImportPanel';
 import { NativeCollectorPanel } from './NativeCollectorPanel';
@@ -13,18 +16,29 @@ import { StateNotice } from './primitives/StateNotice';
 import { setSyncConflict, useSyncFeedback } from './syncNoticeStore';
 import { useSnapshots } from './useSnapshots';
 
+export type ProfileDataView = 'import' | 'nearby';
+
 export interface ProfileProps {
   section: ProfileSection;
   returnToGroups: boolean;
   onNavigate: (intent: NavigationIntent) => void;
   /** 重播「先导入一次」的首启引导（入门卡上的「教程」按钮） */
   onStartTour?: () => void;
+  /** 「游戏数据」里的二级视图：导入 / 附近（附近不再是独立页签，2026-11-21） */
+  dataView?: ProfileDataView;
+  /** 小组资源的编辑草稿有没有未保存改动（离开时拦一下） */
+  onDraftDirtyChange?: (dirty: boolean) => void;
 }
 
 const SECTIONS = [
+  { value: 'groups', label: '小组' },
   { value: 'identity', label: '我的身份' },
   { value: 'data', label: '游戏数据' },
-  { value: 'sync', label: '私有同步' },
+];
+
+const DATA_VIEWS = [
+  { value: 'import', label: '导入' },
+  { value: 'nearby', label: '附近' },
 ];
 
 /** 内测入口：2 秒内连点版本号 5 次，在测试站 / 正式站之间互切 */
@@ -32,16 +46,18 @@ const VERSION_TAPS = 5;
 const TAP_WINDOW_MS = 2000;
 
 /**
- * 「我的」（2026-10-24 重构任务 6）：身份、游戏数据、私有同步三块。
+ * 「我的」：小组 / 我的身份 / 游戏数据三块（2026-11-21 起）。
  *
- * AccountPanel 只挂载**一份**（数据分区用 CSS 隐藏，不是卸载）：
- * 切分区不会丢登录表单 / 同步提示，也不会重复挂认证与同步处理。
+ * 私有同步已从分区挪到「游戏数据 · 本机采集」下方：导入完就能顺手同步，
+ * 不用再记一个单独的分区。
  */
 export function Profile({
   section,
   returnToGroups,
   onNavigate,
   onStartTour,
+  dataView = 'import',
+  onDraftDirtyChange,
 }: ProfileProps) {
   // 导入后的自动上传冲突仍以 syncNoticeStore 为准，交给 AccountPanel 二选一
   const { conflict: autoConflict } = useSyncFeedback();
@@ -90,19 +106,20 @@ export function Profile({
     prod: { label: '正式', cls: 'border-slate-200 bg-slate-100 text-slate-500' },
     custom: { label: '自定义', cls: 'border-sky-200 bg-sky-50 text-sky-600' },
   }[env];
+  // 环境角标不再单独占右上角（2026-11-21）：跟着版本信息走——有更新入口时在「检查更新」卡里，
+  // 浏览器（没有壳）挂在底部版本号行上，两处只出现一份。
+  const envBadge = (
+    <span
+      data-testid="env-badge"
+      data-env={env}
+      className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${envMeta.cls}`}
+    >
+      {envMeta.label}
+    </span>
+  );
 
   return (
     <main className="mx-auto max-w-md space-y-3 p-4">
-      {/* 环境角标：按当前域名自动判定（测试站 / 正式站 / 自定义），切服重载后自动变化 */}
-      <div className="flex justify-end" data-testid="env-badge-row">
-        <span
-          data-testid="env-badge"
-          data-env={env}
-          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${envMeta.cls}`}
-        >
-          {envMeta.label}
-        </span>
-      </div>
       <SegmentedControl
         label="我的分区"
         value={section}
@@ -133,27 +150,50 @@ export function Profile({
         </Button>
       ) : null}
 
-      {section === 'identity' ? (
-        <StateNotice
-          kind="unknown"
-          title="我的身份"
-          description="用来跨设备同步同一份数据。游戏账号（UID）是游戏里的角色，在「游戏数据」里单独管理。"
-          testId="profile-identity-intro"
+      {section === 'groups' ? (
+        <CollectionGroups
+          embedded
+          variant="admin"
+          onDraftDirtyChange={onDraftDirtyChange}
+          onGoAccount={() => onNavigate({ type: 'open-profile', section: 'identity' })}
         />
       ) : null}
 
-      {section === 'sync' ? (
-        <StateNotice
-          kind="unknown"
-          title="私有同步"
-          description="只同步给你自己的设备；不会更新小组资源，也不会自动发布。"
-          testId="profile-sync-intro"
-        />
+      {section === 'identity' ? (
+        <>
+          <StateNotice
+            kind="unknown"
+            title="我的身份"
+            description="用来跨设备同步同一份数据。游戏账号（UID）是游戏里的角色，在「游戏数据」里单独管理。"
+            testId="profile-identity-intro"
+          />
+          <AccountPanel
+            section="identity"
+            autoConflict={autoConflict}
+            onAutoConflictHandled={() => setSyncConflict(null)}
+          />
+        </>
       ) : null}
 
       {section === 'data' ? (
         <>
-          {loaded && snapshots.length === 0 ? (
+          <SegmentedControl
+            label="游戏数据视图"
+            value={dataView}
+            options={DATA_VIEWS}
+            onValueChange={(next) =>
+              next === 'nearby'
+                ? onNavigate({ type: 'tab', page: 'nearby' })
+                : onNavigate({ type: 'open-profile', section: 'data' })
+            }
+            optionTestId={(value) => `data-view-${value}`}
+          />
+          {dataView === 'nearby' ? (
+            <NearbyErrorBoundary>
+              <Nearby embedded onNavigate={onNavigate} />
+            </NearbyErrorBoundary>
+          ) : null}
+          {dataView === 'import' && loaded && snapshots.length === 0 ? (
             <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="first-run-card">
               <h2 className="text-base font-semibold text-slate-900">先采集一次，看看还缺什么</h2>
               <p className="mt-1 text-sm text-slate-600">
@@ -171,9 +211,22 @@ export function Profile({
               ) : null}
             </section>
           ) : null}
-          <ImportOutcomeNotice onOpenGroups={() => onNavigate({ type: 'open-groups' })} />
-          <NativeCollectorPanel />
-          <ImportPanel />
+          {dataView === 'import' ? (
+            <>
+              <ImportOutcomeNotice onOpenGroups={() => onNavigate({ type: 'open-groups' })} />
+              <NativeCollectorPanel />
+              {/* 私有同步（2026-11-21 从独立分区挪到这里）：本机采集 / 导入的下方 */}
+              <ImportPanel
+                afterAnalytics={
+                  <AccountPanel
+                    section="sync"
+                    autoConflict={autoConflict}
+                    onAutoConflictHandled={() => setSyncConflict(null)}
+                  />
+                }
+              />
+            </>
+          ) : null}
         </>
       ) : null}
 
@@ -181,7 +234,10 @@ export function Profile({
       {updateSupported ? (
         <section className="flex items-center justify-between gap-2 rounded-2xl bg-white p-4 shadow-sm" data-testid="app-update-card">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-800">检查更新</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-semibold text-slate-800">检查更新</p>
+              {envBadge}
+            </div>
             <p className="text-xs text-slate-500">当前版本 {update.current || '—'}</p>
             {update.state === 'available' ? (
               <p className="text-xs text-emerald-700">发现新版本 {update.latest}</p>
@@ -204,26 +260,19 @@ export function Profile({
       ) : null}
 
       {/* 构建时间（原顶栏版本标记）：排障时确认「拿到的是不是最新一版」 */}
-      <p
-        className="pt-1 text-center text-[10px] text-slate-300"
+      <div
+        className="flex flex-col items-center gap-1 pt-1"
         data-testid="app-version"
         onClick={onVersionTap}
       >
-        版本 {__APP_BUILD__}
-      </p>
+        <span className="text-[10px] text-slate-300">版本 {__APP_BUILD__}</span>
+        {updateSupported ? null : envBadge}
+      </div>
 
       {serverPanelOpen ? (
         <ServerAddressPanel onClose={() => setServerPanelOpen(false)} />
       ) : null}
 
-      {/* AccountPanel 常驻：数据分区只是隐藏，切回来登录表单与同步提示仍在 */}
-      <div className={section === 'data' ? 'hidden' : 'space-y-3'} data-testid="profile-account-slot">
-        <AccountPanel
-          section={section === 'sync' ? 'sync' : 'identity'}
-          autoConflict={autoConflict}
-          onAutoConflictHandled={() => setSyncConflict(null)}
-        />
-      </div>
     </main>
   );
 }

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { AccountSnapshot } from '../domain/parseBackup';
 import { clearAccountFilter, toggleAccount } from './accountFilterStore';
@@ -127,7 +127,7 @@ describe('家园页', () => {
     h.snapshots = [snapshotWithHome()];
     render(<HomeLand />);
 
-    // 配窝卡片（2026-11-19）：跟补全计划同一张大卡，两张精灵卡也带小头像
+    // 配窝卡片（2026-11-19）：跟配窝建议同一张大卡，两张精灵卡也带小头像
     expect(screen.getAllByTestId('pet-avatar')).toHaveLength(2);
     expect(screen.getByTestId('home-pair-card-list')).toHaveTextContent('公本乙');
     expect(screen.getByTestId('home-pair-card-list')).toHaveTextContent('母本甲');
@@ -228,6 +228,27 @@ describe('家园页', () => {
     expect(screen.queryByTestId('home-account-151910')).toBeNull();
     expect(screen.getByTestId('home-account-151911')).toBeTruthy();
     expect(screen.getByTestId('home-pair-card-list')).toHaveTextContent('母本乙');
+  });
+
+  test('账号切换器按数字排序：没数字的号在前，2号在6号前', () => {
+    h.snapshots = ['洛乌（6号）', '洛筱（2号）', '莱茵'].map((name, index) => {
+      const snapshot = snapshotWithHome();
+      snapshot.accountName = name;
+      snapshot.gameId = 151910 + index;
+      snapshot.accountKey = `uid:${snapshot.gameId}`;
+      snapshot.home!.gameId = String(snapshot.gameId);
+      return snapshot;
+    });
+    render(<HomeLand />);
+
+    expect(screen.getByTestId('home-account-summary')).toHaveTextContent('莱茵');
+    fireEvent.click(screen.getByTestId('home-account-summary'));
+    const options = within(screen.getByTestId('home-account-options')).getAllByRole('button');
+    expect(options.map((option) => option.textContent)).toEqual([
+      '莱茵',
+      '洛筱（2号）',
+      '洛乌（6号）',
+    ]);
   });
 
   test('配窝卡片同样只写基础名，完整名字放 title', () => {

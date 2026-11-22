@@ -39,8 +39,10 @@ import {
   setMyPetsSelected,
   setMyPetsSizeUnit,
   setMyPetsColumns,
+  hasChosenColumns,
   useMyPetsFilters,
 } from './myPetsFilterStore';
+import { useWideLandscape } from './useWideLandscape';
 import { setPersonalQuery, usePersonalList } from './listViewStore';
 
 /** 筛选维度顺序；稀有度单独占一行。 */
@@ -391,6 +393,13 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
       speciesDisplayName(entry, pet.name).toLowerCase();
     return text.includes(query);
   };
+  /** 宽横屏（≥1120 横屏）才给 5 / 6 列；竖屏一律按原来的 3 / 4 列 */
+  const wideLandscape = useWideLandscape();
+  /** 宽屏且用户没手动选过列数时默认五列（2026-11-21 用户口径） */
+  useEffect(() => {
+    if (wideLandscape && !hasChosenColumns() && columns === 4) setMyPetsColumns(5);
+  }, [wideLandscape, columns]);
+  const effectiveColumns = wideLandscape ? columns : (Math.min(columns, 4) as 3 | 4);
   const { tags, index } = useMemo(
     () => buildTagIndex(owned, speciesByGameId, eggGroupNames),
     [owned, speciesByGameId],
@@ -757,9 +766,11 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
   });
 
   return (
-    <main className="mx-auto max-w-md space-y-1 px-4 pb-4 pt-0.5">
-      {/* 搜索常显、独立于高级筛选（2026-10-24 统一控件） */}
-      <SearchField
+    <main className="mx-auto max-w-md space-y-1 px-4 pb-4 pt-0.5" data-testid="collection-inventory">
+      <div className="collection-layout">
+        <div className="collection-rail space-y-1">
+          {/* 搜索常显、独立于高级筛选（2026-10-24 统一控件） */}
+          <SearchField
         label="搜索精灵名"
         value={nameQuery}
         onValueChange={setNameQuery}
@@ -788,7 +799,6 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
               className="flex shrink-0 flex-nowrap items-center gap-1 whitespace-nowrap"
               data-testid="card-size-display"
             >
-              <span className="whitespace-nowrap text-[10px] text-slate-500">身高体重</span>
               <span className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5">
                 {(
                   [
@@ -815,7 +825,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
             className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5"
             data-testid="card-columns-toggle"
           >
-            {([3, 4] as const).map((count) => (
+            {(wideLandscape ? ([3, 4, 5, 6] as const) : ([3, 4] as const)).map((count) => (
               <button
                 key={count}
                 type="button"
@@ -826,7 +836,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
                 }`}
                 data-testid={`card-columns-${count}`}
               >
-                {count === 3 ? '三列' : '四列'}
+                {count === 3 ? '三列' : count === 4 ? '四列' : count === 5 ? '五列' : '六列'}
               </button>
             ))}
           </div>
@@ -896,6 +906,8 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           />
         </div>
       </FilterPanel>
+        </div>
+        <div className="collection-main space-y-1">
       {visiblePets.length === 0 ? (
         <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
           没有符合条件的精灵，试试取消部分标签。
@@ -906,9 +918,11 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           speciesByGameId={speciesByGameId}
           eggGroupNames={eggGroupNames}
           showCount={false}
-          columns={columns}
+          columns={effectiveColumns}
         />
       )}
+        </div>
+      </div>
     </main>
   );
 }

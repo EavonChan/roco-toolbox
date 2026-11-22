@@ -4,8 +4,8 @@ import { averageVoiceOf, PairingPetCard, type PairCardPet } from './NestPlanCard
 import { pairingColor } from './pairingColors';
 
 /**
- * 家园「配窝卡片」（2026-11-19 用户口径）：复用补全计划那张紧凑精灵卡（蛋组 / 奖牌 /
- * 分贝 / 身高 / 体重 / 名字），家园版 70px、不写盒子；补全计划版 86px，卡底多一行盒子位置。
+ * 家园「配窝卡片」（2026-11-19 用户口径）：复用配窝建议那张紧凑精灵卡（蛋组 / 奖牌 /
+ * 分贝 / 身高 / 体重 / 名字），家园版 70px、不写盒子；配窝建议版 86px，卡底多一行盒子位置。
  *
  * - **一个窝一只精灵**：母本一个窝、种公也一个窝；学院 1:2 = 一公两母三个窝，公本只出现一次；
  * - 普通的一公一母 / 一公两母：卡头贴在母本上方，种公和母本顶边对齐；
@@ -257,6 +257,11 @@ function HomePairCard({ cluster, index }: { cluster: HomePairCluster; index: num
   }
   const firstMother = females[0] ?? null;
   const firstPartners = firstMother ? partnerMalesOf(cluster, firstMother) : males;
+  /**
+   * 住在家园、但背包里没有这只：大概率已经放生。
+   * 放生后这条配对不会再有后代，性格概率和平均声音都不该再算（2026-11-19 用户口径）；
+   * 只影响这只母本自己那一行，不把同簇其他母本的概率和声音一起抹掉。
+   */
   const firstReleased = firstMother ? releasedOfPair(firstMother, firstPartners) : [];
   return (
     <li

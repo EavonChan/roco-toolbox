@@ -4,6 +4,7 @@ import type { AccountImportResult, QualifiedPetRow } from '../domain/importDiff'
 import { useTargetMode } from './targetModeStore';
 import { useLastImportHistory } from './useLastImportResult';
 import { GenderMark } from './GenderMark';
+import { sortByAccountName } from './accountOrder';
 
 /** 一次导入新增里「够格进看板分类」的精灵数（种公 + 母本）。 */
 export const countOf = (account: AccountImportResult): number =>
@@ -108,7 +109,7 @@ export function ImportResultCard() {
                   >
                     <span className="shrink-0">{formatTime(entry.at)}</span>
                     <span className="truncate text-slate-400">
-                      {entry.results
+                      {sortByAccountName(entry.results, (account) => account.accountName)
                         .map(
                           (account) =>
                             `${account.accountName}（${
@@ -125,7 +126,7 @@ export function ImportResultCard() {
                       data-testid="import-result-history-detail"
                       className="mt-1 space-y-3 rounded-lg bg-slate-50/60 p-2"
                     >
-                      {entry.results.map((account) => (
+                      {sortByAccountName(entry.results, (account) => account.accountName).map((account) => (
                         // 老历史条目没有 accountKey（该字段是后加的），退回名字兜底
                         <AccountBlock
                           key={`${entry.at}-${account.accountKey ?? account.accountName}`}

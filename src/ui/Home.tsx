@@ -4,10 +4,12 @@ import type { OwnedPet } from '../domain/types';
 import { EmptyState } from './EmptyState';
 import { HomeDemandPlacements } from './HomeDemandPlacements';
 import { HomePairCards } from './HomePairCards';
+import { sortByAccountName } from './accountOrder';
 import { CARD, HINT, PAGE, TITLE } from './primitives/styles';
 import { useSnapshots } from './useSnapshots';
 import { labelerFor } from './useOwnedPets';
 import { useHomeRefresh, type HomeRefreshController } from './useHomeRefresh';
+import { useLandscape } from './useWideLandscape';
 
 /**
  * 家园页（2026-10-27）。
@@ -119,7 +121,37 @@ function HomeRefreshBar({ refresh }: { refresh: HomeRefreshController }) {
   );
 }
 
+/** 家园配窝卡单列 / 双列：横屏时可以切换，选择记在本机（2026-11-21 用户口径）。 */
+type PairLayout = 'single' | 'double';
+
+const PAIR_LAYOUT_KEY = 'roco.homePairLayout';
+
+function readPairChoice(): PairLayout | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(PAIR_LAYOUT_KEY);
+    return value === 'single' || value === 'double' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePairChoice(value: PairLayout): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PAIR_LAYOUT_KEY, value);
+  } catch {
+    // 隐私模式 / 配额满：本次照样生效，只是下次打开不记住
+  }
+}
+
 function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: string }) {
+  const landscape = useLandscape();
+  const [pairLayout, setPairLayout] = useState<PairLayout>(() => readPairChoice() ?? 'single');
+  const setPairLayoutChoice = (next: PairLayout) => {
+    savePairChoice(next);
+    setPairLayout(next);
+  };
   const home = snapshot.home;
   // 先建索引再判空：hook 不能写在条件 return 之后
   const pets = useMemo(
@@ -131,23 +163,25 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
   const eggCount = home.sceneEggs.length;
   return (
     <section className="rounded-2xl bg-white p-1.5 shadow-sm" data-testid={`home-account-${snapshot.gameId}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0">
           <h2 className={TITLE}>{label} 的家园</h2>
-          <p className={HINT}>
-            采集时间 {formatCapturedAt(home.capturedAt)}
-            {home.homeLevel ? ` · 家园 ${home.homeLevel} 级` : ''}
-            {home.roomLevel ? ` · 房间 ${home.roomLevel} 级` : ''}
+          <p className={`${HINT} flex flex-wrap items-center gap-x-2 gap-y-0.5`}>
+            <span data-testid="home-captured-at">
+              采集时间 {formatCapturedAt(home.capturedAt)}
+            </span>
+            {home.homeLevel ? <span>· 家园 {home.homeLevel} 级</span> : null}
+            {home.roomLevel ? <span>· 房间 {home.roomLevel} 级</span> : null}
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                eggCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
+              }`}
+              data-testid="home-egg-count"
+            >
+              {eggCount > 0 ? `有 ${eggCount} 枚蛋` : '没有蛋'}
+            </span>
           </p>
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${
-            eggCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
-          }`}
-          data-testid="home-egg-count"
-        >
-          {eggCount > 0 ? `有 ${eggCount} 枚蛋` : '没有蛋'}
-        </span>
       </div>
 
       {/* 2026-11-01 用户口径：三个数字方框太大 → 改成一行小标签 */}
@@ -171,20 +205,46 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
       </div>
 
       {home.couplesStale ? (
-        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="home-stale">
+        <p className="mt-2 w-fit max-w-full rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="home-stale">
           采集期间有精灵进出，游戏配对可能已经过期；重新采集一次家园会更准。
         </p>
       ) : null}
       {home.snapshotKind === 'delta' ? (
-        <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <p className="mt-2 w-fit max-w-full rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600" data-testid="home-delta-note">
           这份是增量快照，可能不包含全部住户；建议重新采集一次完整的家园场景。
         </p>
       ) : null}
 
-      <div className="mt-3" data-testid="home-pair-cards">
+      <div className="mt-3" data-testid="home-pair-cards" data-layout={pairLayout}>
         <div className="flex items-baseline justify-between gap-2">
           <div className="text-xs font-medium text-slate-500">配窝卡片</div>
-          <div className="text-[10px] text-slate-400">按游戏实际配对</div>
+          <div className="flex items-center gap-2">
+            {landscape ? (
+              <div
+                className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5"
+                role="group"
+                aria-label="配窝卡列数"
+              >
+                {(['single', 'double'] as const).map((layout) => (
+                  <button
+                    key={layout}
+                    type="button"
+                    onClick={() => setPairLayoutChoice(layout)}
+                    aria-pressed={pairLayout === layout}
+                    data-testid={`home-pair-layout-${layout}`}
+                    className={`rounded px-1.5 py-0.5 text-[10px] ${
+                      pairLayout === layout
+                        ? 'bg-white font-medium text-emerald-700 shadow-sm'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {layout === 'single' ? '单列' : '双列'}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="text-[10px] text-slate-400">按游戏实际配对</div>
+          </div>
         </div>
         {home.layEggCouples.length === 0 ? (
           <p className={HINT} data-testid="home-no-pairs">
@@ -232,14 +292,19 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
   const { snapshots, loaded } = useSnapshots();
   const homeRefresh = useHomeRefresh();
   const labelOf = useMemo(() => labelerFor(snapshots), [snapshots]);
-  const accounts = useMemo(() => snapshots.map(labelOf), [snapshots, labelOf]);
+  /** 账号切换器按数字排序（2026-11-20 用户口径）：默认第一个也是排最前的号。 */
+  const orderedSnapshots = useMemo(
+    () => sortByAccountName(snapshots, (snapshot) => labelOf(snapshot)),
+    [snapshots, labelOf],
+  );
+  const accounts = useMemo(() => orderedSnapshots.map(labelOf), [orderedSnapshots, labelOf]);
   const [view, setView] = useState<HomeView>(() => readHomeView());
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const activeAccount = accounts.includes(selectedAccount ?? '')
     ? selectedAccount
     : accounts[0] ?? null;
-  const activeSnapshot = snapshots.find((snapshot) => labelOf(snapshot) === activeAccount);
+  const activeSnapshot = orderedSnapshots.find((snapshot) => labelOf(snapshot) === activeAccount);
   useEffect(() => {
     if (selectedAccount !== activeAccount) setSelectedAccount(activeAccount);
   }, [activeAccount, selectedAccount]);
@@ -261,12 +326,12 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
   return (
     <div className={PAGE}>
       <header
-        className="flex items-center justify-between gap-2"
+        className="flex items-center gap-2"
         data-tour="home-tabs"
         data-testid="home-header"
       >
         {view === 'nests' && loaded && activeAccount ? (
-          <section className="relative min-w-0 flex-1" data-testid="home-account-switcher">
+          <section className="relative w-[14rem] max-w-[60%] min-w-0 shrink-0" data-testid="home-account-switcher">
             <button
               type="button"
               onClick={() => setAccountPickerOpen((open) => !open)}

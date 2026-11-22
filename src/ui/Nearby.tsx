@@ -42,6 +42,8 @@ type NearbyView = 'map' | 'list';
 
 export interface NearbyProps {
   onNavigate: (intent: NavigationIntent) => void;
+  /** 嵌在「我的 · 游戏数据」里：不再自带最大宽度与内边距（2026-11-21）。 */
+  embedded?: boolean;
 }
 
 const DEMAND_INDEX = demandSpeciesIndex(species);
@@ -186,7 +188,7 @@ function NearbyRowItem({
  * - 命中需求中心时走系统通知 + 页内强提示；性格 / 性别野生实体读不到，标记「需确认」。
  * - 雷达中心是附近精灵坐标的几何中位数（真实抓包里没有自身坐标帧），只作估算。
  */
-export function Nearby({ onNavigate }: NearbyProps) {
+export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   const { state, snapshot, error, refresh, progress, checked } = useNearbyFeed();
   const flow = useAutoImport();
   const { items: demands } = useDemandCenter();
@@ -603,7 +605,10 @@ export function Nearby({ onNavigate }: NearbyProps) {
   const summary = `场景 ${snapshot?.scene ?? '—'} · 附近 ${pets.length} 只 · 稀有 ${rareCount} 只 · 需求命中 ${demandCount} 只`;
 
   return (
-    <main className="mx-auto max-w-md space-y-2 p-3">
+    <div
+      className={embedded ? 'space-y-2' : 'mx-auto max-w-md space-y-2 p-3'}
+      data-testid="nearby-page"
+    >
       <section className="rounded-2xl bg-white p-3 shadow-sm" data-testid="nearby-status">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">大世界采集 · 附近精灵</h2>
@@ -1135,6 +1140,6 @@ export function Nearby({ onNavigate }: NearbyProps) {
           <p className="text-xs text-slate-400">开启后返回会自动开始采集；不开也能采集，只是没有悬浮球。</p>
         </div>
       </ModalSurface>
-    </main>
+    </div>
   );
 }
