@@ -1,0 +1,62 @@
+/* =============================================================================
+ * chip.css — 筛选 chip（唯一来源）
+ * 蛋组 / 性格 / 体型 / 声音筛选用的可切换小块，可多选、可清空。
+ * ========================================================================== */
+
+.chip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  min-height: var(--chip-h);
+  border: 1px solid var(--line);
+  border-radius: var(--chip-radius);
+  background: var(--bg-surface);
+  padding: var(--chip-pad-y) var(--chip-pad-x);
+  font-family: var(--font-sans);
+  font-size: var(--chip-size);
+  line-height: var(--lh-hint);
+  color: var(--text-body);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 80ms ease;
+}
+.chip:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* 内联版：嵌在标题行里，字号小一档 */
+.chip--inline {
+  min-height: var(--chip-h-inline);
+  font-size: var(--chip-size-inline);
+}
+
+/* 选中：主色实底 + 白字 */
+.chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  font-weight: var(--fw-semibold);
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-sm);
+}
+
+.chip:disabled {
+  border-color: var(--line-subtle);
+  color: var(--c-slate-300);
+  cursor: not-allowed;
+}
+
+/* 计数角标（如「巨灵组 12」） */
+.chip__count {
+  font-size: var(--chip-count-size);
+  line-height: var(--lh-nano);
+  opacity: 0.75;
+}
+
+/* 图标 + 文案（体型/声音 chip 用） */
+.chip__icon {
+  width: var(--demand-medal-size);
+  height: var(--demand-medal-size);
+  object-fit: contain;
+}

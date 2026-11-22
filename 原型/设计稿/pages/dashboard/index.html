@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>看板 · 洛克工具箱设计稿</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../../_shell/shell.css" />
+    <link rel="stylesheet" href="../../components/segmented-control/segmented-control.css" />
+    <link rel="stylesheet" href="../../components/progress-card/progress-card.css" />
+    <link rel="stylesheet" href="../../components/nest-pair-card/nest-pair-card.css" />
+    <link rel="stylesheet" href="../../components/chip/chip.css" />
+    <link rel="stylesheet" href="./dashboard.css" />
+  </head>
+  <body>
+    <div class="proto-page" data-page="dashboard" data-title="看板" data-baseline="dashboard">
+      <!-- ① 账号 + 目标模式 -->
+      <section class="dash-target">
+        <button type="button" class="dash-account">
+          <span class="dash-account__names">哈基米、千度月</span>
+          <span class="dash-account__count">(2/2)</span>
+          <span class="dash-account__caret" aria-hidden="true">⌄</span>
+        </button>
+        <div class="seg seg--fit" role="group" aria-label="目标模式">
+          <button class="seg__item" type="button" aria-pressed="true">追满分</button>
+          <button class="seg__item" type="button" aria-pressed="false">追双牌</button>
+        </div>
+        <span class="dash-help" role="button" aria-label="看板说明">?</span>
+      </section>
+
+      <!-- ② 目标奖牌（四种组合） -->
+      <section class="dash-medals" aria-label="目标奖牌">
+        <button class="dash-medal" type="button" aria-pressed="true">
+          <span class="dash-medal__icons">🏅🎵</span>
+          <span class="dash-medal__label">大块头<br />婉转声</span>
+        </button>
+        <button class="dash-medal" type="button" aria-pressed="false">
+          <span class="dash-medal__icons">🏅🎵</span>
+          <span class="dash-medal__label">大块头<br />粗嗓门</span>
+        </button>
+        <button class="dash-medal" type="button" aria-pressed="false">
+          <span class="dash-medal__icons">🏅🎵</span>
+          <span class="dash-medal__label">小不点<br />婉转声</span>
+        </button>
+        <button class="dash-medal" type="button" aria-pressed="false">
+          <span class="dash-medal__icons">🏅🎵</span>
+          <span class="dash-medal__label">小不点<br />粗嗓门</span>
+        </button>
+      </section>
+
+      <!-- ③ 两块进度 -->
+      <section class="dash-progress">
+        <button class="progress-card progress-card--clickable" type="button">
+          <div class="progress-card__head">
+            <h2 class="progress-card__title">种公全收集</h2>
+            <span class="progress-card__help" role="button" aria-label="说明">?</span>
+          </div>
+          <p class="progress-card__value">3 <span>/ 14</span></p>
+          <div class="progress-card__track"><div class="progress-card__fill" style="width: 21%"></div></div>
+        </button>
+        <button class="progress-card progress-card--clickable" type="button">
+          <div class="progress-card__head">
+            <h2 class="progress-card__title">母本全收集</h2>
+            <span class="progress-card__help" role="button" aria-label="说明">?</span>
+          </div>
+          <p class="progress-card__value">29 <span>/ 209</span></p>
+          <div class="progress-card__track"><div class="progress-card__fill" style="width: 14%"></div></div>
+        </button>
+      </section>
+
+      <!-- ④ 视角切换 -->
+      <div class="dash-switch">
+        <div class="seg seg--fit" role="group" aria-label="看板行动">
+          <button class="seg__item" type="button" aria-pressed="true">种公推荐</button>
+          <button class="seg__item" type="button" aria-pressed="false">母本缺口</button>
+        </div>
+      </div>
+
+      <!-- ⑤ 配窝建议 -->
+      <section class="dash-nest">
+        <div class="dash-accounts">
+          <button class="dash-account-chip" type="button" aria-pressed="true">哈基米 0 窝</button>
+          <button class="dash-account-chip" type="button" aria-pressed="false">千度月 0 窝</button>
+        </div>
+        <p class="dash-nest__line">哈基米 · 用 0/11 个窝 <span class="dash-nest__sep">·</span> 差 <b>30</b> 个种公目标</p>
+        <div class="dash-nest__tabs">
+          <button class="dash-tab" type="button" aria-pressed="true">配窝建议 <span class="dash-tab__n">1</span></button>
+          <button class="dash-tab" type="button" aria-pressed="false">低概率 <span class="dash-tab__n">4</span></button>
+        </div>
+
+        <div class="dash-head">
+          <span class="dash-dot" style="--pair-color: #0d9488"></span>
+          <span class="dash-head__nature">50%沉默</span>
+          <span class="dash-head__gender" data-gender="公">♂</span>
+          <span class="dash-head__db">100dB</span>
+          <span class="dash-head__pick" role="button" aria-label="勾选这一窝"></span>
+        </div>
+
+        <div class="pair-group" style="--pair-color: #0d9488">
+          <div class="pair-cards">
+            <article class="pair-card pair-card--full" data-gender="母">
+              <div class="pair-card__head">
+                <div class="pair-card__eggs">
+                  <span class="pair-card__egg">天空组</span>
+                  <span class="pair-card__egg">机械组</span>
+                </div>
+                <div class="pair-card__right">
+                  <span class="pair-card__line">
+                    <span class="pair-card__gender" data-gender="母">♀</span>
+                    <span class="pair-card__nature">沉默</span>
+                  </span>
+                  <span>100dB</span>
+                  <span>高 —</span>
+                  <span>重 99.3%</span>
+                </div>
+              </div>
+              <div class="pair-card__avatar">
+                <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" />
+              </div>
+              <div class="pair-card__name">不咕钟</div>
+              <div class="pair-card__position">盒子26 第17位</div>
+            </article>
+
+            <article class="pair-card pair-card--full" data-gender="公">
+              <div class="pair-card__head">
+                <div class="pair-card__eggs">
+                  <span class="pair-card__egg">机械组</span>
+                  <span class="pair-card__egg">巨灵组</span>
+                </div>
+                <div class="pair-card__right">
+                  <span class="pair-card__line">
+                    <span class="pair-card__gender" data-gender="公">♂</span>
+                    <span class="pair-card__nature">专注</span>
+                  </span>
+                  <span>100dB</span>
+                  <span>高 —</span>
+                  <span>重 99.4%</span>
+                </div>
+              </div>
+              <div class="pair-card__avatar">
+                <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" />
+              </div>
+              <div class="pair-card__name">贝古斯</div>
+              <div class="pair-card__position">盒子21 第15位</div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ⑥ 本次新增（默认展开，可收起） -->
+      <section class="dash-new">
+        <div class="dash-new__head">
+          <h2 class="dash-new__title">本次新增 <span>（符合看板分类）</span></h2>
+          <button class="dash-new__toggle" type="button" aria-expanded="true">收起</button>
+        </div>
+        <div class="dash-new__group">
+          <p class="dash-new__account">哈基米 <span>首次导入</span></p>
+          <p class="dash-new__kind">新增满分大婉种公 22</p>
+          <ul class="dash-new__list">
+            <li>螺旋帕帕 ♂ · 固执 · 机械组/天空组 · 100dB · 盒子10 第29位</li>
+            <li>粉星仔 ♂ · 胆小 · 妖精组/天空组 · 100dB · 盒子21 第10位</li>
+            <li>锤头鹳 ♂ · 聪明 · 天空组/两栖组 · 100dB · 盒子21 第12位</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+    <script src="../../_shell/shell.js"></script>
+  </body>
+</html>

@@ -1,0 +1,86 @@
+/* =============================================================================
+ * progress-card.css — 进度卡（唯一来源）
+ * 看板「种公全收集 9 / 14」、收集页进度都用它。
+ * 尺寸只引用 ③ `--progress-*`；颜色只引用 ② semantic。
+ * ========================================================================== */
+
+.progress-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: var(--progress-card-radius);
+  background: var(--bg-surface);
+  padding: var(--progress-card-pad);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-sans);
+}
+
+.progress-card--clickable {
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.progress-card--clickable:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.progress-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-8);
+}
+.progress-card__title {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+}
+.progress-card__help {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--progress-help-size);
+  height: var(--progress-help-size);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-surface);
+  font-size: var(--fs-nano);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.progress-card__value {
+  margin: var(--sp-4) 0 0;
+  font-size: var(--progress-num-size);
+  line-height: var(--progress-num-line);
+  font-weight: var(--fw-semibold);
+  color: var(--text-strong);
+}
+.progress-card__value span {
+  font-weight: var(--fw-normal);
+  color: var(--text-faint);
+}
+
+.progress-card__track {
+  margin-top: var(--sp-8);
+  width: 100%;
+  height: var(--progress-bar-h);
+  border-radius: var(--r-full);
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+.progress-card__fill {
+  height: var(--progress-bar-h);
+  border-radius: var(--r-full);
+  background: var(--accent-line);
+}
+
+.progress-card__hint {
+  margin: var(--sp-4) 0 0;
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  color: var(--text-faint);
+}

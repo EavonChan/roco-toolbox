@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>外壳自检 · 洛克工具箱设计稿</title>
+    <link rel="stylesheet" href="../_tokens/index.css" />
+    <link rel="stylesheet" href="./shell.css" />
+    <style>
+      /* -----------------------------------------------------------------------
+       * 这一页只验外壳，不是页面还原。
+       * 里面的块全是「拿线上量出来的尺寸画的最小样例」，用来肉眼确认：
+       * 卡片 16/12 圆角、8/12 间距、四档字、chip、分段、按钮、红点是不是对的。
+       * 真页面在阶段 1 逐页做，每页都会先给 375/390 截图 + 差异清单。
+       * -------------------------------------------------------------------- */
+      .demo-card {
+        background: var(--bg-surface);
+        border-radius: var(--r-2xl);
+        padding: var(--sp-16);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .demo-tool-card {
+        background: var(--bg-surface);
+        border-radius: var(--r-xl);
+        padding: var(--sp-12);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .demo-title {
+        margin: 0 0 var(--sp-8);
+        font-size: var(--fs-title);
+        line-height: var(--lh-title);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .demo-body {
+        margin: 0;
+        font-size: var(--fs-body);
+        line-height: var(--lh-body);
+        color: var(--text-body);
+      }
+
+      .demo-hint {
+        margin: var(--sp-4) 0 0;
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .demo-inset {
+        background: var(--bg-inset);
+        border-radius: var(--r-xl);
+        padding: var(--sp-12);
+      }
+
+      .demo-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--sp-6);
+      }
+
+      .demo-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: var(--ctl-28);
+        padding: 0 var(--sp-10);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        background: var(--bg-surface);
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .demo-chip[data-on='true'] {
+        border-color: var(--accent-line);
+        background: var(--accent-soft);
+        font-weight: var(--fw-medium);
+        color: var(--accent-text);
+      }
+
+      .demo-seg {
+        display: flex;
+        padding: var(--sp-2);
+        border-radius: var(--r-xl);
+        background: var(--bg-muted);
+      }
+
+      .demo-seg > button {
+        flex: 1 1 0%;
+        min-height: var(--ctl-32);
+        border: 0;
+        border-radius: var(--r-lg);
+        background: transparent;
+        font-family: inherit;
+        font-size: var(--fs-body);
+        font-weight: var(--fw-medium);
+        color: var(--text-muted);
+      }
+
+      .demo-seg > button[aria-pressed='true'] {
+        background: var(--bg-surface);
+        color: var(--text-body);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .demo-primary {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: var(--ctl-44);
+        border: 0;
+        border-radius: var(--r-lg);
+        background: var(--accent);
+        font-family: inherit;
+        font-size: var(--fs-title);
+        line-height: var(--lh-title);
+        font-weight: var(--fw-medium);
+        color: var(--text-inverse);
+      }
+
+      .demo-second {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: var(--ctl-32);
+        padding: 0 var(--sp-10);
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--bg-surface);
+        font-family: inherit;
+        font-size: var(--fs-hint);
+        color: var(--text-muted);
+      }
+
+      /* 精灵卡：线上收集页四列，卡宽由容器算出（351 - 3×8）/4 ≈ 81.75 */
+      .demo-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: var(--sp-8);
+      }
+
+      .demo-pet {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--sp-4);
+        padding: var(--sp-6) var(--sp-4);
+        border: 1px solid var(--accent-soft);
+        border-radius: var(--r-lg);
+        background: var(--bg-surface);
+        text-align: center;
+      }
+
+      .demo-pet .no {
+        align-self: flex-start;
+        font-size: var(--fs-nano);
+        line-height: var(--lh-nano);
+        color: var(--text-faint);
+      }
+
+      /* 真头像：线上同一套官方 CDN（256×256 透明 PNG），不再用灰圆占位 */
+      .demo-pet .thumb {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+      }
+
+      .demo-pet .name {
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        font-weight: var(--fw-medium);
+        color: var(--text-strong);
+      }
+
+      .demo-progress {
+        height: 6px;
+        border-radius: var(--r-full);
+        background: var(--accent-softer);
+        overflow: hidden;
+      }
+
+      .demo-progress > i {
+        display: block;
+        height: 100%;
+        width: 44%;
+        background: var(--accent);
+      }
+
+      .demo-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--sp-8);
+        padding: var(--sp-24) var(--sp-16);
+        text-align: center;
+      }
+
+      /* 状态演示：切到空/加载/异常时，只把这一块换掉，其余保持原样 */
+      .demo-state {
+        display: none;
+      }
+
+      body[data-state='empty'] .demo-state[data-for='empty'],
+      body[data-state='loading'] .demo-state[data-for='loading'],
+      body[data-state='error'] .demo-state[data-for='error'] {
+        display: flex;
+      }
+
+      body:not([data-state='default']) .demo-data {
+        display: none;
+      }
+    </style>
+  </head>
+  <body data-state="default">
+    <div class="proto-page" data-page="dashboard" data-title="外壳自检" data-tabs="static" data-baseline="">
+      <!-- ① 主卡片：16px 圆角 / 16px 内边距 / 16px 字号标题 -->
+      <div class="demo-card demo-data">
+        <h2 class="demo-title">卡片的三个基准圆角</h2>
+        <p class="demo-body">主卡片 16px（rounded-2xl）、工具卡与内嵌块 12px（rounded-xl）、按钮与输入 8px（rounded-lg）。</p>
+        <p class="demo-hint">12px 说明文字（slate-500），14px 正文（slate-700），16px 标题（slate-900 semibold）。</p>
+        <div class="demo-row" style="margin-top: 12px">
+          <span class="demo-chip" data-on="true">选中 chip</span>
+          <span class="demo-chip">未选中 chip</span>
+          <span class="demo-chip" style="border-color: var(--danger-line); color: var(--danger-text)">危险 chip</span>
+        </div>
+      </div>
+
+      <!-- ② 工具卡 + 内嵌块 -->
+      <div class="demo-tool-card demo-data">
+        <div class="demo-seg" role="group" aria-label="分段示例">
+          <button type="button" aria-pressed="true">追满分</button>
+          <button type="button" aria-pressed="false">追双牌</button>
+        </div>
+        <div class="demo-inset" style="margin-top: 12px">
+          <div style="display: flex; align-items: baseline; justify-content: space-between">
+            <span class="demo-body">种公全收集</span>
+            <span class="demo-hint">进度示例</span>
+          </div>
+          <div class="demo-progress" style="margin-top: 8px"><i></i></div>
+          <p class="demo-hint">内嵌块 12px 圆角 + slate-50 底，进度条 6px 高、主色 44%。</p>
+        </div>
+      </div>
+
+      <!-- ③ 四列精灵卡 + 图鉴号（线上最小字号 9px，只给号码用；头像用官方 CDN 真图） -->
+      <div class="demo-card demo-data">
+        <h2 class="demo-title">四列精灵卡（实测宽 81.75px）</h2>
+        <div class="demo-grid">
+          <div class="demo-pet">
+            <span class="no">No.027</span>
+            <img class="thumb" src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" loading="lazy" />
+            <span class="name">布是石</span>
+          </div>
+          <div class="demo-pet">
+            <span class="no">No.073</span>
+            <img class="thumb" src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" loading="lazy" />
+            <span class="name">白发懒人</span>
+          </div>
+          <div class="demo-pet">
+            <span class="no">No.258</span>
+            <img class="thumb" src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3536/icon.png" alt="" loading="lazy" />
+            <span class="name">乌达</span>
+          </div>
+          <div class="demo-pet">
+            <span class="no">No.181</span>
+            <img class="thumb" src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3215/icon.png" alt="" loading="lazy" />
+            <span class="name">海豹战士</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ④ 按钮与次按钮 -->
+      <div class="demo-tool-card demo-data">
+        <button type="button" class="demo-primary">主按钮 44px（导入游戏数据）</button>
+        <div style="display: flex; gap: 8px; margin-top: 12px">
+          <button type="button" class="demo-second">次按钮 32px</button>
+          <button type="button" class="demo-second">再来一个</button>
+        </div>
+        <p class="demo-hint">主按钮 emerald-600 底 / 白字 16px；次按钮白底 + slate-200 描边 + 12px 灰字。</p>
+      </div>
+
+      <!-- ⑤ 状态：空 / 加载 / 异常（用工具栏「状态」切换） -->
+      <div class="demo-card">
+        <div class="demo-state" data-for="empty">
+          <div class="demo-empty">
+            <h2 class="demo-title" style="margin: 0">还没有数据</h2>
+            <p class="demo-hint" style="margin: 0">导出一份游戏数据后，这里会出现卡片。空态由 <code>[data-state="empty"]</code> 驱动。</p>
+            <button type="button" class="demo-second">导入游戏数据</button>
+          </div>
+        </div>
+        <div class="demo-state" data-for="loading">
+          <div class="demo-empty">
+            <h2 class="demo-title" style="margin: 0">正在读取数据…</h2>
+            <p class="demo-hint" style="margin: 0">加载态：保留骨架、不要跳动。</p>
+          </div>
+        </div>
+        <div class="demo-state" data-for="error">
+          <div class="demo-empty">
+            <h2 class="demo-title" style="margin: 0; color: var(--danger-text)">数据读不出来</h2>
+            <p class="demo-hint" style="margin: 0">异常态：说清原因 + 给一个可重试的按钮。</p>
+            <button type="button" class="demo-second">重试</button>
+          </div>
+        </div>
+        <!-- 默认态下这块显示「面板说明」，避免默认态什么都不显示 -->
+        <div class="demo-data">
+          <h2 class="demo-title">状态机</h2>
+          <p class="demo-hint" style="margin: 0">
+            点底部工具栏的「空 / 加载 / 异常」，这一块会换成对应状态，其余内容保持不动 —— 这就是每页状态补齐的做法。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script src="./shell.js"></script>
+  </body>
+</html>

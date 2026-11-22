@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>egg-demand-card · 换蛋需求卡规格</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../_doc.css" />
+    <link rel="stylesheet" href="./egg-demand-card.css" />
+  </head>
+  <body>
+    <h1>egg-demand-card</h1>
+    <p>换蛋需求卡：需求列表里的一张「想要什么 + 目标 + 当前状态」，窄卡竖排，靠底部状态条收口。</p>
+    <div class="lede">
+      <span class="tag">宽由栅格决定（约 76~96）</span>
+      <span class="tag">底部状态条 20</span>
+      <span class="tag">state: 待接单 / 已接单 / 已换到</span>
+    </div>
+
+    <div class="note">
+      <b>与 pet-card 的区别：</b>pet-card 展示「我有什么」；需求卡展示「我想要什么、进行到哪」，
+      主体是状态而不是个体数据，所以是独立组件。
+    </div>
+
+    <h2>A · 形态</h2>
+    <div class="grid grid--narrow">
+      <div class="cell">
+        <article class="demand-card">
+          <span class="demand-card__art"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></span>
+          <h3 class="demand-card__name">白发懒人</h3>
+          <span class="demand-card__meta">固执 · 大块头</span>
+          <span class="demand-card__medals">
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" />
+          </span>
+          <span class="demand-card__footer">待接单</span>
+        </article>
+        <span class="label">待接单</span>
+      </div>
+      <div class="cell">
+        <article class="demand-card">
+          <span class="demand-card__art"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></span>
+          <h3 class="demand-card__name">布是石</h3>
+          <span class="demand-card__meta">平和 · 小不点</span>
+          <span class="demand-card__medals">
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" />
+          </span>
+          <span class="demand-card__footer">已接单</span>
+        </article>
+        <span class="label">已接单</span>
+      </div>
+      <div class="cell">
+        <article class="demand-card">
+          <span class="demand-card__art"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3436/icon.png" alt="" /></span>
+          <h3 class="demand-card__name">柴渣虫</h3>
+          <span class="demand-card__meta">胆小 · 婉转声</span>
+          <span class="demand-card__medals">
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3436/icon.png" alt="" />
+          </span>
+          <span class="demand-card__footer">已换到</span>
+        </article>
+        <span class="label">已换到</span>
+      </div>
+    </div>
+
+    <h2>B · 状态</h2>
+    <table>
+      <tr><th>state</th><th>底条文案 / 色</th><th>说明</th></tr>
+      <tr><td>待接单</td><td>待接单 · <code>--accent-soft</code> / <code>--accent-text</code></td><td>还在需求池</td></tr>
+      <tr><td>已接单</td><td>已接单 · 同上</td><td>对方已接、等交付</td></tr>
+      <tr><td>已换到</td><td>已换到 · 同上</td><td>完成，卡片仍保留（可查来源）</td></tr>
+    </table>
+
+    <h2>C · Token 引用（③ 组件层）</h2>
+    <table>
+      <tr><th>用途</th><th>token</th><th>值</th></tr>
+      <tr><td>圆角 / 内边距</td><td><code>--demand-card-radius</code> / <code>-pad</code></td><td>12px / 4px</td></tr>
+      <tr><td>名字 / 元信息字号</td><td><code>--demand-name-size</code> / <code>-meta-size</code></td><td>11px / 10px</td></tr>
+      <tr><td>奖牌尺寸</td><td><code>--demand-medal-size</code></td><td>16px</td></tr>
+      <tr><td>底条高度</td><td><code>--demand-footer-h</code></td><td>20px</td></tr>
+      <tr><td>底条颜色</td><td><code>--accent-soft</code> / <code>--accent-text</code></td><td>见 semantic.css</td></tr>
+    </table>
+
+    <h2>D · 布局约定</h2>
+    <p>需求列表用四列栅格，卡片宽度随格子走、不设固定宽；名字单行截断，完整名进 <code>title</code>。</p>
+  </body>
+</html>

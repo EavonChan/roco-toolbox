@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>收集 · 洛克工具箱设计稿</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../../_shell/shell.css" />
+    <link rel="stylesheet" href="../../components/segmented-control/segmented-control.css" />
+    <link rel="stylesheet" href="../../components/pet-card/pet-card.css" />
+    <link rel="stylesheet" href="../../components/chip/chip.css" />
+    <link rel="stylesheet" href="./collection.css" />
+  </head>
+  <body>
+    <div class="proto-page" data-page="collection" data-title="收集" data-baseline="collection">
+      <!-- ① 账号 + 三视图 -->
+      <section class="col-top">
+        <button type="button" class="col-account">
+          <span class="col-account__name">哈基米</span>
+          <span class="col-account__count">2/2</span>
+          <span class="col-account__caret" aria-hidden="true">⌄</span>
+        </button>
+        <div class="seg col-view" role="group" aria-label="收集视图">
+          <button class="seg__item" type="button" aria-pressed="false">精灵背包</button>
+          <button class="seg__item" type="button" aria-pressed="true">母本</button>
+          <button class="seg__item" type="button" aria-pressed="false">种公</button>
+        </div>
+      </section>
+
+      <!-- ② 搜索 -->
+      <section class="col-search">
+        <input class="col-search__input" type="search" placeholder="搜索母本名称或图鉴号（支持中文 / 编号）" />
+        <button class="col-search__group" type="button">全部蛋组 ▾</button>
+      </section>
+
+      <!-- ③ 目标模式 + 奖牌 -->
+      <div class="seg seg--fit col-mode" role="group" aria-label="目标模式">
+        <button class="seg__item" type="button" aria-pressed="true">追满分</button>
+        <button class="seg__item" type="button" aria-pressed="false">追双牌</button>
+      </div>
+      <section class="col-medals" aria-label="目标奖牌">
+        <button class="col-medal" type="button" aria-pressed="true"><span>🏅🎵</span><em>大块头<br />婉转声</em></button>
+        <button class="col-medal" type="button" aria-pressed="false"><span>🏅🎵</span><em>大块头<br />粗嗓门</em></button>
+        <button class="col-medal" type="button" aria-pressed="false"><span>🏅🎵</span><em>小不点<br />婉转声</em></button>
+        <button class="col-medal" type="button" aria-pressed="false"><span>🏅🎵</span><em>小不点<br />粗嗓门</em></button>
+      </section>
+
+      <!-- ④ 计数 + 性格口径 -->
+      <section class="col-summary">
+        <p class="col-summary__count">共 209 条链 · 已收集 <b>44</b></p>
+        <div class="col-summary__chips">
+          <button class="chip chip--inline" type="button" aria-pressed="true">只算推荐性格</button>
+          <button class="chip chip--inline" type="button" aria-pressed="false">编辑推荐性格</button>
+        </div>
+      </section>
+
+      <!-- ⑤ 收集状态 -->
+      <div class="seg seg--fit col-status" role="group" aria-label="收集状态">
+        <button class="seg__item" type="button" aria-pressed="true">未收集</button>
+        <button class="seg__item" type="button" aria-pressed="false">收集中</button>
+        <button class="seg__item" type="button" aria-pressed="false">已收集</button>
+      </div>
+
+      <!-- ⑥ 蛋组分区 + 四列母本卡 -->
+      <section class="col-group">
+        <div class="col-group__head">
+          <h2 class="col-group__name">巨灵组</h2>
+          <span class="col-group__meta">已收集 0/22</span>
+        </div>
+        <ul class="col-grid">
+          <li>
+            <article class="pc pc--md pc--mother pc--with-footer" data-status="uncollected">
+              <div class="pc__head">
+                <div class="pc__left">
+                  <span class="pc__number">No.027</span>
+                  <span class="pc__chips"><span class="pc__chip">巨灵组</span><span class="pc__chip">大地组</span></span>
+                </div>
+                <div class="pc__right">
+                  <span class="pc__natures"><span class="pc__nature">平和</span><span class="pc__nature">固执</span></span>
+                </div>
+              </div>
+              <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+              <div class="pc__name">布是石</div>
+              <div class="pc__footer">计划</div>
+            </article>
+          </li>
+          <li>
+            <article class="pc pc--md pc--mother pc--with-footer" data-status="planned">
+              <div class="pc__head">
+                <div class="pc__left">
+                  <span class="pc__number">No.076</span>
+                  <span class="pc__chips"><span class="pc__chip">巨灵组</span><span class="pc__chip">海洋组</span></span>
+                </div>
+                <div class="pc__right"><span class="pc__natures"><span class="pc__nature">沉默</span></span></div>
+              </div>
+              <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3536/icon.png" alt="" /></div>
+              <div class="pc__name">海盔虫·本来</div>
+              <div class="pc__footer">已计划</div>
+            </article>
+          </li>
+          <li>
+            <article class="pc pc--md pc--mother pc--with-footer" data-status="uncollected">
+              <div class="pc__head">
+                <div class="pc__left">
+                  <span class="pc__number">No.105</span>
+                  <span class="pc__chips"><span class="pc__chip">巨灵组</span><span class="pc__chip">大地组</span></span>
+                </div>
+                <div class="pc__right"><span class="pc__natures"><span class="pc__nature">固执</span></span></div>
+              </div>
+              <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3206/icon.png" alt="" /></div>
+              <div class="pc__name">阿米亚特</div>
+              <div class="pc__footer">计划</div>
+            </article>
+          </li>
+          <li>
+            <article class="pc pc--md pc--mother pc--with-footer" data-status="collected">
+              <div class="pc__head">
+                <div class="pc__left">
+                  <span class="pc__number">No.134</span>
+                  <span class="pc__chips"><span class="pc__chip">巨灵组</span><span class="pc__chip">拟人组</span></span>
+                </div>
+                <div class="pc__right">
+                  <span class="pc__natures">
+                    <span class="pc__nature" data-collected="true">平和</span>
+                    <span class="pc__nature" data-collected="false">固执</span>
+                  </span>
+                </div>
+              </div>
+              <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3279/icon.png" alt="" /></div>
+              <div class="pc__name">雪豆丁</div>
+              <div class="pc__footer">查看</div>
+            </article>
+          </li>
+          <li>
+            <article class="pc pc--md pc--mother pc--with-footer" data-status="uncollected">
+              <div class="pc__head">
+                <div class="pc__left">
+                  <span class="pc__number">No.198</span>
+                  <span class="pc__chips"><span class="pc__chip">巨灵组</span><span class="pc__chip">动物组</span></span>
+                </div>
+                <div class="pc__right"><span class="pc__natures"><span class="pc__nature">沉默</span></span></div>
+              </div>
+              <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3008/icon.png" alt="" /></div>
+              <div class="pc__name">逗逗</div>
+              <div class="pc__footer">计划</div>
+            </article>
+          </li>
+          <li>
+            <article class="pc pc--md pc--mother pc--with-footer" data-status="uncollected">
+              <div class="pc__head">
+                <div class="pc__left">
+                  <span class="pc__number">No.214</span>
+                  <span class="pc__chips"><span class="pc__chip">巨灵组</span><span class="pc__chip">昆虫组</span></span>
+                </div>
+                <div class="pc__right"><span class="pc__natures"><span class="pc__nature">固执</span></span></div>
+              </div>
+              <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3307/icon.png" alt="" /></div>
+              <div class="pc__name">矮脚爬爬</div>
+              <div class="pc__footer">计划</div>
+            </article>
+          </li>
+          <li>
+            <article class="pc pc--md pc--mother pc--with-footer" data-status="uncollected">
+              <div class="pc__head">
+                <div class="pc__left">
+                  <span class="pc__number">No.216</span>
+                  <span class="pc__chips"><span class="pc__chip">巨灵组</span></span>
+                </div>
+                <div class="pc__right"><span class="pc__natures"><span class="pc__nature">平和</span></span></div>
+              </div>
+              <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3118/icon.png" alt="" /></div>
+              <div class="pc__name">火尾瓦特</div>
+              <div class="pc__footer">计划</div>
+            </article>
+          </li>
+          <li>
+            <article class="pc pc--md pc--mother pc--with-footer" data-status="uncollected">
+              <div class="pc__head">
+                <div class="pc__left">
+                  <span class="pc__number">No.221</span>
+                  <span class="pc__chips"><span class="pc__chip">巨灵组</span><span class="pc__chip">机械组</span></span>
+                </div>
+                <div class="pc__right"><span class="pc__natures"><span class="pc__nature">平和</span><span class="pc__nature">固执</span></span></div>
+              </div>
+              <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3708/icon.png" alt="" /></div>
+              <div class="pc__name">多西</div>
+              <div class="pc__footer">计划</div>
+            </article>
+          </li>
+        </ul>
+      </section>
+    </div>
+    <script src="../../_shell/shell.js"></script>
+  </body>
+</html>

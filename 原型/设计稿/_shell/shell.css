@@ -1,0 +1,446 @@
+/* =============================================================================
+ * shell.css — 共用外壳（原型基准重建 · 阶段 0）
+ *
+ * 两部分，界限必须清楚：
+ *
+ *  A. 页面骨架 .chrome-*   —— 就是线上真实长的那根标题栏 + 六页签，
+ *     尺寸全部按线上实测写死（47 + 41 = 88px），由 shell.js 统一渲染，
+ *     保证六个页面和后续二级页的骨架**不可能**各写一套。
+ *
+ *  B. 评审外壳 .shell-*    —— 只存在于设计稿里、线上没有的东西：
+ *     屏宽容器、4px 参考线、元素边框、状态切换、工具栏。
+ *     它永远浮在页面之上或页面之外，绝不参与页面布局，
+ *     所以「开着参考线量出来的尺寸」和「关掉参考线」完全一致。
+ *
+ * 依赖：tokens.css（必须先引）。
+ * ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+ * 0. 设计稿页面的最小复位
+ * 线上是 Tailwind preflight（`*,::before,::after { box-sizing: border-box }`），
+ * 这里照抄同一条，否则 height/padding 会按 content-box 叠加，
+ * 骨架就会从 47px 变成 64px（自检 check-shell.mjs 会抓到这种偏差）。
+ * -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  color: var(--text-strong);
+  background: #eef1f5; /* 评审台底色：只在设计稿里出现，线上没有 */
+  /* 线上：body { padding-bottom: env(safe-area-inset-bottom) } */
+  padding-bottom: var(--safe-bottom);
+}
+
+/* =============================================================================
+ * A. 页面骨架：标题栏 + 六页签（线上实测值）
+ * ========================================================================== */
+
+.chrome {
+  position: sticky;
+  top: 0;
+  z-index: var(--chrome-z);
+  background: var(--bg-surface);
+}
+
+.chrome-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-8);
+  height: var(--chrome-header-h);
+  padding: var(--sp-8) var(--chrome-pad-x);
+  border-bottom: 1px solid var(--line-subtle);
+  background: var(--bg-surface);
+}
+
+.chrome-title {
+  margin: 0;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  color: var(--text-strong);
+}
+
+.chrome-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/* 标题栏右侧「刷新 / 教程」：30px 高、12px 字、8px 圆角、slate-200 描边 */
+.chrome-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--ctl-30);
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  font-weight: var(--fw-normal);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.chrome-btn:hover {
+  background: var(--c-slate-50);
+}
+
+.chrome-btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 六页签：flex-1、40px 高、14px/500、选中 emerald-700 + 2px emerald-600 下划线 */
+.chrome-nav {
+  display: flex;
+  padding: 0 var(--chrome-nav-pad-x);
+  border-bottom: 1px solid var(--line-subtle);
+  background: var(--bg-surface);
+}
+
+.chrome-tab {
+  position: relative;
+  flex: 1 1 0%;
+  min-height: var(--ctl-40);
+  padding: 0 var(--sp-8);
+  border: 0;
+  border-bottom: var(--chrome-underline) solid transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.chrome-tab[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* 页签上的红点数字（「小组」待确认）：16px 高、10px 字、rose-500 底 */
+.chrome-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  margin-left: var(--sp-4);
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-full);
+  background: var(--c-rose-500);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-micro);
+  font-weight: var(--fw-semibold);
+  color: var(--text-inverse);
+}
+
+/* 页面容器：宽度上限 448px，居中；padding / gap 由各页 data-page 决定 */
+.proto-page {
+  margin: 0 auto;
+  max-width: var(--container-max);
+  font-family: var(--font-sans);
+  color: var(--text-body);
+}
+
+/* 看板 12+8 · 收集 12+8 · 换蛋 16+8 · 家园 16+12 · 我的 16+12（2026-11-22 实测） */
+.proto-page[data-page='dashboard'],
+.proto-page[data-page='collection'],
+.proto-page[data-page='nearby'] {
+  padding: var(--page-pad-dashboard);
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap-tight);
+}
+
+.proto-page[data-page='home'],
+.proto-page[data-page='profile'] {
+  padding: var(--page-pad-home);
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap);
+}
+
+/* 换蛋（代码 page=groups） */
+.proto-page[data-page='swap'],
+.proto-page[data-page='groups'] {
+  padding: var(--page-pad-groups);
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap-tight);
+}
+
+/* =============================================================================
+ * B. 评审外壳（线上不存在）
+ * ========================================================================== */
+
+.shell {
+  min-height: 100vh;
+  padding: 56px var(--sp-24) 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-16);
+}
+
+/* 页面标题条：告诉评审人「这是哪一页、什么基准」 */
+.shell-caption {
+  width: 100%;
+  max-width: 1180px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-8) var(--sp-16);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--c-slate-600);
+}
+
+.shell-caption b {
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+  color: var(--c-slate-900);
+}
+
+.shell-caption code {
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--c-slate-100);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--c-slate-700);
+}
+
+/* 屏宽舞台：一个或多个设备并排 */
+.shell-stage {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.shell-slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  align-items: center;
+}
+
+/* 设备标签：375 / 390 */
+.shell-slot-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--c-slate-500);
+}
+
+.shell-slot-label b {
+  color: var(--c-slate-900);
+}
+
+/*
+ * 真实屏宽容器。
+ * content-box + 1px 描边 => 里面那层恒等于 375 / 390，量尺寸不会被边框污染。
+ * 高度固定 = 该宽度的视口高度，内部滚动，等价于真机首屏。
+ */
+.shell-device {
+  position: relative;
+  box-sizing: content-box;
+  width: var(--device-w, var(--w-375));
+  height: var(--device-h, 812px);
+  overflow: auto;
+  border: 1px solid var(--c-slate-300);
+  border-radius: 14px;
+  background: var(--bg-canvas);
+  scrollbar-width: thin;
+}
+
+.shell-device[data-height='full'] {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+/* 并排时 390 那台高一点，和真机比例一致 */
+.shell-device[data-w='390'] {
+  --device-w: var(--w-390);
+  --device-h: 844px;
+}
+
+/* ---- 参考线：4px 栅格，每 8px 加深 ---- */
+.shell-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(to right, rgb(16 185 129 / 0.1) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(to bottom, rgb(16 185 129 / 0.1) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(to right, rgb(16 185 129 / 0.26) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(to bottom, rgb(16 185 129 / 0.26) 0 1px, transparent 1px 8px);
+}
+
+/* 顶部外壳线：88px（标题栏 47 + 页签 41），横贯整屏 */
+.shell-guides::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--chrome-h);
+  border-top: 1px dashed rgb(14 165 233 / 0.9);
+}
+
+/* 容器线：448px 上限的两条竖线（窄屏时贴在左右 0） */
+.shell-guides::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(var(--container-max), 100%);
+  transform: translateX(-50%);
+  border-left: 1px dashed rgb(244 63 94 / 0.55);
+  border-right: 1px dashed rgb(244 63 94 / 0.55);
+}
+
+/* ---- 元素边框：每个盒子一圈，用来对齐间距 ---- */
+body.shell-outline .chrome *,
+body.shell-outline .proto-page * {
+  outline: 1px solid rgb(37 99 235 / 0.3);
+  outline-offset: -1px;
+}
+
+/* ---- 被嵌页（并排模式的两个 iframe）自己就是视口 ----
+ * 它没有评审台，body 直接就是 375 / 390 宽的滚动容器，
+ * 所以参考线要 fixed 才能跟着视口走。 */
+body.shell-embed {
+  background: var(--bg-canvas);
+  padding: 0;
+}
+
+body.shell-embed .shell-guides {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+/* ---- 工具栏：固定底部胶囊，不进页面流 ---- */
+.shell-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 100;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  max-width: calc(100vw - 24px);
+  padding: 6px 8px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: var(--r-full);
+  background: rgb(15 23 42 / 0.92);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-sans);
+  color: var(--c-slate-100);
+  backdrop-filter: blur(8px);
+}
+
+.shell-bar[data-collapsed='true'] {
+  padding: 6px;
+}
+
+.shell-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.shell-bar-group + .shell-bar-group {
+  border-left: 1px solid rgb(255 255 255 / 0.14);
+}
+
+.shell-bar-label {
+  padding: 0 6px 0 2px;
+  font-size: 11px;
+  color: rgb(148 163 184);
+  white-space: nowrap;
+}
+
+.shell-bar button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  color: var(--c-slate-200);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.shell-bar button:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.shell-bar button[aria-pressed='true'] {
+  border-color: var(--c-emerald-400);
+  background: rgb(16 185 129 / 0.22);
+  color: var(--c-emerald-200);
+}
+
+.shell-bar .shell-bar-collapse {
+  padding: 0 8px;
+  color: var(--c-slate-400);
+}
+
+/* 状态说明条：切换状态时在设备上方提示「现在看到的是哪个状态」 */
+.shell-state-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  background: var(--c-amber-100);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--c-amber-900);
+}
+
+.shell-state-note[hidden] {
+  display: none;
+}
+
+/* 收起来的设备不显示参考线 */
+.shell[data-collapsed='true'] .shell-caption {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .shell {
+    padding: 24px 12px 120px;
+  }
+  .shell-stage {
+    gap: 16px;
+  }
+}

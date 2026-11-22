@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>progress-card · 进度卡规格</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../_doc.css" />
+    <link rel="stylesheet" href="./progress-card.css" />
+  </head>
+  <body>
+    <h1>progress-card</h1>
+    <p>进度卡：一块「分子 / 分母 + 进度条」的统计卡，回答「已经收了多少、还差多少」。</p>
+    <div class="lede">
+      <span class="tag">h2 标题 + 24px 数字 + 8px 条</span>
+      <span class="tag">variant: 静态 / 可点</span>
+      <span class="tag">state: default / hover / empty / loading</span>
+    </div>
+
+    <div class="note">
+      <b>何时不用：</b>只是「一个数字 + 单位」（如「11 个窝」）用 chip；需要看明细列表时用卡片网格，
+      不要在进度卡里塞列表。
+    </div>
+
+    <h2>A · 形态</h2>
+    <div class="grid">
+      <div class="cell">
+        <section class="progress-card">
+          <div class="progress-card__head">
+            <h2 class="progress-card__title">种公全收集</h2>
+            <span class="progress-card__help" role="button" aria-label="说明">?</span>
+          </div>
+          <p class="progress-card__value">9 <span>/ 14</span></p>
+          <div class="progress-card__track"><div class="progress-card__fill" style="width: 64%"></div></div>
+        </section>
+        <span class="label">静态</span>
+      </div>
+      <div class="cell">
+        <button class="progress-card progress-card--clickable" type="button">
+          <div class="progress-card__head">
+            <h2 class="progress-card__title">母本全收集</h2>
+            <span class="progress-card__help" role="button" aria-label="说明">?</span>
+          </div>
+          <p class="progress-card__value">78 <span>/ 209</span></p>
+          <div class="progress-card__track"><div class="progress-card__fill" style="width: 37%"></div></div>
+        </button>
+        <span class="label">可点（进收集页）</span>
+      </div>
+      <div class="cell">
+        <section class="progress-card">
+          <div class="progress-card__head"><h2 class="progress-card__title">种公全收集</h2></div>
+          <p class="progress-card__value">0 <span>/ 0</span></p>
+          <div class="progress-card__track"><div class="progress-card__fill" style="width: 0%"></div></div>
+          <p class="progress-card__hint">还没设置目标：先到「收集 · 种公」选目标性格与奖牌。</p>
+        </section>
+        <span class="label">empty（0/0）</span>
+      </div>
+    </div>
+
+    <h2>B · 进度取值</h2>
+    <table>
+      <tr><th>情况</th><th>显示</th><th>条宽</th></tr>
+      <tr><td>0 / 0</td><td>数字 + 提示行</td><td>0%</td></tr>
+      <tr><td>0 / N</td><td>0 / N</td><td>0%</td></tr>
+      <tr><td>部分</td><td>n / N</td><td><code>n/N</code> 四舍五入到整数百分比</td></tr>
+      <tr><td>n = N</td><td>N / N</td><td>100%，数字可标主色</td></tr>
+    </table>
+
+    <h2>C · Token 引用（③ 组件层）</h2>
+    <table>
+      <tr><th>用途</th><th>token</th><th>值</th></tr>
+      <tr><td>圆角 / 内边距</td><td><code>--progress-card-radius</code> / <code>-pad</code></td><td>16px / 16px</td></tr>
+      <tr><td>数字</td><td><code>--progress-num-size</code> / <code>-line</code></td><td>24px / 32px</td></tr>
+      <tr><td>进度条高</td><td><code>--progress-bar-h</code></td><td>8px</td></tr>
+      <tr><td>问号按钮</td><td><code>--progress-help-size</code></td><td>20px</td></tr>
+      <tr><td>颜色</td><td><code>--bg-surface</code> / <code>--bg-muted</code> / <code>--accent-line</code> / <code>--text-*</code></td><td>见 semantic.css</td></tr>
+    </table>
+
+    <h2>D · Anatomy</h2>
+    <p>①标题 + ②问号 ③分子/分母 ④进度条 ⑤提示行（仅空态/完成态出现）。见 A 段第一张卡。</p>
+  </body>
+</html>

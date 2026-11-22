@@ -1,0 +1,60 @@
+/* =============================================================================
+ * segmented-control.css — 互斥视角分段控件（唯一来源）
+ *
+ * 结构：一个 role="group" 容器 + N 个 aria-pressed 按钮（不用 tablist，见源实现注释）。
+ * 尺寸只引用 ③ `--segmented-*`；颜色只引用 ② semantic。
+ * ========================================================================== */
+
+.seg {
+  /* 默认按内容定宽（inline-flex + max-content）：
+     父容器再窄，控件也不会把分段挤扁，而是整块溢出父级，由父级让位。 */
+  display: inline-flex;
+  width: max-content;
+  max-width: none;
+  flex-wrap: nowrap;
+  gap: var(--segmented-gap);
+  border-radius: var(--segmented-radius);
+  background: var(--bg-muted);
+  padding: var(--segmented-pad);
+}
+
+.seg__item {
+  /* 2026-11-22 用户口径：分段控件的核心是「字必须完整」——
+     所以允许变宽（flex-grow:1）、不允许缩到比文字还窄（flex-shrink:0 + min-width:min-content），
+     也不做省略号截断。放不下时由使用方换布局（见 README 第 6 段）。 */
+  flex: 1 0 auto;
+  min-width: min-content;
+  min-height: var(--segmented-item-h);
+  white-space: nowrap;
+  border: 0;
+  border-radius: var(--segmented-item-radius);
+  background: transparent;
+  padding: 0 var(--sp-8);
+  font-family: var(--font-sans);
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.seg__item[aria-pressed='true'] {
+  background: var(--bg-surface);
+  color: var(--accent-text);
+  font-weight: var(--fw-medium);
+  box-shadow: var(--shadow-sm);
+}
+
+.seg__item:hover:not([aria-pressed='true']):not(:disabled) {
+  color: var(--text-body);
+}
+
+.seg__item:disabled {
+  color: var(--c-slate-300);
+  cursor: not-allowed;
+}
+
+/* 铺满父级：父级够宽时用它；不要用在比标签总宽还窄的容器里 */
+.seg--fit {
+  display: flex;
+  width: 100%;
+}

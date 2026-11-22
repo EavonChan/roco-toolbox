@@ -1,0 +1,796 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>宽屏布局方案 · 洛克工具箱设计稿</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../../_shell/shell.css" />
+    <style>
+      /* =====================================================================
+       * 宽屏（平板横屏 / 桌面）看板布局方案（2026-11-22）
+       *
+       * 现状问题（1366×1024 实测）：
+       *   · ≥1120 横屏把主区劈成两块：种公推荐 411 + 母本缺口 411，
+       *     加上左导航（101）和右栏（396）一共四列；
+       *   · 母本缺口没数据时整块空白，右栏只有模式 + 两个进度，下半截全空；
+       *   · 「推荐配窝」被压在左栏底部，越往下越挤；
+       *   · 主区宽度在 531~823 之间变，但网格永远 4 列 → 卡宽 77~130 乱跳。
+       *
+       * 本稿做法：
+       *   · 主区合成一块：分段控件切换「种公推荐 / 母本缺口」，与手机同构；
+       *   · 网格列数按可用宽度算：4 列起，每张卡不低于 ~88px，最多 8 列；
+       *   · 右栏按重要性排：账号与模式 → 两个进度 → 推荐配窝（补全计划 + 配窝建议）。
+       * ================================================================== */
+
+      .panel {
+        background: var(--bg-surface);
+        border-radius: var(--r-2xl);
+        padding: var(--sp-16);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .panel h2 {
+        margin: 0 0 var(--sp-8);
+        font-size: var(--fs-title);
+        line-height: var(--lh-title);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .panel p {
+        margin: 0;
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .panel p + p {
+        margin-top: var(--sp-6);
+      }
+
+      .panel code {
+        padding: 0 3px;
+        border-radius: 3px;
+        background: var(--bg-inset);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        color: var(--text-body);
+      }
+
+      .sec {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-8);
+      }
+
+      .sec-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--sp-8);
+        padding: 0 var(--sp-4);
+      }
+
+      .sec-head h2 {
+        margin: 0;
+        font-size: var(--fs-body);
+        line-height: var(--lh-body);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .sec-spec {
+        padding: 0 var(--sp-4);
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+      }
+
+      .cap {
+        padding: 0 var(--sp-4);
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+      }
+
+      /* 真实 px 渲染 + 等比缩放：在 375 的稿子里看 1366 的布局 */
+      .sim {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--c-slate-100);
+      }
+
+      .sim-label {
+        display: flex;
+        justify-content: space-between;
+        padding: 3px 6px;
+        background: var(--c-slate-100);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 10px;
+        line-height: 14px;
+        color: var(--text-muted);
+      }
+
+      .sim-inner {
+        transform-origin: top left;
+      }
+
+      .sim img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      /* ---------------- 方案里的「小布助手」三栏骨架 ---------------- */
+      .app {
+        display: flex;
+        align-items: stretch;
+        background: #f1f5f9;
+        font-family: var(--font-sans);
+        color: var(--text-body);
+      }
+
+      /* 左导航：线上宽屏把六个页签竖成一列 */
+      .app-nav {
+        flex: 0 0 101px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px 8px;
+        border-right: 1px solid var(--line);
+        background: var(--bg-surface);
+      }
+
+      .app-nav b {
+        margin-bottom: 8px;
+        padding-left: 6px;
+        font-size: 15px;
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .app-nav span {
+        padding: 8px 6px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      .app-nav span[data-on='true'] {
+        background: var(--accent-soft);
+        font-weight: var(--fw-semibold);
+        color: var(--accent-text);
+      }
+
+      .app-nav .spacer {
+        flex: 1 1 auto;
+      }
+
+      .app-nav small {
+        padding: 6px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
+      }
+
+      /* 主区 */
+      .app-main {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px 12px;
+      }
+
+      .app-seg {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        border-radius: var(--r-lg);
+        background: var(--bg-muted);
+      }
+
+      .app-seg span {
+        flex: 1 1 0%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        border-radius: 6px;
+        font-size: 14px;
+        color: var(--text-muted);
+      }
+
+      .app-seg span[data-on='true'] {
+        background: var(--bg-surface);
+        font-weight: var(--fw-medium);
+        color: var(--text-body);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .app-grid {
+        display: grid;
+        gap: 4px;
+      }
+
+      /* 右栏 */
+      .app-aside {
+        flex: 0 0 396px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px 12px;
+        border-left: 1px solid var(--line);
+        background: #f8fafc;
+      }
+
+      .aside-card {
+        padding: 12px;
+        border-radius: var(--r-2xl);
+        background: var(--bg-surface);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .aside-card h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 18px;
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .mode-row {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        border-radius: var(--r-lg);
+        background: var(--bg-muted);
+      }
+
+      .mode-row span {
+        flex: 1 1 0%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      .mode-row span[data-on='true'] {
+        background: var(--bg-surface);
+        color: var(--text-body);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .criteria-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 4px;
+        margin-top: 8px;
+      }
+
+      .criteria {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 6px 2px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        font-size: 11px;
+        line-height: 14px;
+        color: var(--text-body);
+        text-align: center;
+      }
+
+      .criteria[data-on='true'] {
+        border-color: var(--accent-line);
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      .criteria img {
+        height: 20px;
+      }
+
+      .progress-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .progress-cell b {
+        display: block;
+        font-size: 22px;
+        line-height: 26px;
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .progress-cell b i {
+        font-size: 14px;
+        font-style: normal;
+        color: var(--text-faint);
+      }
+
+      .progress-track {
+        height: 6px;
+        margin-top: 6px;
+        border-radius: var(--r-full);
+        background: var(--accent-softer);
+        overflow: hidden;
+      }
+
+      .progress-track > i {
+        display: block;
+        height: 100%;
+        background: var(--accent);
+      }
+
+      /* 右栏里的配窝建议：两张一组，横向排 */
+      .pair-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .pair-card {
+        position: relative;
+        padding: 6px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-xl);
+        background: var(--bg-surface);
+      }
+
+      .pair-head {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 4px;
+        font-size: 10px;
+        line-height: 14px;
+        color: var(--text-muted);
+      }
+
+      .pair-head em {
+        padding: 0 4px;
+        border-radius: 3px;
+        background: var(--c-amber-50);
+        font-style: normal;
+        font-weight: var(--fw-semibold);
+        color: var(--c-amber-700);
+      }
+
+      .pair-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+      }
+
+      .pair-pet {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1px;
+        padding: 3px;
+        border-radius: 8px;
+        background: var(--c-pink-50);
+        font-size: 10px;
+        line-height: 13px;
+        color: var(--text-body);
+      }
+
+      .pair-pet[data-g='公'] {
+        background: var(--c-sky-50);
+      }
+
+      .pair-pet img {
+        height: 34px;
+      }
+
+      .pair-pet b {
+        font-size: 10px;
+        color: var(--text-strong);
+      }
+
+      .pair-pet small {
+        font-size: 9px;
+        line-height: 11px;
+        color: var(--text-muted);
+      }
+
+      /* 表格 */
+      .adapt-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--fs-nano);
+        line-height: 14px;
+      }
+
+      .adapt-table th,
+      .adapt-table td {
+        padding: 3px 4px;
+        border-bottom: 1px solid var(--line-subtle);
+        text-align: left;
+        color: var(--text-body);
+      }
+
+      .adapt-table th {
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+      }
+
+      .issues {
+        margin: 0;
+        padding-left: 18px;
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .issues li + li {
+        margin-top: 4px;
+      }
+
+      /* 定稿精灵卡（与「卡片方案」同一套：104 / 头像 48 / 名字 10px / 融合底条） */
+      .wcard {
+        position: relative;
+        height: 104px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: var(--r-xl);
+        background: var(--bg-surface);
+        box-shadow: var(--shadow-sm);
+        text-align: left;
+      }
+
+      .w-left {
+        position: absolute;
+        left: 4px;
+        top: 4px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        align-items: flex-start;
+        max-width: 46px;
+        font-size: 7px;
+        line-height: 8px;
+      }
+
+      .w-no {
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .w-eggs {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        align-items: flex-start;
+      }
+
+      .w-eggs span {
+        padding: 0 2px;
+        border-radius: 2px;
+        background: var(--c-sky-100);
+        color: var(--c-sky-800);
+        white-space: nowrap;
+      }
+
+      .w-right {
+        position: absolute;
+        right: 4px;
+        top: 4px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        align-items: flex-end;
+        max-width: 44px;
+      }
+
+      .w-right span {
+        display: inline-flex;
+        align-items: center;
+        height: 12px;
+        padding: 0 2px;
+        border-radius: 4px;
+        background: var(--c-amber-100);
+        font-size: 7px;
+        line-height: 8px;
+        font-weight: var(--fw-medium);
+        color: var(--c-amber-900);
+        white-space: nowrap;
+      }
+
+      .w-avatar {
+        position: absolute;
+        left: 50%;
+        top: 18px;
+        width: 48px;
+        height: 48px;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .w-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .w-name {
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        top: 68px;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 12px;
+        font-size: 10px;
+        line-height: 12px;
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .w-foot {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--accent-soft);
+        font-size: 10px;
+        line-height: 20px;
+        font-weight: var(--fw-medium);
+        color: var(--accent-text);
+      }
+
+      .w-foot[data-tone='collecting'] {
+        background: var(--c-amber-50);
+        color: var(--c-amber-800);
+      }
+    </style>
+  </head>
+  <body data-state="default">
+    <div class="proto-page" data-page="dashboard" data-title="宽屏布局方案" data-tabs="static" data-baseline="">
+      <div class="panel">
+        <h2>宽屏布局方案（看板 · 平板横屏 / 桌面）</h2>
+        <p>
+          你说的现象我复现了：<code>≥1120px 横屏</code> 时线上把主区劈成「种公推荐 / 母本缺口」两块，
+          加上左导航和右栏一共四列；「推荐配窝」被压在左栏底部，右栏下半截全空。
+        </p>
+        <p>
+          方案：主区合成一块（分段切换，和手机同构），右栏按重要性重排 ——
+          账号与模式 → 两个进度 → <b>推荐配窝</b>。网格列数改成按宽度算，卡片不再从 77 跳到 130。
+        </p>
+      </div>
+
+      <!-- ① 现状 -->
+      <div class="sec">
+        <div class="sec-head"><h2>① 现状（1366×1024 实测截图）</h2></div>
+        <div class="sec-spec">这是我在 test 站 1366×1024 下截的，和你发的平板截图一致</div>
+        <div class="sim" id="sim-old"></div>
+        <div class="panel" style="margin-top: 8px">
+          <ul class="issues">
+            <li>主区被劈成两块：种公推荐 <b>411px</b> + 母本缺口 <b>411px</b>，加左导航 <b>101px</b>、右栏 <b>396px</b> → 四列</li>
+            <li>母本缺口没数据时整块空白；右栏只有模式 + 两个进度，<b>下面 70% 是空的</b></li>
+            <li>「推荐配窝」挤在左栏底部，越往下越窄</li>
+            <li>主区宽在 <b>531 ~ 823px</b> 之间变，但网格永远 4 列 → 卡宽在 <b>77 ~ 130px</b> 之间跳</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ② 建议 1366 -->
+      <div class="sec">
+        <div class="sec-head"><h2>② 建议（1366×1024）</h2></div>
+        <div class="sec-spec">左导航 101 · 主区（分段 + 8 列网格）· 右栏 396（模式 / 进度 / 配窝）</div>
+        <div class="sim" id="sim-new-1366"></div>
+      </div>
+
+      <!-- ③ 建议 1024 -->
+      <div class="sec">
+        <div class="sec-head"><h2>③ 同一套规则在 1024×768</h2></div>
+        <div class="sec-spec">主区变窄 → 网格自动落 5 列；右栏保留，配窝仍在右栏</div>
+        <div class="sim" id="sim-new-1024"></div>
+      </div>
+
+      <!-- ④ 列数规则 -->
+      <div class="sec">
+        <div class="sec-head"><h2>④ 网格列数规则</h2></div>
+        <div class="sec-spec">别写死 4 列：按主区可用宽度算，保证卡片不窄于 ~88px、不多于 8 列</div>
+        <div class="panel">
+          <p style="margin-bottom: 8px">
+            <code>cols = clamp(4, floor((W + 4) / 92), 8)</code>，<code>W</code> = 主区可用宽度。
+          </p>
+          <table class="adapt-table">
+            <thead><tr><th>场景</th><th>主区宽</th><th>列数</th><th>卡宽</th></tr></thead>
+            <tbody>
+              <tr><td>375 竖屏</td><td>351</td><td>4</td><td>84.8</td></tr>
+              <tr><td>390 竖屏</td><td>366</td><td>4</td><td>88.5</td></tr>
+              <tr><td>1024 横屏（右栏在）</td><td>531</td><td>5</td><td>103</td></tr>
+              <tr><td>1180 横屏（右栏在）</td><td>670</td><td>7</td><td>92.3</td></tr>
+              <tr><td>1366 横屏（右栏在）</td><td>823</td><td>8</td><td>99.6</td></tr>
+            </tbody>
+          </table>
+          <p style="margin-top: 8px">
+            这样 1366 下的 8 列的卡宽（99.6）和 375 下的 4 列（84.8）差不到 15px，
+            不会再出现「平板上一张卡顶手机两张」的落差。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const CDN = (id) => `https://game.gtimg.cn/images/rocom/rocodata/jingling/${id}/icon.png`;
+      const MEDAL = '../../../public/ui/medals/';
+
+      /* 全部取自 data/pets.json 的真实图鉴号与 gameId，头像才不会 404 */
+      const PETS = [
+        { no: '073', name: '白发懒人', gameId: 3049, eggs: ['巨灵组', '拟人组'], natures: ['固执', '平和'] },
+        { no: '027', name: '布是石', gameId: 3103, eggs: ['巨灵组', '大地组'], natures: ['固执', '平和'] },
+        { no: '221', name: '多西', gameId: 3206, eggs: ['巨灵组', '机械组'], natures: ['固执', '平和'] },
+        { no: '299', name: '画精灵', gameId: 3606, eggs: ['巨灵组', '妖精组'], natures: ['固执'] },
+        { no: '171', name: '波波螺', gameId: 3508, eggs: ['两栖组', '大地组'], natures: ['沉默'] },
+        { no: '179', name: '草头鸭', gameId: 3008, eggs: ['两栖组', '天空组'], natures: ['开朗'] },
+        { no: '159', name: '水滴蛇', gameId: 3597, eggs: ['两栖组', '妖精组'], natures: ['沉默'] },
+        { no: '163', name: '小怂猫', gameId: 3237, eggs: ['动物组', '拟人组'], natures: ['固执'] },
+        { no: '002', name: '喵喵', gameId: 3001, eggs: ['动物组', '拟人组'], natures: ['开朗'] },
+        { no: '039', name: '矿晶虫', gameId: 3307, eggs: ['软体组', '大地组'], natures: ['固执'] },
+        { no: '234', name: '脆筒甜甜', gameId: 3124, eggs: ['软体组', '魔力组'], natures: ['胆小'] },
+        { no: '244', name: '翡翠水母', gameId: 3119, eggs: ['软体组', '海洋组'], natures: ['聪明'] },
+        { no: '313', name: '果冻', gameId: 3118, eggs: ['魔力组', '海洋组'], natures: ['聪明'] },
+        { no: '371', name: '小鼓象', gameId: 3708, eggs: ['动物组', '机械组'], natures: ['沉默'] },
+        { no: '121', name: '小黑猫', gameId: 3568, eggs: ['动物组', '妖精组'], natures: ['开朗'] },
+        { no: '018', name: '雪绒鸟', gameId: 3279, eggs: ['天空组', '两栖组'], natures: ['固执'] },
+      ];
+
+      /** 定稿卡：104 / 头像 48 / 名字 10px / 性格贴右上 / 融合底条 */
+      function card(pet, foot = '计划', tone = 'plan') {
+        return `<article class="wcard">
+          <div class="w-left">
+            <span class="w-no">No.${pet.no}</span>
+            <span class="w-eggs">${pet.eggs.map((e) => `<span>${e}</span>`).join('')}</span>
+          </div>
+          <div class="w-right">${pet.natures.map((n) => `<span>${n}</span>`).join('')}</div>
+          <div class="w-avatar"><img src="${CDN(pet.gameId)}" alt="" loading="lazy" /></div>
+          <h4 class="w-name">${pet.name}</h4>
+          <span class="w-foot" data-tone="${tone}">${foot}</span>
+        </article>`;
+      }
+
+      function grid(cols, list) {
+        return `<div class="app-grid" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${list.join('')}</div>`;
+      }
+
+      function rail() {
+        return `<nav class="app-nav">
+          <b>小布助手</b>
+          <span data-on="true">看板</span><span>家园</span><span>收集</span><span>换蛋</span><span>我的</span>
+          <i class="spacer"></i>
+          <small>刷新</small><small>教程</small>
+        </nav>`;
+      }
+
+      function aside(withPair) {
+        return `<aside class="app-aside">
+          <div class="aside-card">
+            <div class="mode-row"><span data-on="true">追满分</span><span>追双牌</span></div>
+            <div class="criteria-row">
+              <div class="criteria" data-on="true"><img src="${MEDAL}1001.png" alt="" />大块头<br />婉转声</div>
+              <div class="criteria"><img src="${MEDAL}1001.png" alt="" />大块头<br />粗嗓门</div>
+              <div class="criteria"><img src="${MEDAL}1002.png" alt="" />小不点<br />婉转声</div>
+              <div class="criteria"><img src="${MEDAL}1002.png" alt="" />小不点<br />粗嗓门</div>
+            </div>
+          </div>
+          <div class="aside-card">
+            <div class="progress-row">
+              <div class="progress-cell"><h3>种公全收集</h3><b>0<i> / 14</i></b><div class="progress-track"><i style="width:0"></i></div></div>
+              <div class="progress-cell"><h3>母本全收集</h3><b>78<i> / 209</i></b><div class="progress-track"><i style="width:37%"></i></div></div>
+            </div>
+          </div>
+          ${
+            withPair
+              ? `<div class="aside-card">
+                  <h3>推荐配窝 · 用 0/11 个窝 · 差 17 个种公目标</h3>
+                  <div class="pair-grid">
+                    <div class="pair-card">
+                      <div class="pair-head"><em>50%沉默</em> 100dB</div>
+                      <div class="pair-body">
+                        <div class="pair-pet"><img src="${CDN(3708)}" alt="" /><b>小鼓象</b><small>盒子15 第29位</small></div>
+                        <div class="pair-pet" data-g="公"><img src="${CDN(3568)}" alt="" /><b>小黑猫</b><small>盒子17 第24位</small></div>
+                      </div>
+                    </div>
+                    <div class="pair-card">
+                      <div class="pair-head"><em>30%固执</em> 100dB</div>
+                      <div class="pair-body">
+                        <div class="pair-pet"><img src="${CDN(3279)}" alt="" /><b>雪绒鸟</b><small>盒子15 第14位</small></div>
+                        <div class="pair-pet" data-g="公"><img src="${CDN(3049)}" alt="" /><b>白发懒人</b><small>盒子15 第10位</small></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>`
+              : ''
+          }
+          <div class="aside-card" style="flex:1 1 auto">
+            <h3>去收集看母本缺口</h3>
+            <p style="margin:0;font-size:11px;line-height:16px;color:#64748b">右栏到底部留白，用这条动线收口，不再空一块。</p>
+          </div>
+        </aside>`;
+      }
+
+      const W = (px) => `style="width:${px}px"`;
+
+      function mount(el, widthPx, innerHtml, heightPx) {
+        el.innerHTML =
+          `<div class="sim-label"><span>${widthPx}px 宽</span><span>等比缩放</span></div>` +
+          `<div class="sim-inner" ${W(widthPx)}>${innerHtml}</div>`;
+        requestAnimationFrame(() => {
+          const outer = el.getBoundingClientRect().width;
+          const inner = el.querySelector('.sim-inner');
+          const h = heightPx ?? inner.offsetHeight;
+          const scale = outer / widthPx;
+          inner.style.transform = `scale(${scale})`;
+          el.style.height = `${h * scale + 22}px`;
+        });
+      }
+
+      /* ① 现状：直接用实测截图 */
+      (function () {
+        const el = document.getElementById('sim-old');
+        el.innerHTML =
+          `<div class="sim-label"><span>1366px 宽 · 现状</span><span>test 2026-11-22 13:27</span></div>` +
+          `<img src="../_baseline/_work/_live-tablet-1366.png" alt="1366 现状" />`;
+      })();
+
+      /* ② 建议 1366：主区 823 → 8 列 */
+      (function () {
+        const html = `<div class="app" ${W(1366)}>
+          ${rail()}
+          <section class="app-main">
+            <div class="app-seg"><span data-on="true">种公推荐</span><span>母本缺口</span></div>
+            ${grid(8, PETS.map((p, i) => card(p, i % 3 === 0 ? '收集中' : '计划', i % 3 === 0 ? 'collecting' : 'plan')))}
+          </section>
+          ${aside(true)}
+        </div>`;
+        mount(document.getElementById('sim-new-1366'), 1366, html);
+      })();
+
+      /* ③ 建议 1024：主区 531 → 5 列 */
+      (function () {
+        const html = `<div class="app" ${W(1024)}>
+          ${rail()}
+          <section class="app-main">
+            <div class="app-seg"><span data-on="true">种公推荐</span><span>母本缺口</span></div>
+            ${grid(5, PETS.slice(0, 15).map((p) => card(p)))}
+          </section>
+          ${aside(true)}
+        </div>`;
+        mount(document.getElementById('sim-new-1024'), 1024, html);
+      })();
+    </script>
+    <script src="../../_shell/shell.js"></script>
+  </body>
+</html>
+
