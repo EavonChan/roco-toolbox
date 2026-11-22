@@ -16,15 +16,17 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'dashboard', label: '看板' },
   { id: 'home', label: '家园' },
   { id: 'collection', label: '收集' },
-  { id: 'nearby', label: '附近' },
-  { id: 'groups', label: '小组' },
+  { id: 'groups', label: '换蛋' },
   { id: 'profile', label: '我的' },
 ];
 
 /**
- * 六入口主导航（2026-11-06）：看板 / 家园 / 收集 / 附近 / 小组 / 我的。
+ * 五入口主导航（2026-11-21）：看板 / 家园 / 收集 / 换蛋 / 我的。
  *
- * 「小组」上的红点数字 = 待我确认 + 新提供（本机已读水位，见 planAlertsStore）。
+ * 「附近」不再是独立页签：它挂进「我的 · 游戏数据」（页面仍是 `nearby`，
+ * 由 App 渲染成我的页里的「附近」子视图，见 Profile 的 dataView）。
+ * 「小组」的管理入口搬进「我的 · 小组」后，这个页签只剩换蛋/需求广场，因此改名叫「换蛋」。
+ * 「换蛋」上的红点数字 = 待我确认 + 新提供（本机已读水位，见 planAlertsStore）。
  */
 export function TabNav({ active, onChange }: TabNavProps) {
   const planBadge = useSyncExternalStore(subscribePlanAlertBadge, getPlanAlertBadge, () => 0);

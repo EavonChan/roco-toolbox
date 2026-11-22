@@ -311,6 +311,12 @@ export function AccountPanel({
         </span>
       </div>
 
+      {section === 'sync' ? (
+        <p className="mt-1 text-xs text-slate-500" data-testid="profile-sync-intro">
+          只同步给你自己的设备；不会更新小组资源，也不会自动发布。
+        </p>
+      ) : null}
+
       {accountId ? (
         <div className="mt-2 space-y-2">
           <p className="text-xs text-slate-500" data-testid="account-status">

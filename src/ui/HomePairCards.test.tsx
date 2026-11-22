@@ -26,7 +26,7 @@ const resident = (
 describe('家园配窝卡片（一个窝一只精灵）', () => {
   test('学院 1:2 = 一公两母三个窝、一张卡；公本只出现一次', () => {
     const residents = [
-      resident({ actorId: 'f1', name: '缺失喵', gender: '母', nature: '胆小' }),
+      resident({ actorId: 'f1', name: '喵喵', gender: '母', nature: '胆小' }),
       resident({ actorId: 'f2', name: '喵喵', gender: '母', nature: '开朗' }),
       resident({ actorId: 'm1', name: '火花', gender: '公', nature: '固执', nest: {
         furnitureGuid: 'nest_m1', configId: 1001072, nestType: 'academy', nestName: '学院小窝',
@@ -50,7 +50,8 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     const males = within(cards[0]).getByTestId('home-pair-males');
     expect(within(females).getAllByTestId('breed-pet-card')).toHaveLength(2);
     expect(within(males).getAllByTestId('breed-pet-card')).toHaveLength(1);
-    // 学院 100%：每个母本上方各写自己的配对声音，不能把两位母本混成同一份。
+    // 学院 100%：卡头和第二个母本上方各一枚
+    // 声音按每个母本自己那一行算（f1 97 → 98dB，f2 100 → 100dB），不能把两位母本混成同一份
     const heads = [
       within(cards[0]).getByTestId('home-pair-head'),
       within(cards[0]).getByTestId('home-pair-head-extra'),

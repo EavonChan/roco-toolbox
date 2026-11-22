@@ -37,11 +37,12 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
   const eggGroups = (species?.eggGroups ?? [])
     .filter((group) => group >= 2 && group <= 15)
     .map((group) => eggGroupNames[group] ?? `蛋组${group}`);
-  const position = pet.account
-    ? pet.boxGroup
-      ? `${pet.account}·${pet.boxGroup}${pet.slotOrder != null ? `·${pet.slotOrder}` : ''}`
-      : pet.account
-    : '—';
+  /** 账号与背包位置分两行（2026-11-21 用户口径），放不下时各自截断。 */
+  const accountLine = pet.account ?? '—';
+  const boxLine = pet.boxGroup
+    ? `${pet.boxGroup}${pet.slotOrder != null ? `-${pet.slotOrder}` : ''}`
+    : '';
+  const position = boxLine ? `${accountLine}·${boxLine}` : accountLine;
   const bodyIcon = petBodyMedalIcon(pet.medalBody, pet.weightPercent);
   const voiceIcon = petVoiceMedalIcon(pet.voiceDb);
   const voiceName = voiceMedalName(pet.voiceDb);
@@ -70,7 +71,7 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
       }
       // 奖牌块：mr-0.5 + min-w-max，两枚奖牌比右侧网格列宽，留 2px 才不会被 header 的 overflow 裁掉右缘
       natureAdornment={
-        <span className="mr-0.5 flex flex-col items-end gap-px" data-testid="pet-card-medals">
+        <span className="mr-0.5 flex translate-x-0.5 flex-col items-end gap-px" data-testid="pet-card-medals">
           <span className="flex min-w-max flex-row items-center gap-px">
             {bodyIcon ? (
               <img
@@ -90,7 +91,7 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
             ) : null}
           </span>
           <span
-            className="whitespace-nowrap text-[7px] leading-[8px] text-slate-500"
+            className="whitespace-nowrap text-[6px] leading-[7px] text-slate-500"
             data-testid="pet-card-voice"
             title={`声音 ${pet.voiceDb}dB`}
           >
@@ -121,14 +122,19 @@ export function PetCard({ pet, species, eggGroupNames }: PetCardProps) {
       }
       details={
         <div className="flex min-w-0 items-center justify-center gap-px whitespace-nowrap text-[8px] leading-[10px] text-slate-600">
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 truncate" data-testid="pet-card-sizes">
             高{heightText} · 重{weightText}
           </span>
         </div>
       }
       footer={
-        <span className="w-full truncate text-center text-[8px] leading-[10px] text-slate-400" title={position}>
-          {position}
+        <span
+          className="w-full text-center text-[7px] leading-[9px] text-slate-400"
+          title={position}
+          data-testid="pet-card-position"
+        >
+          <span className="block truncate">{accountLine}</span>
+          {boxLine ? <span className="block truncate">{boxLine}</span> : null}
         </span>
       }
     />

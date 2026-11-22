@@ -62,7 +62,7 @@ describe('新手引导', () => {
     expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('覆盖度');
     expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('母本全收集');
     expect(TOUR_SEGMENTS.nearby.map((step) => step.title).join('|')).toContain('雷达');
-    expect(TOUR_SEGMENTS.groups.map((step) => step.title).join('|')).toContain('需求中心');
+    expect(TOUR_SEGMENTS.groups.map((step) => step.title).join('|')).toContain('组内广场');
     expect(TOUR_SEGMENTS.home.map((step) => step.title).join('|')).toContain('接单上窝');
     expect(TOUR_SEGMENTS.profile.map((step) => step.title).join('|')).toContain('云同步');
 

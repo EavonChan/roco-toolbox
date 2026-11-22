@@ -1,5 +1,10 @@
 import { useEffect } from 'react';
-import { petBodyMedalIcon, petVoiceMedalIcon } from '../domain/petIcons';
+import {
+  bodyMedalIcon,
+  petVoiceMedalIcon,
+  voiceMedalIconByLabel,
+  voiceMedalLabel,
+} from '../domain/petIcons';
 import type { GapFill, GapRoute } from '../domain/gapFill';
 import { PairingPetCard } from './NestPlanCard';
 import { PetAvatar } from './PetAvatar';
@@ -24,10 +29,15 @@ export interface GapTargetView {
   eggGroupLabels: readonly string[];
   /** 右上角状态：未收集 / 推荐 / 缺口 */
   tag: string;
-  /** 卡底一行：目标 大块头 · 婉转声 */
+  /** 卡底一行：目标 满分大婉 / 目标 满分大粗 / 目标 大婉（双牌） */
   targetLabel?: string;
   /** 目标奖牌（有就给图标，没有就只写文字） */
   bodyMedal?: string | null;
+  /**
+   * 声音目标标签（`+100` / `-100` / `婉转声` / `粗嗓门`），按它取奖牌图：
+   * 追满分用 MAX 缎带、追双牌用普通奖牌。只给 dB 分不出「满分」和「双牌」。
+   */
+  voiceTarget?: string | null;
   voiceDb?: number | null;
   weightPercent?: number | null;
 }
@@ -73,11 +83,20 @@ export function GapRouteFlow({ route }: { route: GapRoute }) {
 
 function TargetCard({ target }: { target: GapTargetView }) {
   const mother = target.kind === 'mother';
-  const bodyIcon = petBodyMedalIcon(target.bodyMedal, target.weightPercent);
-  const voiceIcon = petVoiceMedalIcon(target.voiceDb);
+  // 体型用普通奖牌：MAX 缎带是「极限/满体重」的图，目标卡只是大块头 / 小不点（与顶部档位选择器同口径）
+  const bodyIcon = bodyMedalIcon(target.bodyMedal);
+  // 声音按目标标签取图：+100 / -100 才有 MAX 缎带，双牌档（婉转声 / 粗嗓门）是普通奖牌
+  const voiceIcon = target.voiceTarget
+    ? voiceMedalIconByLabel(target.voiceTarget)
+    : petVoiceMedalIcon(target.voiceDb);
+  const voiceTitle = target.voiceTarget
+    ? voiceMedalLabel(target.voiceTarget)
+    : target.voiceDb != null
+      ? `声音 ${target.voiceDb}dB`
+      : '';
   return (
     <article
-      className={`relative h-[92px] min-w-0 overflow-hidden rounded-xl p-1.5 shadow-sm ${
+      className={`relative h-[92px] w-full min-w-0 overflow-hidden rounded-xl p-1.5 shadow-sm ${
         mother ? 'border border-pink-200 bg-pink-50' : 'border border-sky-200 bg-sky-50'
       }`}
       data-testid="gap-target-card"
@@ -100,7 +119,7 @@ function TargetCard({ target }: { target: GapTargetView }) {
                 <img src={bodyIcon} alt={target.bodyMedal ?? ''} className="h-3.5 w-3.5" />
               ) : null}
               {voiceIcon ? (
-                <img src={voiceIcon} alt="" title={`声音 ${target.voiceDb}dB`} className="h-3.5 w-3.5" />
+                <img src={voiceIcon} alt="" title={voiceTitle} className="h-3.5 w-3.5" />
               ) : null}
             </span>
           ) : null}
@@ -166,7 +185,7 @@ function HelpCard({
         : null;
   return (
     <div
-      className="flex min-w-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-1.5"
+      className="flex w-full min-w-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-1.5"
       data-testid="gap-help-card"
     >
       <span className="text-[10px] font-medium leading-3 text-slate-500">小组求助</span>
@@ -348,7 +367,10 @@ export function GapFillDialog({
               />
             </div>
           ) : (
-          <div className="mt-2 grid grid-cols-[minmax(0,1fr)_112px] gap-2">
+          <div
+            className="mt-2 grid grid-cols-[minmax(0,1fr)_112px] gap-2"
+            data-testid="gap-top-row"
+          >
             <TargetCard target={target} />
             <HelpCard
               fill={fill ?? { self: null, transfer: null, helpChance: null }}
@@ -369,11 +391,18 @@ export function GapFillDialog({
               </p>
             ) : routes.length === 0 ? (
               <p
-                className="flex items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-2 py-2 text-[11px] font-medium text-rose-700"
+                className="mx-auto flex w-fit max-w-full items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-2 py-2 text-[11px] leading-4 font-medium text-rose-700"
                 data-testid="gap-unpairable"
               >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-rose-400 text-[10px] leading-none">
-                  !
+                <span
+                  className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-rose-400"
+                  aria-hidden="true"
+                >
+                  {/* 用两根圆角线画「!」：字体字形在不同浏览器里会偏左上，画出来才能和文本真正居中对齐 */}
+                  <span className="flex flex-col items-center gap-[2px]">
+                    <span className="block h-[5px] w-px rounded-full bg-rose-500" />
+                    <span className="block h-[1.5px] w-[1.5px] rounded-full bg-rose-500" />
+                  </span>
                 </span>
                 本号、跨号都无法配对
               </p>

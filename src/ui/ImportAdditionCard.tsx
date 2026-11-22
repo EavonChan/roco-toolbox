@@ -1,6 +1,7 @@
 import { AccountBlock, countOf } from './ImportResultCard';
 import { toggleCollapsedResult, useCollapsedResult } from './additionCardStore';
 import { useLastImportResult } from './useLastImportResult';
+import { sortByAccountName } from './accountOrder';
 
 /**
  * 看板顶部的「本次新增」卡片：导入 / 云同步后立刻告诉用户这次新进来的、够格进看板分类的精灵。
@@ -19,6 +20,8 @@ export function ImportAdditionCard() {
 
   const open = collapsed !== results;
   const total = results.reduce((sum, account) => sum + countOf(account), 0);
+  /** 本次新增按账号分组展示，账号按数字排序（2026-11-20 用户口径）。 */
+  const orderedResults = sortByAccountName(results, (account) => account.accountName);
 
   return (
     <section data-testid="import-result" className="rounded-2xl bg-white p-4 shadow-sm">
@@ -45,7 +48,7 @@ export function ImportAdditionCard() {
           </p>
         ) : (
           <div className="mt-2 space-y-3">
-            {results.map((account) => (
+            {orderedResults.map((account) => (
               <AccountBlock key={account.accountKey} account={account} />
             ))}
           </div>

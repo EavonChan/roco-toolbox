@@ -26,13 +26,13 @@ describe('覆盖筛选 store', () => {
     setTargetGrade('大婉');
   });
 
-  test('默认：14 蛋组全选、八大性格、档位只勾大婉 → 112 个槽位', () => {
+  test('默认：14 蛋组全选、推荐性格、档位只勾大婉 → 42 个槽位', () => {
     const filter = getCoverageFilter();
     expect(filter.groupIds).toHaveLength(14);
     expect(filter.grades).toEqual(['大婉']);
-    // 2026-11-19 用户口径：默认「八大性格」= 整池 8 个 × 14 组 × 1 档位
-    expect(filter.natureMode).toBe('eight');
-    expect(slotCount(filter)).toBe(112);
+    // 2026-11-22 用户口径：默认「推荐性格」= 每组推荐前 3 × 14 组 × 1 档位
+    expect(filter.natureMode).toBe('recommended');
+    expect(slotCount(filter)).toBe(42);
   });
 
   test('切到自选性格先预选八大，不会从空白开始', () => {
@@ -51,7 +51,8 @@ describe('覆盖筛选 store', () => {
   test('档位单选：再点一个会替换，不会累加', () => {
     toggleFilterGrade('小婉');
     expect(getCoverageFilter().grades).toEqual(['小婉']);
-    expect(slotCount(getCoverageFilter())).toBe(112);
+    // 默认推荐模式：14 组 × 每组前 3 × 1 档位
+    expect(slotCount(getCoverageFilter())).toBe(42);
   });
 
   test('蛋组取消：只影响该组，别组不变', () => {
@@ -59,7 +60,7 @@ describe('覆盖筛选 store', () => {
     const filter = getCoverageFilter();
     expect(filter.groupIds).not.toContain(2);
     expect(filter.groupIds).toHaveLength(13);
-    expect(slotCount(filter)).toBe(104);
+    expect(slotCount(filter)).toBe(39);
   });
 
   // 「急躁」不在任何蛋组的默认前 3 里（它是额外目标性格），适合用来验证组内加减。

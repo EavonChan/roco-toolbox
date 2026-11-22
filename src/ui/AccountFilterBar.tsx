@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { clearAccountFilter, useAccountFilter } from './accountFilterStore';
+import { sortAccountNames } from './accountOrder';
 
 export interface AccountFilterBarProps {
   accounts: string[];
@@ -7,7 +8,9 @@ export interface AccountFilterBarProps {
 }
 
 /** 可折叠账号摘要与选择面板；与看板共用筛选状态和交互。 */
-export function AccountFilterBar({ accounts, compact = false }: AccountFilterBarProps) {
+export function AccountFilterBar({ accounts: rawAccounts, compact = false }: AccountFilterBarProps) {
+  // 账号一律按数字排序（2026-11-20 用户口径）：即使调用方传进来的顺序不对，这里也兜底。
+  const accounts = sortAccountNames(rawAccounts);
   const [open, setOpen] = useState(false);
   const { excluded, toggleAccount, toggleAllAccounts } = useAccountFilter();
   const selectedAccounts = accounts.filter((account) => !excluded.has(account));

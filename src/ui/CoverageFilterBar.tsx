@@ -35,8 +35,8 @@ export function CoverageFilterBar({ filter, onToggleGroup, onReset, onOpenTarget
   const [groupsOpen, setGroupsOpen] = useState(false);
   const mode = useTargetMode();
   const groupCount = filter.groupIds.length;
-  // 蛋组被取消过、或性格模式不是默认的八大性格，才算「筛选已改动」（2026-11-19）
-  const filterDirty = groupCount !== ALL_EGG_GROUP_IDS.length || filter.natureMode !== 'eight';
+  // 蛋组被取消过、或性格模式不是默认的「推荐性格」，才算「筛选已改动」（2026-11-22 默认改推荐）
+  const filterDirty = groupCount !== ALL_EGG_GROUP_IDS.length || filter.natureMode !== 'recommended';
 
   const emptyDimensions = [
     groupCount === 0 ? '蛋组' : null,

@@ -78,12 +78,17 @@ function CollectingCards({
             number={card.number}
             eggGroups={card.eggGroups.map((id) => eggGroupNames[id] ?? `蛋组${id}`)}
             natures={card.natures}
+            size="tall"
+            status="planned"
+            fitName
+            fitNameBase={8}
+            fitNameMin={6}
             avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={44} />}
             title={card.statusDetail}
             onClick={() => onOpen(card)}
             footer={
               <span
-                className="w-full truncate rounded-full bg-white/80 px-1 text-[7px] font-medium leading-3 text-emerald-700"
+                className="w-full truncate rounded-full bg-sky-100 px-1 text-[7px] font-medium leading-[13px] text-sky-700"
                 title={card.statusDetail}
               >
                 {card.statusLabel}

@@ -60,12 +60,18 @@ describe('store migrate', () => {
     expect(filter.grades).toEqual(DEFAULT_GRADES);
     expect(filter.groupIds).toEqual(ALL_EGG_GROUP_IDS);
     expect(filter.customNatures).toEqual(['急躁']);
-    // 2026-11-19：无法识别的值回落到新的默认模式「八大性格」
-    expect(filter.natureMode).toBe('eight');
+    // 2026-11-22：无法识别的值回落到新默认模式「推荐性格」
+    expect(filter.natureMode).toBe('recommended');
   });
 
-  test('覆盖筛选：旧的「推荐性格」是上一版默认值，迁到八大', async () => {
+  test('覆盖筛选：用户选过的「推荐性格」保留，不会被改回八大', async () => {
     localStorage.setItem('roco.coverageFilter', JSON.stringify({ natureMode: 'recommended' }));
+    const store = await import('./coverageFilterStore');
+    expect(store.getCoverageFilter().natureMode).toBe('recommended');
+  });
+
+  test('覆盖筛选：老玩家存着的「八大性格」保留，不用每次重新切', async () => {
+    localStorage.setItem('roco.coverageFilter', JSON.stringify({ natureMode: 'eight' }));
     const store = await import('./coverageFilterStore');
     expect(store.getCoverageFilter().natureMode).toBe('eight');
   });
