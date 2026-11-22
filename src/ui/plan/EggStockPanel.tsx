@@ -9,6 +9,7 @@ import { BODY_LABELS, PICKABLE_BODIES, PICKABLE_VOICES, VOICE_LABELS } from '../
 import { formatEggObtainedAt, formatEggObtainedAtFull } from './eggTime';
 import { ModalSurface } from '../primitives/ModalSurface';
 import { useLandscape } from '../useWideLandscape';
+import { RailLayout, RailAside, useRailCollapsed } from '../primitives/RailLayout';
 import { SearchField } from '../primitives/SearchField';
 import { Button } from '../primitives/Button';
 import eggIconUrls from '../../data/eggIconUrls.json';
@@ -17,14 +18,6 @@ import { allNatureNames, eggGroupNames, targetNatureNames } from '../../data/cat
 const GREEN_NEST_ICON='/ui/nest/green-nest.png';
 /** 横屏右侧筛选栏是否收起（2026-11-22 用户口径：收起后蛋卡多排几列）。 */
 const EGG_RAIL_KEY='roco.eggStockRailCollapsed';
-function readEggRailCollapsed():boolean{
-  if(typeof window==='undefined')return false;
-  try{return window.localStorage.getItem(EGG_RAIL_KEY)==='1';}catch{return false;}
-}
-function saveEggRailCollapsed(collapsed:boolean):void{
-  if(typeof window==='undefined')return;
-  try{window.localStorage.setItem(EGG_RAIL_KEY,collapsed?'1':'0');}catch{/* 隐私模式 / 配额满：本次照样生效 */}
-}
 const SPECIAL_CATEGORY_LABELS={shiny:'异色蛋',boss:'首领蛋',activity:'活动蛋',rare:'稀有蛋',special:'特殊蛋'} as const;
 type StockFilter='全部'|'已标注'|'未标注'|'自产'|'不可交换';
 
@@ -60,7 +53,7 @@ export function EggArt({ eggGameId, name, size=43, kind='ordinary', itemConfId }
 export function EggMedals({body,voice}:{body:string;voice:string}) {
   return <span className="inline-flex items-center justify-center gap-0.5">{[[body,bodyMedalIconByLabel(body)],[voice,voiceMedalIconByLabel(voice)]].map(([label,src],i)=>src?<img key={i} src={src} alt={label??''} className="size-4 object-contain"/>:null)}</span>;
 }
-export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRail=false, railBack }: { eggs:readonly WorkflowEgg[];species:readonly SpeciesEntry[];busy:boolean;mutate:(action:unknown)=>Promise<unknown>;/** 横屏把搜索与条件收进右侧折叠栏（家园页蛋仓屏用） */collapsibleFilterRail?:boolean;/** 横屏标题栏里的返回动作（家园页传入「返回家园」） */railBack?:{onClick:()=>void} }) {
+export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRail=false, railBack }: { eggs:readonly WorkflowEgg[];species:readonly SpeciesEntry[];busy:boolean;mutate:(action:unknown)=>Promise<unknown>;/** 横屏把搜索与条件收进右侧折叠栏（家园页蛋仓屏用） */collapsibleFilterRail?:boolean;/** 横屏标题栏里的返回动作（家园页「返回家园」、换蛋页「返回换蛋」） */railBack?:{label?:string;onClick:()=>void} }) {
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState<StockFilter>('全部');
   const [selected,setSelected]=useState<string|null>(null);
@@ -74,8 +67,9 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   /** 横屏右侧筛选栏：只有 opt-in 且确实横屏时出现，竖屏保持原来的上下排布。 */
   const landscape=useLandscape();
   const rail= collapsibleFilterRail && landscape;
-  const [railCollapsed,setRailCollapsed]=useState(readEggRailCollapsed);
-  const toggleRail=()=>setRailCollapsed(collapsed=>{saveEggRailCollapsed(!collapsed);return !collapsed;});
+  const railState=useRailCollapsed(EGG_RAIL_KEY);
+  const railCollapsed=railState.collapsed;
+  const toggleRail=railState.toggle;
   const labelEditorRef=useRef<HTMLDivElement>(null);
   const name=(id:number)=>species.find(s=>s.gameId===id)?.name??'未收录精灵';
   const parentCard=(label:'母'|'父',p?:EggParentInfo,index=0)=>p?<div key={`${label}-${index}`} className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
@@ -160,37 +154,21 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
       </button>;
     })}</div>:<div className="py-6 text-center text-xs text-slate-500">{eggs.length?'没有符合的蛋':'暂无已采集的蛋'}</div>;
   return <div
-    className={'flex flex-col gap-2'+(rail?' egg-stock-scope':'')}
+    className={'flex flex-col gap-2'+(rail?' rail-scope':'')}
     data-rail-collapsed={rail?(railCollapsed?'true':'false'):undefined}
     data-testid={rail?'egg-stock-scope':undefined}
   >
-    {rail?<div className="egg-stock-layout" data-collapsed={railCollapsed?'true':'false'}>
-      <div className="egg-stock-main flex min-w-0 flex-col gap-2" data-testid="egg-stock-main">
-        {cards}
-      </div>
-      {railCollapsed?null:<div className="egg-stock-filters flex min-w-0 flex-col gap-2" data-testid="egg-stock-filters">{searchBlock}{filterBlock}</div>}
-      <aside className="egg-stock-rail" data-testid="egg-stock-rail" aria-label="蛋仓标题栏">
-        {railBack?<button
-          type="button"
-          onClick={railBack.onClick}
-          title="返回家园"
-          className="egg-stock-rail-back"
-          data-testid="egg-stock-rail-back"
-        >返回家园</button>:null}
-        <h2 className="egg-stock-rail-title" data-testid="egg-stock-rail-title">我的蛋仓</h2>
-        <button
-          type="button"
-          onClick={toggleRail}
-          aria-expanded={!railCollapsed}
-          aria-label={railCollapsed?'展开筛选':'收起筛选'}
-          title={railCollapsed?'展开筛选':'收起筛选'}
-          className="egg-stock-rail-toggle"
-          data-testid="egg-stock-rail-toggle"
-        >
-          {railCollapsed?'展开筛选':'收起筛选'}
-        </button>
-      </aside>
-    </div>:<>
+    {rail?<RailLayout
+      collapsed={railCollapsed}
+      filters={<>{searchBlock}{filterBlock}</>}
+      aside={<RailAside
+        title="我的蛋仓"
+        collapse={{collapsed:railCollapsed,toggle:toggleRail}}
+        back={railBack?{label:railBack.label??'返回家园',onClick:railBack.onClick}:undefined}
+        testIds={{aside:'egg-stock-rail',title:'egg-stock-rail-title',back:'egg-stock-rail-back',toggle:'egg-stock-rail-toggle'}}
+      />}
+      testIds={{main:'egg-stock-main',filters:'egg-stock-filters'}}
+    >{cards}</RailLayout>:<>
       {searchBlock}
       {filterBlock}
       {cards}
