@@ -18,7 +18,7 @@ import { newUuid } from '../../shared/uuid';
 import { EggTasksPanel } from './EggTasksPanel';
 import { useEggStockSync } from './useEggStockSync';
 import { useLandscape } from '../useWideLandscape';
-import { RailLayout, RailAside, useRailCollapsed } from '../primitives/RailLayout';
+import { RailLayout, RailAside, RailNav, RailNavItem, useRailCollapsed } from '../primitives/RailLayout';
 
 /** 换蛋页右侧筛选列是否收起（2026-11-22 规范：按设备记，收起后主区变宽）。 */
 const SWAP_RAIL_KEY = 'roco.swapRailCollapsed';
@@ -195,12 +195,22 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     statusLabel={tab === 'square' ? (supplyOf(d) === 'give' ? '我能给蛋' : supplyOf(d) === 'hatch' ? '我能孵' : '接不了') : statusOfMine(d)}
     onOpen={d => { setDetailId(d.id); setError(''); }} />)}</div> : <div className={empty}>{tab === 'mine' ? '还没有想收的精灵' : '暂无组内需求'}</div>;
   const completedList = tab==='mine'&&completed.length?<details className="rounded-xl border border-slate-200 p-2"><summary className="cursor-pointer text-xs text-slate-500">已完成 · {completed.length}</summary><div className="egg-demand-grid mt-2 grid grid-cols-3 gap-[7px]">{completed.map(d=><EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} statusLabel="已完成" onOpen={d=>setDetailId(d.id)}/>)}</div></details>:null;
+  // 我的收集 / 组内广场是换蛋页的两个视角，横屏进纵向标题栏（2026-11-22 规范）
+  const railTabs = <RailNav label="换蛋视图">
+    {(['mine','square'] as const).map(t => <RailNavItem
+      key={t}
+      active={tab === t}
+      title={t === 'mine' ? '我的收集' : '组内广场'}
+      testId={`egg-hub-tab-${t}`}
+      onClick={() => { setTab(t); setQuery(''); }}
+    >{t === 'mine' ? '我的收集' : '组内广场'}</RailNavItem>)}
+  </RailNav>;
   const rail = <RailAside
     title="换蛋"
     hideTitle
     collapse={{ collapsed: swapRail.collapsed, toggle: swapRail.toggle }}
-    testIds={{ aside: 'egg-hub-rail', title: 'egg-hub-rail-title', toggle: 'egg-hub-rail-toggle' }}
-  />;
+    testIds={{ aside: 'egg-hub-rail', toggle: 'egg-hub-rail-toggle' }}
+  >{railTabs}</RailAside>;
 
   return <div className="flex min-w-0 flex-col gap-2" data-testid="egg-matching-hub" data-tour="egg-matching-hub">
     {stock.syncError||lineError?<div role="alert" className="flex items-center justify-between rounded-lg bg-amber-50 p-2 text-xs text-amber-800"><span>{stock.syncError?`蛋仓同步失败：${stock.syncError}`:`产线同步失败：${lineError}`}</span><Button size="sm" variant="text" disabled={api.busy} onClick={()=>{lineAttempt.current='';setLineError('');setRetryTick(n=>n+1);stock.retrySync();}}>重试同步</Button></div>:null}
@@ -209,7 +219,7 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     {page ? (landscape && page === 'stock' ? null : <div className="flex items-center gap-2"><Button variant="text" size="sm" onClick={() => setPage(null)}>‹ 返回</Button><h3 className="text-sm font-semibold">{page === 'stock' ? '我的蛋仓' : '我的换蛋'}</h3></div>) : landscape ? (
       <RailLayout
         collapsed={swapRail.collapsed}
-        filters={<>{tabBar}{searchField}{pageButtons(true)}{onlyAfford}</>}
+        filters={<>{searchField}{pageButtons(true)}{onlyAfford}</>}
         aside={rail}
         testIds={{ scope: 'egg-hub-scope', main: 'egg-hub-main', filters: 'egg-hub-filters' }}
       >

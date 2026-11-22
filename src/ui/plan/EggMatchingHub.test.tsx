@@ -210,9 +210,13 @@ describe('EggMatchingHub 横屏（2026-11-22 三栏）', () => {
     // 页名由左侧页签表达，右侧栏不再重复（2026-11-22 用户口径）
     expect(within(rail).queryByTestId('egg-hub-rail-title')).toBeNull();
     expect(rail).toHaveAttribute('aria-label', '换蛋标题栏');
+    // 我的收集 / 组内广场在标题栏里，不再占功能列
+    expect(within(rail).getByTestId('egg-hub-tab-mine')).toHaveTextContent('我的收集');
+    expect(within(rail).getByTestId('egg-hub-tab-mine')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(rail).getByTestId('egg-hub-tab-square')).toHaveTextContent('组内广场');
     const filters = screen.getByTestId('egg-hub-filters');
     expect(within(filters).getByRole('searchbox')).toBeTruthy();
-    expect(within(filters).getByText('组内广场')).toBeTruthy();
+    expect(within(filters).queryByText('组内广场')).toBeNull();
     // 需求卡留在主区，不跟筛选挤在一起
     expect(within(screen.getByTestId('egg-hub-main')).getByText('菊花梨')).toBeTruthy();
 
@@ -222,6 +226,12 @@ describe('EggMatchingHub 横屏（2026-11-22 三栏）', () => {
     expect(window.localStorage.getItem('roco.swapRailCollapsed')).toBe('1');
     expect(within(screen.getByTestId('egg-hub-rail')).getByTestId('egg-hub-rail-toggle'))
       .toHaveAttribute('aria-expanded', 'false');
+
+    // 收起筛选后仍能在标题栏切换视角
+    fireEvent.click(within(screen.getByTestId('egg-hub-rail')).getByTestId('egg-hub-tab-square'));
+    expect(within(screen.getByTestId('egg-hub-main')).getByText('组内需求')).toBeTruthy();
+    expect(within(screen.getByTestId('egg-hub-rail')).getByTestId('egg-hub-tab-square'))
+      .toHaveAttribute('aria-pressed', 'true');
   });
 
   test('蛋仓子页沿用同一套标题栏，返回动作回到换蛋主区', () => {
