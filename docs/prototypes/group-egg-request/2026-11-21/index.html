@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>小组求蛋 · 交互原型</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../../shared/toolbox-shell.css" />
+    <link rel="stylesheet" href="../../shared/toolbox-modal.css" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: #e8eef5;
+        color: #0f172a;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
+      button, select, input { font: inherit; }
+      button:focus-visible, select:focus-visible, input:focus-visible {
+        outline: 2px solid #059669;
+        outline-offset: 2px;
+      }
+      .review {
+        min-height: 100%;
+        display: grid;
+        grid-template-columns: 292px minmax(0, 1fr);
+        gap: 24px;
+        padding: 24px;
+        align-items: start;
+      }
+      .review-sidebar {
+        position: sticky;
+        top: 24px;
+        border-radius: 18px;
+        background: #fff;
+        padding: 16px;
+        box-shadow: 0 10px 28px rgb(15 23 42 / 0.09);
+      }
+      .review-sidebar h1 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .review-sidebar p {
+        margin: 5px 0 16px;
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.65;
+      }
+      .control-label {
+        display: block;
+        margin: 12px 0 5px;
+        color: #64748b;
+        font-size: 11px;
+      }
+      .control-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .control-row button {
+        min-height: 30px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        padding: 0 10px;
+        color: #475569;
+        font-size: 11px;
+      }
+      .control-row button[aria-pressed="true"] {
+        border-color: #059669;
+        background: #ecfdf5;
+        color: #047857;
+        font-weight: 600;
+      }
+      .review-note {
+        margin-top: 16px;
+        border-radius: 10px;
+        background: #f8fafc;
+        padding: 10px;
+        color: #64748b;
+        font-size: 11px;
+        line-height: 1.65;
+      }
+      .device-wrap {
+        display: flex;
+        justify-content: center;
+        min-width: 0;
+      }
+      .device {
+        width: min(390px, 100%);
+        height: min(812px, calc(100vh - 48px));
+        min-height: 680px;
+        overflow: hidden;
+        border: 1px solid #cbd5e1;
+        border-radius: 22px;
+        background: #f8fafc;
+        box-shadow: 0 18px 45px rgb(15 23 42 / 0.16);
+      }
+      #app, .toolbox { height: 100%; }
+      #app.device {
+        height: min(812px, calc(100vh - 48px));
+        min-height: 680px;
+      }
+      .toolbox-header h1 { font-size: 16px; }
+      .proto-hub { display: flex; flex-direction: column; gap: 10px; }
+      .proto-filter {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+      .proto-search {
+        min-height: 36px;
+        border: 1px solid #e2e8f0;
+        border-radius: 9px;
+        padding: 0 11px;
+        color: #94a3b8;
+        font-size: 12px;
+        background: #fff;
+      }
+      .proto-filter button,
+      .proto-open {
+        min-height: 36px;
+        border: 1px solid #e2e8f0;
+        border-radius: 9px;
+        background: #fff;
+        padding: 0 11px;
+        color: #475569;
+        font-size: 12px;
+      }
+      .proto-panel {
+        border-radius: 14px;
+        background: #fff;
+        padding: 12px;
+        box-shadow: 0 1px 3px rgb(15 23 42 / 0.06);
+      }
+      .proto-panel-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .proto-panel h2 { margin: 0; font-size: 14px; }
+      .proto-panel small { color: #94a3b8; font-size: 10px; }
+      .proto-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .proto-mini {
+        min-height: 104px;
+        border-radius: 9px;
+        background: #f8fafc;
+        padding: 7px 3px;
+        text-align: center;
+      }
+      .proto-mini img {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+      }
+      .proto-mini b {
+        display: block;
+        margin-top: 2px;
+        overflow: hidden;
+        color: #334155;
+        font-size: 10px;
+        font-weight: 500;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .proto-mini span {
+        display: block;
+        margin-top: 2px;
+        color: #94a3b8;
+        font-size: 8px;
+      }
+      .proto-open {
+        width: 100%;
+        margin-top: 10px;
+        border-color: #a7f3d0;
+        background: #ecfdf5;
+        color: #047857;
+        font-weight: 600;
+      }
+      .seek-body { display: flex; flex-direction: column; gap: 9px; }
+      .target-card {
+        display: grid;
+        grid-template-columns: 52px minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 8px;
+        border-radius: 12px;
+        background: #f8fafc;
+        padding: 8px;
+      }
+      .target-avatar {
+        width: 52px;
+        height: 52px;
+        object-fit: contain;
+      }
+      .target-main { min-width: 0; padding-top: 2px; }
+      .target-name {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+        min-width: 0;
+      }
+      .target-name strong {
+        overflow: hidden;
+        color: #1e293b;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .target-name span {
+        flex-shrink: 0;
+        color: #94a3b8;
+        font-size: 9px;
+      }
+      .target-meta {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 5px;
+      }
+      .target-right {
+        display: flex;
+        min-width: 0;
+        align-items: flex-start;
+        gap: 5px;
+      }
+      .target-nature-column {
+        display: flex;
+        max-width: 72px;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+      }
+      .kind-tag,
+      .target-nature {
+        border-radius: 4px;
+        padding: 2px 5px;
+        font-size: 9px;
+        line-height: 1.25;
+      }
+      .kind-tag { background: #e2e8f0; color: #475569; }
+      .target-nature { background: #fff1f2; color: #be123c; }
+      .target-medal {
+        width: 18px;
+        height: 18px;
+        object-fit: contain;
+      }
+      .supplier-card {
+        min-height: 58px;
+        border-radius: 8px;
+        background: #fff;
+        padding: 5px 6px;
+        box-shadow: inset 0 0 0 1px #f1f5f9;
+      }
+      .supplier-card b {
+        display: block;
+        color: #64748b;
+        font-size: 9px;
+      }
+      .supplier-card span {
+        display: block;
+        margin-top: 2px;
+        overflow: hidden;
+        color: #be123c;
+        font-size: 9px;
+        line-height: 1.35;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .supplier-card small {
+        display: block;
+        margin-top: 2px;
+        overflow: hidden;
+        color: #94a3b8;
+        font-size: 8px;
+        line-height: 1.35;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .group-row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        border-radius: 10px;
+        background: #f8fafc;
+        padding: 7px 8px;
+      }
+      .group-row > span {
+        flex-shrink: 0;
+        color: #94a3b8;
+        font-size: 10px;
+      }
+      .group-list {
+        display: flex;
+        min-width: 0;
+        gap: 5px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .group-list::-webkit-scrollbar { display: none; }
+      .group-chip {
+        min-height: 27px;
+        flex-shrink: 0;
+        border: 1px solid #e2e8f0;
+        border-radius: 7px;
+        background: #fff;
+        padding: 0 8px;
+        color: #64748b;
+        font-size: 10px;
+      }
+      .group-chip[aria-pressed="true"] {
+        border-color: #059669;
+        background: #ecfdf5;
+        color: #047857;
+        font-weight: 600;
+      }
+      .publish-card {
+        border: 1px solid #d1fae5;
+        border-radius: 12px;
+        background: #f0fdf4;
+        padding: 8px;
+      }
+      .direct-card {
+        border: 1px solid #bae6fd;
+        border-radius: 12px;
+        background: #f0f9ff;
+        padding: 7px 8px;
+      }
+      .direct-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .direct-head b {
+        color: #075985;
+        font-size: 10px;
+      }
+      .direct-head button {
+        min-height: 24px;
+        border: 1px solid #bae6fd;
+        border-radius: 6px;
+        background: #fff;
+        padding: 0 7px;
+        color: #64748b;
+        font-size: 9px;
+      }
+      .direct-option {
+        width: 100%;
+        margin-top: 5px;
+        border: 1px solid #7dd3fc;
+        border-radius: 8px;
+        background: #fff;
+        padding: 5px 7px;
+        text-align: left;
+      }
+      .direct-option b {
+        display: block;
+        color: #0369a1;
+        font-size: 10px;
+      }
+      .direct-option span {
+        display: block;
+        margin-top: 2px;
+        color: #475569;
+        font-size: 9px;
+        line-height: 1.4;
+      }
+      .publish-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .publish-head h3 {
+        margin: 0;
+        color: #475569;
+        font-size: 12px;
+      }
+      .publish-head span {
+        color: #94a3b8;
+        font-size: 9px;
+      }
+      .nature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+        margin-top: 6px;
+      }
+      .nature-button {
+        min-height: 29px;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        background: #fff;
+        color: #475569;
+        font-size: 10px;
+      }
+      .nature-button[aria-pressed="true"] {
+        border-color: #059669;
+        background: #ecfdf5;
+        color: #047857;
+        font-weight: 600;
+      }
+      .nature-button.more {
+        border-style: dashed;
+        color: #64748b;
+      }
+      .option-row {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr);
+        align-items: center;
+        gap: 5px;
+        margin-top: 5px;
+      }
+      .option-label {
+        color: #94a3b8;
+        font-size: 10px;
+      }
+      .option-list {
+        display: flex;
+        min-width: 0;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .option-button {
+        display: inline-flex;
+        min-height: 28px;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        background: #fff;
+        padding: 0 7px;
+        color: #475569;
+        font-size: 10px;
+      }
+      .option-button[aria-pressed="true"] {
+        border-color: #059669;
+        background: #ecfdf5;
+        color: #047857;
+        font-weight: 600;
+      }
+      .option-button img {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+      }
+      .option-button b {
+        color: inherit;
+        font-size: 10px;
+      }
+      .green-row {
+        display: flex;
+        min-height: 28px;
+        align-items: center;
+        gap: 5px;
+        margin-left: 37px;
+        color: #64748b;
+        font-size: 10px;
+      }
+      .green-row input {
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        accent-color: #059669;
+      }
+      .green-row img {
+        width: 17px;
+        height: 17px;
+        object-fit: contain;
+      }
+      .hint-line {
+        border-radius: 7px;
+        background: #fef3c7;
+        padding: 5px 7px;
+        color: #92400e;
+        font-size: 9px;
+        line-height: 1.45;
+      }
+      .seek-footer {
+        position: sticky;
+        bottom: -12px;
+        display: flex;
+        gap: 6px;
+        margin: 1px -12px -12px;
+        border-top: 1px solid #f1f5f9;
+        background: #fff;
+        padding: 8px 12px 12px;
+      }
+      .seek-footer button {
+        min-height: 38px;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+      .seek-cancel {
+        flex: 1;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #64748b;
+      }
+      .seek-submit {
+        flex: 2;
+        border: 1px solid #059669;
+        background: #059669;
+        color: #fff;
+        font-weight: 600;
+      }
+      .seek-submit:disabled {
+        border-color: #cbd5e1;
+        background: #cbd5e1;
+        color: #fff;
+      }
+      body.embed { background: #f8fafc; }
+      body.embed .review { display: block; padding: 0; min-height: 100%; }
+      body.embed .review-sidebar { display: none; }
+      body.embed .device-wrap { display: block; }
+      body.embed #app.device {
+        width: 100%;
+        height: 100vh;
+        min-height: 100vh;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      @media (max-width: 760px) {
+        .review { display: block; padding: 0; }
+        .review-sidebar { display: none; }
+        .device-wrap { display: block; }
+        #app.device {
+          width: 100%;
+          height: 100vh;
+          min-height: 100vh;
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="review">
+      <aside class="review-sidebar" aria-label="原型控制">
+        <h1>小组求蛋</h1>
+        <p>同一条需求表单承接母本缺口与种公缺口。切换场景检查标题、预填性格、满重/零重和绿窝状态。</p>
+        <span class="control-label">入口</span>
+        <div class="control-row">
+          <button type="button" data-action="scenario" data-value="mother" aria-pressed="true">收集·母本</button>
+          <button type="button" data-action="scenario" data-value="stud" aria-pressed="false">收集·种公</button>
+        </div>
+        <span class="control-label">页面目标体型</span>
+        <div class="control-row">
+          <button type="button" data-action="target-body" data-value="大块头" aria-pressed="true">大块头</button>
+          <button type="button" data-action="target-body" data-value="小不点" aria-pressed="false">小不点</button>
+        </div>
+        <span class="control-label">模拟状态</span>
+        <div class="control-row">
+          <button type="button" data-action="preset" data-value="extreme">选中满分体重</button>
+          <button type="button" data-action="preset" data-value="green">勾选绿窝</button>
+          <button type="button" data-action="preset" data-value="reset">默认态</button>
+        </div>
+        <div class="review-note">
+          默认态不勾 100% / 0%，保持原来的大块头 / 小不点求蛋。点满分体重后，再点一次可取消。
+        </div>
+      </aside>
+      <div class="device-wrap">
+        <div class="device" id="app"></div>
+      </div>
+    </div>
+
+    <script src="../../shared/toolbox-shell.js"></script>
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        const presetMode = params.get('mode') === 'stud' ? 'stud' : 'mother';
+        const presetBody = params.get('body') === '小不点' ? '小不点' : '大块头';
+        if (params.get('embed') === '1') document.body.classList.add('embed');
+
+        const CN = ['固执', '平和', '开朗', '沉默', '聪明', '胆小', '踏实', '急躁'];
+        const EXTRA = [
+          '认真', '顽皮', '勇敢', '大胆', '悠闲', '淘气', '无虑', '温顺',
+          '慢吞吞', '害羞', '马虎', '冷静', '温和', '浮躁', '天真', '慎重',
+          '狂妄', '冷静', '坦率', '浮躁', '沉默', '马虎',
+        ];
+        const groups = ['周末互换', '满重互助组', '小布研究所'];
+        const assets = {
+          big: '../../../../public/ui/medals/1001.png',
+          small: '../../../../public/ui/medals/1002.png',
+          max: '../../../../public/ui/medals/1001-max.png',
+          min: '../../../../public/ui/medals/1002-min.png',
+          voice100: '../../../../public/ui/medals/1026.png',
+          voiceMinus100: '../../../../public/ui/medals/1025.png',
+          greenNest: '../../../../public/ui/nest/green-nest.png',
+          mother: 'https://game.gtimg.cn/images/rocom/rocodata/jingling/3017/icon.png',
+          stud: 'https://game.gtimg.cn/images/rocom/rocodata/jingling/3227/icon.png',
+        };
+
+        const state = {
+          mode: presetMode,
+          targetBody: presetBody,
+          natures: presetMode === 'mother' ? ['踏实', '固执'] : ['固执'],
+          voice: params.get('voice') || '+100',
+          group: groups[0],
+          extreme: params.get('extreme') === '1',
+          green: params.get('green') === '1',
+          more: false,
+          directInvite: true,
+        };
+
+        const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        }[char]));
+        const bodyLabel = () => state.extreme
+          ? state.targetBody === '大块头' ? '满体重' : '零体重'
+          : state.targetBody;
+        const bodyIcon = () => state.extreme
+          ? state.targetBody === '大块头' ? assets.max : assets.min
+          : state.targetBody === '大块头' ? assets.big : assets.small;
+        const voiceIcon = () => state.voice === '+100' ? assets.voice100 : state.voice === '-100' ? assets.voiceMinus100 : '';
+        const count = () => Math.max(1, state.natures.length);
+
+        function scenarioOfMode() {
+          if (state.mode === 'mother') {
+            return {
+              kindLabel: '母本缺口',
+              name: '蹦蹦种子',
+              form: '·海神球',
+              avatar: assets.mother,
+              natures: state.natures,
+              supplier: '还缺：踏实、固执',
+              supplierNote: '2 人未发布 / 未更新',
+              groupLabels: ['植物组', '妖精组'],
+            };
+          }
+          return {
+            kindLabel: '种公缺口',
+            name: '阿米亚特',
+            form: '·巨灵组',
+            avatar: assets.stud,
+            natures: state.natures,
+            supplier: '组内暂无',
+            supplierNote: '2 人未发布 / 未更新',
+            groupLabels: ['巨灵组', '大地组'],
+          };
+        }
+
+        const hubHtml = () => {
+          const targetName = state.mode === 'mother' ? '蹦蹦种子' : '阿米亚特';
+          return `
+            <div class="proto-hub">
+              <div class="proto-filter">
+                <div class="proto-search">${state.mode === 'mother' ? '搜索母本名称或图鉴号' : '搜索蛋组或种公名称'}</div>
+                <button type="button">全部蛋组 ▾</button>
+              </div>
+              <section class="proto-panel">
+                <div class="proto-panel-head">
+                  <h2>${state.mode === 'mother' ? '母本缺口' : '种公缺口'}</h2>
+                  <small>目标 ${bodyLabel()} · ${state.voice}</small>
+                </div>
+                <div class="proto-grid">
+                  ${[targetName, '火花', '布是石', '雪豆丁'].map((name, index) => `
+                    <div class="proto-mini">
+                      <img src="${index === 0 ? (state.mode === 'mother' ? assets.mother : assets.stud) : assets.mother}" alt="">
+                      <b>${name}</b>
+                      <span>${index === 0 ? '缺口' : '计划'}</span>
+                    </div>`).join('')}
+                </div>
+                <button class="proto-open" type="button" data-action="open-modal">小组求蛋</button>
+              </section>
+            </div>`;
+        };
+
+        const natureHtml = () => {
+          const names = state.more ? [...CN, ...EXTRA] : CN;
+          return `
+            <div class="nature-grid">
+              ${names.map((nature) => `
+                <button
+                  class="nature-button"
+                  type="button"
+                  data-action="nature"
+                  data-value="${esc(nature)}"
+                  aria-pressed="${state.natures.includes(nature)}"
+                >${esc(nature)}</button>`).join('')}
+              <button
+                class="nature-button more"
+                type="button"
+                data-action="more"
+                aria-expanded="${state.more}"
+              >${state.more ? '收起 ▴' : `更多 +${EXTRA.length}`}</button>
+            </div>`;
+        };
+
+        const targetHtml = () => {
+          const target = scenarioOfMode();
+          return `
+            <div class="target-card">
+              <img class="target-avatar" src="${target.avatar}" alt="">
+              <div class="target-main">
+                <div class="target-name">
+                  <strong>${target.name}</strong>
+                  <span>${target.form}</span>
+                </div>
+                <div class="target-meta">
+                  <span class="kind-tag">${target.kindLabel}</span>
+                  <img class="target-medal" src="${bodyIcon()}" alt="${bodyLabel()}" title="${bodyLabel()}">
+                  <img class="target-medal" src="${voiceIcon()}" alt="${state.voice}" title="${state.voice}">
+                </div>
+              </div>
+              <div class="target-right">
+                <div class="target-nature-column" data-testid="group-request-target-natures">
+                  ${target.natures.slice(0, 3).map((nature) => `<span class="target-nature">${nature}</span>`).join('')}
+                </div>
+                <div class="supplier-card">
+                  <b>谁能补我</b>
+                  <span title="${target.supplier}">${target.supplier}</span>
+                  <small title="${target.supplierNote}">${target.supplierNote}</small>
+                </div>
+              </div>
+            </div>`;
+        };
+
+        const bodyOptionHtml = () => {
+          const extremeLabel = state.targetBody === '大块头' ? '满体重' : '零体重';
+          const extremePercent = state.targetBody === '大块头' ? '100%' : '0%';
+          return `
+            <div class="option-row">
+              <span class="option-label">体型</span>
+              <div class="option-list" role="group" aria-label="体型">
+                <button
+                  class="option-button"
+                  type="button"
+                  data-action="base-body"
+                  aria-pressed="${!state.extreme}"
+                >
+                  <img src="${state.targetBody === '大块头' ? assets.big : assets.small}" alt="">
+                  ${state.targetBody}
+                </button>
+                <button
+                  class="option-button"
+                  type="button"
+                  data-action="full-body"
+                  aria-pressed="${state.extreme}"
+                  title="单选，可不选；不选按${state.targetBody}求蛋"
+                >
+                  <img src="${state.targetBody === '大块头' ? assets.max : assets.min}" alt="">
+                  ${extremeLabel}<b>${extremePercent}</b>
+                </button>
+              </div>
+            </div>`;
+        };
+
+        const voiceOptionHtml = () => `
+          <div class="option-row">
+            <span class="option-label">声音</span>
+            <div class="option-list" role="group" aria-label="声音">
+              ${[
+                ['+100', assets.voice100],
+                ['-100', assets.voiceMinus100],
+                ['婉转声', ''],
+                ['粗嗓门', ''],
+              ].map(([voice, icon]) => `
+                <button
+                  class="option-button"
+                  type="button"
+                  data-action="voice"
+                  data-value="${voice}"
+                  aria-pressed="${state.voice === voice}"
+                >${icon ? `<img src="${icon}" alt="">` : ''}${voice}</button>`).join('')}
+            </div>
+          </div>`;
+
+        const modalHtml = () => {
+          const valid = state.natures.length > 0 || !state.green;
+          return `
+            <div class="seek-body">
+              ${targetHtml()}
+              <div class="group-row">
+                <span>发到</span>
+                <div class="group-list" role="group" aria-label="发布到小组">
+                  ${groups.map((group) => `
+                    <button
+                      class="group-chip"
+                      type="button"
+                      data-action="group"
+                      data-value="${group}"
+                      aria-pressed="${state.group === group}"
+                    >${group}</button>`).join('')}
+                </div>
+              </div>
+              ${state.directInvite ? `
+                <section class="direct-card">
+                  <div class="direct-head">
+                    <b>可立即交换</b>
+                    <button type="button" data-action="direct-toggle">只发布</button>
+                  </div>
+                  <button type="button" class="direct-option">
+                    <b>小布</b>
+                    <span>小布提供菊花梨蛋，你提供柴渣虫蛋</span>
+                  </button>
+                </section>` : `
+                <section class="direct-card">
+                  <div class="direct-head">
+                    <b>可立即交换</b>
+                    <button type="button" data-action="direct-toggle">改为邀请</button>
+                  </div>
+                </section>`}
+              <section class="publish-card">
+                <div class="publish-head">
+                  <h3>发需求</h3>
+                  <span>1 个性格 = 1 条</span>
+                </div>
+                ${natureHtml()}
+                ${bodyOptionHtml()}
+                ${voiceOptionHtml()}
+                <label class="green-row">
+                  <input type="checkbox" data-control="green" ${state.green ? 'checked' : ''}>
+                  绿窝
+                  <img src="${assets.greenNest}" alt="">
+                </label>
+                ${state.green && state.natures.length === 0 ? `
+                  <p class="hint-line">绿窝需要先选一个性格。</p>` : ''}
+              </section>
+              <div class="seek-footer">
+                <button class="seek-cancel" type="button" data-action="cancel">取消</button>
+                <button class="seek-submit" type="button" data-action="submit" ${valid ? '' : 'disabled'}>
+                  ${state.directInvite ? '发布并邀请小布' : `发布 ${count()} 条需求`}
+                </button>
+              </div>
+            </div>`;
+        };
+
+        const shell = ToolboxShell.mount('#app', {
+          groupName: '周末互换',
+          memberCount: 6,
+          renderHub: hubHtml,
+        });
+        shell.host.querySelector('.toolbox-header h1').textContent = '小布助手';
+
+        function refreshControls() {
+          document.querySelectorAll('[data-action="scenario"]').forEach((button) => {
+            button.setAttribute('aria-pressed', String(button.dataset.value === state.mode));
+          });
+          document.querySelectorAll('[data-action="target-body"]').forEach((button) => {
+            button.setAttribute('aria-pressed', String(button.dataset.value === state.targetBody));
+          });
+        }
+
+        function openSeek() {
+          shell.refresh();
+          shell.openModal({
+            title: '小组求蛋',
+            render: modalHtml,
+          });
+        }
+
+        document.addEventListener('click', (event) => {
+          const control = event.target.closest('[data-action]');
+          if (!control) return;
+          const action = control.dataset.action;
+          if (action === 'scenario') {
+            state.mode = control.dataset.value;
+            state.natures = state.mode === 'mother' ? ['踏实', '固执'] : ['固执'];
+            state.extreme = false;
+            state.more = false;
+            refreshControls();
+            shell.refresh();
+          } else if (action === 'target-body') {
+            state.targetBody = control.dataset.value;
+            state.extreme = false;
+            refreshControls();
+            shell.refresh();
+          } else if (action === 'preset') {
+            if (control.dataset.value === 'extreme') state.extreme = !state.extreme;
+            if (control.dataset.value === 'green') state.green = !state.green;
+            if (control.dataset.value === 'reset') {
+              state.extreme = false;
+              state.green = false;
+              state.natures = state.mode === 'mother' ? ['踏实', '固执'] : ['固执'];
+              state.more = false;
+            }
+            shell.refresh();
+          } else if (action === 'open-modal') {
+            openSeek();
+          } else if (action === 'nature') {
+            const nature = control.dataset.value;
+            state.natures = state.natures.includes(nature)
+              ? state.natures.filter((item) => item !== nature)
+              : state.natures.length >= 6
+                ? state.natures
+                : [...state.natures, nature];
+            shell.refresh();
+          } else if (action === 'more') {
+            state.more = !state.more;
+            shell.refresh();
+          } else if (action === 'full-body') {
+            state.extreme = !state.extreme;
+            shell.refresh();
+          } else if (action === 'base-body') {
+            state.extreme = false;
+            shell.refresh();
+          } else if (action === 'voice') {
+            state.voice = control.dataset.value;
+            shell.refresh();
+          } else if (action === 'group') {
+            state.group = control.dataset.value;
+            shell.refresh();
+          } else if (action === 'direct-toggle') {
+            state.directInvite = !state.directInvite;
+            shell.refresh();
+          } else if (action === 'cancel') {
+            shell.closeModal();
+          } else if (action === 'submit') {
+            shell.closeModal();
+            shell.toast(`原型：已模拟发布 ${count()} 条到「${state.group}」`);
+          }
+        });
+
+        document.addEventListener('change', (event) => {
+          const control = event.target.closest('[data-control="green"]');
+          if (!control) return;
+          state.green = control.checked;
+          shell.refresh();
+        });
+
+        refreshControls();
+        openSeek();
+      })();
+    </script>
+  </body>
+</html>
