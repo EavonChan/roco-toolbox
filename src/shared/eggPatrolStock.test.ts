@@ -168,6 +168,22 @@ describe('recordIngestedHomeEggs', () => {
     expect(later.state.eggs[0]).toMatchObject({ nature: '固执', body: '大块头', voice: '+100' });
   });
 
+  test('academy nest parent gives its nature 100% even when the other parent differs', () => {
+    const academyEgg: PatrolEgg = {
+      ...labeledEgg,
+      mother: { ...labeledEgg.mother!, natureId: 2, nestConfigId: 1001072 },
+      fathers: [{ ...labeledEgg.fathers[0], natureId: 3, nestConfigId: 1001071 }],
+    };
+    const { state } = recordIngestedHomeEggs(
+      emptyEggWorkflow(), 'b', '293143', [{ egg: academyEgg, eggGameId: 3062 }], 1000, index,
+    );
+    expect(state.eggs[0]).toMatchObject({ nature: '固执', body: '大块头', voice: '+100' });
+    expect(state.eggs[0].parents).toMatchObject({
+      mother: { nature: '固执', academy: true, nestName: '学院小窝' },
+      fathers: [{ nature: '胆小', nestName: '普通小窝' }],
+    });
+  });
+
   test('re-reporting the same egg within 30 minutes does not write', () => {
     const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000, index);
     const again = recordIngestedHomeEggs(first.state, 'b', '293143', ingested, 1000 + 60_000, index);
