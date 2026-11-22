@@ -500,6 +500,14 @@ span {
   }
 }
 
+/* 蛋详情里的实际父母：用配窝精灵卡，但固定卡宽、auto-fill 排几列，不随栏宽拉伸 */
+.egg-parent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 6.5rem);
+  gap: 0.25rem;
+  justify-content: start;
+}
+
 /* ==========================================================================
    横屏三栏骨架：主区 + 功能列 + 纵向标题栏（2026-11-22）
    由家园蛋仓抽出，我的 / 换蛋页共用（见 docs/设计系统/横屏布局规范）。
