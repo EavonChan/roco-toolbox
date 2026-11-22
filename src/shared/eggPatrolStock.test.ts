@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { emptyEggWorkflow } from './eggWorkflow';
-import { recordPatrolProducedEgg } from './eggPatrolStock';
+import { recordIngestedHomeEggs, recordPatrolProducedEgg } from './eggPatrolStock';
 import type { PatrolEgg, PatrolObservation, PatrolTask } from './eggPatrol';
 
 const task: PatrolTask = {
@@ -103,5 +103,81 @@ describe('recordPatrolProducedEgg', () => {
       listed: true,
       lastConfirmedAt: 2000,
     });
+  });
+});
+
+describe('recordIngestedHomeEggs', () => {
+  const ingested = [{ egg, eggGameId: 3062 }];
+
+  test('a reported home egg becomes home stock with the shared id', () => {
+    const next = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000);
+    expect(next.eggs).toHaveLength(1);
+    expect(next.eggs[0]).toMatchObject({
+      id: JSON.stringify(['uid:293143', 'home', 'egg-1']),
+      accountId: 'b',
+      gameAccountKey: 'uid:293143',
+      eggGameId: 3062,
+      location: 'home',
+      status: 'available',
+      listed: false,
+      provenance: 'self-bred',
+      lastConfirmedAt: 1000,
+    });
+    expect(next.eggs[0].parents).toMatchObject({
+      mother: { id: 'mother', gameId: 3062 },
+      fathers: [{ id: 'father', gameId: 3744 }],
+      confirmed: true,
+    });
+  });
+
+  test('re-reporting the same egg within 30 minutes does not write', () => {
+    const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000);
+    const again = recordIngestedHomeEggs(first, 'b', '293143', ingested, 1000 + 60_000);
+    expect(again).toBe(first);
+  });
+
+  test('re-reporting after 30 minutes only refreshes the confirm time', () => {
+    const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000);
+    const later = recordIngestedHomeEggs(first, 'b', '293143', ingested, 1000 + 31 * 60_000);
+    expect(later.eggs).toHaveLength(1);
+    expect(later.eggs[0].lastConfirmedAt).toBe(1000 + 31 * 60_000);
+  });
+
+  test('ingest never overrides manual labels or occupied state', () => {
+    const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000);
+    first.eggs[0] = {
+      ...first.eggs[0],
+      nature: '胆小',
+      body: '大块头',
+      labelSource: 'manual',
+      confidence: 'manual',
+      status: 'reserved',
+      listed: true,
+    };
+    const later = recordIngestedHomeEggs(first, 'b', '293143', ingested, 1000 + 60 * 60_000);
+    expect(later.eggs[0]).toMatchObject({
+      nature: '胆小',
+      body: '大块头',
+      labelSource: 'manual',
+      status: 'reserved',
+      listed: true,
+    });
+  });
+
+  test('eggs without a known egg game id are skipped', () => {
+    const next = recordIngestedHomeEggs(
+      emptyEggWorkflow(), 'b', '293143', [{ egg, eggGameId: 0 }], 1000,
+    );
+    expect(next.eggs).toHaveLength(0);
+  });
+
+  test('several eggs in one report are all added', () => {
+    const another: PatrolEgg = { ...egg, actorId: 'egg-2' };
+    const next = recordIngestedHomeEggs(
+      emptyEggWorkflow(), 'b', '293143',
+      [{ egg, eggGameId: 3062 }, { egg: another, eggGameId: 3062 }], 1000,
+    );
+    expect(next.eggs).toHaveLength(2);
+    expect(new Set(next.eggs.map(value => value.id)).size).toBe(2);
   });
 });

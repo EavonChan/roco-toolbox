@@ -18,6 +18,11 @@ const patrolIndex: PatrolSpeciesIndex = {
   natureNameById: new Map(catalog.natures.map(nature => [nature.id, nature.name])),
 };
 
+/** 物种（pet_cfg_id）对应哪种蛋；查不到返回 undefined。 */
+export function eggGameIdOfSpecies(speciesGameId: number | null): number | undefined {
+  return speciesGameId === null ? undefined : patrolIndex.eggGameIdByGameId.get(speciesGameId);
+}
+
 const INTERVAL = 1800000;
 const REMIND_INTERVAL = 7200000;
 const REMIND_DAILY_MAX = 4;
