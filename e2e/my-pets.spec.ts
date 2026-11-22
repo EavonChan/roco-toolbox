@@ -122,7 +122,8 @@ test('母本页：四列卡与三页签；未收集点卡看怎么补、可加�
   await expect(page.getByTestId('mother-chain-row')).toHaveCount(1);
   await expect(page.getByTestId('mother-chain-row')).toContainText('恶魔狼');
   const collectedSection = page.locator('[data-testid^="mother-chain-group-"]').filter({ hasText: '恶魔狼' }).first();
-  await expect(collectedSection).toContainText('1 只');
+  // 2026-11-22：分组头统一成「已收集 分子/分母」（分母=该蛋组精灵数）
+  await expect(collectedSection).toContainText(/已收集 [1-9]\d*\//);
 
   // 搜一个不存在的名字 → 空态给两个出口
   await page.getByTestId('mother-search').fill('不存在的名字XYZ');
