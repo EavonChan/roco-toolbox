@@ -1,4 +1,5 @@
 import { useCallback, useState, type ReactNode } from 'react';
+import './rail.css';
 
 /**
  * 横屏三栏骨架（2026-11-22 从家园蛋仓抽出来，见 docs/设计系统/横屏布局规范）。
