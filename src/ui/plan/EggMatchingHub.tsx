@@ -197,6 +197,7 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   const completedList = tab==='mine'&&completed.length?<details className="rounded-xl border border-slate-200 p-2"><summary className="cursor-pointer text-xs text-slate-500">已完成 · {completed.length}</summary><div className="egg-demand-grid mt-2 grid grid-cols-3 gap-[7px]">{completed.map(d=><EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} statusLabel="已完成" onOpen={d=>setDetailId(d.id)}/>)}</div></details>:null;
   const rail = <RailAside
     title="换蛋"
+    hideTitle
     collapse={{ collapsed: swapRail.collapsed, toggle: swapRail.toggle }}
     testIds={{ aside: 'egg-hub-rail', title: 'egg-hub-rail-title', toggle: 'egg-hub-rail-toggle' }}
   />;

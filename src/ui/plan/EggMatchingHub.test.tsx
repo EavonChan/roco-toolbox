@@ -207,7 +207,9 @@ describe('EggMatchingHub 横屏（2026-11-22 三栏）', () => {
     render(<EggMatchingHub {...props} />);
 
     const rail = screen.getByTestId('egg-hub-rail');
-    expect(within(rail).getByTestId('egg-hub-rail-title')).toHaveTextContent('换蛋');
+    // 页名由左侧页签表达，右侧栏不再重复（2026-11-22 用户口径）
+    expect(within(rail).queryByTestId('egg-hub-rail-title')).toBeNull();
+    expect(rail).toHaveAttribute('aria-label', '换蛋标题栏');
     const filters = screen.getByTestId('egg-hub-filters');
     expect(within(filters).getByRole('searchbox')).toBeTruthy();
     expect(within(filters).getByText('组内广场')).toBeTruthy();
@@ -231,6 +233,7 @@ describe('EggMatchingHub 横屏（2026-11-22 三栏）', () => {
     expect(within(stockRail).getByTestId('egg-stock-rail-title')).toHaveTextContent('我的蛋仓');
 
     fireEvent.click(within(stockRail).getByRole('button', { name: '返回换蛋' }));
-    expect(screen.getByTestId('egg-hub-rail-title')).toHaveTextContent('换蛋');
+    expect(screen.getByTestId('egg-hub-rail')).toBeTruthy();
+    expect(screen.getByTestId('egg-hub-filters')).toBeTruthy();
   });
 });

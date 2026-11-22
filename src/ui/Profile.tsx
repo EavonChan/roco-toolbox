@@ -156,6 +156,7 @@ export function Profile({
   const rail = landscape ? (
     <RailAside
       title="我的"
+      hideTitle
       back={
         returnToGroups
           ? { label: '返回小组', onClick: () => onNavigate({ type: 'open-groups' }) }

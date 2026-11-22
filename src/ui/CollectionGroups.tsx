@@ -523,7 +523,7 @@ export function CollectionGroups({
         // 换蛋页的空态（未登录 / 未入组）也保留右侧纵向标题栏，页名不因为没数据消失
         <RailLayout
           collapsed={false}
-          aside={<RailAside title="换蛋" testIds={{ aside: 'groups-rail', title: 'groups-rail-title' }} />}
+          aside={<RailAside title="换蛋" hideTitle testIds={{ aside: 'groups-rail', title: 'groups-rail-title' }} />}
           testIds={{ scope: 'groups-rail-scope', main: 'groups-rail-main' }}
         >
           <GroupFeedHint loggedIn={hook.accountId != null} onGo={() => onGoProfileGroups?.()} />

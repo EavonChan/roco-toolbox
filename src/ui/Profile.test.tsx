@@ -208,7 +208,9 @@ describe('Profile 横屏（2026-11-22 三栏）', () => {
     render(<Profile section="data" returnToGroups={false} onNavigate={onNavigate} />);
 
     const rail = screen.getByTestId('profile-rail');
-    expect(within(rail).getByTestId('profile-rail-title')).toHaveTextContent('我的');
+    // 页名由左侧页签表达，右侧栏不再重复（2026-11-22 用户口径）
+    expect(within(rail).queryByTestId('profile-rail-title')).toBeNull();
+    expect(rail).toHaveAttribute('aria-label', '我的标题栏');
     // 三个分区在标题栏里都是一行两个字
     expect(within(rail).getByTestId('profile-section-groups')).toHaveTextContent('小组');
     expect(within(rail).getByTestId('profile-section-identity')).toHaveTextContent('身份');

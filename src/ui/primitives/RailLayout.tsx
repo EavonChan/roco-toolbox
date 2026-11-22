@@ -58,8 +58,13 @@ export function RailLayout({
 }
 
 export interface RailAsideProps {
-  /** 页面标题：横屏一律两字一行（我的 / 蛋仓 / 换蛋） */
+  /** 页面标题（只用于标题栏的 aria-label；是否画出来见 hideTitle） */
   title: string;
+  /**
+   * 不画页面标题（2026-11-22 用户口径：「我的」「换蛋」的页名由左侧页签表达，
+   * 右侧栏不再重复）。标题仍留给 aria-label。
+   */
+  hideTitle?: boolean;
   /** 折叠开关；不传 = 这页没有可收起的列 */
   collapse?: { collapsed: boolean; toggle: () => void };
   /** 返回动作，排在最上面（返回家园 / 返回换蛋） */
@@ -69,7 +74,7 @@ export interface RailAsideProps {
   testIds?: RailTestIds;
 }
 
-export function RailAside({ title, collapse, back, children, testIds }: RailAsideProps) {
+export function RailAside({ title, hideTitle = false, collapse, back, children, testIds }: RailAsideProps) {
   return (
     <aside className="rail-aside" data-testid={testIds?.aside} aria-label={`${title}标题栏`}>
       {back ? (
@@ -83,9 +88,11 @@ export function RailAside({ title, collapse, back, children, testIds }: RailAsid
           {back.label}
         </button>
       ) : null}
-      <h2 className="rail-title" data-testid={testIds?.title}>
-        {title}
-      </h2>
+      {hideTitle ? null : (
+        <h2 className="rail-title" data-testid={testIds?.title}>
+          {title}
+        </h2>
+      )}
       {children}
       {collapse ? (
         <button
