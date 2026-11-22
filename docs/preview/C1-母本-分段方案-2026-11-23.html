@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>C1 · 母本「按蛋组分段」两个最小改法（2026-11-23）</title>
+<style>
+  :root {
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-800:#1e293b; --slate-900:#0f172a;
+    --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-200:#a7f3d0; --emerald-500:#10b981;
+    --emerald-600:#059669; --emerald-700:#047857;
+    --sky-50:#f0f9ff; --sky-100:#e0f2fe; --sky-200:#bae6fd; --sky-800:#075985;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:18px 18px 40px; background:#eef2f7; color:var(--slate-600);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif; }
+  h1 { font-size:16px; margin:0 0 4px; color:var(--slate-800); }
+  .lead { font-size:12px; line-height:1.7; color:var(--slate-500); margin:0 0 16px; max-width:1000px; }
+  .lead b { color:var(--slate-800); }
+  code { font-family:ui-monospace,Consolas,monospace; font-size:11px; background:#e2e8f0; padding:0 3px; border-radius:3px; }
+  .row { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  .slot { display:flex; flex-direction:column; gap:6px; }
+  .cap { font-size:12px; font-weight:700; }
+  .cap.before { color:var(--slate-400); }
+  .cap.jia { color:var(--emerald-600); }
+  .cap.yi { color:#0369a1; }
+  .phone { position:relative; width:375px; height:760px; overflow-y:auto; background:#fff;
+    border:1px solid var(--slate-300); border-radius:14px; box-shadow:0 2px 10px rgb(15 23 42 / .08); }
+  .phone::-webkit-scrollbar { width:6px; }
+  .phone::-webkit-scrollbar-thumb { background:var(--slate-300); border-radius:3px; }
+  .screen { padding:8px 12px 14px; }
+
+  .kinds { display:grid; grid-template-columns:minmax(76px,.8fr) 1fr 1fr 1fr; gap:6px; }
+  .kinds > * { min-height:44px; border:1px solid var(--slate-200); background:#fff; border-radius:12px;
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:var(--slate-700); }
+  .kinds > .on { border-color:var(--emerald-500); background:var(--emerald-50); color:var(--emerald-700); }
+  .kinds > .acct { font-size:11px; font-weight:400; color:var(--slate-600); }
+
+  .rail { margin-top:8px; display:flex; flex-direction:column; gap:8px; }
+  .line { display:flex; align-items:center; gap:6px; }
+  .search { flex:1; min-width:0; min-height:34px; border:1px solid var(--slate-200); border-radius:10px; background:#fff;
+    display:flex; align-items:center; padding:0 8px; font-size:11px; color:var(--slate-400); }
+  .pill { position:relative; min-height:34px; border:1px solid var(--slate-200); background:#fff; border-radius:10px; font-size:11px;
+    color:var(--slate-500); display:flex; align-items:center; gap:4px; padding:0 8px; white-space:nowrap; }
+  .pill.on { border-color:var(--emerald-500); background:var(--emerald-50); color:var(--emerald-700); font-weight:600; }
+  .seg { display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:2px; background:var(--slate-100); border-radius:10px; }
+  .seg3 { grid-template-columns:repeat(3,1fr); width:186px; }
+  .seg > span { display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--slate-500);
+    border-radius:8px; min-height:26px; }
+  .seg > span.on { background:#fff; color:var(--emerald-700); font-weight:600; box-shadow:0 1px 2px rgb(0 0 0 / .06); }
+  .grades { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
+  .grade { min-height:60px; border:1px solid var(--slate-200); border-radius:10px; background:#fff;
+    display:flex; align-items:center; justify-content:center; text-align:center; font-size:10px; line-height:1.15; color:var(--slate-600); }
+  .grade.on { border-color:var(--emerald-500); background:var(--emerald-50); color:var(--emerald-700); font-weight:600; }
+  .meta { display:flex; align-items:center; justify-content:space-between; gap:6px; padding:0 2px; }
+  .meta .count { font-size:11px; color:var(--slate-400); }
+  .chips { display:flex; gap:4px; }
+  .chip { min-height:26px; border:1px solid var(--slate-200); border-radius:8px; background:#fff; font-size:11px;
+    color:var(--slate-500); padding:0 6px; display:inline-flex; align-items:center; }
+  .chip.on { border-color:var(--emerald-500); background:var(--emerald-50); color:var(--emerald-700); font-weight:600; }
+
+  /* 现状：每个蛋组一个圆角容器 + 分组头 */
+  .sec { border-radius:14px; background:#fff; box-shadow:0 1px 2px rgb(0 0 0 / .05); overflow:hidden; margin-top:8px; }
+  .sec-head { display:flex; align-items:center; justify-content:space-between; background:var(--slate-50);
+    padding:6px 12px; font-size:11px; font-weight:500; color:var(--slate-500); }
+  .sec-head .right { color:var(--slate-400); font-weight:400; }
+  .grid4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; padding:4px; }
+  /* 甲：平铺，只要一个 4 列网格 */
+  .flat { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; margin-top:8px; }
+  /* 乙：单网格 + 组间细线 */
+  .flat-weak { margin-top:8px; }
+  .flat-weak .grid4 { padding:0; }
+  .weak-line { height:1px; background:var(--slate-200); margin:8px 0; }
+  .weak-label { font-size:9px; color:var(--slate-300); margin:0 0 4px; }
+
+  .card { position:relative; height:104px; min-width:0; overflow:hidden; border-radius:12px;
+    border:1px solid var(--slate-200); background:#fff; box-shadow:0 1px 2px rgb(0 0 0 / .05); }
+  .card.st-collected { background:var(--emerald-50); border-color:var(--emerald-200); }
+  .card-head { position:absolute; left:4px; right:4px; top:4px; z-index:2; display:grid;
+    grid-template-columns:minmax(0,1fr) auto; gap:2px; font-size:7px; line-height:8px; }
+  .col-l { display:flex; flex-direction:column; align-items:flex-start; gap:1px; min-width:0; }
+  .col-r { display:flex; flex-direction:column; align-items:flex-end; gap:1px; min-width:0; }
+  .no { font-weight:600; color:var(--slate-500); }
+  .egg { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:var(--sky-100);
+    color:var(--sky-800); border-radius:3px; padding:0 2px; }
+  .nat { height:12px; display:inline-flex; align-items:center; border-radius:3px; padding:0 2px;
+    font-weight:500; background:var(--emerald-100); color:var(--emerald-700); max-width:100%;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .nat.g { background:var(--slate-100); color:var(--slate-400); }
+  .ava { position:absolute; left:50%; top:18px; transform:translateX(-50%); width:48px; height:48px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:19px; font-weight:700; color:#fff; }
+  .cname { position:absolute; left:4px; right:4px; top:66px; height:12px; margin:0; font-size:10px; font-weight:700;
+    line-height:12px; text-align:center; color:var(--slate-900); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cfoot { position:absolute; left:0; right:0; bottom:0; height:18px; display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:500; }
+  .tone-plan { background:var(--slate-100); color:var(--slate-600); }
+  .tone-view { background:var(--emerald-50); color:var(--emerald-700); }
+
+  .mark { position:absolute; z-index:40; width:17px; height:17px; border-radius:50%; background:#e11d48; color:#fff;
+    font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 2px #fff, 0 1px 4px rgb(0 0 0 / .3); font-family:ui-monospace,Consolas,monospace; }
+  .mark.tl { top:-7px; left:-7px; } .mark.tr { top:-7px; right:-7px; }
+  .mark.inl { position:static; display:inline-flex; width:15px; height:15px; margin-left:4px; vertical-align:middle; }
+  .rel { position:relative; }
+
+  .legend { max-width:1060px; margin-top:6px; }
+  .legend h2 { font-size:14px; margin:22px 0 8px; color:var(--slate-800); }
+  table { width:100%; border-collapse:collapse; font-size:12px; background:#fff; border-radius:12px; overflow:hidden;
+    box-shadow:0 1px 3px rgb(0 0 0 / .06); }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--slate-100); vertical-align:top; line-height:1.6; }
+  th { background:var(--slate-50); color:var(--slate-500); font-size:11px; white-space:nowrap; }
+  td.n { font-family:ui-monospace,Consolas,monospace; font-weight:700; color:#e11d48; white-space:nowrap; }
+  .cost { color:#b45309; font-weight:600; }
+</style>
+</head>
+<body>
+<h1>C1 · 母本「按蛋组分段」两个最小改法</h1>
+<p class="lead">
+  先定位：<b>分段只发生在「未收集」和「已收集」两个页签</b>（两者共用同一套 <code>chainSections</code>：每个蛋组一个圆角容器 + 分组头）。
+  <b>「收集中」本来就是平铺</b>（单个 <code>grid-cols-4</code>，没有蛋组容器，只有小组筛选 + 状态筛选两行 chips）。
+  所以用户说的「分隔蛋组」若指分段那一层，真正要改的是未收集 / 已收集；收集中无需改。
+  <br />下面三个框都是 375 宽、可在框内滚动；红色圆标对应表格里的代价说明。
+</p>
+
+<div class="row">
+  <div class="slot">
+    <span class="cap before">现状 · 未收集（分段）</span>
+    <div class="phone" id="f-now"><div class="screen" id="s-now"></div></div>
+  </div>
+  <div class="slot">
+    <span class="cap jia">改法甲 · 平铺清单</span>
+    <div class="phone" id="f-jia"><div class="screen" id="s-jia"></div></div>
+  </div>
+  <div class="slot">
+    <span class="cap yi">改法乙 · 保留分段但弱化</span>
+    <div class="phone" id="f-yi"><div class="screen" id="s-yi"></div></div>
+  </div>
+  <div class="slot">
+    <span class="cap jia">N/N 放哪（甲方案 · 选了蛋组时）</span>
+    <div class="phone" id="f-nn"><div class="screen" id="s-nn"></div></div>
+  </div>
+</div>
+
+<div class="legend">
+  <h2>两个改法与代价</h2>
+  <table>
+    <thead><tr><th>项</th><th>改法甲（平铺）</th><th>改法乙（弱化分隔）</th></tr></thead>
+    <tbody>
+      <tr><td class="n">做法</td><td>未收集 / 已收集不再按蛋组分容器，全部精灵一个 4 列网格；蛋组只由顶部「蛋组筛选」控制（卡片本来就带蛋组标签）</td><td>仍按蛋组排，但去掉分组头与圆角容器，组间只留 1px 细线；蛋组信息只从卡片标签读</td></tr>
+      <tr><td class="n">改哪里</td><td><code>MotherView.tsx</code> 的 <code>chainSections</code> 渲染段（约 25 行：去掉 section 外壳，直接铺 <code>grid-cols-4</code>）</td><td>同上，但保留分组循环，只换外壳与间距（约 15 行）</td></tr>
+      <tr><td class="n">代价</td><td class="cost">一屏里 200+ 张卡连成一片，找某一组要看卡片上的小蛋组标签；分组头里的 N/N 要挪位</td><td class="cost">组与组只剩一条线，长列表里容易「段落感消失」；N/N 同样要挪位</td></tr>
+      <tr><td class="n">好处</td><td>最平、最快扫；与「收集中」排版一致（同一个页面两套排版只留一套）</td><td>保留「按蛋组读」的心智，但视觉噪音降一半</td></tr>
+      <tr><td class="n">测试影响</td><td>已收集/未收集的分组头断言要改（<code>mother-chain-group-*</code> 不再存在）；分页「显示更多蛋组」逻辑要改成按条数</td><td>分组容器还在，断言基本不动，只改标题文案与间距</td></tr>
+    </tbody>
+  </table>
+
+  <h2>N/N 放哪（三个位置，建议第 1 个）</h2>
+  <table>
+    <thead><tr><th>方案</th><th>位置</th><th>代价</th></tr></thead>
+    <tbody>
+      <tr><td class="n">① 推荐</td><td>顶部「蛋组筛选」选中某个蛋组时，筛选条上直接写 <code>巨灵组 · 已收集 0/30</code>；不选（全部蛋组）时不显示 N/N，只在摘要行留「共 209 条链 · 已收集 1」</td><td class="cost">不选蛋组时看不到分母；但此时本来也没有"哪一组"可言</td></tr>
+      <tr><td class="n">②</td><td>每张卡片底条右侧加小字 N/N（同一组每张卡重复 30 次）</td><td class="cost">同一数字重复 30 遍，噪声大</td></tr>
+      <tr><td class="n">③</td><td>摘要行常显所选蛋组的 N/N，未选时显示全局 N/N</td><td class="cost">摘要行已有「共 N 条链 · 已收集 M」，会变成两套数字并列</td></tr>
+    </tbody>
+  </table>
+  <p class="lead" style="margin-top:12px">
+    注意口径衔接：这次的 N/N 新口径（分母 = 该蛋组精灵数，开了只算推荐性格时分母只算有推荐性格的精灵）在甲方案下仍然成立，
+    只是显示位置从「分组头」搬到「蛋组筛选条 / 摘要行」。
+  </p>
+</div>
+
+<script>
+const GROUPS = {
+  巨灵组: ['火花', '布是石', '白发懒人', '海盔虫·本来', '阿米亚特', '小独角兽', '雪豆丁', '逗逗', '矮脚爬爬', '火尾瓦特', '多西', '可爱猿'],
+  两栖组: ['板板壳', '石肤蜥·本来', '小鼠獭', '丢丢·草地附近', '锤头鹳', '水滴蛇', '波波螺', '草头鸭'],
+};
+const BGS = ['#f59e0b','#38bdf8','#a78bfa','#34d399','#fb7185','#60a5fa'];
+const NAT = ['固执','开朗','平和','胆小','沉默','踏实','急躁','聪明'];
+
+function card(name, i, group, dims = false) {
+  const no = String(100 + (i * 7) % 400).padStart(3, '0');
+  const n1 = NAT[i % NAT.length];
+  const n2 = NAT[(i + 3) % NAT.length];
+  return `<article class="card">
+    <div class="card-head">
+      <div class="col-l"><span class="no">No.${no}</span><span class="egg">${group}</span></div>
+      <div class="col-r"><span class="nat">${n1}</span><span class="nat g">${n2}</span></div>
+    </div>
+    <div class="ava" style="background:${BGS[i % BGS.length]}">${name[0]}</div>
+    <h3 class="cname">${name}</h3>
+    <div class="cfoot tone-plan">计划</div>
+  </article>`;
+}
+
+function rail({ tab = 'uncollected', eggPill = '全部蛋组', eggPillOn = false, mark = '' } = {}) {
+  return `<div class="kinds">
+      <div class="acct">测试甲 1/1</div><div>精灵背包</div><div class="on">母本</div><div>种公</div>
+    </div>
+    <div class="rail">
+      <div class="line">
+        <div class="search">搜索母本名称或图鉴号（支持进化链）</div>
+        <div class="pill ${eggPillOn ? 'on' : ''}">${eggPill} ▾${mark}</div>
+      </div>
+      <div class="seg"><span class="on">追满分</span><span>追双牌</span></div>
+      <div class="grades">
+        <div class="grade on">大块头<br/>婉转声</div><div class="grade">大块头<br/>粗嗓门</div>
+        <div class="grade">小不点<br/>婉转声</div><div class="grade">小不点<br/>粗嗓门</div>
+      </div>
+      <div class="meta">
+        <span class="count">共 209 条链 · 已收集 1</span>
+        <span class="chips"><span class="chip on">只算推荐性格</span><span class="chip">编辑推荐性格</span></span>
+      </div>
+      <div class="seg seg3">
+        <span class="${tab === 'uncollected' ? 'on' : ''}">未收集</span>
+        <span class="${tab === 'collecting' ? 'on' : ''}">收集中</span>
+        <span class="${tab === 'collected' ? 'on' : ''}">已收集</span>
+      </div>
+    </div>`;
+}
+
+// 现状：每个蛋组一个容器 + 分组头
+document.getElementById('s-now').innerHTML = rail({}) +
+  Object.entries(GROUPS).map(([group, names], gi) => `
+    <div class="sec">
+      <div class="sec-head"><span>${group}</span><span class="right">已收集 0/${gi === 0 ? 30 : 21}</span></div>
+      <div class="grid4">${names.map((name, i) => card(name, i + gi * 8, group)).join('')}</div>
+    </div>`).join('');
+
+// 甲：平铺
+document.getElementById('s-jia').innerHTML = rail({}) +
+  `<div class="flat rel">
+     <span class="mark tl">1</span>
+     ${Object.entries(GROUPS).flatMap(([group, names], gi) => names.map((name, i) => card(name, i + gi * 8, group))).join('')}
+   </div>`;
+
+// 乙：弱化分隔
+document.getElementById('s-yi').innerHTML = rail({}) +
+  `<div class="flat-weak">` +
+  Object.entries(GROUPS).map(([group, names], gi) => `
+     <div class="rel" style="${gi === 0 ? '' : 'margin-top:8px'}">
+       ${gi === 0 ? '<span class="mark tl">2</span>' : ''}
+       ${gi === 0 ? '' : '<div class="weak-line"></div>'}
+       <div class="grid4">${names.map((name, i) => card(name, i + gi * 8, group)).join('')}</div>
+     </div>`).join('') +
+  `</div>`;
+
+// N/N 放哪：选了蛋组时筛选条显示
+document.getElementById('s-nn').innerHTML = rail({ eggPill: '巨灵组 · 已收集 0/30', eggPillOn: true, mark: '<span class="mark tr">3</span>' }) +
+  `<div class="flat rel" style="margin-top:8px">
+     ${GROUPS['巨灵组'].map((name, i) => card(name, i, '巨灵组')).join('')}
+   </div>`;
+</script>
+</body>
+</html>

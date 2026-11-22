@@ -20,6 +20,7 @@
     --done:#3fb950;
     --backlog:#93a1b1;
     --blocked:#f85149;
+    --accepted:#a371f7;
     --radius:14px;
     --shadow:0 10px 30px rgba(0,0,0,.35);
   }
@@ -44,8 +45,8 @@
     -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   }
   .top-inner{
-    max-width:1560px;margin:0 auto;padding:14px 24px;
-    display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+    max-width:1560px;margin:0 auto;padding:12px 24px;
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;
   }
   .brand{display:flex;align-items:center;gap:12px;min-width:0}
   .mark{
@@ -57,6 +58,17 @@
   .brand h1{margin:0;font-size:16px;font-weight:650;letter-spacing:.2px}
   .brand p{margin:1px 0 0;font-size:11.5px;color:var(--muted);white-space:nowrap}
   .brand p b{color:#aab8c8;font-weight:500}
+
+  .tabs{display:flex;gap:4px;padding:3px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}
+  .tab{
+    appearance:none;border:0;cursor:pointer;border-radius:7px;
+    padding:5px 12px;font:inherit;font-size:12.5px;font-weight:600;
+    color:var(--muted);background:transparent;transition:color .15s,background .15s;
+  }
+  .tab:hover{color:#c8d5e3;background:rgba(255,255,255,.04)}
+  .tab[aria-selected="true"]{color:#0b1119;background:#c8d5e3}
+  .tab .n{margin-left:6px;font-size:11px;opacity:.75}
+
   .chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
   .chip{
     display:inline-flex;align-items:baseline;gap:6px;
@@ -84,6 +96,7 @@
     color:#ffb4ae;font-size:12.5px;
   }
   .alert.show{display:block}
+  [hidden]{display:none !important}
 
   .board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;align-items:start}
   .col{
@@ -113,15 +126,18 @@
     background:var(--panel);border:1px solid var(--line-soft);
     display:flex;flex-direction:column;gap:8px;
     transition:border-color .18s,transform .18s,box-shadow .18s;
-    overflow-wrap:anywhere;
+    overflow-wrap:anywhere;cursor:pointer;
   }
   .card::before{
     content:"";position:absolute;left:0;top:11px;bottom:11px;width:2px;border-radius:2px;
     background:var(--accent);opacity:.55;
   }
   .card:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line));transform:translateY(-1px);box-shadow:var(--shadow)}
+  .card:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 65%,transparent);outline-offset:2px}
   .card[data-status="blocked"]{border-color:rgba(248,81,73,.42)}
   .card[data-status="blocked"]::before{background:var(--blocked);opacity:.9}
+  .card.is-open{border-color:color-mix(in srgb,var(--accent) 46%,var(--line))}
+  .card.is-busy{opacity:.72;pointer-events:none}
 
   .card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .code{
@@ -130,6 +146,7 @@
     color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);
     border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);
   }
+  .code.muted{color:var(--muted-2);background:rgba(255,255,255,.03);border-color:var(--line)}
   .badge{
     margin-left:auto;display:inline-flex;align-items:center;gap:4px;
     font-size:10.5px;padding:1px 7px;border-radius:999px;color:var(--muted);
@@ -156,16 +173,153 @@
     margin:0;font-size:12px;line-height:1.55;color:#9fb0c2;
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
   }
+  /* 展开后完整字段在下面的 kv 里，摘要行就不再重复一遍 */
+  .card.is-open .detail,.card.is-open .next{display:none}
   .next{font-size:11.5px;color:var(--muted);display:flex;gap:6px}
   .next .arrow{color:var(--accent);opacity:.85}
+
+  /* ── 审批动作 ── */
+  .actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:2px}
+  .btn{
+    appearance:none;cursor:pointer;font:inherit;font-size:11.5px;font-weight:600;
+    padding:4px 10px;border-radius:7px;line-height:1.5;
+    border:1px solid var(--line);background:rgba(255,255,255,.03);color:#c8d5e3;
+    transition:background .15s,border-color .15s,color .15s;
+  }
+  .btn:hover{background:rgba(255,255,255,.07)}
+  .btn.ok{color:#7ee787;border-color:rgba(63,185,80,.38);background:rgba(63,185,80,.1)}
+  .btn.ok:hover{background:rgba(63,185,80,.18)}
+  .btn.no{color:#ff9d97;border-color:rgba(248,81,73,.34);background:rgba(248,81,73,.08)}
+  .btn.no:hover{background:rgba(248,81,73,.16)}
+  .btn[disabled]{opacity:.42;cursor:not-allowed}
+  .act-msg{font-size:11px;color:var(--muted-2);min-width:0}
+  .act-msg[data-kind="done"]{color:#7ee787}
+  .act-msg[data-kind="error"]{color:#ff9d97}
+  .act-msg[data-kind="pending"]{color:var(--waiting)}
+
+  /* ── 卡片展开：完整字段 ── */
+  .card-more{display:none;border-top:1px dashed var(--line);padding-top:10px;cursor:default}
+  .card.is-open .card-more{display:block}
+  .kv{display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px 10px;margin:0 0 10px;font-size:12px}
+  .kv dt{color:var(--muted-2);font-size:11.5px}
+  .kv dd{margin:0;color:#c8d5e3;overflow-wrap:anywhere}
+  .kv dd.dim{color:var(--muted-2)}
+  .linkbtn{
+    appearance:none;border:0;background:transparent;padding:0;cursor:pointer;font:inherit;
+    font-size:12px;color:var(--waiting);text-decoration:underline;text-underline-offset:2px;
+  }
+  .linkbtn:hover{color:#8cc0ff}
+  a.linkbtn{text-decoration:underline}
+  .note-row{display:block;margin-bottom:10px}
+  .note-row span{display:block;font-size:11px;color:var(--muted-2);margin-bottom:4px}
+  .note{
+    width:100%;resize:vertical;font:inherit;font-size:12px;
+    padding:6px 8px;border-radius:8px;color:var(--text);
+    border:1px solid var(--line);background:var(--panel-2);
+  }
+  .note:focus{outline:none;border-color:rgba(76,154,255,.5)}
+  details.raw{font-size:11.5px;color:var(--muted)}
+  details.raw summary{cursor:pointer;color:var(--muted-2);user-select:none}
+  details.raw summary:hover{color:#c8d5e3}
+  table.fields{width:100%;border-collapse:collapse;margin-top:8px;font-size:11.5px}
+  table.fields th{
+    text-align:left;font-weight:500;color:var(--muted-2);white-space:nowrap;
+    padding:3px 8px 3px 0;vertical-align:top;width:1%;
+  }
+  table.fields td{padding:3px 0;color:#b8c6d6;overflow-wrap:anywhere}
+  table.fields tr+tr th,table.fields tr+tr td{border-top:1px solid var(--line-soft)}
+
   .empty{
     padding:22px 10px;text-align:center;font-size:12px;color:var(--muted-2);
     border:1px dashed var(--line);border-radius:10px;background:rgba(255,255,255,.008);
   }
 
+  /* ── 会话视图 ── */
+  .shead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+  .shead h2{margin:0;font-size:15px;font-weight:650}
+  .shead .hint{font-size:11.5px;color:var(--muted-2)}
+  .stages{display:flex;gap:7px;flex-wrap:wrap;margin-left:auto}
+  .stagebtn{
+    appearance:none;cursor:pointer;font:inherit;font-size:11.5px;
+    display:inline-flex;align-items:center;gap:6px;
+    padding:3px 10px;border-radius:999px;color:var(--muted);
+    border:1px solid var(--line);background:rgba(255,255,255,.02);
+  }
+  .stagebtn b{color:var(--text);font-weight:600}
+  .stagebtn[aria-pressed="true"]{border-color:#41546b;background:rgba(255,255,255,.08);color:#dbe7f3}
+  .stagebtn:disabled{opacity:.45;cursor:default}
+  .stagebtn::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--c,var(--muted))}
+  .stagebtn[data-stage="backlog"]{--c:var(--backlog)}
+  .stagebtn[data-stage="doing"]{--c:var(--doing)}
+  .stagebtn[data-stage="delivered"]{--c:var(--waiting)}
+  .stagebtn[data-stage="accepted"]{--c:var(--accepted)}
+  .stagebtn[data-stage="closed"]{--c:var(--done)}
+
+  .sessions{display:flex;flex-direction:column;gap:10px}
+  .srow{
+    position:relative;display:grid;grid-template-columns:64px minmax(0,1fr) auto;
+    gap:4px 14px;align-items:start;
+    padding:12px 14px 12px 16px;border-radius:12px;
+    background:var(--panel);border:1px solid var(--line-soft);
+  }
+  .srow::before{
+    content:"";position:absolute;left:0;top:12px;bottom:12px;width:2px;border-radius:2px;
+    background:var(--c,var(--muted));opacity:.65;
+  }
+  .srow[data-stage="backlog"]{--c:var(--backlog)}
+  .srow[data-stage="doing"]{--c:var(--doing)}
+  .srow[data-stage="delivered"]{--c:var(--waiting)}
+  .srow[data-stage="accepted"]{--c:var(--accepted)}
+  .srow[data-stage="closed"]{--c:var(--done)}
+  .srow .code{align-self:start;justify-self:start;text-align:center;color:var(--c);border-color:color-mix(in srgb,var(--c) 30%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent)}
+  .srow-main{min-width:0;display:flex;flex-direction:column;gap:4px}
+  .srow-name{font-size:14px;font-weight:600;line-height:1.4}
+  .srow-name .sid{font-weight:400;font-size:11px;color:var(--muted-2);margin-left:8px}
+  .srow-meta{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+  .srow-meta .k{color:var(--muted-2);flex:none}
+  .srow-meta .v{color:#b8c6d6;flex:1 1 0;min-width:0;overflow-wrap:anywhere}
+  .srow-meta .tag{
+    font-size:10.5px;padding:0 6px;border-radius:999px;
+    border:1px solid var(--line);color:var(--muted-2);
+  }
+  .srow-stage{justify-self:end;display:flex;align-items:center;gap:6px}
+  .stagechip{
+    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+    font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;
+    color:var(--c);border:1px solid color-mix(in srgb,var(--c) 34%,transparent);
+    background:color-mix(in srgb,var(--c) 12%,transparent);
+  }
+  .stagechip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .stagechip[data-stage="backlog"]{--c:var(--backlog)}
+  .stagechip[data-stage="doing"]{--c:var(--doing)}
+  .stagechip[data-stage="delivered"]{--c:var(--waiting)}
+  .stagechip[data-stage="accepted"]{--c:var(--accepted)}
+  .stagechip[data-stage="closed"]{--c:var(--done)}
+  .srow-tasks{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+  .taskchip{
+    display:inline-flex;align-items:center;gap:4px;max-width:100%;
+    font-size:11px;padding:1px 8px;border-radius:999px;
+    color:var(--muted);border:1px solid var(--line);background:rgba(255,255,255,.02);
+  }
+  .taskchip[data-status="doing"]{color:var(--doing);border-color:rgba(242,182,50,.28)}
+  .taskchip[data-status="waiting"]{color:var(--waiting);border-color:rgba(76,154,255,.28)}
+  .taskchip[data-status="done"]{color:var(--done);border-color:rgba(63,185,80,.28)}
+  .taskchip[data-status="blocked"]{color:var(--blocked);border-color:rgba(248,81,73,.34)}
+  .srow-outs{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:11.5px;margin-top:2px}
+  .srow-outs .k{color:var(--muted-2)}
+  .srow-outs .linkbtn{font-size:11.5px;color:#8fb6e6}
+  .conflict{
+    display:flex;gap:6px;align-items:flex-start;
+    padding:6px 8px;border-radius:8px;font-size:11.5px;line-height:1.45;
+    color:#f6d98a;background:rgba(242,182,50,.08);border:1px solid rgba(242,182,50,.26);
+  }
+  .conflict .tag{flex:none;font-weight:600;color:#ffd479}
+  .srow .blocker{margin-top:2px}
+  .srow-block{grid-column:2 / -1}
+
   /* ── 底栏 ── */
   .foot{
-    max-width:1560px;margin:0 auto;padding:0 24px 30px;
+    max-width:1560px;margin:18px auto 0;padding:0;
     display:flex;gap:16px;flex-wrap:wrap;align-items:center;
     font-size:11.5px;color:var(--muted-2);
   }
@@ -174,6 +328,20 @@
   .legend i{font-style:normal}
   .foot .sep{flex:1}
   .foot code{color:#9fb0c2;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .foot .appr{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .foot .appr .rec{color:#8b98a9}
+  .foot .appr .rec b{color:#c8d5e3;font-weight:600}
+
+  .toast{
+    position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);
+    max-width:min(560px,calc(100vw - 28px));
+    padding:9px 14px;border-radius:10px;font-size:12.5px;line-height:1.5;
+    background:#16202e;border:1px solid var(--line);box-shadow:var(--shadow);
+    color:#dbe7f3;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:60;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .toast[data-kind="error"]{border-color:rgba(248,81,73,.5);background:#2a1517;color:#ffb4ae}
+  .toast[data-kind="done"]{border-color:rgba(63,185,80,.45);background:#12241a;color:#b7f0c0}
 
   .flash{animation:flash .6s ease-out}
   @keyframes flash{0%{box-shadow:0 0 0 0 rgba(76,154,255,.35)}100%{box-shadow:0 0 0 14px rgba(76,154,255,0)}}
@@ -182,26 +350,38 @@
     .board{grid-template-columns:repeat(2,minmax(0,1fr))}
     .chips{margin-left:0}
   }
-  @media (max-width:680px){
+  @media (max-width:760px){
     .top-inner{padding:12px 14px;gap:10px;position:relative}
     .brand h1{font-size:15px}
     .brand p{font-size:11px;white-space:normal;padding-right:104px}
     .live{position:absolute;right:14px;top:12px;margin:0;font-size:11px;padding:4px 9px}
-    .chips{width:100%;gap:6px;margin-left:0}
+    .tabs{order:3;width:100%}
+    .tab{flex:1;text-align:center;padding:6px 8px}
+    .chips{width:100%;gap:6px;margin-left:0;order:4}
     .chip{padding:4px 8px;font-size:11px}
-    .chip.total{display:none}
+    .chip.total,.chip.ver,.chip.commit{display:none}
     .wrap{padding:14px 14px 24px}
     .board{grid-template-columns:1fr;gap:14px}
     .col{padding:12px}
     .col-head{position:static;padding-bottom:10px}
     .title{font-size:14.5px}
     .detail{-webkit-line-clamp:4}
-    .foot{padding:0 14px 24px}
+    .foot{padding:0}
     .alert{margin:0 0 12px}
+    .shead{margin-bottom:10px}
+    .shead h2{font-size:14px}
+    .stages{margin-left:0;width:100%;gap:6px}
+    .stagebtn{padding:2px 9px;font-size:11px}
+    .srow{grid-template-columns:52px minmax(0,1fr);gap:6px 10px;padding:11px 12px 11px 14px}
+    .srow-stage{grid-column:1 / -1;justify-self:start;order:-1}
+    .srow-tasks,.srow-outs{grid-column:1 / -1}
+    .srow .blocker,.srow .conflict{grid-column:1 / -1}
+    .kv{grid-template-columns:56px minmax(0,1fr)}
+    .actions{gap:6px}
   }
 </style>
 </head>
-<body>
+<body data-view="board">
 
 <header class="top">
   <div class="top-inner">
@@ -209,8 +389,12 @@
       <div class="mark" aria-hidden="true">▦</div>
       <div>
         <h1>任务看板</h1>
-        <p>只读工作台 · 数据源 <b>docs/任务看板.md</b></p>
+        <p>任务 + 会话 · 数据源 <b>docs/任务看板.md</b> / <b>docs/会话台账.md</b></p>
       </div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="视图">
+      <button class="tab" type="button" role="tab" data-view="board" aria-selected="true">任务视图<span class="n" id="tabCountBoard"></span></button>
+      <button class="tab" type="button" role="tab" data-view="sessions" aria-selected="false">会话视图<span class="n" id="tabCountSessions"></span></button>
     </div>
     <div class="chips" id="chips" aria-label="仓库信息"></div>
     <div class="live" id="live">
@@ -222,33 +406,90 @@
 
 <main class="wrap">
   <div class="alert" id="alert" role="status"></div>
-  <div class="board" id="board" aria-busy="true">
-    <div class="empty" style="grid-column:1/-1">正在读取看板…</div>
-  </div>
-  <div class="foot" id="foot">
-    <div class="legend" id="legend"></div>
-    <span class="sep"></span>
-    <span>读取 <code id="readAt">—</code> · 哈希 <code id="sha">—</code> · 每次刷新重读 md，不缓存</span>
-  </div>
+
+  <section id="view-board" role="tabpanel" aria-label="任务视图">
+    <div class="board" id="board" aria-busy="true">
+      <div class="empty" style="grid-column:1/-1">正在读取看板…</div>
+    </div>
+    <div class="foot" id="foot">
+      <div class="legend" id="legend"></div>
+      <span class="sep"></span>
+      <span class="appr" id="appr"></span>
+      <span>读取 <code id="readAt">—</code> · 哈希 <code id="sha">—</code> · 每次刷新重读 md，不缓存</span>
+    </div>
+  </section>
+
+  <section id="view-sessions" role="tabpanel" aria-label="会话视图" hidden>
+    <div class="shead">
+      <h2>会话</h2>
+      <span class="hint" id="sessionHint"></span>
+      <div class="stages" id="stages"></div>
+    </div>
+    <div class="sessions" id="sessions" aria-busy="true">
+      <div class="empty">正在读取会话台账…</div>
+    </div>
+    <div class="foot" id="sessionsFoot">
+      <span>台账 <code id="ledgerPath">docs/会话台账.md</code> · 读取 <code id="ledgerReadAt">—</code> · 哈希 <code id="ledgerSha">—</code></span>
+    </div>
+  </section>
 </main>
+
+<div class="toast" id="toast" role="status"></div>
 
 <script>
 (() => {
   'use strict';
 
   const REFRESH_MS = 5000;
+  const bodyEl = document.body;
+  const viewBoardEl = document.getElementById('view-board');
+  const viewSessionsEl = document.getElementById('view-sessions');
   const boardEl = document.getElementById('board');
+  const sessionsEl = document.getElementById('sessions');
+  const stagesEl = document.getElementById('stages');
+  const sessionHintEl = document.getElementById('sessionHint');
   const chipsEl = document.getElementById('chips');
   const liveEl = document.getElementById('live');
   const liveText = document.getElementById('liveText');
   const alertEl = document.getElementById('alert');
   const legendEl = document.getElementById('legend');
+  const apprEl = document.getElementById('appr');
   const readAtEl = document.getElementById('readAt');
   const shaEl = document.getElementById('sha');
+  const toastEl = document.getElementById('toast');
+  const tabCountBoard = document.getElementById('tabCountBoard');
+  const tabCountSessions = document.getElementById('tabCountSessions');
+  const ledgerPathEl = document.getElementById('ledgerPath');
+  const ledgerReadAtEl = document.getElementById('ledgerReadAt');
+  const ledgerShaEl = document.getElementById('ledgerSha');
+  const tabs = [...document.querySelectorAll('.tab')];
 
-  let lastFingerprint = null;
-  let lastReadAt = null;
-  let timer = null;
+  const state = {
+    view: 'board',
+    board: null,
+    sessions: null,
+    fpBoard: null,
+    fpSessions: null,
+    lastReadAt: null,
+    open: new Set(),
+    notes: new Map(),
+    msg: new Map(),
+    stageFilter: null,
+    taskTotal: 0,
+    busy: false,
+    renderedOnce: false,
+  };
+
+  const SOURCE_LABEL = {
+    row: '行内时间',
+    doc: '看板更新',
+    file: '文件时间',
+    'board-row': '看板行内时间',
+    'board-doc': '看板更新时间',
+    'board-file': '看板文件时间',
+    'ledger-snapshot': '台账快照',
+    'ledger-file': '台账文件时间',
+  };
 
   const esc = (value) => String(value == null ? '' : value)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -281,11 +522,45 @@
     document.querySelectorAll('[data-ts]').forEach((el) => {
       el.textContent = rel(el.getAttribute('data-ts'));
     });
-    if (lastReadAt) {
+    if (state.lastReadAt) {
       if (liveEl.classList.contains('is-down')) return;
-      const secs = Math.max(0, Math.floor((Date.now() - lastReadAt) / 1000));
+      const secs = Math.max(0, Math.floor((Date.now() - state.lastReadAt) / 1000));
       liveText.textContent = secs < 3 ? '刚刚刷新 · 5 秒自动' : `${secs} 秒前刷新 · 5 秒自动`;
     }
+  }
+
+  function toast(text, kind) {
+    toastEl.textContent = text;
+    toastEl.setAttribute('data-kind', kind || 'ok');
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toastEl.classList.remove('show'), 4200);
+  }
+
+  function showAlert(text) {
+    alertEl.textContent = text;
+    alertEl.classList.add('show');
+  }
+  function hideAlert() {
+    alertEl.classList.remove('show');
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (_) { /* 复制不了就把值留在提示里 */ }
+    ta.remove();
   }
 
   function chip(label, value, cls, title, ts) {
@@ -294,32 +569,66 @@
       `${ts ? ` data-ts="${esc(ts)}"` : ''}>${esc(value)}</b></span>`;
   }
 
-  function renderMeta(data) {
+  function renderChips(data, sessionCount) {
     const repo = data.repo || {};
     const dirty = Number(repo.dirtyFiles || 0);
+    const total = data.columns
+      ? (data.counts && data.counts.total) || 0
+      : (data.boardCounts && data.boardCounts.total) || state.taskTotal;
+    if (data.columns || data.boardCounts) state.taskTotal = total;
     chipsEl.innerHTML = [
-      chip('版本', repo.version ? 'v' + repo.version : '—', '', 'package.json version'),
+      chip('版本', repo.version ? 'v' + repo.version : '—', 'ver', 'package.json version'),
       chip('分支', repo.branch || '—', 'branch', 'git rev-parse --abbrev-ref HEAD'),
       chip('脏文件', String(dirty), dirty ? 'dirty' : 'dirty clean', 'git status --porcelain 行数'),
-      chip('最近提交', rel(repo.lastCommitAt), '', repo.lastCommitAt
+      chip('最近提交', rel(repo.lastCommitAt), 'commit', repo.lastCommitAt
         ? exact(repo.lastCommitAt) + (repo.lastCommitSubject ? '\n' + repo.lastCommitSubject : '')
         : '', repo.lastCommitAt),
-      chip('任务', String((data.counts && data.counts.total) || 0), 'total', '任务看板.md 四个表的行数合计'),
+      chip('任务', String(total || 0), 'total', '任务看板.md 四个表的行数合计'),
     ].join('');
+    if (data.columns || data.boardCounts) tabCountBoard.textContent = String(total || 0);
+    if (sessionCount != null) tabCountSessions.textContent = String(sessionCount);
+  }
 
+  function renderLegend(data) {
     legendEl.innerHTML = (data.legend || []).map((item) =>
       `<span title="${esc(item.meaning)}"><i>${esc(item.symbol)}</i>${esc(item.label)}</span>`
     ).join('');
+  }
 
-    if (data.source) {
-      readAtEl.textContent = exact(data.generatedAt);
-      shaEl.textContent = data.source.sha256 ? data.source.sha256.slice(0, 10) : '—';
-      readAtEl.title = data.source.path || '';
+  function renderApprovals(data) {
+    const a = data.approvals || { available: false, total: 0, items: [] };
+    const last = a.available && a.items.length ? a.items[a.items.length - 1] : null;
+    const text = !a.available
+      ? `审批日志 <code>${esc(a.path || 'docs/进度/审批.jsonl')}</code> · 还没有记录`
+      : `审批日志 <code>${esc(a.path)}</code> · ${a.total} 条` +
+        (last ? ` · 最近 <span class="rec"><b>${esc(last.action === 'approve' ? '确认已完成' : last.action === 'reject' ? '打回' : last.action)}</b> ${esc(last.id || '')} ${esc(exact(last.at))}</span>` : '');
+    apprEl.innerHTML = text;
+  }
+
+  function srcLabel(src) {
+    return SOURCE_LABEL[src] || '';
+  }
+
+  function linkHtml(link, labelText) {
+    if (!link) return '';
+    const text = labelText || link.label || link.raw || '详情';
+    if (link.kind === 'url') {
+      return `<a class="linkbtn" href="${esc(link.href)}" target="_blank" rel="noreferrer noopener" ` +
+        `title="${esc(link.raw)}">${esc(text)} ↗</a>`;
     }
+    if (link.kind === 'path') {
+      return `<button type="button" class="linkbtn" data-copy="${esc(link.raw)}" ` +
+        `title="本地路径，点击复制：${esc(link.raw)}">${esc(text)}</button>`;
+    }
+    return `<span class="dim">${esc(text)}</span>`;
   }
 
   function card(task) {
     const status = task.statusKey || 'doing';
+    const open = state.open.has(task.key);
+    const msg = state.msg.get(task.key);
+    const msgFresh = msg && Date.now() - msg.at < 120000;
+    const note = state.notes.get(task.key) || '';
     const meta = [];
     if (task.assignee) {
       meta.push(`<div class="meta"><span class="k">派给</span><span class="v mono">${esc(task.assignee)}</span></div>`);
@@ -327,9 +636,25 @@
     meta.push(
       `<div class="meta"><span class="k">更新</span>` +
       `<span class="v rel" data-ts="${esc(task.updatedAt || '')}" title="${esc(exact(task.updatedAt))}">${esc(rel(task.updatedAt))}</span>` +
-      `<span class="k" style="margin-left:auto">${task.updatedSource === 'row' ? '行内时间' : task.updatedSource === 'doc' ? '看板更新' : '文件时间'}</span></div>`
+      `<span class="k" style="margin-left:auto">${esc(srcLabel(task.updatedSource))}</span></div>`
     );
-    return `<article class="card" data-status="${esc(status)}">` +
+
+    const approveOff = status === 'done' ? ' disabled title="已经是 🟢"' : ' title="把这一行改成 🟢 并记一条审批"';
+    const rejectOff = status === 'blocked' ? ' disabled title="已经是 🔴"' : ' title="把这一行改成 🔴 并记一条审批"';
+
+    const kv = [
+      ['任务', esc(task.title)],
+      ['派给', task.assignee ? `<span class="mono">${esc(task.assignee)}</span>` : '<span class="dim">—</span>'],
+      ['开始', task.startedAt ? esc(task.startedAt) : '<span class="dim">—</span>'],
+      ['最近进展', task.detail ? esc(task.detail) : '<span class="dim">—</span>'],
+      ['下一步', task.next ? esc(task.next) : '<span class="dim">—</span>'],
+      ['所在列', esc(task.section || '')],
+      ['更新时间', `${esc(exact(task.updatedAt))} <span class="dim">（${esc(srcLabel(task.updatedSource))}）</span>`],
+    ];
+    if (task.detailLink) kv.push(['详情', linkHtml(task.detailLink, '打开详情')]);
+
+    return `<article class="card${open ? ' is-open' : ''}" data-status="${esc(status)}" data-key="${esc(task.key)}" ` +
+      `data-id="${esc(task.id)}" tabindex="0" aria-expanded="${open ? 'true' : 'false'}">` +
       `<div class="card-top">` +
         (task.code ? `<span class="code">${esc(task.code)}</span>` : '') +
         `<span class="badge" data-status="${esc(status)}">${esc(task.status || '')} ${esc(task.statusLabel || '')}</span>` +
@@ -339,6 +664,20 @@
       (task.blocker ? `<div class="blocker"><span class="tag">阻塞</span><span>${esc(task.blocker)}</span></div>` : '') +
       (task.detail ? `<p class="detail">${esc(task.detail)}</p>` : '') +
       (task.next ? `<div class="next"><span class="arrow">→</span><span>${esc(task.next)}</span></div>` : '') +
+      `<div class="actions">` +
+        `<button type="button" class="btn ok" data-act="approve"${approveOff}>确认已完成</button>` +
+        `<button type="button" class="btn no" data-act="reject"${rejectOff}>打回</button>` +
+        `<span class="act-msg"${msgFresh ? ` data-kind="${esc(msg.kind)}"` : ''}>${msgFresh ? esc(msg.text) : ''}</span>` +
+      `</div>` +
+      `<div class="card-more">` +
+        `<dl class="kv">${kv.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>` +
+        `<label class="note-row"><span>打回原因（可选，会写进审批日志）</span>` +
+        `<textarea class="note" rows="2" maxlength="200" placeholder="比如：截图对不上 / 还差一项">${esc(note)}</textarea></label>` +
+        `<details class="raw"><summary>看板原始字段（${task.cells ? task.cells.length : 0} 列）</summary>` +
+        `<table class="fields">${(task.cells || []).map((c) =>
+          `<tr><th>${esc(c.header)}</th><td>${esc(c.value) || '<span class="dim">—</span>'}</td></tr>`).join('')}</table>` +
+        `</details>` +
+      `</div>` +
       `</article>`;
   }
 
@@ -355,6 +694,63 @@
     boardEl.setAttribute('aria-busy', 'false');
   }
 
+  function sessionRow(s) {
+    const stage = s.stage || { key: 'backlog', label: '待派', sourceLabel: '台账' };
+    const outs = (s.outputs || []).map((o) => linkHtml(o, o.label)).join('');
+    return `<article class="srow" data-stage="${esc(stage.key)}" data-key="${esc(s.id)}">` +
+      `<div class="code${s.code && s.code !== '—' ? '' : ' muted'}">${esc(s.code && s.code !== '—' ? s.code : '—')}</div>` +
+      `<div class="srow-main">` +
+        `<div class="srow-name">${esc(s.name || '（台账没写名字）')}` +
+          (s.sessionId ? `<span class="sid mono" title="会话 ID 前 8 位">${esc(s.sessionId)}</span>` : '') +
+        `</div>` +
+        `<div class="srow-meta">` +
+          `<span class="k">最后活动</span>` +
+          `<span class="v rel" data-ts="${esc(s.updatedAt || '')}" title="${esc(exact(s.updatedAt))}">${esc(rel(s.updatedAt))}</span>` +
+          `<span class="tag">${esc(srcLabel(s.updatedSource) || '未知来源')}</span>` +
+        `</div>` +
+        `<div class="srow-meta">` +
+          `<span class="k">台账</span><span class="v">${esc(s.ledgerStatus || '—')}</span>` +
+          (s.stageSource === 'board' ? `<span class="tag">阶段按看板判</span>` : '') +
+        `</div>` +
+        (s.blocker ? `<div class="blocker"><span class="tag">阻塞</span><span>${esc(s.blocker.text)}</span></div>` : '') +
+        (s.conflict ? `<div class="conflict"><span class="tag">对不上</span><span>${esc(s.conflict)}</span></div>` : '') +
+        (s.tasks && s.tasks.length
+          ? `<div class="srow-tasks">${s.tasks.slice(0, 3).map((t) =>
+              `<span class="taskchip" data-status="${esc(t.statusKey)}" title="${esc(t.title)}">${esc(t.status)} ${esc(t.title)}</span>`).join('')}` +
+            (s.tasks.length > 3 ? `<span class="taskchip">+${s.tasks.length - 3}</span>` : '') +
+            `</div>`
+          : '') +
+        (outs ? `<div class="srow-outs"><span class="k">产出</span>${outs}</div>` : '') +
+      `</div>` +
+      `<div class="srow-stage"><span class="stagechip" data-stage="${esc(stage.key)}">${esc(stage.label)}</span></div>` +
+      `</article>`;
+  }
+
+  function renderSessions(data) {
+    const list = data.sessions || [];
+    const filtered = state.stageFilter ? list.filter((s) => s.stage && s.stage.key === state.stageFilter) : list;
+    stagesEl.innerHTML = (data.stages || []).map((stage) => {
+      const n = (data.counts && data.counts.byStage && data.counts.byStage[stage.key]) || 0;
+      const active = state.stageFilter === stage.key;
+      return `<button type="button" class="stagebtn" data-stage="${esc(stage.key)}" aria-pressed="${active ? 'true' : 'false'}"` +
+        `${n ? '' : ' disabled'}>${esc(stage.label)} <b>${n}</b></button>`;
+    }).join('');
+    sessionHintEl.textContent = `现役 ${list.length} 个` +
+      (data.counts && data.counts.archived ? ` · 已归档 ${data.counts.archived} 个不在此表` : '') +
+      (state.stageFilter ? ` · 只看「${(data.stages || []).find((s) => s.key === state.stageFilter)?.label || state.stageFilter}」` : '');
+    sessionsEl.innerHTML = filtered.length
+      ? filtered.map(sessionRow).join('')
+      : `<div class="empty">${list.length ? '这个阶段没有会话' : '台账里还没有现役会话'}</div>`;
+    sessionsEl.setAttribute('aria-busy', 'false');
+    if (data.counts) tabCountSessions.textContent = String(data.counts.total || 0);
+    if (data.source) {
+      ledgerPathEl.textContent = data.source.ledger || 'docs/会话台账.md';
+      ledgerReadAtEl.textContent = exact(data.generatedAt);
+      ledgerShaEl.textContent = data.source.sha256 ? data.source.sha256.slice(0, 10) : '—';
+    }
+    tickRelative();
+  }
+
   function fingerprint(data) {
     return JSON.stringify([
       data.source && data.source.sha256,
@@ -362,7 +758,9 @@
       data.repo && data.repo.dirtyFiles,
       data.repo && data.repo.lastCommitHash,
       data.repo && data.repo.version,
+      data.counts,
       data.columns,
+      data.approvals && data.approvals.total,
     ]);
   }
 
@@ -372,7 +770,96 @@
     boardEl.classList.add('flash');
   }
 
-  async function load() {
+  function setView(view, opts) {
+    const silent = opts && opts.silent;
+    state.view = view;
+    bodyEl.setAttribute('data-view', view);
+    tabs.forEach((tab) => tab.setAttribute('aria-selected', tab.dataset.view === view ? 'true' : 'false'));
+    viewBoardEl.hidden = view !== 'board';
+    viewSessionsEl.hidden = view !== 'sessions';
+    if (!silent && location.hash !== '#' + view) {
+      history.replaceState(null, '', '#' + view);
+    }
+    if (view === 'sessions') loadSessions(true);
+  }
+
+  function firstTaskByKey(key) {
+    if (!state.board) return null;
+    for (const col of state.board.columns || []) {
+      for (const task of col.tasks || []) if (task.key === key) return task;
+    }
+    return null;
+  }
+
+  function firstTaskById(id) {
+    if (!state.board) return null;
+    for (const col of state.board.columns || []) {
+      for (const task of col.tasks || []) if (task.id === id) return task;
+    }
+    return null;
+  }
+
+  async function approve(task, action) {
+    if (state.busy || !task) return;
+    const key = task.key;
+    const noteEl = boardEl.querySelector(`.card[data-key="${key}"] .note`);
+    const note = noteEl ? noteEl.value.trim() : '';
+    state.busy = true;
+    const cardEl = boardEl.querySelector(`.card[data-key="${key}"]`);
+    if (cardEl) cardEl.classList.add('is-busy');
+    state.msg.set(key, { text: '提交中…', kind: 'pending', at: Date.now() });
+    repaintCard(key);
+    try {
+      const res = await fetch('/api/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: task.id, key: key, action: action, note: note }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.ok) {
+        throw new Error(payload.message || ('HTTP ' + res.status));
+      }
+      const text = payload.changed
+        ? (action === 'approve' ? '已确认 · 看板这一行已改 🟢' : '已打回 · 看板这一行已改 🔴')
+        : (payload.note || '状态没变');
+      state.msg.set(key, { text: text + (payload.snapshot ? ' · 已备份 ' + payload.snapshot.name : ''), kind: 'done', at: Date.now() });
+      state.notes.delete(key);
+      toast(text + (payload.snapshot ? '；改前内容已备份到 ' + payload.snapshot.path : ''), 'done');
+      await loadBoard(true);
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      state.msg.set(key, { text: '没写进去：' + msg, kind: 'error', at: Date.now() });
+      toast('审批没写进去：' + msg, 'error');
+      await loadBoard(true);
+    } finally {
+      state.busy = false;
+      const again = boardEl.querySelector(`.card[data-key="${key}"]`);
+      if (again) again.classList.remove('is-busy');
+    }
+  }
+
+  function repaintCard(key) {
+    const task = firstTaskByKey(key) || firstTaskById(key);
+    if (!task) return;
+    const el = boardEl.querySelector(`.card[data-key="${key}"]`);
+    if (!el) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = card(task);
+    const next = tmp.firstElementChild;
+    if (next) el.replaceWith(next);
+  }
+
+  function toggleCard(key) {
+    if (state.open.has(key)) state.open.delete(key);
+    else state.open.add(key);
+    const el = boardEl.querySelector(`.card[data-key="${key}"]`);
+    if (el) {
+      el.classList.toggle('is-open', state.open.has(key));
+      el.setAttribute('aria-expanded', state.open.has(key) ? 'true' : 'false');
+    }
+  }
+
+  async function loadBoard(force) {
     try {
       const res = await fetch('/api/board', { cache: 'no-store' });
       if (!res.ok) {
@@ -385,34 +872,140 @@
       }
       const data = await res.json();
       const fp = fingerprint(data);
-      const changed = fp !== lastFingerprint;
-      lastFingerprint = fp;
-      lastReadAt = Date.now();
+      const changed = force === true || fp !== state.fpBoard;
+      state.board = data;
+      state.fpBoard = fp;
+      state.lastReadAt = Date.now();
       liveEl.classList.remove('is-down');
-      alertEl.classList.remove('show');
-      renderMeta(data);
+      hideAlert();
+      renderChips(data);
+      renderLegend(data);
+      renderApprovals(data);
+      if (data.source) {
+        readAtEl.textContent = exact(data.generatedAt);
+        shaEl.textContent = data.source.sha256 ? data.source.sha256.slice(0, 10) : '—';
+        readAtEl.title = data.source.path || '';
+      }
       if (changed) {
         renderBoard(data);
-        if (boardEl.getAttribute('data-first') === '1') flash();
-        boardEl.setAttribute('data-first', '1');
+        if (state.renderedOnce) flash();
+        state.renderedOnce = true;
       }
       tickRelative();
     } catch (err) {
       liveEl.classList.add('is-down');
       liveText.textContent = '连不上服务，重试中';
-      alertEl.classList.add('show');
-      alertEl.textContent = '读不到看板数据：' + (err && err.message ? err.message : '未知错误') +
-        '。面板只读，不会写任何东西；恢复服务后 5 秒内自动接上。';
+      showAlert('读不到看板数据：' + (err && err.message ? err.message : '未知错误') +
+        '。面板只读，恢复服务后 5 秒内自动接上。');
     }
   }
 
+  async function loadSessions(force) {
+    try {
+      const res = await fetch('/api/sessions', { cache: 'no-store' });
+      if (!res.ok) {
+        let detail = 'HTTP ' + res.status;
+        try {
+          const body = await res.json();
+          if (body && body.message) detail = body.message;
+        } catch (_) { /* 非 JSON 错误体 */ }
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      const fp = JSON.stringify([data.source && data.source.sha256, data.counts, data.sessions]);
+      const changed = force === true || fp !== state.fpSessions;
+      state.sessions = data;
+      state.fpSessions = fp;
+      state.lastReadAt = Date.now();
+      liveEl.classList.remove('is-down');
+      hideAlert();
+      renderChips(data, data.counts && data.counts.total);
+      if (changed) renderSessions(data);
+      tickRelative();
+    } catch (err) {
+      liveEl.classList.add('is-down');
+      liveText.textContent = '连不上服务，重试中';
+      showAlert('读不到会话台账：' + (err && err.message ? err.message : '未知错误') +
+        '。台账路径 docs/会话台账.md，只读解析，不会写任何东西。');
+    }
+  }
+
+  function load() {
+    if (state.view === 'sessions') return loadSessions();
+    return loadBoard();
+  }
+
+  // ── 交互 ──
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => setView(tab.dataset.view));
+  });
+
+  boardEl.addEventListener('click', (e) => {
+    const copyEl = e.target.closest('[data-copy]');
+    if (copyEl) {
+      e.stopPropagation();
+      const value = copyEl.getAttribute('data-copy');
+      copyText(value).then(() => toast('已复制：' + value, 'done'));
+      return;
+    }
+    const actEl = e.target.closest('[data-act]');
+    if (actEl) {
+      e.stopPropagation();
+      if (actEl.disabled) return;
+      const host = actEl.closest('.card');
+      const key = host && host.getAttribute('data-key');
+      const task = firstTaskByKey(key);
+      if (task) approve(task, actEl.getAttribute('data-act'));
+      return;
+    }
+    if (e.target.closest('a,button,textarea,input,summary,details,label')) return;
+    const host = e.target.closest('.card');
+    if (host) toggleCard(host.getAttribute('data-key'));
+  });
+
+  boardEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest('button,a,textarea,input,summary,details')) return;
+    const host = e.target.closest('.card');
+    if (!host) return;
+    e.preventDefault();
+    toggleCard(host.getAttribute('data-key'));
+  });
+
+  boardEl.addEventListener('input', (e) => {
+    const noteEl = e.target.closest('.note');
+    if (!noteEl) return;
+    const host = noteEl.closest('.card');
+    if (host) state.notes.set(host.getAttribute('data-key'), noteEl.value);
+  });
+
+  sessionsEl.addEventListener('click', (e) => {
+    const copyEl = e.target.closest('[data-copy]');
+    if (!copyEl) return;
+    const value = copyEl.getAttribute('data-copy');
+    copyText(value).then(() => toast('已复制：' + value, 'done'));
+  });
+
+  stagesEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.stagebtn');
+    if (!btn || btn.disabled) return;
+    const key = btn.getAttribute('data-stage');
+    state.stageFilter = state.stageFilter === key ? null : key;
+    if (state.sessions) renderSessions(state.sessions);
+  });
+
+  const initialView = location.hash === '#sessions' ? 'sessions' : 'board';
+  setView(initialView, { silent: true });
   load();
-  timer = setInterval(load, REFRESH_MS);
+  setInterval(load, REFRESH_MS);
   setInterval(tickRelative, 1000);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) load();
   });
-  window.addEventListener('beforeunload', () => clearInterval(timer));
+  window.addEventListener('hashchange', () => {
+    const view = location.hash === '#sessions' ? 'sessions' : 'board';
+    if (view !== state.view) setView(view, { silent: true });
+  });
 })();
 </script>
 </body>
