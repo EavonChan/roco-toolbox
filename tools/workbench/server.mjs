@@ -150,6 +150,24 @@ function firstSymbol(text) {
   return best;
 }
 
+/**
+ * 一行里表示"状态"的符号：先只看「任务」列以外的单元格。
+ * 标题里的 🔴/🟡 往往是"这条要紧"的标记（看板里真的这么写），不是状态，更不许被审批改写；
+ * 非标题列里都没有符号时，才退一步把标题里的算上（W1 的兼容口径）。
+ */
+function statusSymbolOf(cells, titleIdx) {
+  for (let i = 0; i < cells.length; i += 1) {
+    if (i === titleIdx) continue;
+    const sym = firstSymbol(stripMd(cells[i] || ''));
+    if (sym) return { ...sym, cellIdx: i, inTitle: false };
+  }
+  if (titleIdx >= 0) {
+    const sym = firstSymbol(stripMd(cells[titleIdx] || ''));
+    if (sym) return { ...sym, cellIdx: titleIdx, inTitle: true };
+  }
+  return null;
+}
+
 function localDate(dateStr, hhmm) {
   if (!dateStr) return null;
   const [y, mo, d] = dateStr.split('-').map(Number);
@@ -158,10 +176,18 @@ function localDate(dateStr, hhmm) {
   return new Date(y, mo - 1, d, h, mi, 0, 0);
 }
 
-/** 详情列的值 → 可点的东西：URL / 本地路径 / 纯文本。没有值返回 null。 */
+/** 详情列的值 → 可点的东西：markdown 链接 / URL / 本地路径 / 纯文本。没有值返回 null。 */
 function detailLinkOf(raw) {
   const s = stripMd(raw || '');
   if (!s || /^[—–-]+$/.test(s)) return null;
+  // 看板里常用 markdown 链接写法：[方案 HTML](docs/preview/x.html)
+  const md = /\[([^[\]]*)\]\(([^()\s]+)\)/.exec(s);
+  if (md) {
+    const label = md[1].trim() || md[2];
+    const target = md[2].trim();
+    if (/^https?:\/\//i.test(target)) return { raw: target, kind: 'url', href: target, label };
+    return { raw: target, kind: 'path', href: null, label };
+  }
   if (/^https?:\/\//i.test(s)) return { raw: s, kind: 'url', href: s, label: s };
   if (/[\\/]/.test(s) || /\.(?:md|png|jpe?g|json|tsx?|html?|mjs|txt|pdf|zip)$/i.test(s) || /[*?]/.test(s)) {
     return { raw: s, kind: 'path', href: null, label: s };
@@ -267,7 +293,6 @@ function parseBoard(text, fallbackTime) {
     for (const { cells, lineIndex, raw } of dataRows) {
       if (cells.every((c) => !c.trim())) continue;
       const col = columns.get(section.columnKey);
-      const rowText = cells.join(' | ');
 
       const get = (role) => {
         const idx = roles.indexOf(role);
@@ -283,16 +308,18 @@ function parseBoard(text, fallbackTime) {
         (/PR\s*#\d+/i.exec(rawTitle)?.[0]?.replace(/\s+/g, '') ?? '') ||
         (/^[A-Z][A-Za-z]{0,2}\d*(?=\s|[（(]|$)/.exec(rawTitle)?.[0] ?? '');
 
-      const status = firstSymbol(rowText) || STATUS_BY_SYMBOL.get(col.status);
+      const status = statusSymbolOf(cells, titleIdx) || STATUS_BY_SYMBOL.get(col.status);
       const startCell = get('time') || cells.map(stripMd).find((c) => parseTimeCell(c)) || '';
       const startTime = startCell ? parseTimeCell(startCell) : null;
 
-      const blockedCell = cells.map(stripMd).find((c) => c.includes('🔴'));
-      const blocker = blockedCell
-        ? blockedCell.replace(/🔴/g, '').trim() || nextText
-        : status.key === 'blocked'
-          ? detailText || nextText || rawTitle
-          : null;
+      const blockedCell = status.key === 'blocked'
+        ? cells.map(stripMd).find((c) => c.includes('🔴'))
+        : null;
+      const blocker = status.key !== 'blocked'
+        ? null
+        : blockedCell
+          ? blockedCell.replace(/🔴/g, '').trim() || detailText || nextText || rawTitle
+          : detailText || nextText || rawTitle;
 
       // 「多久前更新」优先用行内时间，其次看板声明的更新时间，最后文件 mtime；
       // 如果看板把时间写到了未来（本项目出现过），退回文件 mtime，不显示"未来时间"。
@@ -335,7 +362,7 @@ function parseBoard(text, fallbackTime) {
       // 写回时定位用；不可枚举，所以不会出现在 /api/board 的 JSON 里。
       Object.defineProperty(task, '_row', {
         enumerable: false,
-        value: { lineIndex, rawLine: raw, detailIdx },
+        value: { lineIndex, rawLine: raw, detailIdx, titleIdx },
       });
       col.tasks.push(task);
     }
@@ -760,16 +787,30 @@ function firstDiff(a, b) {
   return n;
 }
 
-/** 改状态符号：有符号就换掉第一个；没有就塞进「最近进展」那格（没有就最后一格）。 */
-function patchLineSymbol(line, symbol, detailIdx) {
-  if (SYMBOL_CLASS.test(line)) return line.replace(SYMBOL_CLASS, symbol);
+/**
+ * 改状态符号。规则：
+ *   1. 先在不属于「任务」列、且已经有符号的单元格里，换掉那个符号（看板惯例：符号写在「最近进展」开头）；
+ *   2. 都没有符号，就把符号插到「最近进展」格首（没有这列就最后一格）；
+ *   3. **永远不碰「任务」列**——标题里的 🔴/🟡 是标记，不是状态，改了就是把看板写坏。
+ */
+function patchLineSymbol(line, symbol, detailIdx, titleIdx) {
   const ranges = cellRanges(line);
   if (!ranges.length) return null;
-  const idx = detailIdx >= 0 && detailIdx < ranges.length ? detailIdx : ranges.length - 1;
+  for (let i = 0; i < ranges.length; i += 1) {
+    if (i === titleIdx) continue;
+    const range = ranges[i];
+    const cell = line.slice(range.start, range.end);
+    if (!SYMBOL_CLASS.test(cell)) continue;
+    return line.slice(0, range.start) + cell.replace(SYMBOL_CLASS, symbol) + line.slice(range.end);
+  }
+  const idx0 = detailIdx >= 0 && detailIdx < ranges.length ? detailIdx : ranges.length - 1;
+  let idx = idx0;
+  if (idx === titleIdx) idx = ranges.length - 1;
+  if (idx === titleIdx) return null; // 只有「任务」一格能写 → 宁可报错，也不改标题
   const range = ranges[idx];
   const cell = line.slice(range.start, range.end);
-  const insertAt = range.start + cell.replace(/\s+$/, '').length;
-  return line.slice(0, insertAt) + ' ' + symbol + line.slice(insertAt);
+  const insertAt = range.start + cell.match(/^\s*/)[0].length;
+  return line.slice(0, insertAt) + symbol + ' ' + line.slice(insertAt);
 }
 
 function findRow(parsed, { id, key }) {
@@ -814,10 +855,9 @@ async function writeApproval({ id, key, action, note }) {
   }
   const task = found.task;
   const symbol = action === 'approve' ? '🟢' : '🔴';
-  const current = firstSymbol(task._row.rawLine);
 
-  // 已经是目标状态：不写文件、不备份、不记日志（避免把只读场景也拖进失败分支）
-  if (current && current.symbol === symbol) {
+  // 已经是目标状态（含"该列默认就是这个状态"）：不写文件、不备份、不记日志
+  if (task.status === symbol) {
     return {
       changed: false,
       note: `这一行已经是 ${symbol}，没有重复写。`,
@@ -830,8 +870,14 @@ async function writeApproval({ id, key, action, note }) {
 
   const record = { id: task.id, action, note: note || null, at: new Date().toISOString() };
   const snapshot = await writeSnapshot(before);
-  const newLine = patchLineSymbol(task._row.rawLine, symbol, task._row.detailIdx);
+  const newLine = patchLineSymbol(task._row.rawLine, symbol, task._row.detailIdx, task._row.titleIdx);
   const newText = newLine == null ? null : replaceLine(before, task._row.lineIndex, newLine);
+  // 写前先确认"任务"列一个字都没动（防止把标题里的标记改掉）
+  const titleBefore = task._row.titleIdx >= 0 ? splitRow(task._row.rawLine)[task._row.titleIdx] : null;
+  const titleAfter = newLine != null && task._row.titleIdx >= 0 ? splitRow(newLine)[task._row.titleIdx] : null;
+  if (titleBefore !== null && titleBefore !== titleAfter) {
+    throw new HttpError(500, 'patch_failed', '这次改符号会动到「任务」列标题，已拒绝', { snapshot, boardUnchanged: true });
+  }
   if (newText == null) {
     throw new HttpError(500, 'patch_failed', '没能定位到看板里的那一行，未改看板', { snapshot, boardUnchanged: true });
   }
