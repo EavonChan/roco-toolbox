@@ -20,9 +20,11 @@
 _baseline/
 ├─ *.png                    未登录基准（<page>-<width>.png）
 ├─ 基线信息.json            每页的 body/nav/card 计算样式快照
-├─ 登录态/                  登录后基准 + 登录态信息-<width>.json
-├─ _prev-2026-11-22-1327/   上一版基准（test 构建 13:27，改卡之前）仅归档
-└─ _work/                   排障临时图（不是基准）
+└─ 登录态/                  登录后基准 + 登录态信息-<width>.json
+
+> 不入库（见同目录 .gitignore）：
+> - `_work/` 排障临时图（dev 截图），2026-11-22 已删除，省 12.3 MB；
+> - `_prev-*/` 旧版基准归档，已移到仓库外 `D:\desk\roco-shots\设计稿-旧基准-2026-11-22-1327\`（52 个文件 / 8.4 MB）。
 ```
 
 ## 重新捕获
@@ -37,4 +39,4 @@ node 原型/设计稿/_tools/capture-logged-in.mjs --user <账号> --pass <密�
 node 原型/设计稿/_tools/capture-logged-in.mjs --user <账号> --pass <密码> --width 390
 ```
 
-⚠️ 重跑会覆盖 `*.png` 与 `基线信息.json`；要保留旧版，先把当前文件复制到 `_prev-<日期>-<构建时间>/`。
+⚠️ 重跑会覆盖 `*.png` 与 `基线信息.json`；要保留旧版，请复制到**仓库外**（例如 `D:\desk\roco-shots\设计稿-旧基准-<日期>/`），不要放回 `_baseline/`——`_prev-*/` 已在 .gitignore 里。
