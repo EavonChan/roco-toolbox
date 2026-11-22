@@ -3,6 +3,8 @@ import { eggGroupNames, species, targetNatureNames } from '../data/catalog';
 import { heightMetersOf, weightKgOf } from '../domain/petFilters';
 import { petBodyMedalIcon, petVoiceMedalIcon } from '../domain/petIcons';
 import type { NestPairing, NestPet, NestPlan } from '../domain/nestPlan';
+import { sortIndividualBonuses } from '../domain/individualStats';
+import type { IndividualBonus } from '../domain/types';
 import {
   recommendedNatureChance,
   type MotherHelpItem,
@@ -321,6 +323,8 @@ export interface PairCardPet {
   weightPercent?: number | null;
   /** 卡底小字：配窝建议是盒子位置；家园不写 */
   box?: string;
+  /** 个体三维（2026-11-22 用户口径）：家园卡底部一行「物攻+8·生命+9·速度+10」 */
+  individualBonuses?: readonly IndividualBonus[];
 }
 
 export function PairingPetCard({
@@ -361,12 +365,15 @@ export function PairingPetCard({
     sizeValue && meters !== null ? `${meters.toFixed(2)}m` : formatPercent(pet.heightPercent);
   const weightText =
     sizeValue && kilograms !== null ? `${kilograms.toFixed(1)}kg` : formatPercent(pet.weightPercent);
+  /**
+   * 家园卡底部的个体三维（2026-11-22 用户口径）：固定三格一行，
+   * 按抓包里的实际三维填，缺的那格留空（没有三维数据时整行留空）。
+   */
+  const bonuses = home ? sortIndividualBonuses(pet.individualBonuses ?? []).slice(0, 3) : [];
 
   return (
     <article
-      className={`relative min-w-0 overflow-hidden rounded-xl p-1.5 shadow-sm ${
-        home ? 'h-[70px]' : 'h-[86px]'
-      } ${
+      className={`relative h-[86px] min-w-0 overflow-hidden rounded-xl p-1.5 shadow-sm ${
         pet.gender === '母'
           ? 'bg-pink-50'
           : pet.gender === '公'
@@ -454,6 +461,25 @@ export function PairingPetCard({
       >
         {pet.name}
       </h4>
+      {home ? (
+        <div
+          className="absolute inset-x-0 bottom-0 flex h-4 divide-x divide-slate-300/70 border-t border-slate-300/60 text-center text-[8px] leading-none text-slate-600"
+          data-testid="breed-pet-stats"
+        >
+          {[0, 1, 2].map((index) => {
+            const bonus = bonuses[index];
+            return (
+              <span
+                key={index}
+                className="flex w-1/3 min-w-0 items-center justify-center"
+                data-testid={`breed-pet-stat-${index}`}
+              >
+                {bonus ? `${bonus.name}+${bonus.value}` : ''}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
       {pet.box ? (
         <p
           className="absolute inset-x-1 top-[72px] truncate text-center text-[9px] leading-3 text-slate-400"

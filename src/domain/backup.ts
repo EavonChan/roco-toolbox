@@ -1,5 +1,6 @@
 import type { TargetMode } from './petFilters';
 import { accountKeyOf, parseHomeSnapshot, type AccountSnapshot } from './parseBackup';
+import { individualBonusesOfItem } from './individualStats';
 import type { OwnedPet } from './types';
 
 type UnknownRecord = Record<string, unknown>;
@@ -58,6 +59,7 @@ const sanitizePet = (value: unknown, accountName: string): OwnedPet | undefined 
     medalBody: asString(item.medalBody) || medalFromWeightPercent(weightPercent),
     weightPercent,
     heightPercent: asOptionalNumber(item.heightPercent),
+    individualBonuses: individualBonusesOfItem(item),
     isShiny: asBoolean(item.isShiny),
     isColorful: item.isColorful === true,
     account: accountName,
