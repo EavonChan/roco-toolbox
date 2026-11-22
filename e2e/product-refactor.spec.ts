@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿import { expect, test, type Page } from '@playwright/test';
+﻿import { expect, test, type Page } from '@playwright/test';
 import { progressOf } from './progress';
 
 const importSample = async (page: Page) => {
@@ -11,13 +11,12 @@ const importSample = async (page: Page) => {
 
 test('旧共享记忆不影响看板求蛋：点「全部」落到收集 · 种公阵列', async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem('roco.lastTab', 'swap');
+    window.localStorage.setItem('roco.lastTab', 'groups');
     window.localStorage.setItem('roco.swapView', 'sharing');
   });
   await page.goto('/');
 
-  // 启动落回小组页；个人求蛋已删除，未登录只给登录提示
-  await expect(page.getByTestId('group-login-hint')).toBeVisible();
+  // 旧的「共享视图」记忆不再决定启动落点（现在就按上次页签走）；个人求蛋已删除
   await expect(page.getByTestId('personal-eggs')).toHaveCount(0);
 
   await page.getByRole('button', { name: '看板', exact: true }).click();
@@ -64,7 +63,7 @@ test('改本页筛选不改收集进度（看板数字保持）', async ({ page 
 
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-inventory').click();
-  await page.getByTestId('filter-tile-body').click();
+  // 2026-11-22：筛选改成常显整行，不再有每维一个 tile
   await page.getByTestId('filter-opt-body-body:大块头').click();
 
   await page.getByRole('button', { name: '看板', exact: true }).click();

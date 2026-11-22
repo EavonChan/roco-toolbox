@@ -286,10 +286,19 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
         data-testid="home-header"
         data-view={view}
       >
-        {/* 2026-11-22 用户口径：账号胶囊宽度跟着账号名走，不再写死 14rem；
-            名字太长时最多占 60% 并省略，别把右边的接单/刷新按钮挤出去。 */}
+        {/*
+         * 账号胶囊两种屏宽各管一段（2026-11-22 合并 eavon/pr6 时核对过）：
+         * - 竖屏：flex-1 + min-w-0，宽度让出来、名字自己截断 —— 修「一滑整窗横向走、
+         *   问号被挤出屏幕」（线上实测 scrollWidth 391 / 视口 375，见 b4c0a7d）。
+         * - 横屏：index.css 里 `header[data-testid="home-header"] > section` 改成
+         *   `flex: 0 0 auto`，胶囊宽度跟着账号名走，不再固定 18rem（用户 2026-11-22 口径）。
+         * 上限 60% 兜底，长名字最多占六成，右边的蛋仓/接单/刷新不被挤出去。
+         */}
         {view === 'nests' && loaded && activeAccount ? (
-          <section className="relative min-w-0 max-w-[60%] shrink-0" data-testid="home-account-switcher">
+          <section
+            className="relative min-w-0 max-w-[60%] flex-1"
+            data-testid="home-account-switcher"
+          >
             <button
               type="button"
               onClick={() => setAccountPickerOpen((open) => !open)}

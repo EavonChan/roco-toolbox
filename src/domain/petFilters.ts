@@ -271,9 +271,17 @@ export function buildTagIndex(
     if (pet.gender !== '未知') addTag(`gender:${pet.gender}`, 'gender', pet.gender, i);
 
     // 稀有度（2026-10-05 增加炫彩，用户拍板直接从导入内容读 isColorful）：
-    // 异色 + 炫彩 → 「异色炫彩」一个标签，不再同时显示两个
+    // 异色 + 炫彩 → 卡片上只显示「异色炫彩」一个标签，不再同时显示两个；
+    // 但**筛选**要按包含关系算（2026-11-22 用户口径）：异色炫彩既算炫彩也算异色，
+    // 单独筛「炫彩」或「异色」时不能把它排除在外。
     const shinyKind = pet.isShiny && pet.isColorful ? '异色炫彩' : pet.isColorful ? '炫彩' : pet.isShiny ? '异色' : null;
-    if (shinyKind) addTag(`shiny:${shinyKind}`, 'shiny', shinyKind, i);
+    if (shinyKind) {
+      addTag(`shiny:${shinyKind}`, 'shiny', shinyKind, i);
+      if (shinyKind === '异色炫彩') {
+        addTag('shiny:炫彩', 'shiny', '炫彩', i);
+        addTag('shiny:异色', 'shiny', '异色', i);
+      }
+    }
 
     const species = speciesByGameId.get(pet.gameId);
     if (species) {

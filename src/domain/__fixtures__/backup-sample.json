@@ -9,11 +9,11 @@
     "gameId": 1000001,
     "playerName": "测试甲",
     "counts": {
-      "petBackpackItems": 4,
-      "matched": 4,
+      "petBackpackItems": 5,
+      "matched": 5,
       "shiny": 1,
       "male": 2,
-      "female": 2
+      "female": 3
     }
   },
   "collections": {
@@ -81,6 +81,22 @@
           "boxNumber": 1,
           "group": "盒子01",
           "slotOrder": 3,
+          "runtimePetId": "runtime-should-be-dropped",
+          "rawFields": {}
+        },
+        {
+          "id": "capture_1000001_719",
+          "speciesPetId": 3011,
+          "name": "恶魔狼",
+          "gender": "母",
+          "nature": "固执",
+          "natureId": 2,
+          "voiceDb": 100,
+          "medalBody": "大块头",
+          "weightPercent": 99,
+          "isShiny": false,
+          "boxNumber": 2,
+          "group": "盒子02",
           "runtimePetId": "runtime-should-be-dropped",
           "rawFields": {}
         }

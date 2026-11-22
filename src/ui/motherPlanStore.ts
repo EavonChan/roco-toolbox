@@ -44,14 +44,6 @@ export function toggleMotherPlan(chainKey: string): void {
   commit(plan.includes(chainKey) ? plan.filter((key) => key !== chainKey) : [...plan, chainKey]);
 }
 
-/** 批量移除（「清除已达成」用）。 */
-export function removeManyFromMotherPlan(chainKeys: readonly string[]): void {
-  const drop = new Set(chainKeys);
-  const plan = store.get();
-  const next = plan.filter((key) => !drop.has(key));
-  if (next.length !== plan.length) commit(next);
-}
-
 /** 备份合并：取并集，返回新增的条数（用于导入反馈文案）。 */
 export function mergeMotherPlan(chainKeys: readonly string[]): number {
   const plan = store.get();

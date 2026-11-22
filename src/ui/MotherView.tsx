@@ -1,4 +1,4 @@
-﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GRADE_BODY, GRADE_VOICE, type MotherGroup, type TargetMode } from '../domain/petFilters';
 import type { OwnedPet } from '../domain/types';
 import { species as catalogSpecies } from '../data/catalog';
@@ -9,9 +9,7 @@ import {
   motherVoicesForMode,
   type MotherCriteria,
 } from '../domain/motherCriteria';
-import { AccountSection } from './AccountSection';
-import { useTabletLandscape, useWideLandscape } from './useWideLandscape';
-import { PetAvatar } from './PetAvatar';
+import { useTabletLandscape, useWideLandscape } from './useWideLandscape';import { PetAvatar } from './PetAvatar';
 import { PetCardLayout, type PetCardStatus } from './PetCardLayout';
 import { shouldUseThreeColumns } from './motherColumnLayout';
 import { SearchField } from './primitives/SearchField';
@@ -25,7 +23,6 @@ import {
 } from './motherCriteriaStore';
 import {
   mergeMotherPlan,
-  removeManyFromMotherPlan,
   toggleMotherPlan,
   useMotherPlan,
 } from './motherPlanStore';
@@ -38,9 +35,6 @@ import type { MotherNestAccount } from '../domain/motherNest';
 import { GapFillDialog, type GapTargetView } from './GapFillDialog';
 import { MotherCollectingView } from './plan/MotherCollectingView';
 import type { NavigationIntent } from './navigation';
-
-/** 每节的分页大小：母本视角的每一节动辄上百条，必须分页 */
-const PAGE_SIZE = 20;
 
 /** 点「查看」带到精灵背包的筛选：进化链名 + 标签（不再带身高范围，见 jumpBase）。 */
 export interface MotherInventoryJump {
@@ -78,149 +72,6 @@ export interface MotherViewProps {
   onNavigate?: (intent: NavigationIntent) => void;
   /** 收集页右侧筛选栏是否收起：收起后才考虑把蛋组排成三列（2026-11-21 用户口径） */
   filterCollapsed?: boolean;
-}
-
-interface SectionProps {
-  title: string;
-  titleClass: string;
-  groups: MotherGroup[];
-  defaultOpen?: boolean;
-  testId: string;
-  renderRow: (group: MotherGroup) => ReactNode;
-  /** 标题下方的工具区（候选区的搜索框、计划区的「清除已达成」） */
-  toolbar?: ReactNode;
-  /** 列表容器样式 */
-  listClassName?: string;
-  /** 提供该分组键时，列表按它聚拢、每组用 AccountSection 标题（2026-10-05 已收集按账号分组） */
-  groupKey?: (group: MotherGroup) => string;
-}
-
-/** 可折叠 + 分页的一节。默认收起，避免一进页面就被几百条铺满。 */
-function CollapsibleSection({
-  title,
-  titleClass,
-  groups,
-  defaultOpen = false,
-  testId,
-  renderRow,
-  toolbar,
-  listClassName = 'space-y-1',
-  groupKey,
-}: SectionProps) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [page, setPage] = useState(1);
-  // 搜索命中时把这一节自动展开（用户拍板：搜索到的页签就打开展示对应精灵）
-  useEffect(() => {
-    if (defaultOpen) setOpen(true);
-  }, [defaultOpen]);
-  const totalPages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const visible = groups.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  // 提供 groupKey 时把当前页的条目按它分组（2026-10-05 已收集按账号聚拢）
-  const grouped = groupKey
-    ? (() => {
-        const map = new Map<string, MotherGroup[]>();
-        for (const group of visible) {
-          const key = groupKey(group);
-          const list = map.get(key) ?? [];
-          list.push(group);
-          map.set(key, list);
-        }
-        return [...map.entries()].map(([account, items]) => ({ account, items }));
-      })()
-    : null;
-
-  return (
-    <section className="rounded-2xl bg-white shadow-sm" data-testid={testId}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex min-h-[36px] w-full items-center justify-between px-3 text-left"
-        data-testid={`${testId}-toggle`}
-      >
-        <span className={`text-sm font-medium ${titleClass}`}>
-          {title}（{groups.length}）
-        </span>
-        <span className="text-xs text-slate-300" aria-hidden>
-          {open ? '▲' : '▼'}
-        </span>
-      </button>
-
-      {open ? (
-        <div className="space-y-2 border-t border-slate-100 p-3">
-          {toolbar}
-          {groups.length === 0 ? (
-            <p className="text-xs text-slate-400" data-testid={`${testId}-empty`}>
-              这一节暂时没有。
-            </p>
-          ) : grouped ? (
-            <>
-              <div className="space-y-2" data-testid={`${testId}-list`}>
-                {grouped.map(({ account, items }) => (
-                  <AccountSection key={account} account={account}>
-                    <ul className={listClassName}>{items.map(renderRow)}</ul>
-                  </AccountSection>
-                ))}
-              </div>
-              {totalPages > 1 ? (
-                <nav className="flex items-center justify-between gap-2" aria-label="分页">
-                  <button
-                    type="button"
-                    disabled={safePage === 1}
-                    onClick={() => setPage(safePage - 1)}
-                    className="min-h-[32px] flex-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 disabled:text-slate-300"
-                  >
-                    上一页
-                  </button>
-                  <span className="text-xs text-slate-400">
-                    第 {safePage} / {totalPages} 页
-                  </span>
-                  <button
-                    type="button"
-                    disabled={safePage === totalPages}
-                    onClick={() => setPage(safePage + 1)}
-                    className="min-h-[32px] flex-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 disabled:text-slate-300"
-                  >
-                    下一页
-                  </button>
-                </nav>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <ul className={listClassName} data-testid={`${testId}-list`}>
-                {visible.map(renderRow)}
-              </ul>
-              {totalPages > 1 ? (
-                <nav className="flex items-center justify-between gap-2" aria-label="分页">
-                  <button
-                    type="button"
-                    disabled={safePage === 1}
-                    onClick={() => setPage(safePage - 1)}
-                    className="min-h-[32px] flex-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 disabled:text-slate-300"
-                  >
-                    上一页
-                  </button>
-                  <span className="text-xs text-slate-400">
-                    第 {safePage} / {totalPages} 页
-                  </span>
-                  <button
-                    type="button"
-                    disabled={safePage === totalPages}
-                    onClick={() => setPage(safePage + 1)}
-                    className="min-h-[32px] flex-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 disabled:text-slate-300"
-                  >
-                    下一页
-                  </button>
-                </nav>
-              ) : null}
-            </>
-          )}
-        </div>
-      ) : null}
-    </section>
-  );
 }
 
 /** 链清单的收/未收开关（2026-10-06 用户拍板：由「只看未收集」开关改成两态分段） */
@@ -384,6 +235,8 @@ export function MotherView({
   /** 搜索（进化链全员命中）+ 蛋组筛选：同时作用于已收集 / 计划 / 待补齐 */
   const keyword = query.trim().toLowerCase();
   const [eggGroupFilter, setEggGroupFilter] = useState<string[]>([]);
+  /** 空态判断用：有没有主动筛过（决定「清除筛选」是否可点） */
+  const hasFilter = keyword.length > 0 || eggGroupFilter.length > 0;
 
   /** 蛋组筛选选项：按母本链实际覆盖的蛋组给（带链数） */
   const eggGroupOptions = useMemo(() => {
@@ -525,44 +378,6 @@ export function MotherView({
     );
   }, [filterCollapsed, chainFilter, chainSections, hiddenChainSections, layoutTick, plan.length]);
 
-  const planGroups = useMemo(
-    () => matchedGroups.filter((group) => plannedSet.has(group.chainKey)),
-    [matchedGroups, plannedSet],
-  );
-  const achievedGroups = planGroups.filter((group) => isChainCollected(group));
-  const renderPlanRow = (group: MotherGroup): ReactNode => {
-    const achieved = isChainCollected(group);
-    return (
-      <li
-        key={group.chainKey}
-        className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5"
-        data-testid="mother-plan-row"
-      >
-        <span className="min-w-0 flex-1 truncate">
-          <span className={`text-sm ${achieved ? 'text-emerald-700' : 'text-slate-800'}`}>
-            {group.formLabel || '未知精灵'}
-          </span>
-          {group.number ? (
-            <span className="ml-1 text-[11px] text-slate-400">#{group.number}</span>
-          ) : null}
-          {achieved ? (
-            <span className="ml-1.5 text-[11px] text-emerald-700" data-testid="mother-plan-done">
-              已达成
-            </span>
-          ) : null}
-        </span>
-        <button
-          type="button"
-          onClick={() => toggleMotherPlan(group.chainKey)}
-          className="min-h-[28px] shrink-0 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-500"
-          data-testid="mother-plan-remove"
-        >
-          移除
-        </button>
-      </li>
-    );
-  };
-
   /** 打开「未收集母本怎么补」悬浮窗：目标卡用当前目标奖牌，路线按本号优先找 */
   const openGapFor = (group: MotherGroup) => {
     if (!gapTarget) return;
@@ -658,31 +473,6 @@ export function MotherView({
       </div>
 
       <div className="collection-main space-y-2">
-      {planGroups.length > 0 ? (
-        <CollapsibleSection
-          title="计划收集"
-          titleClass="text-emerald-700"
-          groups={planGroups}
-          defaultOpen
-          testId="mother-plan"
-          renderRow={renderPlanRow}
-          toolbar={
-            achievedGroups.length > 0 ? (
-              <button
-                type="button"
-                onClick={() =>
-                  removeManyFromMotherPlan(achievedGroups.map((group) => group.chainKey))
-                }
-                className="min-h-[28px] rounded-md border border-emerald-500 px-2 text-xs font-medium text-emerald-700"
-                data-testid="mother-plan-clear-done"
-              >
-                清除已达成（{achievedGroups.length}）
-              </button>
-            ) : undefined
-          }
-        />
-      ) : null}
-
       {/* 链清单按蛋组分区，每行四只；收集中使用同一母本卡但不按蛋组分区 */}
       <section
         ref={chainListRef}
@@ -701,12 +491,41 @@ export function MotherView({
             onNavigate={onNavigate ?? (() => {})}
           />
         ) : chainSections.length === 0 ? (
-          <p
-            className="rounded-2xl bg-white p-3 text-xs text-slate-400 shadow-sm"
+          /* 已收集空态给两个出口：筛没了 → 清除筛选；真没有 → 去未收集挑计划（2026-11-22） */
+          <div
+            className="rounded-2xl bg-white p-3 shadow-sm"
             data-testid="mother-chain-empty"
           >
-            当前筛选下没有匹配的母本链。
-          </p>
+            <p className="text-xs text-slate-400">
+              {chainFilter === 'collected'
+                ? '当前筛选下没有已收集的母本链。'
+                : '当前筛选下没有匹配的母本链。'}
+            </p>
+            {chainFilter === 'collected' ? (
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  disabled={!hasFilter}
+                  onClick={() => {
+                    setQuery('');
+                    setEggGroupFilter([]);
+                  }}
+                  data-testid="mother-chain-empty-clear"
+                  className="min-h-[32px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 disabled:text-slate-300"
+                >
+                  清除筛选
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChainFilter('uncollected')}
+                  data-testid="mother-chain-empty-uncollected"
+                  className="min-h-[32px] rounded-lg border border-emerald-500 bg-emerald-50 px-3 text-xs font-medium text-emerald-700"
+                >
+                  去未收集挑计划
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : (
           visibleChainSections.map((section) => (
             <div
@@ -718,7 +537,9 @@ export function MotherView({
               <p className="flex items-center justify-between bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500">
                 <span>{section.label}</span>
                 <span className="text-slate-400">
-                  已收集 {section.collected}/{section.total}
+                  {chainFilter === 'collected'
+                    ? `${section.total} 只`
+                    : `已收集 ${section.collected}/${section.total}`}
                 </span>
               </p>
               <ul

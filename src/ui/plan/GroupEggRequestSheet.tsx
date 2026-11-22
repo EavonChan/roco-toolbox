@@ -94,8 +94,13 @@ export function GroupEggRequestSheet({
   const extremePercent = targetBody === '大块头' ? '100%' : '0%';
   const normalBody = body === '满体重' || body === '零体重' ? targetBody : body;
   const count = Math.max(1, selected.length);
-  const greenNeedsNature = greenNest && selected.length === 0;
-  const canPublish = Boolean(groupId) && !busy && !greenNeedsNature;
+  /**
+   * 必填项（2026-11-22 用户口径）：**一个性格都没选就不许发**。
+   * 以前 `count = max(1, 0)` 会让「发布 1 条需求」发出一条没有性格的需求；
+   * 绿窝本来就要求性格，所以统一在这里挡掉，提示直接放在按钮上方。
+   */
+  const needsNature = selected.length === 0;
+  const canPublish = Boolean(groupId) && !busy && !needsNature;
   const bodyIcon = bodyMedalIconByLabel(normalBody);
   const voiceIcon = voiceMedalIconByLabel(voice);
 
@@ -303,9 +308,12 @@ export function GroupEggRequestSheet({
             绿窝
             <img src={GREEN_NEST_ICON} alt="" className="size-4 object-contain" />
           </label>
-          {greenNeedsNature ? (
-            <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
-              绿窝需要先选一个性格。
+          {needsNature ? (
+            <p
+              className="mt-1 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800"
+              data-testid="group-request-need-nature"
+            >
+              先选一个性格：1 个性格 = 1 条需求；绿窝也要先选性格。
             </p>
           ) : null}
         </section>
@@ -332,7 +340,7 @@ export function GroupEggRequestSheet({
             }
             className="min-h-[38px] flex-[2] rounded-lg bg-emerald-600 text-xs font-semibold text-white disabled:bg-slate-300"
           >
-            {busy ? '发布中…' : `发布 ${count} 条需求`}
+            {busy ? '发布中…' : needsNature ? '先选至少 1 个性格' : `发布 ${count} 条需求`}
           </button>
         </div>
       </div>

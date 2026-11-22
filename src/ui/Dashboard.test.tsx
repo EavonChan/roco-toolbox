@@ -205,17 +205,14 @@ describe('Dashboard（看板）', () => {
     render(<Dashboard onNavigate={vi.fn()} />);
     expect(screen.getByTestId('breed-empty')).toHaveTextContent('未设置种公目标');
     expect(screen.getByTestId('breed-empty')).not.toHaveTextContent('全部收集');
-    // 没设目标不是「全通」：种公推荐空态提示要保留
-    expect(screen.getByTestId('recommend-empty')).toHaveTextContent('还没设置有效的种公目标');
   });
-  test('结构与顺序：目标摘要 → 并列进度 → 行动切换 → 种公推荐 → 配窝汇总', () => {
+  test('结构与顺序：目标摘要 → 并列进度 → 行动切换 → 配窝汇总', () => {
     const { container } = render(<Dashboard onNavigate={vi.fn()} />);
     const order = [
       screen.getByTestId('target-mode'),
       screen.getByTestId('progress-card-action-stud'),
       screen.getByTestId('progress-card-action-mother'),
       screen.getByTestId('dashboard-action-switch'),
-      screen.getByTestId('recommend-list'),
       screen.getByTestId('nest-summary'),
     ];
     for (let i = 1; i < order.length; i += 1) {
@@ -352,7 +349,6 @@ describe('Dashboard（看板）', () => {
     expect(progress).toHaveTextContent('1 / 3');
 
     fireEvent.click(screen.getByTestId('dashboard-action-mothers'));
-    expect(screen.getAllByTestId('mother-action-item')).toHaveLength(2);
 
     act(() => {
       setTargetGrade('大婉');
@@ -423,15 +419,15 @@ describe('Dashboard（看板）', () => {
     expect(
       studsButton.compareDocumentPosition(mothersButton) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByTestId('recommend-list')).toBeTruthy();
+    // 2026-11-22：两个页签都不再渲染种公推荐网格 / 母本缺口网格，只切换配窝建议
+    expect(screen.queryByTestId('recommend-list')).toBeNull();
+    expect(screen.queryByTestId('mother-actions')).toBeNull();
+    expect(screen.getByTestId('nest-summary')).toBeTruthy();
 
     fireEvent.click(mothersButton);
-    expect(screen.getByTestId('mother-actions')).toBeTruthy();
     expect(screen.queryByTestId('recommend-list')).toBeNull();
-
-    fireEvent.click(studsButton);
-    expect(screen.getByTestId('recommend-list')).toBeTruthy();
     expect(screen.queryByTestId('mother-actions')).toBeNull();
+    expect(screen.getByTestId('nest-summary')).toBeTruthy();
   });
 
   test('看板不显示个人种公目标标题或母本条件入口', () => {
@@ -443,46 +439,8 @@ describe('Dashboard（看板）', () => {
     expect(screen.queryByText('清空种公目标', { exact: true })).toBeNull();
   });
 
-  test('母本缺口默认全部展示，四列显示头像和推荐性格，并保留完整入口', () => {
-    const onNavigate = vi.fn();
-    render(<Dashboard onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByTestId('dashboard-action-mothers'));
-    const items = screen.getAllByTestId('mother-action-item');
-    expect(items).toHaveLength(5);
-    expect(screen.getByTestId('mother-action-items').className).toContain('grid-cols-4');
-    expect(within(screen.getByTestId('mother-actions')).getAllByTestId('pet-avatar')).toHaveLength(5);
-    expect(screen.getAllByTestId('mother-action-nature')).toHaveLength(5);
-    expect(within(items[0]).getByTestId('mother-action-nature').textContent).toBeTruthy();
-    // 2026-11-22：缺口卡与收集母本统一到 48px 头像
-    expect(within(items[0]).getByTestId('pet-avatar').className).toContain('h-12');
-    expect(screen.getByTestId('mother-actions').className).not.toContain('p-4');
-    expect(screen.queryByRole('heading', { name: '母本缺口' })).toBeNull();
-    expect(items[0]).toHaveAttribute('aria-label', expect.stringContaining('还没有达标母本'));
-    fireEvent.click(screen.getByTestId('mother-actions-more'));
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'open-collection',
-      location: { kind: 'mothers', status: 'missing' },
-    });
-  });
 
-  test('种公推荐卡点开「种公推荐 · 怎么补」悬浮窗，目标卡是种公蓝', () => {
-    render(<Dashboard onNavigate={vi.fn()} />);
-    fireEvent.click(within(screen.getByTestId('recommend-item')).getByRole('button'));
-    expect(screen.getByTestId('gap-fill-eyebrow').textContent).toBe('种公推荐 · 怎么补');
-    expect(screen.getByTestId('gap-target-tag').textContent).toBe('推荐');
-    expect(screen.queryByTestId('gap-add-to-plan')).toBeNull();
-    fireEvent.click(screen.getByTestId('gap-fill-close'));
-    expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
-  });
 
-  test('种公推荐里的小组求蛋跳到种公路由', () => {
-    const onNavigate = vi.fn();
-    render(<Dashboard onNavigate={onNavigate} />);
-    fireEvent.click(within(screen.getByTestId('recommend-item')).getByRole('button'));
-    fireEvent.click(screen.getByTestId('gap-help-action'));
-
-    expect(onNavigate).toHaveBeenCalledWith({ type: 'open-groups', groupType: 'stud' });
-  });
 
   test('手动加入的跨号传蛋任务在看板可见且可移除', () => {
     addStudTransferTask({
@@ -509,19 +467,6 @@ describe('Dashboard（看板）', () => {
     expect(screen.queryByTestId('transfer-task-list')).toBeNull();
   });
 
-  test('点母本缺口卡打开「怎么补」悬浮窗，没有可配的线时写本号跨号都无法配对', () => {
-    const onNavigate = vi.fn();
-    render(<Dashboard onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByTestId('dashboard-action-mothers'));
-
-    fireEvent.click(within(screen.getAllByTestId('mother-action-item')[0]).getByRole('button'));
-    expect(screen.getByRole('dialog', { name: '怎么补' })).toBeTruthy();
-    expect(screen.getByTestId('gap-fill-eyebrow').textContent).toBe('母本缺口 · 怎么补');
-    expect(screen.getByTestId('gap-unpairable').textContent).toContain('本号、跨号都无法配对');
-
-    fireEvent.click(screen.getByTestId('gap-fill-close'));
-    expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
-  });
 
   test('进度卡与行动都发明确导航意图', () => {
     const onNavigate = vi.fn();
