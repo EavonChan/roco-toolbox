@@ -50,13 +50,13 @@ describe('MotherView', () => {
     expect(within(list).getAllByTestId('pet-avatar')).toHaveLength(4);
     // 2026-11-22：母本卡与看板四列卡统一（48px 头像、10px 名字、104px 高、白底灰边、满宽融合底条）
     expect(within(list).getAllByTestId('pet-card-avatar')[0]).toHaveClass(
-      'top-[16px]',
+      'top-[18px]',
       'h-12',
       'w-12',
     );
     expect(within(list).getAllByTestId('pet-avatar')[0]).toHaveClass('h-12', 'w-12');
     expect(within(list).getAllByRole('heading', { level: 3 })[0]).toHaveClass(
-      'top-[68px]',
+      'top-[66px]',
       'text-[10px]',
       'font-bold',
     );
@@ -265,5 +265,7 @@ describe('MotherView', () => {
     expect(screen.getAllByTestId('mother-chain-row').length).toBeGreaterThan(60);
   });
 });
+
+
 
 
