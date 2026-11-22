@@ -2,6 +2,7 @@ import type { PatrolEgg, PatrolObservation, PatrolTask } from '../../src/shared/
 import {
   recordIngestedHomeEggs as mergeIngestedHomeEggs,
   recordPatrolProducedEgg,
+  type EggLabelIndex,
   type IngestedHomeEgg,
 } from '../../src/shared/eggPatrolStock';
 import type { EggWorkflowState } from '../../src/shared/eggWorkflow';
@@ -67,21 +68,21 @@ export async function recordIngestedHomeEggs(
   uid: string,
   eggs: readonly IngestedHomeEgg[],
   now: number,
-): Promise<number> {
-  if (eggs.length === 0) return 0;
+  index?: EggLabelIndex,
+): Promise<{ written: number; labeled: number }> {
+  if (eggs.length === 0) return { written: 0, labeled: 0 };
   for (let attempt = 0; attempt < 4; attempt++) {
     const row = await db.prepare('SELECT version,state_json FROM egg_matching_groups WHERE group_id=?')
       .bind(groupId).first<StateRow>();
-    if (!row) return 0;
+    if (!row) return { written: 0, labeled: 0 };
     const state = JSON.parse(row.state_json) as EggWorkflowState;
-    const before = state.eggs.length;
-    const next = mergeIngestedHomeEggs(state, accountId, uid, eggs, now);
-    if (next === state) return 0;
-    const stateJson = JSON.stringify(next);
+    const merged = mergeIngestedHomeEggs(state, accountId, uid, eggs, now, index);
+    if (merged.state === state) return { written: 0, labeled: 0 };
+    const stateJson = JSON.stringify(merged.state);
     if (new TextEncoder().encode(stateJson).byteLength > 1_500_000) throw new Error('STATE_CAPACITY');
     const result = await db.prepare('UPDATE egg_matching_groups SET state_json=?,version=version+1,updated_at=? WHERE group_id=? AND version=?')
       .bind(stateJson, now, groupId, row.version).run();
-    if (result.meta.changes) return next.eggs.length - before;
+    if (result.meta.changes) return { written: merged.written, labeled: merged.labeled };
   }
   throw new Error('INGEST_STATE_CONFLICT');
 }

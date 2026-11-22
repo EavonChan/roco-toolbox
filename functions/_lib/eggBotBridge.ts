@@ -1,5 +1,5 @@
 import { activePatrolTasks, patrolTaskKey, readPatrolStatus, type ActivePatrolTask } from './eggPatrolStore';
-import { eggGameIdOfSpecies, runEggPatrol } from './eggPatrol';
+import { eggGameIdOfSpecies, eggLabelIndex, runEggPatrol } from './eggPatrol';
 import { recordIngestedHomeEggs } from './eggPatrolStock';
 import { parsePatrolScene, type PatrolScene } from '../../src/shared/eggPatrol';
 import type { IngestedHomeEgg } from '../../src/shared/eggPatrolStock';
@@ -92,10 +92,12 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
       const eggGameId = eggGameIdOfSpecies(egg.mother?.speciesGameId ?? null);
       if (eggGameId) eggs.push({ egg, eggGameId });
     }
-    const written = await recordIngestedHomeEggs(
-      env.DB, binding.groupId, account.accountId, input.uid, eggs, now,
+    const result = await recordIngestedHomeEggs(
+      env.DB, binding.groupId, account.accountId, input.uid, eggs, now, eggLabelIndex,
     );
-    return json({ ok: true, written, seen: scene.eggs.length }, 200, null);
+    return json({
+      ok: true, written: result.written, labeled: result.labeled, seen: scene.eggs.length,
+    }, 200, null);
   }
   if (action === 'redeem') {
     if (typeof input.code !== 'string' || input.code.length > 64 || !validId(input.qqGroupId) || !validId(input.botId) || !validId(input.operatorQq)) return invalid(400, '接入参数无效');

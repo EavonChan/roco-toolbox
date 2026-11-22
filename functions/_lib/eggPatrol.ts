@@ -1,6 +1,7 @@
 import { observeSceneEggs, observeScenePlacements, parsePatrolScene, patrolWindowOpen, type PatrolSpeciesIndex } from '../../src/shared/eggPatrol';
 import { activePatrolTasks, patrolTaskKey } from './eggPatrolStore';
 import { recordProducedPatrolEggs, type ProducedPatrolEgg } from './eggPatrolStock';
+import type { EggLabelIndex } from '../../src/shared/eggPatrolStock';
 import { type Env, newToken } from './util';
 import { species as catalogSpecies } from '../../src/data/catalog';
 import catalog from '../../src/data/catalog.gen.json';
@@ -22,6 +23,12 @@ const patrolIndex: PatrolSpeciesIndex = {
 export function eggGameIdOfSpecies(speciesGameId: number | null): number | undefined {
   return speciesGameId === null ? undefined : patrolIndex.eggGameIdByGameId.get(speciesGameId);
 }
+
+/** 机器人上报时给蛋/父母本做自动标注用的索引。 */
+export const eggLabelIndex: EggLabelIndex = {
+  bodySizeByGameId: patrolIndex.bodySizeByGameId,
+  natureNameById: patrolIndex.natureNameById,
+};
 
 const INTERVAL = 1800000;
 const REMIND_INTERVAL = 7200000;
