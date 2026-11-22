@@ -9,7 +9,6 @@ import { CARD, HINT, PAGE, TITLE } from './primitives/styles';
 import { useSnapshots } from './useSnapshots';
 import { labelerFor } from './useOwnedPets';
 import { useHomeRefresh, type HomeRefreshController } from './useHomeRefresh';
-import { useLandscape } from './useWideLandscape';
 
 /**
  * 家园页（2026-10-27）。
@@ -121,37 +120,12 @@ function HomeRefreshBar({ refresh }: { refresh: HomeRefreshController }) {
   );
 }
 
-/** 家园配窝卡单列 / 双列：横屏时可以切换，选择记在本机（2026-11-21 用户口径）。 */
-type PairLayout = 'single' | 'double';
-
-const PAIR_LAYOUT_KEY = 'roco.homePairLayout';
-
-function readPairChoice(): PairLayout | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const value = window.localStorage.getItem(PAIR_LAYOUT_KEY);
-    return value === 'single' || value === 'double' ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function savePairChoice(value: PairLayout): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(PAIR_LAYOUT_KEY, value);
-  } catch {
-    // 隐私模式 / 配额满：本次照样生效，只是下次打开不记住
-  }
-}
-
+/**
+ * 家园配窝卡单列 / 双列（2026-11-22 用户口径）：由横屏高度自动决定，不再手动切换。
+ * 手机横屏高度只有 360~540，排两列少滚动；16:9 / 16:10 / 4:3 / 3:2 这类高度够的屏保持单列。
+ * 断点写在 src/index.css 的 `home-pair-card-list` 规则里，随视口旋转 / 改尺寸立即生效。
+ */
 function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: string }) {
-  const landscape = useLandscape();
-  const [pairLayout, setPairLayout] = useState<PairLayout>(() => readPairChoice() ?? 'single');
-  const setPairLayoutChoice = (next: PairLayout) => {
-    savePairChoice(next);
-    setPairLayout(next);
-  };
   const home = snapshot.home;
   // 先建索引再判空：hook 不能写在条件 return 之后
   const pets = useMemo(
@@ -215,36 +189,10 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
         </p>
       ) : null}
 
-      <div className="mt-3" data-testid="home-pair-cards" data-layout={pairLayout}>
+      <div className="mt-3" data-testid="home-pair-cards">
         <div className="flex items-baseline justify-between gap-2">
           <div className="text-xs font-medium text-slate-500">配窝卡片</div>
-          <div className="flex items-center gap-2">
-            {landscape ? (
-              <div
-                className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5"
-                role="group"
-                aria-label="配窝卡列数"
-              >
-                {(['single', 'double'] as const).map((layout) => (
-                  <button
-                    key={layout}
-                    type="button"
-                    onClick={() => setPairLayoutChoice(layout)}
-                    aria-pressed={pairLayout === layout}
-                    data-testid={`home-pair-layout-${layout}`}
-                    className={`rounded px-1.5 py-0.5 text-[10px] ${
-                      pairLayout === layout
-                        ? 'bg-white font-medium text-emerald-700 shadow-sm'
-                        : 'text-slate-500'
-                    }`}
-                  >
-                    {layout === 'single' ? '单列' : '双列'}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <div className="text-[10px] text-slate-400">按游戏实际配对</div>
-          </div>
+          <div className="text-[10px] text-slate-400">按游戏实际配对</div>
         </div>
         {home.layEggCouples.length === 0 ? (
           <p className={HINT} data-testid="home-no-pairs">

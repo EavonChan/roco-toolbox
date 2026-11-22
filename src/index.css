@@ -225,7 +225,7 @@ span {
   /* 精灵卡：宽度固定、比例不变；三只一组就并排三张（不压扁卡片） */
   [data-testid="home-pair-triple"] { grid-template-columns: repeat(3, 10rem); align-items: end; }
   [data-testid="home-pair-card"] > div.grid.grid-cols-2 {
-    grid-template-columns: repeat(2, 10rem); align-items: end;
+    grid-template-columns: repeat(2, 10rem); align-items: start;
   }
   [data-testid="home-pair-card"] .grid.grid-cols-3 {
     grid-template-columns: repeat(3, 10rem); align-items: end;
@@ -367,9 +367,10 @@ span {
   }
 }
 
-/* ---- 家园配窝卡：横屏宽度够时一行两组（2026-11-21 用户口径） ----
-   两组保持卡片原尺寸（每只 10rem），不压缩头像和文字。 */
-@media (orientation: landscape) and (min-width: 1000px) {
+/* ---- 家园配窝卡：看横屏高度决定单列 / 双列（2026-11-22 用户口径） ----
+   手机横屏高度只有 360~540，一行两列少滚动；宽屏高度 720 以上空间够，保持单列。
+   宽度不到 760 时两列会横向溢出（每只卡 10rem 不压缩），所以仍回退单列。 */
+@media (orientation: landscape) and (max-height: 600px) and (min-width: 760px) {
   [data-testid="home-pair-card-list"] {
     display: grid;
     grid-template-columns: repeat(2, max-content);
@@ -380,6 +381,8 @@ span {
     width: max-content;
     max-width: 100%;
   }
+  /* space-y 的 margin 在网格里会把第二列整体压低，这里交回 row-gap 控制 */
+  [data-testid="home-pair-card-list"] > * { margin-top: 0 !important; }
 }
 
 /* ---- 收集 · 母本：蛋组一行两个分组，卡片缩小（2026-11-21 用户口径） ----
