@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>C1 · 收集页 · 母本「收集中 / 已收集」改造方案（2026-11-22）</title>
+<style>
+  /* ------------------------------------------------------------------
+     这是一份「按线上代码几何复刻」的可交互方案稿，不是真实截图。
+     卡片：104 高 / 头像 48 / 名字 10px / 底条 18px（对应 PetCardLayout.tsx 现状）
+     宽度：375 / 390（iPhone 12/13 mini 与 12/13/14）
+     编号 ① ② … 就是待改清单里的条目，点右下角清单会高亮对应的圆标。
+     ------------------------------------------------------------------ */
+  :root {
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155;
+    --slate-800:#1e293b; --slate-900:#0f172a;
+    --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-200:#a7f3d0; --emerald-500:#10b981;
+    --emerald-600:#059669; --emerald-700:#047857;
+    --sky-50:#f0f9ff; --sky-100:#e0f2fe; --sky-200:#bae6fd; --sky-700:#0369a1; --sky-800:#075985;
+    --amber-50:#fffbeb; --amber-100:#fef3c7; --amber-200:#fde68a; --amber-700:#b45309; --amber-800:#92400e;
+    --teal-50:#f0fdfa; --teal-700:#0f766e;
+    --rose-50:#fff1f2; --rose-700:#be123c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px 20px 60px;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: #eef2f7; color: var(--slate-700);
+  }
+  h1 { font-size: 17px; margin: 0 0 6px; color: var(--slate-800); }
+  .lead { font-size: 12px; line-height: 1.7; color: var(--slate-500); margin: 0 0 18px; max-width: 1100px; }
+  .lead b { color: var(--slate-700); }
+  code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 11px; background: #e2e8f0; padding: 0 3px; border-radius: 3px; }
+
+  .pair { margin: 0 0 26px; }
+  .pair-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; }
+  .pair-head h2 { font-size: 14px; margin: 0; color: var(--slate-700); }
+  .pair-head span { font-size: 11px; color: var(--slate-400); }
+  .frames { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+
+  .slot { display: flex; flex-direction: column; gap: 6px; }
+  .slot-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+  .slot.before .slot-label { color: var(--slate-400); }
+  .slot.after  .slot-label { color: var(--emerald-600); }
+
+  /* 手机框：高 780，内部纵向滚动 —— 首屏装得下多少，就是用户实际看到多少 */
+  .phone {
+    position: relative; width: 375px; height: 780px; overflow-y: auto; overflow-x: hidden;
+    background: #fff; border: 1px solid var(--slate-300); border-radius: 14px;
+    box-shadow: 0 2px 10px rgb(15 23 42 / 0.08);
+  }
+  .phone[data-w="390"] { width: 390px; }
+  .phone::-webkit-scrollbar { width: 6px; }
+  .phone::-webkit-scrollbar-thumb { background: var(--slate-300); border-radius: 3px; }
+
+  .screen { padding: 8px 12px 14px; }
+
+  /* ---- 收集页顶部：账号 + 三个页签 ---- */
+  .kinds { display: grid; grid-template-columns: minmax(76px, .8fr) 1fr 1fr 1fr; gap: 6px; }
+  .kinds > button {
+    min-height: 48px; border: 1px solid var(--slate-200); background: #fff; border-radius: 12px;
+    font-size: 13px; font-weight: 600; color: var(--slate-700); padding: 4px 2px; text-align: center;
+    box-shadow: 0 1px 2px rgb(0 0 0 / .04); font-family: inherit;
+  }
+  .kinds > button.on { border-color: var(--emerald-500); background: var(--emerald-50); color: var(--emerald-700); }
+  .kinds > button .sub { display: block; font-size: 10px; font-weight: 400; color: var(--slate-500); }
+  .kinds > .acct {
+    min-height: 48px; border: 1px solid var(--slate-200); background: #fff; border-radius: 12px;
+    font-size: 11px; color: var(--slate-600); display: flex; align-items: center; justify-content: center;
+    padding: 0 4px; text-align: center;
+  }
+
+  /* ---- 筛选区 ---- */
+  .rail { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 6px; }
+  .search {
+    flex: 1; min-width: 0; min-height: 36px; border: 1px solid var(--slate-200); border-radius: 10px;
+    background: #fff; display: flex; align-items: center; gap: 6px; padding: 0 8px;
+    font-size: 11px; color: var(--slate-400);
+  }
+  .search .mag { font-size: 12px; color: var(--slate-300); }
+  .pill {
+    min-height: 36px; border: 1px solid var(--slate-200); background: #fff; border-radius: 10px;
+    font-size: 11px; color: var(--slate-500); display: flex; align-items: center; gap: 4px;
+    padding: 0 8px; white-space: nowrap;
+  }
+  .seg {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px;
+    background: var(--slate-100); border-radius: 10px; min-height: 32px;
+  }
+  .seg > span {
+    display: flex; align-items: center; justify-content: center; font-size: 11px;
+    color: var(--slate-500); border-radius: 8px;
+  }
+  .seg > span.on { background: #fff; color: var(--emerald-700); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
+
+  /* 现状：四张 72px 奖牌卡 */
+  .grades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .grade {
+    min-height: 72px; border: 1px solid var(--slate-200); border-radius: 10px; background: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-size: 10px; line-height: 1.1; color: var(--slate-600); text-align: center;
+  }
+  .grade.on { border-color: var(--emerald-500); background: var(--emerald-50); color: var(--emerald-700); font-weight: 600; }
+  .grade .medal { display: flex; gap: 2px; }
+  .grade .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--slate-100); border: 1px solid var(--slate-200); }
+  .grade.on .dot { background: #fff; border-color: var(--emerald-200); }
+
+  /* 改后：奖牌组合收成一行 */
+  .oneline {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    min-height: 34px; border: 1px solid var(--slate-200); border-radius: 10px; background: #fff;
+    padding: 0 8px; font-size: 11px; color: var(--slate-600);
+  }
+  .oneline b { font-weight: 600; color: var(--slate-800); }
+  .oneline .caret { color: var(--slate-300); font-size: 9px; }
+
+  .meta-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px; }
+  .meta-row .count { font-size: 11px; color: var(--slate-400); }
+  .chips { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .chip {
+    min-height: 26px; border: 1px solid var(--slate-200); border-radius: 8px; background: #fff;
+    font-size: 11px; color: var(--slate-500); padding: 0 6px; display: inline-flex; align-items: center; gap: 3px;
+  }
+  .chip.on { border-color: var(--emerald-500); background: var(--emerald-50); color: var(--emerald-700); font-weight: 600; }
+  .tabs { width: 186px; }
+  .seg.tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tabs span { font-size: 11px; white-space: nowrap; }
+  /* 有编号圆标的元素都要建定位上下文，否则圆标会跑到手机框角落被裁掉 */
+  .oneline, .filtered, .summary, .chip, .empty, .ok, .sec-head, .grade { position: relative; }
+
+  /* ---- 分组头（已收集） ---- */
+  .sec { border-radius: 14px; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .05); overflow: hidden; }
+  .sec + .sec { margin-top: 8px; }
+  .sec-head {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--slate-50); padding: 6px 12px; font-size: 11px; font-weight: 500; color: var(--slate-500);
+  }
+  .sec-head .right { color: var(--slate-400); font-weight: 400; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; position: relative; }
+
+  /* ---- 精灵卡 104 / 48 / 10 / 18 ---- */
+  .card {
+    position: relative; height: 104px; min-width: 0; overflow: hidden;
+    border-radius: 12px; border: 1px solid var(--slate-200); background: #fff;
+    box-shadow: 0 1px 2px rgb(0 0 0 / .05);
+  }
+  .card.st-planned { background: var(--sky-50); border-color: var(--sky-200); }
+  .card.st-collected { background: var(--emerald-50); border-color: var(--emerald-200); }
+  .card-head {
+    position: absolute; left: 4px; right: 4px; top: 4px; z-index: 2;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px;
+    font-size: 7px; line-height: 8px;
+  }
+  .col-l { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+  .col-r { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 0; }
+  .no { font-weight: 600; color: var(--slate-500); }
+  .egg {
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    background: var(--sky-100); color: var(--sky-800); border-radius: 3px; padding: 0 2px;
+  }
+  .nat {
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    height: 12px; display: inline-flex; align-items: center; border-radius: 3px;
+    padding: 0 2px; font-weight: 500;
+  }
+  .nat.on { background: var(--emerald-100); color: var(--emerald-700); }
+  .nat.off { background: var(--slate-100); color: var(--slate-400); }
+  .nat.gray { background: var(--slate-100); color: var(--slate-500); }
+  .ava {
+    position: absolute; left: 50%; top: 18px; transform: translateX(-50%); z-index: 1;
+    width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 19px; font-weight: 700; color: #fff; background: var(--slate-400);
+  }
+  .cname {
+    position: absolute; left: 4px; right: 4px; top: 66px; height: 12px; margin: 0;
+    font-size: 10px; font-weight: 700; line-height: 12px; text-align: center; color: var(--slate-900);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cfoot {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 0 2px;
+  }
+  /* 底条五档（按 collectionPlan.statusLabel 的真实取值） */
+  .tone-plan      { background: var(--slate-100); color: var(--slate-600); }
+  .tone-published { background: var(--sky-50);   color: var(--sky-700); }
+  .tone-proposal  { background: var(--amber-50); color: var(--amber-700); }
+  .tone-accepted  { background: var(--teal-50);  color: var(--teal-700); }
+  .tone-received  { background: var(--emerald-50); color: var(--emerald-700); }
+  .tone-view      { background: var(--emerald-50); color: var(--emerald-700); }
+  .tone-todo      { background: var(--emerald-50); color: var(--emerald-700); }
+  .tone-todo-planned { background: var(--sky-50); color: var(--sky-700); }
+
+  /* ---- 收集中：进度摘要 / 空态 / 无小组提示 ---- */
+  .summary {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    border: 1px solid var(--slate-200); border-radius: 12px; background: #fff;
+    padding: 6px 8px; font-size: 11px; color: var(--slate-500); box-shadow: 0 1px 2px rgb(0 0 0 / .04);
+  }
+  .summary b { color: var(--slate-800); font-weight: 600; }
+  .summary .sep { color: var(--slate-300); }
+  .warn {
+    border: 1px solid var(--amber-200); background: var(--amber-50); color: var(--amber-800);
+    border-radius: 12px; padding: 6px 8px; font-size: 11px; line-height: 1.5;
+  }
+  .warn .link { color: var(--emerald-700); font-weight: 600; margin-left: 4px; }
+  .empty {
+    border: 1px dashed var(--slate-200); border-radius: 12px; background: #fff;
+    padding: 20px 12px; text-align: center; font-size: 11px; color: var(--slate-500);
+  }
+  .empty .cta {
+    display: inline-block; margin-top: 8px; min-height: 28px; line-height: 28px; padding: 0 10px;
+    border-radius: 8px; border: 1px solid var(--emerald-500); background: var(--emerald-50);
+    color: var(--emerald-700); font-size: 11px; font-weight: 600; position: relative;
+  }
+  .emptycap { font-size: 10px; color: var(--slate-400); margin: 12px 0 4px; }
+  .groupbar { display: flex; gap: 4px; overflow: hidden; border-radius: 12px; background: #fff; padding: 6px; box-shadow: 0 1px 2px rgb(0 0 0 / .04); }
+  .groupbar .g { min-height: 26px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 8px; border: 1px solid var(--slate-200); font-size: 11px; color: var(--slate-500); white-space: nowrap; }
+  .groupbar .g.on { border-color: var(--emerald-500); background: var(--emerald-50); color: var(--emerald-700); font-weight: 600; }
+  .filtered {
+    display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--slate-500);
+  }
+  .filtered .tagf { background: var(--emerald-50); color: var(--emerald-700); border: 1px solid var(--emerald-200); border-radius: 6px; padding: 1px 5px; }
+  .filtered .x { color: var(--slate-400); }
+
+  /* ---- 求蛋弹窗（必填项） ---- */
+  .sheet { padding: 6px 4px; }
+  .sheet-card {
+    border-radius: 14px; background: #fff; border: 1px solid var(--slate-200);
+    box-shadow: 0 8px 24px rgb(15 23 42 / .12); overflow: hidden;
+  }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--slate-100); }
+  .sheet-head b { font-size: 13px; color: var(--slate-800); }
+  .sheet-head .close { color: var(--slate-400); font-size: 13px; }
+  .sheet-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .sheet-target { border-radius: 12px; background: var(--slate-50); padding: 8px; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+  .sheet-target .ava-s { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 18px; background: var(--slate-400); }
+  .sheet-target .nm { font-size: 12px; font-weight: 700; color: var(--slate-800); }
+  .sheet-target .sub { font-size: 9px; color: var(--slate-400); }
+  .sheet-target .nats { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+  .sheet-target .nats span { background: var(--rose-50); color: var(--rose-700); border-radius: 3px; padding: 1px 4px; font-size: 9px; }
+  .btnrow { display: flex; align-items: center; gap: 6px; }
+  .btnrow .lbl { width: 26px; font-size: 10px; color: var(--slate-400); flex: none; }
+  .opt { min-height: 28px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--slate-200); background: #fff; border-radius: 8px; padding: 0 6px; font-size: 10px; color: var(--slate-500); }
+  .opt.on { border-color: var(--emerald-500); background: #fff; color: var(--emerald-700); font-weight: 600; }
+  .naturegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .nbtn { min-height: 28px; border: 1px solid var(--slate-200); background: #fff; border-radius: 8px; font-size: 10px; color: var(--slate-500); display: flex; align-items: center; justify-content: center; }
+  .nbtn.on { border-color: var(--emerald-500); color: var(--emerald-700); font-weight: 600; }
+  .nbtn.sent { border-color: var(--emerald-200); background: var(--emerald-50); color: var(--emerald-600); }
+  .hint { border-radius: 8px; background: var(--amber-50); color: var(--amber-800); font-size: 10px; padding: 4px 8px; }
+  .actions { display: flex; gap: 6px; }
+  .actions button { font-family: inherit; }
+  .actions .cancel { flex: 1; min-height: 38px; border: 1px solid var(--slate-200); border-radius: 10px; background: #fff; color: var(--slate-500); font-size: 12px; }
+  .actions .ok { flex: 2; min-height: 38px; border: 0; border-radius: 10px; background: var(--emerald-600); color: #fff; font-size: 12px; font-weight: 600; }
+  .actions .ok.off { background: var(--slate-300); }
+
+  /* ---- 编号圆标 ---- */
+  .mark {
+    position: absolute; z-index: 30; width: 18px; height: 18px; border-radius: 50%;
+    background: #e11d48; color: #fff; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 2px #fff, 0 1px 4px rgb(0 0 0 / .3); cursor: pointer;
+    font-family: ui-monospace, Consolas, monospace;
+  }
+  .mark.tl { top: -7px; left: -7px; }
+  .mark.tr { top: -7px; right: -7px; }
+  .mark.bl { bottom: -7px; left: -7px; }
+  .mark.br { bottom: -7px; right: -7px; }
+  .mark.mid { top: 50%; right: -9px; transform: translateY(-50%); }
+  /* 行内圆标：贴着文字走，不会被手机框裁掉 */
+  .mark.inl {
+    position: static; display: inline-flex; width: 16px; height: 16px; font-size: 10px;
+    margin-left: 4px; vertical-align: middle; box-shadow: 0 1px 3px rgb(0 0 0 / .25);
+  }
+  .mark.hot { background: #2563eb; transform: scale(1.25); }
+  .mark.mid.hot { transform: translateY(-50%) scale(1.25); }
+  .has-mark { position: relative; }
+  /* 卡片内部圆标（卡片 overflow:hidden，外侧圆标会被裁掉） */
+  .mark.inl-abs { position: absolute; right: 2px; bottom: 2px; width: 15px; height: 15px; font-size: 10px; z-index: 40; }
+
+  /* 滚动提示 */
+  .phone-wrap { position: relative; }
+  .phone-wrap .fade {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 26px; pointer-events: none;
+    background: linear-gradient(to bottom, rgb(255 255 255 / 0), rgb(255 255 255 / .95));
+    border-radius: 0 0 14px 14px;
+  }
+
+  /* ---- 清单 ---- */
+  .list { margin-top: 8px; max-width: 1180px; }
+  .list h2 { font-size: 15px; margin: 26px 0 8px; color: var(--slate-800); }
+  .list table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgb(0 0 0 / .06); }
+  .list th, .list td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--slate-100); vertical-align: top; line-height: 1.6; }
+  .list th { background: var(--slate-50); color: var(--slate-500); font-weight: 600; font-size: 11px; white-space: nowrap; }
+  .list tr.item:hover td { background: #f8fafc; }
+  .list .n { font-family: ui-monospace, Consolas, monospace; font-weight: 700; color: #e11d48; white-space: nowrap; }
+  .list .ask { color: var(--amber-700); font-weight: 600; }
+  .list .ok { color: var(--emerald-700); font-weight: 600; }
+  .legend { font-size: 11px; color: var(--slate-400); margin: 4px 0 18px; }
+</style>
+</head>
+<body>
+
+<h1>C1 · 收集页 · 母本「收集中 / 已收集」改造方案</h1>
+<p class="lead" style="border-left:3px solid #10b981;padding-left:8px;color:#047857"><b>本稿是开工前的草案。</b>2026-11-22 按批注已落地实现，最终形态以 <code>docs/preview/C1-实现-375-收集中.png</code> 与 <code>C1-实现-375-已收集-有卡.png</code>（真实宽度截图）为准：①（加筛选）不做、⑦（筛选区收一行）保留原样、计划收集折叠区已删、收集中改成「小组筛选 + 状态快速筛选（带数字）」两行、已收集分组头只给「N 只」。</p>
+<p class="lead">
+  按线上代码几何复刻的可交互稿（<b>不是真实截图</b>）：卡片 104 高 / 头像 48 / 名字 10px / 底条 18px，375 与 390 两档。
+  每台手机框高 780，可<b>在框内滚动</b>——框里第一屏装得下多少，就是用户实际先看到多少。
+  红色圆标 ① ② ③ 对应下方清单；点清单某行会高亮圆标。
+  <br />
+  重点看两件事：<b>收集中列表吃不吃筛选</b>、<b>已收集每组标题是不是恒等于 N/N</b>。
+</p>
+
+<!-- ============ A · 375 收集中 ============ -->
+<section class="pair" id="pair-375-collecting">
+  <div class="pair-head"><h2>① 375 · 收集中</h2><span>左＝现状（线上代码渲染顺序）· 右＝改后</span></div>
+  <div class="frames">
+    <div class="slot before">
+      <span class="slot-label">现状 BEFORE</span>
+      <div class="phone-wrap"><div class="phone" data-w="375"><div class="screen" id="before-375-collecting"></div></div><div class="fade"></div></div>
+    </div>
+    <div class="slot after">
+      <span class="slot-label">改后 AFTER</span>
+      <div class="phone-wrap"><div class="phone" data-w="375"><div class="screen" id="after-375-collecting"></div></div><div class="fade"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B · 390 收集中 ============ -->
+<section class="pair" id="pair-390-collecting">
+  <div class="pair-head"><h2>② 390 · 收集中</h2><span>同上的 390 宽度</span></div>
+  <div class="frames">
+    <div class="slot before">
+      <span class="slot-label">现状 BEFORE</span>
+      <div class="phone-wrap"><div class="phone" data-w="390"><div class="screen" id="before-390-collecting"></div></div><div class="fade"></div></div>
+    </div>
+    <div class="slot after">
+      <span class="slot-label">改后 AFTER</span>
+      <div class="phone-wrap"><div class="phone" data-w="390"><div class="screen" id="after-390-collecting"></div></div><div class="fade"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C · 375 已收集 ============ -->
+<section class="pair" id="pair-375-collected">
+  <div class="pair-head"><h2>③ 375 · 已收集</h2><span>含空态对照</span></div>
+  <div class="frames">
+    <div class="slot before">
+      <span class="slot-label">现状 BEFORE</span>
+      <div class="phone-wrap"><div class="phone" data-w="375"><div class="screen" id="before-375-collected"></div></div><div class="fade"></div></div>
+    </div>
+    <div class="slot after">
+      <span class="slot-label">改后 AFTER</span>
+      <div class="phone-wrap"><div class="phone" data-w="375"><div class="screen" id="after-375-collected"></div></div><div class="fade"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ D · 390 已收集 ============ -->
+<section class="pair" id="pair-390-collected">
+  <div class="pair-head"><h2>④ 390 · 已收集</h2><span>同上的 390 宽度</span></div>
+  <div class="frames">
+    <div class="slot before">
+      <span class="slot-label">现状 BEFORE</span>
+      <div class="phone-wrap"><div class="phone" data-w="390"><div class="screen" id="before-390-collected"></div></div><div class="fade"></div></div>
+    </div>
+    <div class="slot after">
+      <span class="slot-label">改后 AFTER</span>
+      <div class="phone-wrap"><div class="phone" data-w="390"><div class="screen" id="after-390-collected"></div></div><div class="fade"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E · 求蛋弹窗必填项 ============ -->
+<section class="pair" id="pair-375-sheet">
+  <div class="pair-head"><h2>⑤ 375 · 小组求蛋（必填项）</h2><span>点收集中任意卡打开的弹窗</span></div>
+  <div class="frames">
+    <div class="slot before">
+      <span class="slot-label">现状 BEFORE</span>
+      <div class="phone-wrap"><div class="phone" data-w="375"><div class="screen" id="before-375-sheet"></div></div><div class="fade"></div></div>
+    </div>
+    <div class="slot after">
+      <span class="slot-label">改后 AFTER</span>
+      <div class="phone-wrap"><div class="phone" data-w="375"><div class="screen" id="after-375-sheet"></div></div><div class="fade"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 清单 ============ -->
+<div class="list">
+  <h2>待改清单（编号＝截图上的圆标）</h2>
+  <p class="legend">点某一行 → 对应圆标变蓝放大。标 <span class="ask">待裁决</span> 的需要你拍一下，否则我不动。</p>
+  <table id="change-list">
+    <thead>
+      <tr><th>#</th><th>改什么</th><th>现状（证据）</th><th>改后</th><th>状态</th></tr>
+    </thead>
+    <tbody>
+      <tr class="item" data-mark="1"><td class="n">①</td><td>收集中列表接上搜索 + 蛋组筛选</td><td>MotherView 交给收集中视图的是<b>未过滤</b>的 <code>motherGroups</code>，不是 <code>matchedGroups</code>；搜「火花」在收集中页毫无反应，但顶部「共 N 条链」照旧变</td><td>传过滤后的链；列表上方留一行「筛选：巨灵组 ✕」可清除</td><td class="ok">改</td></tr>
+      <tr class="item" data-mark="2"><td class="n">②</td><td>收集中顶部加一行进度摘要</td><td>现在进收集中只有一串卡，不知道「几条计划 / 几条已发布 / 几条已接单」</td><td>「5 条计划 · 1 已发布 · 1 已接单」，数字直接数 <code>card.status</code>，不新增领域逻辑</td><td class="ok">改</td></tr>
+      <tr class="item" data-mark="3"><td class="n">③</td><td>卡片底条按状态上色（五档）</td><td>所有收集中卡都写死 <code>status="planned"</code> + 天蓝底条，而 <code>collectionPlan</code> 真实有 5 种状态：已计划 / 已发布 / 等待回应·收到新意向 / 已接单 / 已收到</td><td>底条五种底色：灰 / 蓝 / 琥珀 / 青 / 绿，文字不变（位置高度不动）</td><td class="ok">改</td></tr>
+      <tr class="item" data-mark="4"><td class="n">④</td><td>收集中卡整卡改白底</td><td>收集中里每张卡都是 <code>planned</code>，整卡淡蓝等于没信息量；淡蓝在「未收集」页才是「已加入计划」的信号</td><td>收集中卡白底，状态全交给底条</td><td class="ask">待裁决</td></tr>
+      <tr class="item" data-mark="5"><td class="n">⑤</td><td>已收集分组标题去掉恒 N/N</td><td><code>chainFilter='collected'</code> 时列表只留已收集链，所以每节 <code>collected === total</code>，标题永远是「已收集 4/4」</td><td>右侧换成「4 只」＋当前档位小字（如「满分大婉」）</td><td class="ok">改</td></tr>
+      <tr class="item" data-mark="6"><td class="n">⑥</td><td>已收集空态给出口</td><td>空态只有一句「当前筛选下没有匹配的母本链。」，用户不知道是自己筛没了还是没有达标母本</td><td>分两句：筛没了 →「清除筛选」；确实没有 →「去未收集挑计划」</td><td class="ok">改</td></tr>
+      <tr class="item" data-mark="7"><td class="n">⑦</td><td>筛选区收成一行摘要</td><td>375 竖屏下，四张 72px 的奖牌卡 + 模式切换 + 搜索行把列表顶到第二屏；收集中/已收集两个视图里，用户主要看卡，不是改目标</td><td>奖牌组合折成一行「满分大婉 · 大块头+婉转声 ▾」，点开还是原来那四张</td><td class="ask">待裁决</td></tr>
+      <tr class="item" data-mark="8"><td class="n">⑧</td><td>求蛋弹窗必填项收紧</td><td>性格一个没选时按钮写「发布 1 条需求」且可点（<code>count = max(1, selected.length)</code>），发出去是一条没有性格的需求；绿窝的报错在勾选后才知道</td><td>0 性格 → 按钮置灰写「先选至少 1 个性格」；勾绿窝时提示直接顶到按钮上方</td><td class="ask">待裁决</td></tr>
+      <tr class="item" data-mark="9"><td class="n">⑨</td><td>「只算推荐性格」默认开（口径统一）</td><td>提交 <code>2ba22ad</code> 只把<b>覆盖度</b>默认改成推荐性格（<code>natureMode:'recommended'</code>）；母本侧 <code>recommendedNatures</code> 仍默认关。同是「收集」，两套性格口径</td><td>母本默认也走推荐性格，开关保留可关</td><td class="ask">待裁决</td></tr>
+    </tbody>
+  </table>
+
+  <h2>不在本次范围（但会影响结果，先说清楚）</h2>
+  <table>
+    <tbody>
+      <tr><td class="n">—</td><td>卡片几何</td><td>已是 104 / 48 / 10px，<code>size</code> 的 <code>gap</code>·<code>tall</code> 现在没有几何差异（只有 <code>compact</code> 和名字自适应默认值有效）→ <b>本次不动</b>，只核对母本/收集中都必须落在 md 104，不许有人再传 sm 96</td></tr>
+      <tr><td class="n">—</td><td>未收集页「计划收集」折叠区</td><td>它和「收集中」页签展示的是同一份 <code>plan</code>。建议收敛成一行「计划 5 条 · 去收集中」，但要动未收集视图，本稿不画 —— 确认后再说</td></tr>
+      <tr><td class="n">—</td><td>覆盖度筛选的必填项</td><td>蛋组 ≥1、奖牌目标 ≥1 有提示，性格可为空且不提示 —— 属 <code>CoverageFilterBar</code>（S6+P 口径 / 非我白名单），只记录不修</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+/* ================= 数据（改这里就能改稿） ================= */
+const NAT = {
+  emeraldOn: (n) => `<span class="nat on">${n}</span>`,
+  gray: (n) => `<span class="nat gray">${n}</span>`,
+  off: (n) => `<span class="nat off">${n}</span>`,
+};
+
+const COLLECTING = [
+  { no: '005', name: '机械方方', egg: '巨灵组', natures: ['固执', '大胆'], tone: 'planned-bg', status: '已接单', cls: 'tone-accepted', detail: '昭昭已接单' },
+  { no: '012', name: '火花', egg: '怪兽组', natures: ['固执', '开朗'], tone: 'planned-bg', status: '已发布', cls: 'tone-published', detail: '固执已发布，仍在等组员回应' },
+  { no: '031', name: '大耳帽兜', egg: '怪兽组', natures: ['胆小'], tone: 'planned-bg', status: '等待回应', cls: 'tone-proposal', detail: '已邀请阿布，其他组员仍可回应' },
+  { no: '044', name: '喵喵', egg: '动物组', natures: ['认真'], tone: 'planned-bg', status: '已收到', cls: 'tone-received', detail: '已收到认真' },
+  { no: '058', name: '圣剑侍从', egg: '拟人组', natures: ['固执'], tone: 'planned-bg', status: '已计划', cls: 'tone-plan', detail: '还没有发布到小组' },
+];
+
+const COLLECTED = [
+  { no: '005', name: '机械方方', egg: '巨灵组', natures: ['固执', '大胆'] },
+  { no: '012', name: '火花', egg: '怪兽组', natures: ['固执', '开朗'] },
+  { no: '031', name: '大耳帽兜', egg: '怪兽组', natures: ['胆小'] },
+  { no: '044', name: '喵喵', egg: '动物组', natures: ['认真'] },
+];
+
+const AVATAR_BG = ['#f59e0b', '#38bdf8', '#a78bfa', '#34d399', '#fb7185', '#60a5fa'];
+
+/* ================= 组件 ================= */
+function card({ no, name, egg, natures, status = 'uncollected', footer, footerCls, dims = [], marks = [], idx = 0 }) {
+  const st = status === 'planned' ? 'st-planned' : status === 'collected' ? 'st-collected' : '';
+  const bg = AVATAR_BG[idx % AVATAR_BG.length];
+  const nats = natures.map((n, i) => (dims.includes(n) || i > 0 ? NAT.gray(n) : NAT.emeraldOn(n))).join('');
+  return `
+  <article class="card ${st}">
+    <div class="card-head">
+      <div class="col-l"><span class="no">No.${no}</span><span class="egg">${egg}</span></div>
+      <div class="col-r">${nats}</div>
+    </div>
+    <div class="ava" style="background:${bg}">${name[0]}</div>
+    <h3 class="cname">${name}</h3>
+    <div class="cfoot ${footerCls}">${footer}</div>
+    ${marks.map((m) => `<span class="mark ${m.pos}" data-mark="${m.n}">${m.n}</span>`).join('')}
+  </article>`;
+}
+
+function kinds(active) {
+  const items = [
+    ['精灵背包', 'inventory'],
+    ['母本', 'mothers'],
+    ['种公', 'studs'],
+  ];
+  return `<div class="kinds">
+    <div class="acct">账号<br/>全部</div>
+    ${items.map(([label, key]) => {
+      const on = key === active ? ' on' : '';
+      const sub = label === '母本' ? '<span class="sub">未收集 / 收集中 / 已收集</span>' : '';
+      return `<button class="${on.trim()}">${label}${sub}</button>`;
+    }).join('')}
+  </div>`;
+}
+
+function searchRow() {
+  return `<div class="row">
+    <div class="search"><span class="mag">🔍</span><span>搜索母本名称或图鉴号（支持进化链）</span></div>
+    <div class="pill">全部蛋组 ▾</div>
+  </div>`;
+}
+
+/* 现状筛选区：模式 + 四张 72px 奖牌卡 */
+function railBefore(tab) {
+  return `<div class="rail">
+    ${searchRow()}
+    <div class="seg"><span class="on">追满分</span><span>追双牌</span></div>
+    <div class="grades">
+      ${[
+        ['大块头', '婉转声', true],
+        ['大块头', '粗嗓门', false],
+        ['小不点', '婉转声', false],
+        ['小不点', '粗嗓门', false],
+      ].map(([b, v, on]) => `
+        <div class="grade ${on ? 'on' : ''}"><span class="medal"><span class="dot"></span><span class="dot"></span></span><span>${b}</span><span>${v}</span></div>
+      `).join('')}
+    </div>
+    <div class="meta-row">
+      <span class="count">共 209 条链 · 已收集 78</span>
+      <span class="chips"><span class="chip">只算推荐性格</span><span class="chip">编辑推荐性格</span></span>
+    </div>
+    <div class="seg tabs"><span class="${tab === 'uncollected' ? 'on' : ''}">未收集</span><span class="${tab === 'collecting' ? 'on' : ''}">收集中</span><span class="${tab === 'collected' ? 'on' : ''}">已收集</span></div>
+  </div>`;
+}
+
+/* 改后筛选区：奖牌组合收成一行 */
+function railAfter(tab) {
+  return `<div class="rail">
+    ${searchRow()}
+    <div class="oneline"><span>目标 <b>满分大婉</b> · 大块头 + 婉转声</span><span class="caret">▾</span><span class="mark inl" data-mark="7">7</span></div>
+    <div class="meta-row">
+      <span class="count">共 209 条链 · 已收集 78</span>
+      <span class="chips"><span class="chip on">只算推荐性格<span class="mark inl" data-mark="9">9</span></span><span class="chip">编辑推荐性格</span></span>
+    </div>
+    <div class="seg tabs"><span class="${tab === 'uncollected' ? 'on' : ''}">未收集</span><span class="${tab === 'collecting' ? 'on' : ''}">收集中</span><span class="${tab === 'collected' ? 'on' : ''}">已收集</span></div>
+  </div>`;
+}
+
+/* 现状收集中 */
+function collectingBefore() {
+  const cards = COLLECTING.map((c, i) => card({
+    no: c.no, name: c.name, egg: c.egg, natures: c.natures,
+    status: 'planned', footer: c.status, footerCls: 'tone-published', idx: i,
+    marks: i === 0 ? [{ n: 3, pos: 'br' }] : [],
+  })).join('');
+  return `${kinds('mothers')}
+  ${railBefore('collecting')}
+  <div style="height:8px"></div>
+  <div class="warn">还没有打开收集小组。计划仍保存在本机，加入小组后再发布求蛋。<span class="link">去小组 ›</span></div>
+  <div style="height:8px"></div>
+  <div class="grid4">${cards}</div>`;
+}
+
+/* 改后收集中 */
+function collectingAfter() {
+  const filtered = COLLECTING.filter((c) => c.egg === '巨灵组' || c.egg === '怪兽组');
+  const cards = filtered.map((c, i) => card({
+    no: c.no, name: c.name, egg: c.egg, natures: c.natures,
+    status: 'uncollected', footer: c.status, footerCls: c.cls, idx: i,
+    marks: i === 0 ? [{ n: 3, pos: 'inl-abs' }] : [],
+  })).join('');
+  return `${kinds('mothers')}
+  ${railAfter('collecting')}
+  <div style="height:8px"></div>
+  <div class="filtered"><span>筛选</span><span class="tagf">蛋组 · 巨灵组</span><span class="tagf">怪兽组</span><span class="x">✕ 清除<span class="mark inl" data-mark="1">1</span></span></div>
+  <div style="height:6px"></div>
+  <div class="summary">5 条计划<span class="sep">·</span><b>1</b> 已发布<span class="sep">·</span><b>1</b> 等待回应<span class="sep">·</span><b>1</b> 已接单<span class="sep">·</span><b>1</b> 已收到<span class="mark inl" data-mark="2">2</span></div>
+  <div style="height:8px"></div>
+  <div class="grid4"><span class="mark tl" data-mark="4">4</span>${cards}</div>
+  <div style="height:8px"></div>
+  <div class="groupbar"><span class="g on">摸鱼小组</span><span class="g">夜猫组</span><span class="g">第三组</span></div>`;
+}
+
+/* 现状已收集 */
+function collectedBefore() {
+  const sec = (label, items, from) => `
+    <div class="sec">
+      <div class="sec-head"><span>${label}</span><span class="right">已收集 ${items.length}/${items.length}${from === 0 ? '<span class="mark inl" data-mark="5">5</span>' : ''}</span></div>
+      <div class="grid4">${items.map((c, i) => card({
+        no: c.no, name: c.name, egg: c.egg, natures: c.natures,
+        status: 'collected', footer: '查看', footerCls: 'tone-view', idx: from + i,
+      })).join('')}</div>
+    </div>`;
+  return `${kinds('mothers')}
+  ${railBefore('collected')}
+  <div style="height:8px"></div>
+  ${sec('巨灵组', [COLLECTED[0]], 0)}
+  ${sec('怪兽组', [COLLECTED[1], COLLECTED[2]], 1)}
+  ${sec('动物组', [COLLECTED[3]], 3)}
+  <p class="emptycap">空态对照 · 筛选后 0 条</p>
+  <div class="empty">当前筛选下没有匹配的母本链。</div>`;
+}
+
+/* 改后已收集 + 空态 */
+function collectedAfter() {
+  const sec = (label, items, from) => `
+    <div class="sec">
+      <div class="sec-head"><span>${label}</span><span class="right">${items.length} 只 · 满分大婉${from === 0 ? '<span class="mark inl" data-mark="5">5</span>' : ''}</span></div>
+      <div class="grid4">${items.map((c, i) => card({
+        no: c.no, name: c.name, egg: c.egg, natures: c.natures,
+        status: 'collected', footer: '查看', footerCls: 'tone-view', idx: from + i,
+      })).join('')}</div>
+    </div>`;
+  return `${kinds('mothers')}
+  ${railAfter('collected')}
+  <div style="height:8px"></div>
+  ${sec('巨灵组', [COLLECTED[0]], 0)}
+  ${sec('怪兽组', [COLLECTED[1], COLLECTED[2]], 1)}
+  <p class="emptycap">空态对照 · 筛选后 0 条</p>
+  <div class="empty"><div>筛选后一条都没有</div><div style="margin-top:8px"><span class="cta">清除筛选</span> <span class="cta">去未收集挑计划<span class="mark inl" data-mark="6">6</span></span></div></div>`;
+}
+
+/* 现状求蛋弹窗 */
+function sheetBefore() {
+  const natures = ['固执', '大胆', '开朗', '胆小', '认真', '淘气', '天真', '勤奋', '慢吞吞'];
+  return `<div class="sheet"><div class="sheet-card">
+    <div class="sheet-head"><b>小组求蛋</b><span class="close">✕</span></div>
+    <div class="sheet-body">
+      <div class="sheet-target">
+        <div class="ava-s" style="background:#f59e0b">机</div>
+        <div><div class="nm">机械方方 <span class="sub">No.005</span></div>
+          <div style="margin-top:4px;display:flex;gap:3px"><span style="background:#e0f2fe;color:#075985;border-radius:3px;padding:0 3px;font-size:9px">巨灵组</span></div>
+        </div>
+        <div class="nats"><span>固执</span><span>大胆</span></div>
+      </div>
+      <div class="btnrow"><span class="lbl">发到</span><span class="g on" style="min-height:26px;display:inline-flex;align-items:center;padding:0 8px;border:1px solid #10b981;background:#ecfdf5;color:#047857;border-radius:8px;font-size:10px">摸鱼小组</span></div>
+      <div style="border:1px solid #d1fae5;background:#ecfdf5;border-radius:12px;padding:8px">
+        <div style="display:flex;justify-content:space-between;font-size:11px"><b style="color:#475569">发需求</b><span style="color:#94a3b8;font-size:9px">1 个性格 = 1 条</span></div>
+        <div class="naturegrid" style="margin-top:6px">${natures.slice(0, 6).map((n) => `<div class="nbtn">${n}</div>`).join('')}</div>
+        <div class="btnrow" style="margin-top:6px"><span class="lbl">体型</span><span class="opt on">大块头</span><span class="opt">满体重 100%</span></div>
+        <div class="btnrow" style="margin-top:4px"><span class="lbl">声音</span><span class="opt on">+100</span><span class="opt">-100</span><span class="opt">婉转声</span><span class="opt">粗嗓门</span></div>
+      </div>
+      <div class="actions"><button class="cancel">取消</button><button class="ok">发布 1 条需求<span class="mark inl" data-mark="8">8</span></button></div>
+    </div>
+  </div></div>`;
+}
+
+/* 改后求蛋弹窗 */
+function sheetAfter() {
+  const natures = ['固执', '大胆', '开朗', '胆小', '认真', '淘气', '天真', '勤奋', '慢吞吞'];
+  return `<div class="sheet"><div class="sheet-card">
+    <div class="sheet-head"><b>小组求蛋</b><span class="close">✕</span></div>
+    <div class="sheet-body">
+      <div class="sheet-target">
+        <div class="ava-s" style="background:#f59e0b">机</div>
+        <div><div class="nm">机械方方 <span class="sub">No.005</span></div>
+          <div style="margin-top:4px;display:flex;gap:3px"><span style="background:#e0f2fe;color:#075985;border-radius:3px;padding:0 3px;font-size:9px">巨灵组</span></div>
+        </div>
+        <div class="nats"><span>固执</span><span>大胆</span></div>
+      </div>
+      <div class="btnrow"><span class="lbl">发到</span><span class="g on" style="min-height:26px;display:inline-flex;align-items:center;padding:0 8px;border:1px solid #10b981;background:#ecfdf5;color:#047857;border-radius:8px;font-size:10px">摸鱼小组</span></div>
+      <div style="border:1px solid #d1fae5;background:#ecfdf5;border-radius:12px;padding:8px">
+        <div style="display:flex;justify-content:space-between;font-size:11px"><b style="color:#475569">发需求 <span style="color:#e11d48">*</span></b><span style="color:#94a3b8;font-size:9px">至少 1 个性格 = 1 条</span></div>
+        <div class="naturegrid" style="margin-top:6px">${natures.slice(0, 6).map((n) => `<div class="nbtn">${n}</div>`).join('')}</div>
+        <div class="btnrow" style="margin-top:6px"><span class="lbl">体型</span><span class="opt on">大块头</span><span class="opt">满体重 100%</span></div>
+        <div class="btnrow" style="margin-top:4px"><span class="lbl">声音</span><span class="opt on">+100</span><span class="opt">-100</span><span class="opt">婉转声</span><span class="opt">粗嗓门</span></div>
+      </div>
+      <div class="hint">发需求前先选性格：绿窝也必须有性格才发得出去，所以提示直接放在按钮上方。<span class="mark inl" data-mark="8">8</span></div>
+      <div class="actions"><button class="cancel">取消</button><button class="ok off">先选至少 1 个性格</button></div>
+    </div>
+  </div></div>`;
+}
+
+/* ================= 渲染 ================= */
+const R = {
+  'before-375-collecting': collectingBefore,
+  'after-375-collecting': collectingAfter,
+  'before-390-collecting': collectingBefore,
+  'after-390-collecting': collectingAfter,
+  'before-375-collected': collectedBefore,
+  'after-375-collected': collectedAfter,
+  'before-390-collected': collectedBefore,
+  'after-390-collected': collectedAfter,
+  'before-375-sheet': sheetBefore,
+  'after-375-sheet': sheetAfter,
+};
+for (const [id, fn] of Object.entries(R)) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = fn();
+}
+
+/* ================= 清单 ↔ 圆标联动 ================= */
+document.querySelectorAll('#change-list .item').forEach((row) => {
+  const mark = row.dataset.mark;
+  const hot = (on) => {
+    document.querySelectorAll('.mark').forEach((m) => {
+      if (m.dataset.mark === mark) m.classList.toggle('hot', on);
+    });
+  };
+  row.addEventListener('mouseenter', () => hot(true));
+  row.addEventListener('mouseleave', () => hot(false));
+  row.addEventListener('click', () => {
+    const target = document.querySelector(`.mark[data-mark="${mark}"]`);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+});
+</script>
+</body>
+</html>
