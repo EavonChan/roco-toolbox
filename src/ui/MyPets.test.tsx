@@ -6,7 +6,7 @@ import { clearAccountFilter } from './accountFilterStore';
 import { resetMyPetsFiltersForTest } from './myPetsFilterStore';
 import { MyPets } from './MyPets';
 
-const { pets } = vi.hoisted(() => ({
+const { pets, view } = vi.hoisted(() => ({
   pets: [
     {
       gameId: 900001,
@@ -33,6 +33,8 @@ const { pets } = vi.hoisted(() => ({
       account: '账号甲',
     },
   ],
+  // 覆盖空态用例：null = 用默认的 pets
+  view: { owned: null as null | unknown[], all: null as null | unknown[] },
 }));
 const speciesWithEggGroup = species.find((entry) => entry.eggGroups.some(isBreedableGroup));
 const speciesWithTwoEggGroups = species.find(
@@ -52,13 +54,19 @@ const expectVisiblePetCount = (count: number) => {
 };
 
 vi.mock('./useOwnedPets', () => ({
-  useOwnedPets: () => ({ owned: pets, accounts: ['账号甲'] }),
+  useOwnedPets: () => ({
+    owned: (view.owned ?? pets) as typeof pets,
+    accounts: ['账号甲'],
+    all: (view.all ?? pets) as typeof pets,
+  }),
 }));
 
 afterEach(() => {
   cleanup();
   clearAccountFilter();
   resetMyPetsFiltersForTest();
+  view.owned = null;
+  view.all = null;
 });
 
 describe('MyPets', () => {
@@ -424,4 +432,26 @@ describe('MyPets', () => {
     expect(screen.getByTestId('height-range-max')).toHaveValue('100');
     expectVisiblePetCount(2);
   });
+
+  describe('MyPets 空态', () => {
+    test('导过账号但一只精灵都没有 → 空态带「去导入」入口，不再让人去取消标签', () => {
+      view.owned = [];
+      view.all = [];
+      const onGoImport = vi.fn();
+      render(<MyPets onGoImport={onGoImport} />);
+      expect(screen.getByTestId('empty-state')).toBeInTheDocument();
+      expect(screen.queryByText('没有符合条件的精灵')).toBeNull();
+      fireEvent.click(screen.getByTestId('empty-go-import'));
+      expect(onGoImport).toHaveBeenCalledTimes(1);
+    });
+
+    test('筛选命中 0 只 → 仍是「没有符合条件的精灵」', () => {
+      render(<MyPets />);
+      fireEvent.change(screen.getByTestId('pet-name-search'), {
+        target: { value: '不存在的精灵名' },
+      });
+      expect(screen.getByTestId('my-pets-no-match')).toHaveTextContent('没有符合条件的精灵');
+      expect(screen.queryByTestId('empty-state')).toBeNull();
+    });
+});
 });
