@@ -104,7 +104,7 @@ export interface StudRecommendationGroup {
   /** 原始推荐条目：点卡开「怎么补」要拿第一条的蛋组 / 性格 / 档位定位 */
   records: StudRecommendation[];
 }
-const groupStudRecommendations = (
+export const groupStudRecommendations = (
   items: readonly StudRecommendation[],
 ): StudRecommendationGroup[] => {
   const groups = new Map<number, StudRecommendationGroup>();
@@ -1200,7 +1200,6 @@ export function NestPlanCard({
   onOpenMotherGap,
   onOpenMotherGaps,
   studRecommendationsByAccount,
-  onOpenStudRecommendation,
   studCompleteAccounts,
 }: {
   plans: NestPlan[];
@@ -1238,9 +1237,9 @@ export function NestPlanCard({
   /** 当前看哪个号（多账号账号格切换；默认第一个有内容的号） */
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
   /** 母本区分组横条：高概率 / 低概率（含原来的牢五门）/ 缺口（2026-11-20 用户口径） */
-  const [motherTab, setMotherTab] = useState<'high' | 'low' | 'gap'>('high');
+  const [motherTab, setMotherTab] = useState<'high' | 'low'>('high');
   /** 种公推荐分组横条：高概率 / 低概率 / 缺口（2026-11-20 用户口径） */
-  const [studTab, setStudTab] = useState<'high' | 'low' | 'gap'>('high');
+  const [studTab, setStudTab] = useState<'high' | 'low'>('high');
   /**
    * 占窝勾选（2026-11-20 用户口径）：默认 **零个窝**，不按方案自动算；
    * 用户在对应号的配窝卡右上角自己点圆圈，种公卡和母本卡记在同一份窝数里。
@@ -1384,18 +1383,6 @@ export function NestPlanCard({
     return cards;
   };
 
-  /** 这个号作为目标能从别的号收哪些蛋：按源号汇总，只写一行，不重复画卡（2026-11-20） */
-  const incomingOf = (account: string): Array<{ source: string; count: number }> => {
-    const tasks = motherSuggestions?.get(account)?.tasks ?? [];
-    const bySource = new Map<string, number>();
-    for (const task of tasks) {
-      bySource.set(task.sourceAccount, (bySource.get(task.sourceAccount) ?? 0) + 1);
-    }
-    return [...bySource]
-      .map(([source, count]) => ({ source, count }))
-      .sort((a, b) => b.count - a.count);
-  };
-
   /** 这个号作为出蛋方有几个**正经配窝**（达到门槛的本号内线 + 跨号线；低概率线不算“可配”） */
   const mainCardCountOf = (account: string): number => {
     const { accepted } = localPairingsOf(account);
@@ -1522,8 +1509,6 @@ export function NestPlanCard({
   );
   const defaultAccount = ranked[0];
   const active = visible.find((entry) => entry.plan.account === activeAccount) ?? defaultAccount;
-  /** 当前号作为出蛋方的母本配窝：本号内线 + 跨号传蛋 + 只能求助 */
-  const mother = active ? motherSuggestions?.get(active.plan.account) ?? null : null;
   const activeName = active?.plan.account ?? '';
   /** 当前号已勾选的窝数：种公 + 母本同一份（2026-11-20） */
   const activePicked = pickedNestsOf(activeName);
@@ -1541,7 +1526,6 @@ export function NestPlanCard({
         b.femaleChance - a.femaleChance ||
         a.eggName.localeCompare(b.eggName, 'zh-Hans-CN'),
     );
-  const activeIncoming = incomingOf(activeName);
   const hasMotherContent =
     activeLocal.accepted.length +
       activeLocal.low.length +
@@ -1562,6 +1546,8 @@ export function NestPlanCard({
   /** 页签数量按合并后的卡片数算 */
   const activeHighLayouts = activeStudCards.filter(isHighStudCard);
   const activeLowLayouts = activeStudCards.filter((layout) => !isHighStudCard(layout));
+  /** 种公区分组横条当前页：高概率 / 低概率（缺口页签已移除，2026-11-22 用户口径） */
+  const activeStudLayouts = studTab === 'high' ? activeHighLayouts : activeLowLayouts;
   /** 本号的种公推荐（按本号自己的缺口算）；没传时退回计划里没排上的条目当缺口提示 */
   const activeRecommendations = studRecommendationsByAccount?.get(activeName) ?? [];
   const activeGapTargets = gapsByAccount?.get(activeName) ?? activeRecommendations.length;
@@ -1572,10 +1558,6 @@ export function NestPlanCard({
   const activeReceiverNames = [
     ...new Set((active?.views ?? []).flatMap((view) => receiversOf(view))),
   ];
-  const activeRecGroups = groupStudRecommendations(activeRecommendations);
-  const activeStudLayouts =
-    studTab === 'high' ? activeHighLayouts : studTab === 'low' ? activeLowLayouts : [];
-
   return (
     <div className="mt-1">
       {visible.length > 1 ? (
@@ -1665,7 +1647,6 @@ export function NestPlanCard({
                   [
                     { key: 'high', label: '配窝建议', count: activeHighLayouts.length },
                     { key: 'low', label: '低概率', count: activeLowLayouts.length },
-                    { key: 'gap', label: '缺口', count: activeGapCount },
                   ] as const
                 ).map((item) => {
                   const selected = studTab === item.key;
@@ -1697,7 +1678,7 @@ export function NestPlanCard({
                 })}
               </div>
 
-              {studTab !== 'gap' ? (
+              {(
                 activeStudLayouts.length > 0 ? (
                   <ul className="mt-1.5 space-y-1.5" data-testid="breed-list">
                     {activeStudLayouts.map((layout) => {
@@ -1742,51 +1723,6 @@ export function NestPlanCard({
                     {studTab === 'high' ? '本号没有配窝建议。' : '没有低概率种公配对。'}
                   </p>
                 )
-              ) : (
-                <div className="mt-1.5 space-y-1.5" data-testid="stud-gap">
-                  {activeGapTargets > 0 ? (
-                    <p className="text-[11px] text-slate-500">
-                      本号还差 <b className="text-rose-600">{activeGapTargets}</b> 个种公目标
-                      {activeRecGroups.length > 0 ? (
-                        <span className="text-slate-400"> · 推荐 {activeRecGroups.length} 只</span>
-                      ) : null}
-                    </p>
-                  ) : null}
-                  {activeRecGroups.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">本号没有要换的种公推荐。</p>
-                  ) : (
-                    <ul className="grid grid-cols-4 gap-1" data-testid="stud-gap-cards">
-                      {activeRecGroups.map((group) => {
-                        const detail = `${group.natureNames.join('、')}${group.displayName}（${group.groupLabels.join(' × ')}）`;
-                        return (
-                          <li key={group.gameId} title={detail} data-testid="stud-gap-card">
-                            <PetCardLayout
-                              onClick={
-                                onOpenStudRecommendation
-                                  ? () => onOpenStudRecommendation(activeName, group)
-                                  : undefined
-                              }
-                              ariaLabel={
-                                onOpenStudRecommendation ? `看 ${detail} 怎么补` : detail
-                              }
-                              name={group.displayName}
-                              number={speciesByGameId.get(group.gameId)?.number}
-                              eggGroups={group.groupLabels}
-                              natures={group.natureNames}
-                              naturesTestId="stud-gap-nature"
-                              title={detail}
-                              size="suggest"
-                              fitName
-                              avatar={
-                                <PetAvatar gameId={group.gameId} name={group.displayName} size={44} />
-                              }
-                            />
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
               )}
             </>
           ) : null}
@@ -1806,8 +1742,6 @@ export function NestPlanCard({
                       label: '低概率',
                       count: activeLocal.low.length + lowHelps.length,
                     },
-                    // 母本缺口：写本号还没收集的母本蛋数，和缺口页签里「本号未收集 N 个」同一口径
-                    { key: 'gap', label: '缺口', count: mother?.gapCount ?? 0 },
                   ] as const
                 ).map((item) => {
                   const selected = motherTab === item.key;
@@ -1906,31 +1840,6 @@ export function NestPlanCard({
                   ))}
                 </div>
               ) : null}
-
-              {/*
-                缺口卡直接铺在配窝建议下面（2026-11-22 用户口径）：
-                以前要点「缺口 198」那颗胶囊才出来，藏的太深找不到；
-                现在默认就展开，胶囊仍然保留做分组切换。
-              */}
-              <div className="mt-1.5 space-y-1.5" data-testid="mother-gap">
-                <p className="text-[11px] text-slate-500">
-                  种公目标：本号还差{' '}
-                  <b className="text-rose-600">{gapsByAccount?.get(activeName) ?? 0}</b> 个
-                  <span className="mx-1 text-slate-300">·</span>
-                  母本缺口：本号未收集 <b className="text-rose-600">{mother?.gapCount ?? 0}</b> 个
-                </p>
-                {activeIncoming.length > 0 ? (
-                  <p className="text-[11px] text-slate-500">
-                    本号可收 {activeIncoming.reduce((sum, item) => sum + item.count, 0)} 个蛋：
-                    {activeIncoming.map((item) => `${item.source} ${item.count}`).join('、')}
-                  </p>
-                ) : null}
-                <MotherGapGrid
-                  cards={motherGaps ?? []}
-                  onOpen={onOpenMotherGap}
-                  onOpenAll={onOpenMotherGaps}
-                />
-              </div>
             </div>
           ) : null}
 
@@ -1945,4 +1854,5 @@ export function NestPlanCard({
     </div>
   );
 }
+
 
