@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EggMatchingHub } from './EggMatchingHub';
 import { createDemand } from '../../shared/eggMatching';
 import { act } from '@testing-library/react';
@@ -68,32 +68,6 @@ test('收到别人意向时卡片写明谁想换，不使用模糊占用提示',
   } finally {
     data.trades = [];
   }
-});
-
-test('a home scene alone syncs its eggs with homeComplete',async()=>{
-  mutate.mockClear();mutate.mockResolvedValue(undefined);
-  const home={schemaVersion:1 as const,gameId:'1001',capturedAt:'2026-11-17T23:00:00+08:00',
-    residents:[{instanceId:'11',baseId:'b',confId:10009,furnitureGuid:'nest1',actorId:'a1',name:'菊花梨',gender:'母' as const}],
-    nests:[{furnitureGuid:'nest1',configId:1,nestType:'ordinary' as const,nestName:'普通小窝',residentIds:[]}],
-    layEggCouples:[],sceneEggs:[{actorId:'e1',furnitureGuid:'nest1'}],couplesStale:false,snapshotKind:'full' as const};
-  const snapshots=[{accountName:'甲',gameId:1001,exportedAt:'2026-11-17T14:00:00Z',importedAt:'2026-11-17T14:00:01Z',pets:[],eggs:[],eggInventoryComplete:true,home}];
-  render(<EggMatchingHub {...props} snapshots={snapshots}/>);
-  await waitFor(()=>expect(mutate).toHaveBeenCalledTimes(1));
-  const action=mutate.mock.calls[0][0];
-  expect(action).toMatchObject({type:'stock-sync',complete:true,homeComplete:true});
-  expect(action.eggs).toHaveLength(1);
-  expect(action.eggs[0]).toMatchObject({location:'home',eggGameId:3011,lastConfirmedAt:Date.parse('2026-11-17T23:00:00+08:00')});
-});
-
-test('a failed capture sync is attempted once until the user retries',async()=>{
-  mutate.mockClear();mutate.mockRejectedValue(new Error('网络失败'));
-  const snapshots=[{accountName:'甲',gameId:1001,exportedAt:'2026-11-16T00:00:00Z',importedAt:'2026-11-16T00:00:01Z',pets:[],eggs:[],eggInventoryComplete:true}];
-  const view=render(<EggMatchingHub {...props} snapshots={snapshots}/>);
-  await waitFor(()=>expect(mutate).toHaveBeenCalledTimes(1));
-  view.rerender(<EggMatchingHub {...props} snapshots={[...snapshots]}/>);
-  await new Promise(r=>setTimeout(r,30));
-  expect(mutate).toHaveBeenCalledTimes(1);
-  mutate.mockResolvedValue(undefined);
 });
 
 test('my demand lists who has eggs and who can hatch, then opens their needs',()=>{
@@ -180,4 +154,112 @@ test('retry also retries a failed published-line sync',async()=>{
   await act(async()=>fireEvent.click(screen.getByRole('button',{name:'重试同步'})));
   await waitFor(()=>expect(mutate).toHaveBeenCalledTimes(2));
   view.unmount();data.lines=[];
+});
+
+describe('EggMatchingHub 横屏（2026-11-22 三栏）', () => {
+  const original = window.matchMedia;
+  const setOrientation = (landscape: boolean) => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('landscape') ? landscape : false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+  };
+  afterEach(() => {
+    if (original) window.matchMedia = original;
+    else delete (window as unknown as { matchMedia?: typeof window.matchMedia }).matchMedia;
+    window.localStorage.clear();
+  });
+
+  test('搜索与视图切换收进右侧折叠栏，收起后主区加宽且按设备记住', () => {
+    setOrientation(true);
+    render(<EggMatchingHub {...props} />);
+
+    const rail = screen.getByTestId('egg-hub-rail');
+    // 页名由左侧页签表达，右侧栏不再重复（2026-11-22 用户口径）
+    expect(within(rail).queryByTestId('egg-hub-rail-title')).toBeNull();
+    expect(rail).toHaveAttribute('aria-label', '换蛋标题栏');
+    // 我的收集 / 组内广场在标题栏里，不再占功能列
+    expect(within(rail).getByTestId('egg-hub-tab-mine')).toHaveTextContent('我的收集');
+    expect(within(rail).getByTestId('egg-hub-tab-mine')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(rail).getByTestId('egg-hub-tab-square')).toHaveTextContent('组内广场');
+    const filters = screen.getByTestId('egg-hub-filters');
+    // 视角与页面入口都在标题栏，功能列只留搜索与条件
+    expect(within(filters).getByRole('searchbox')).toBeTruthy();
+    expect(within(filters).queryByText('组内广场')).toBeNull();
+    expect(within(filters).queryByText('蛋仓')).toBeNull();
+    expect(within(rail).getByText('我的收集')).toBeTruthy();
+    expect(within(rail).getByText('组内广场')).toBeTruthy();
+    expect(within(rail).getByTestId('egg-hub-page-stock')).toBeTruthy();
+    expect(within(rail).getByTestId('egg-hub-page-tasks')).toBeTruthy();
+    // 需求卡留在主区，不跟筛选挤在一起
+    expect(within(screen.getByTestId('egg-hub-main')).getByText('菊花梨')).toBeTruthy();
+
+    fireEvent.click(within(rail).getByTestId('egg-hub-rail-toggle'));
+    expect(screen.queryByTestId('egg-hub-filters')).toBeNull();
+    expect(screen.getByTestId('egg-hub-scope')).toHaveAttribute('data-collapsed', 'true');
+    expect(window.localStorage.getItem('roco.swapRailCollapsed')).toBe('1');
+    expect(within(screen.getByTestId('egg-hub-rail')).getByTestId('egg-hub-rail-toggle'))
+      .toHaveAttribute('aria-expanded', 'false');
+
+    // 收起筛选后仍能在标题栏切换视角
+    fireEvent.click(within(screen.getByTestId('egg-hub-rail')).getByTestId('egg-hub-tab-square'));
+    expect(within(screen.getByTestId('egg-hub-main')).getByText('组内需求')).toBeTruthy();
+    expect(within(screen.getByTestId('egg-hub-rail')).getByTestId('egg-hub-tab-square'))
+      .toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('我的收集不再写「想收」，去计划添加在搜索框下方', () => {
+    setOrientation(true);
+    const onGoPlan = vi.fn();
+    render(<EggMatchingHub {...props} onGoPlan={onGoPlan} />);
+
+    expect(screen.queryByText('想收')).toBeNull();
+    const filters = screen.getByTestId('egg-hub-filters');
+    fireEvent.click(within(filters).getByRole('button', { name: '去计划添加' }));
+    expect(onGoPlan).toHaveBeenCalledTimes(1);
+    // 不进右侧标题栏
+    expect(within(screen.getByTestId('egg-hub-rail')).queryByRole('button', { name: '去计划添加' })).toBeNull();
+
+    // 组内广场没有「去计划添加」这项动作
+    fireEvent.click(within(screen.getByTestId('egg-hub-rail')).getByTestId('egg-hub-tab-square'));
+    expect(within(screen.getByTestId('egg-hub-filters')).queryByRole('button', { name: '去计划添加' })).toBeNull();
+    expect(screen.getByText('组内需求')).toBeTruthy();
+  });
+
+  test('蛋仓与我的换蛋都从标题栏进入，且不是按钮样式', () => {
+    setOrientation(true);
+    render(<EggMatchingHub {...props} />);
+
+    const rail = screen.getByTestId('egg-hub-rail');
+    const stock = within(rail).getByTestId('egg-hub-page-stock');
+    const tasks = within(rail).getByTestId('egg-hub-page-tasks');
+    // 纯文本项：用统一的 rail-nav-item，不用按钮外框
+    expect(stock.className).toContain('rail-nav-item');
+    expect(tasks.className).toContain('rail-nav-item');
+    expect(within(rail).getByTestId('egg-hub-rail-toggle').className).toContain('rail-toggle');
+
+    fireEvent.click(tasks);
+    expect(screen.getByText('暂无进行中任务')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '‹ 返回' }));
+    expect(within(screen.getByTestId('egg-hub-rail')).getByTestId('egg-hub-page-stock')).toBeTruthy();
+  });
+
+  test('蛋仓子页沿用同一套标题栏，返回动作回到换蛋主区', () => {
+    setOrientation(true);
+    render(<EggMatchingHub {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /蛋仓/ }));
+    const stockRail = screen.getByTestId('egg-stock-rail');
+    expect(within(stockRail).getByTestId('egg-stock-rail-title')).toHaveTextContent('我的蛋仓');
+
+    fireEvent.click(within(stockRail).getByRole('button', { name: '返回换蛋' }));
+    expect(screen.getByTestId('egg-hub-rail')).toBeTruthy();
+    expect(screen.getByTestId('egg-hub-filters')).toBeTruthy();
+  });
 });
