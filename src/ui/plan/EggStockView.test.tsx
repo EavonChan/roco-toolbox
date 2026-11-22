@@ -63,6 +63,7 @@ vi.mock('./useEggMatching', () => ({
 afterEach(() => {
   h.me = 'acc-1';
   h.group = 'g1';
+  window.localStorage.removeItem('roco.homeView');
 });
 
 test('有小组时把换蛋的蛋仓原样搬进家园页', () => {
@@ -97,4 +98,48 @@ test('横屏蛋仓的标题栏带返回家园，点了回家园页', () => {
   render(<EggStockView snapshots={[]} onBack={onBack} />);
   fireEvent.click(screen.getByRole('button', { name: '返回家园' }));
   expect(onBack).toHaveBeenCalledTimes(1);
+});
+
+test('横屏 + 未登录：空态也能回到家园', () => {
+  setLandscape(true);
+  h.me = null;
+  const onBack = vi.fn();
+  render(<EggStockView snapshots={[]} onGoAccount={() => {}} onBack={onBack} />);
+  expect(screen.getByTestId('egg-stock-need-account')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '返回家园' }));
+  expect(onBack).toHaveBeenCalledTimes(1);
+});
+
+test('横屏 + 未入组：空态也能回到家园', () => {
+  setLandscape(true);
+  h.group = null;
+  const onBack = vi.fn();
+  render(<EggStockView snapshots={[]} onGoGroups={() => {}} onBack={onBack} />);
+  expect(screen.getByTestId('egg-stock-need-group')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '返回家园' }));
+  expect(onBack).toHaveBeenCalledTimes(1);
+});
+
+test('空态不把蛋仓屏记进下次启动：重新挂载会回到家园', () => {
+  window.localStorage.setItem('roco.homeView', 'stock');
+  h.me = null;
+  // 模拟 Home 的读法：只有记住「stock」才会直接落在蛋仓屏
+  const Mount = () =>
+    window.localStorage.getItem('roco.homeView') === 'stock'
+      ? <EggStockView snapshots={[]} />
+      : <p>家园首页</p>;
+  const first = render(<Mount />);
+  expect(screen.getByTestId('egg-stock-need-account')).toBeTruthy();
+  expect(window.localStorage.getItem('roco.homeView')).toBeNull();
+  first.unmount();
+  render(<Mount />);
+  expect(screen.getByText('家园首页')).toBeTruthy();
+  expect(screen.queryByTestId('home-egg-stock-view')).toBeNull();
+});
+
+test('有账号有小组时保留分页记忆，不打扰正常回访', () => {
+  window.localStorage.setItem('roco.homeView', 'stock');
+  render(<EggStockView snapshots={[]} />);
+  expect(screen.getAllByTestId('stock-card')).toHaveLength(2);
+  expect(window.localStorage.getItem('roco.homeView')).toBe('stock');
 });
