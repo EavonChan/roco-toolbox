@@ -356,14 +356,24 @@ span {
   [data-testid="pairing-head"] > * { font-size: inherit; line-height: inherit; }
 }
 
-/* 4:3 配窝卡固定 10rem，不随右栏宽度拉伸（和家园页同宽度） */
+/* 4:3 / 窄横屏配窝卡：列数随可用宽度走，不再写死 10rem×2。
+   2026-11-22 修：窄横屏（609×340 实测）右栏仍占固定宽度，主区只剩 86px，
+   而写死的 `repeat(2, 10rem)`（300px）会把卡片撑出容器 237px，
+   在截图里就是「配窝建议把卡片撑开、右侧被裁」。
+   `minmax(min(100%, 9.5rem), 1fr)` + auto-fit：容器比 9.5rem 还窄时退成 1 列，
+   够宽时 2~3 列，任何宽度都不横向溢出。 */
 @media (orientation: landscape) and (max-width: 1120px) {
   .dashboard-narrow-body [data-testid="breed-suggestion"] > .grid:not(.shared-stud-cards) {
-    grid-template-columns: repeat(2, 10rem) !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)) !important;
     align-items: end;
   }
   .dashboard-narrow-body .shared-stud-cards {
-    grid-template-columns: repeat(3, 10rem) !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)) !important;
+  }
+  /* 卡片自己也要允许收缩，否则内部 min-content 会把轨道顶宽 */
+  .dashboard-narrow-body [data-testid="breed-suggestion"] > .grid > *,
+  .dashboard-narrow-body .shared-stud-cards > * {
+    min-width: 0;
   }
 }
 
