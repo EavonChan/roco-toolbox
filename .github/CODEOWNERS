@@ -1,0 +1,16 @@
+# 文件所有权：以下路径仅主线（@sasaki-ishiran）可改。
+# 协作者确需改动时先在 issue 里说明并获得同意，PR 描述贴 issue 链接。
+# 规则说明见 docs/协作与合并规则.md §3。
+
+# 主界面骨架
+/src/ui/MotherView.tsx        @sasaki-ishiran
+/src/ui/Dashboard.tsx         @sasaki-ishiran
+/src/ui/plan/                 @sasaki-ishiran
+
+# 发版通道
+/release/                     @sasaki-ishiran
+/scripts/deploy               @sasaki-ishiran
+/scripts/deploy-web.mjs       @sasaki-ishiran
+
+# CI 与仓库设置本身
+/.github/                     @sasaki-ishiran

@@ -1,0 +1,67 @@
+name: verify
+
+# 准入闸门：PR 必须让 verify 变绿才能合（见 docs/协作与合并规则.md §4、§5）。
+# 分支保护里要的检查名就是 job 名：verify / pr-size。
+
+on:
+  pull_request:
+    branches: [test]
+  push:
+    branches: [test]
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: npm run verify
+        run: npm run verify
+
+  pr-size:
+    name: pr-size
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 粒度上限（≤ 8 文件 / ≤ 400 行）
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          BASE="origin/$BASE_REF"
+          # 不计锁文件、快照与图片
+          EXCLUDE='^(package-lock\.json|pnpm-lock\.yaml|.*\.snap|.*\.png|.*\.webp|.*\.jpe?g)$'
+
+          FILES=$(git diff --name-only "$BASE"...HEAD | grep -vE "$EXCLUDE" | wc -l | tr -d ' ')
+          LINES=$(git diff --numstat "$BASE"...HEAD \
+            | awk -v pat="$EXCLUDE" '$3 !~ pat { a += $1; d += $2 } END { print a + d + 0 }')
+
+          echo "改动文件：$FILES（上限 8）"
+          echo "改动行数：$LINES（上限 400）"
+
+          fail=0
+          if [ "$FILES" -gt 8 ]; then
+            echo "::error::文件数 $FILES 超过 8，请按 docs/协作与合并规则.md §2 拆分 PR"
+            fail=1
+          fi
+          if [ "$LINES" -gt 400 ]; then
+            echo "::error::行数 $LINES 超过 400，请按 docs/协作与合并规则.md §2 拆分 PR"
+            fail=1
+          fi
+          exit "$fail"

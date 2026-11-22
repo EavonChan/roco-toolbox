@@ -139,3 +139,11 @@ Task name / Sender`）和 `encrypted_content` 占位符，看不到实际任务�
 - 不打APK或EXE，不改latest.apk或任何version.json，不改默认站，不部署test/dev。网页仍先合入并推送release/prod-1.5.0，再构建并走deploy-web.mjs --branch main --approve-production。
 - 此次纯网页发布保留现有两份正式清单和现有APK字节；发版前后回读比对。回滚恢复网页及相应API行为，清单/APK仍须核对与基线一致，不借机重发包。
 - 机器人巡查和孵好提醒后续接入，本次不向QQ发送真实消息。已产出原型、截图、历史包和文档保留。
+
+## 协作与合并规则（2026-11-22）
+
+- 分支、粒度、文件所有权、准入、分支保护、合并窗口一律按 `docs/协作与合并规则.md`，改一处必须同步该文。
+- 简版：`friend/<功能>-<日期>` 从 `origin/test` 开、存活 ≤ 7 天、每天 rebase、不 rebase 已推送历史；
+  一个 PR 一个目的、≤ 8 文件 / ≤ 400 行；`MotherView.tsx`、`Dashboard.tsx`、`src/ui/plan/*`、
+  `release/*`、`scripts/deploy*`、`.github/**` 仅主线改，他改先提 issue；
+  PR 必带 `npm run verify` 真实输出，UI 变更附 375 / 390 截图。
