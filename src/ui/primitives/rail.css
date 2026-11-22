@@ -1,0 +1,92 @@
+/* 横屏三栏骨架（2026-11-22）：主区 + 功能列 + 纵向标题栏。
+   由 RailLayout 自己 import；页面只负责主区 / 功能列内容。
+   竖屏不生效，调用方用 useLandscape() 决定是否渲染这一层。 */
+@media (orientation: landscape) {
+  .rail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 13rem 2.6rem;
+    gap: 0.5rem;
+    align-items: start;
+  }
+  .rail-main { grid-column: 1; grid-row: 1; display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; }
+  .rail-filters {
+    grid-column: 2; grid-row: 1;
+    display: flex; min-width: 0; flex-direction: column; gap: 0.5rem;
+    position: sticky; top: 0.4rem; align-self: start;
+    max-height: calc(100dvh - 1rem); overflow-y: auto;
+  }
+  /* 纵向标题栏：除筛选开关外一律纯文本，不画按钮外框 / 底色；
+     每个组件之间用 1px 分隔线隔开（2026-11-22 用户口径）。 */
+  .rail-aside {
+    grid-column: 3; grid-row: 1;
+    position: sticky; top: 0.4rem; align-self: start;
+    display: flex; flex-direction: column; align-items: stretch; gap: 0;
+    min-height: 100%;
+    padding: 0.2rem 0 0.2rem 0.45rem;
+    border-left: 1px solid #e2e8f0;
+  }
+  .rail-aside > * + * { border-top: 1px solid #e2e8f0; }
+  /* 标题一行两个字：我的 / 蛋仓 / 换蛋 */
+  .rail-title {
+    width: 100%; margin: 0; padding: 0.35rem 0; text-align: center;
+    font-size: 12px; font-weight: 600; color: #1e293b;
+    line-height: 1.3; word-break: break-all; white-space: normal;
+  }
+  /* 返回 / 视角 / 页面入口：纯文本，一行两个字，靠颜色和字重表达当前项 */
+  .rail-back,
+  .rail-nav-item {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    width: 100%; padding: 0.45rem 0; text-align: center;
+    line-height: 1.35; word-break: break-all; white-space: normal;
+    border: 0; background: transparent; font-size: 11px; color: #475569;
+  }
+  .rail-nav-item[aria-pressed="true"] { color: #047857; font-weight: 700; }
+  .rail-nav-count { font-size: 9px; font-weight: 400; line-height: 1.2; color: #94a3b8; }
+  .rail-nav { display: flex; width: 100%; flex-direction: column; align-items: stretch; gap: 0; }
+  .rail-nav-item + .rail-nav-item { border-top: 1px solid #e2e8f0; }
+  /* 筛选开关是标题栏里唯一保留按钮样式的项 */
+  .rail-toggle {
+    display: flex; align-items: center; justify-content: center;
+    width: calc(100% - 0.15rem); margin: 0.25rem auto; padding: 0.4rem 0;
+    text-align: center; line-height: 1.35; word-break: break-all; white-space: normal;
+    border: 1px solid #e2e8f0; border-radius: 0.5rem;
+    background: #f8fafc; font-size: 11px; color: #475569;
+  }
+  .rail-toggle[aria-expanded="false"] {
+    color: #047857; border-color: #a7f3d0; background: #ecfdf5;
+    font-weight: 600;
+  }
+  .rail-layout[data-has-filters="false"],
+  .rail-layout[data-collapsed="true"] { grid-template-columns: minmax(0, 1fr) 2.6rem; }
+  .rail-layout[data-collapsed="true"] .rail-filters { display: none; }
+  .rail-layout[data-has-filters="false"] .rail-aside,
+  .rail-layout[data-collapsed="true"] .rail-aside { grid-column: 2; }
+
+@media (orientation: landscape) and (min-width: 1000px) {
+  .rail-layout { grid-template-columns: minmax(0, 1fr) 14rem 2.6rem; }
+  .rail-layout[data-has-filters="false"],
+  .rail-layout[data-collapsed="true"] { grid-template-columns: minmax(0, 1fr) 2.6rem; }
+}
+
+@media (orientation: landscape) {
+  /* 进入这类屏时顶栏整行隐藏：内容从最上面开始，页面标题与返回动作移交标题栏 */
+  header[data-testid="home-header"][data-view="stock"] { display: none; }
+  [data-testid="home-page"][data-view="stock"] { padding-top: 0.35rem; }
+  [data-testid="home-page"][data-view="stock"] [data-testid="home-egg-stock-view"] { padding-top: 0.45rem; }
+  main[data-testid="profile-page"],
+  section[data-testid="collection-groups"][data-variant="feed"] { padding-top: 0.35rem; }
+
+  /* 卡片保持竖屏同宽，不随横屏拉宽（2026-11-22 用户口径）；
+     能排几列由可用宽度决定：收起筛选列后自然多出一列。 */
+  .rail-layout .egg-stock-grid {
+    --egg-card-w: 5.1rem;
+    grid-template-columns: repeat(auto-fill, var(--egg-card-w));
+    justify-content: start;
+  }
+  /* 换蛋页的需求卡：竖屏三列 ≈ 7.6rem，横屏保持这个宽度、多出来的宽度换列数 */
+  .rail-layout .egg-demand-grid {
+    --demand-card-w: 7.6rem;
+    grid-template-columns: repeat(auto-fill, var(--demand-card-w));
+    justify-content: start;
+  }
+}
