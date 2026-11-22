@@ -1,14 +1,17 @@
 import { activePatrolTasks, patrolTaskKey, readPatrolStatus, type ActivePatrolTask } from './eggPatrolStore';
-import { runEggPatrol } from './eggPatrol';
+import { eggGameIdOfSpecies, eggLabelIndex, runEggPatrol } from './eggPatrol';
+import { recordIngestedHomeEggs } from './eggPatrolStock';
+import { parsePatrolScene, type PatrolScene } from '../../src/shared/eggPatrol';
+import type { IngestedHomeEgg } from '../../src/shared/eggPatrolStock';
 import { reminderCurrent, type ReminderPayload } from './eggReminders';
 import { exchangeNotificationCurrent, type ExchangeNotificationPayload } from './eggExchangeNotifications';
 import { type Env, json, newToken, newRecoveryCode, sha256Hex, rateLimit } from './util';
 
 type Row = Record<string, unknown>;
 const validId = (value: unknown): value is string => typeof value === 'string' && /^\d{5,24}$/.test(value);
-async function body(request: Request): Promise<Row | null> {
+async function body(request: Request, maxLength = 8192): Promise<Row | null> {
   const raw = await request.text();
-  if (raw.length > 8192) return null;
+  if (raw.length > maxLength) return null;
   try { const value: unknown = JSON.parse(raw); return value && typeof value === 'object' && !Array.isArray(value) ? value as Row : null; } catch { return null; }
 }
 const invalid = (status: number, error: string, origin: string | null = null) => json({ ok: false, error }, status, origin);
@@ -57,13 +60,44 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
   if (!secret || secret.length < 24 || await sha256Hex(provided) !== await sha256Hex(`Bearer ${secret}`)) return invalid(401, '机器人凭据无效');
   if (request.method !== 'POST') return invalid(405, '不支持的请求');
   const action = new URL(request.url).pathname.split('/').at(-1);
-  const input = await body(request);
+  // 家园场景整包（蛋 + 家园宠物）比普通动作大得多，单独放宽到 1MB
+  const input = await body(request, action === 'ingest' ? 1024 * 1024 : 8192);
   if (!input) return invalid(400, '参数无效');
   if (action === 'tick') {
     const force = input.force === true || input.force === '1';
     // 强刷只在内测部署生效（正式部署 CF_PAGES_BRANCH=main）
     if (force && env.CF_PAGES_BRANCH !== 'test') return invalid(403, '强制巡查仅内测可用');
     return json({ ok: true, ...await runEggPatrol(env, now, fetcher, force) }, 200, null);
+  }
+  if (action === 'ingest') {
+    if (!validId(input.uid) || !validId(input.qqGroupId) || !validId(input.botId)) {
+      return invalid(400, '上报参数无效');
+    }
+    const binding = await env.DB.prepare(
+      'SELECT group_id AS groupId FROM egg_bot_bindings WHERE qq_group_id=? AND bot_id=? AND enabled=1',
+    ).bind(input.qqGroupId, input.botId).first<{ groupId: string }>();
+    if (!binding) return json({ ok: false, error: '这个群还没接入换蛋提醒' }, 200, null);
+    const account = await env.DB.prepare(
+      'SELECT member_account_id AS accountId FROM mother_group_accounts WHERE group_id=? AND game_account_key=?',
+    ).bind(binding.groupId, `uid:${input.uid}`).first<{ accountId: string }>();
+    if (!account) return json({ ok: false, error: '这个 UID 还没绑定到小组成员' }, 200, null);
+    let scene: PatrolScene;
+    try {
+      scene = parsePatrolScene(input.scene, now);
+    } catch {
+      return json({ ok: false, error: '家园场景还没准备好，请稍后再试' }, 200, null);
+    }
+    const eggs: IngestedHomeEgg[] = [];
+    for (const egg of scene.eggs) {
+      const eggGameId = eggGameIdOfSpecies(egg.mother?.speciesGameId ?? null);
+      if (eggGameId) eggs.push({ egg, eggGameId });
+    }
+    const result = await recordIngestedHomeEggs(
+      env.DB, binding.groupId, account.accountId, input.uid, eggs, now, eggLabelIndex,
+    );
+    return json({
+      ok: true, written: result.written, labeled: result.labeled, seen: scene.eggs.length,
+    }, 200, null);
   }
   if (action === 'redeem') {
     if (typeof input.code !== 'string' || input.code.length > 64 || !validId(input.qqGroupId) || !validId(input.botId) || !validId(input.operatorQq)) return invalid(400, '接入参数无效');
