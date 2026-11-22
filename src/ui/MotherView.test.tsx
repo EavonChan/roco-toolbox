@@ -1,4 +1,4 @@
-﻿import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { MotherGroup } from '../domain/petFilters';
 import type { OwnedPet } from '../domain/types';
@@ -8,7 +8,7 @@ import { species } from '../data/catalog';
 import { MotherView } from './MotherView';
 import { setMotherCriteria } from './motherCriteriaStore';
 import { setTargetMode } from './targetModeStore';
-import { clearMotherPlan } from './motherPlanStore';
+import { clearMotherPlan, mergeMotherPlan } from './motherPlanStore';
 
 const groups: MotherGroup[] = [1, 2, 3, 4].map((id) => ({
   chainKey: `egg:${id}`,
@@ -263,6 +263,89 @@ describe('MotherView', () => {
     const more = screen.getByRole('button', { name: /显示更多蛋组/ });
     fireEvent.click(more);
     expect(screen.getAllByTestId('mother-chain-row').length).toBeGreaterThan(60);
+  });
+
+  test('「计划收集」折叠区已下线，计划中的链只留在未收集清单里', () => {
+    mergeMotherPlan(['egg:1', 'egg:2']);
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={groups}
+        mode="perfect"
+        status="missing"
+      />,
+    );
+
+    expect(screen.queryByTestId('mother-plan')).toBeNull();
+    expect(screen.queryByTestId('mother-plan-row')).toBeNull();
+    expect(screen.queryByTestId('mother-plan-clear-done')).toBeNull();
+    const statuses = screen
+      .getAllByTestId('mother-chain-row')
+      .map((row) => row.getAttribute('data-mother-status'));
+    expect(statuses).toContain('planned');
+  });
+
+  test('已收集分组标题只给只数，不再显示恒等于 N/N 的进度', () => {
+    const nature = eggNatures(species, 3003, {})[0] ?? '固执';
+    const group: MotherGroup = {
+      chainKey: 'egg:3003',
+      eggGameId: 3003,
+      collected: true,
+      quality: true,
+      motherClass: '大婉',
+      formLabel: '火花',
+      number: '005',
+      eggGroups: [1],
+      memberIndexes: [0],
+    };
+    render(
+      <MotherView
+        owned={[
+          {
+            gameId: 3003,
+            name: '火花',
+            gender: '母',
+            nature,
+            voiceDb: 100,
+            medalBody: '大块头',
+            weightPercent: 100,
+            isShiny: false,
+            account: '账号甲',
+          },
+        ]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '巨灵组' }}
+        motherGroups={[group]}
+        mode="perfect"
+        status="collected"
+      />,
+    );
+
+    const section = screen.getByTestId('mother-chain-group-1');
+    expect(section.textContent).toContain('1 只');
+    expect(section.textContent).not.toContain('1/1');
+  });
+
+  test('已收集空态给「清除筛选」和「去未收集挑计划」两个出口', () => {
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={groups}
+        mode="perfect"
+        status="collected"
+      />,
+    );
+
+    expect(screen.getByTestId('mother-chain-empty')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '清除筛选' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '去未收集挑计划' }));
+    expect(
+      screen.getByTestId('mother-chain-filter-uncollected').getAttribute('aria-pressed'),
+    ).toBe('true');
   });
 });
 

@@ -21,13 +21,30 @@ describe('store migrate', () => {
   test('母本达标标准：字段缺失 → 补默认', async () => {
     localStorage.setItem('roco.motherCriteria', JSON.stringify({}));
     const store = await import('./motherCriteriaStore');
-    expect(store.getMotherCriteria()).toEqual(DEFAULT_MOTHER_CRITERIA);
+    // 2026-11-22：默认「只算推荐性格」（与覆盖度 2ba22ad 对齐）
+    expect(store.getMotherCriteria()).toEqual({
+      ...DEFAULT_MOTHER_CRITERIA,
+      recommendedNatures: true,
+    });
+  });
+
+  test('母本达标标准：用户显式关掉推荐性格要保留', async () => {
+    localStorage.setItem(
+      'roco.motherCriteria',
+      JSON.stringify({ voices: ['+100'], bodies: ['大块头'], recommendedNatures: false }),
+    );
+    const store = await import('./motherCriteriaStore');
+    expect(store.getMotherCriteria().recommendedNatures).toBe(false);
   });
 
   test('母本达标标准：用户主动清空（空数组）必须原样保留', async () => {
     localStorage.setItem('roco.motherCriteria', JSON.stringify({ voices: [], bodies: [] }));
     const store = await import('./motherCriteriaStore');
-    expect(store.getMotherCriteria()).toEqual({ voices: [], bodies: [] });
+    expect(store.getMotherCriteria()).toEqual({
+      voices: [],
+      bodies: [],
+      recommendedNatures: true,
+    });
   });
 
   test('母本达标标准：非法选项被过滤，合法项保留', async () => {
@@ -36,7 +53,11 @@ describe('store migrate', () => {
       JSON.stringify({ voices: ['+100', '不存在的档'], bodies: ['大块头', 7] }),
     );
     const store = await import('./motherCriteriaStore');
-    expect(store.getMotherCriteria()).toEqual({ voices: ['+100'], bodies: ['大块头'] });
+    expect(store.getMotherCriteria()).toEqual({
+      voices: ['+100'],
+      bodies: ['大块头'],
+      recommendedNatures: true,
+    });
   });
 
   test('个人母本旧多档仅保留第一个合法组合，空组合仍为空', async () => {
