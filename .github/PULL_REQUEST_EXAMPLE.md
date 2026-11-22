@@ -52,8 +52,8 @@ lint-copy: OK
 
 375 / 390 都看过，截图在：
 
-- `.preview/收集计划-375-我的收集.png`、`.preview/收集计划-390-我的收集.png`
-- `.preview/收集计划-375-组内广场.png`、`.preview/收集计划-390-组内广场.png`
+- `../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/收集计划-375-我的收集.png`、`../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/收集计划-390-我的收集.png`
+- `../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/收集计划-375-组内广场.png`、`../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/收集计划-390-组内广场.png`
 - `output/playwright/collecting-tab-clean-375.png`、`collecting-tab-clean-390.png`（移除旧计划横条后的收集中）
 - `output/playwright/group-egg-auto-invite-375.png`、`group-egg-auto-invite-390.png`（双向匹配态的求蛋面板）
 - 可交互 HTML：`docs/prototypes/group-egg-request/2026-11-21/index.html`

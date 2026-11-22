@@ -3,7 +3,7 @@
 **基线**：`894de06`（范围 `779b08c..894de06`，`test` 分支）。本报告所有行号均以 `894de06` 为准。
 **范围**：`src/collector/**`、`src/nearby/**`、`src/pcap/**`、`src/pcap-decoder/tools/pcap-json-app/src/core.js`（及其 `core.d.ts`）。
 **验证**：`npx vitest run src/nearby src/pcap src/collector` → 34 个文件通过、1 个跳过，309 个用例通过（未跑全量、未跑 Playwright）。
-**说明**：工作区 `.preview/`、`2026-11-xx/` 原型与截图不属于本次审查范围，未计入。
+**说明**：工作区 `../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/`、`2026-11-xx/` 原型与截图不属于本次审查范围，未计入。
 
 ---
 

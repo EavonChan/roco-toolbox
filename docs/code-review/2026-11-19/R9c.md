@@ -146,4 +146,4 @@ B) 只做告知：打印 HEAD 提交并要求 `--expect-hash` 必填。
 - `verify` 去掉 `tools/lint-copy.mjs`（基线 `779b08c` 有、当前没有）同样属 R10 范围。
 - `deploy-web.mjs` 未校验清单里的 `minSupportedVersionCode` 合理性，属 **R8b-M02** 的建议，不在本批展开。
 - `e2e` 改动只做了静态枚举与引用检查，按约束未跑真实用例（未起 `npm run preview`、未跑 Playwright 执行）。
-- 工作区里 `docs/设计资产/registry.json` 的未提交修改、`.preview/` 与 `2026-11-xx/` 原型目录不在本次范围。
+- 工作区里 `docs/设计资产/registry.json` 的未提交修改、`../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/` 与 `2026-11-xx/` 原型目录不在本次范围。

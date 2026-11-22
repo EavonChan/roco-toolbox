@@ -14,7 +14,7 @@
 | 审查基线 | `779b08c..6aaf5e7` | `git log --oneline 779b08c..6aaf5e7 \| Measure-Object -Line` → 51 | 已核实 |
 | 总规模 | 523 文件，+37061 −10025 | `git diff --shortstat 779b08c..6aaf5e7` | 已核实 |
 | 代码规模 | 约 +22,546 行（src+functions+android-shell+tools+scripts+desktop+e2e+public） | 按顶层目录 numstat 汇总 | 已核实 |
-| 非代码规模 | docs 150 文件 +8492、根目录 17 文件 +5371、`2026-11-15/` 42 文件 +644；二进制 122 个 | 同上 | 已核实 |
+| 非代码规模 | docs 150 文件 +8492、根目录 17 文件 +5371、`../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/2026-11-15/` 42 文件 +644；二进制 122 个 | 同上 | 已核实 |
 | `test` 当前指向 | `d00739c`；`friend/20261119` 同为 `d00739c` | `git rev-parse test friend/20261119` | 已核实 |
 | 基线之后的 3 个提交 | `e1ec401`（审查清单）、`894de06`（需求详情单行化，**唯一改代码**）、`d00739c`（文档） | `git log --oneline 6aaf5e7..test` | 已核实 |
 | `release` / `bot` | `88bce8d` / `f40640a`；`test..release`、`test..bot` 均为 0 | `git rev-parse release bot`；`git rev-list --count test..release` / `test..bot` | 已核实 |
@@ -501,4 +501,4 @@ npx playwright test <与本次改动最相关的 2~3 个 spec>
 - 122 个二进制文件（图片/webp/apk 等）：不审内容。
 - `package-lock.json` 的格式差异：只确认没有依赖升级意图。
 - 根目录与 `docs/` 下的历史原型 HTML：只登记，不按代码审。
-- 未跟踪目录（`.preview/`、`2026-11-12/`、`2026-11-15/工作区`、`2026-11-16/17/18/`、`output/`、`public/ui/eggs/`、`.playwright-cli/`、`tmp-inspect-pcap.mjs`）：**不纳入本轮**，不要提交、不要清理。
+- 未跟踪目录（`../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/`、`2026-11-12/`、`../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/2026-11-15/工作区`、`2026-11-16/17/18/`、`output/`、`public/ui/eggs/`、`.playwright-cli/`、`tmp-inspect-pcap.mjs`）：**不纳入本轮**，不要提交、不要清理。

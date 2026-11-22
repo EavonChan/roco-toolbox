@@ -9,7 +9,7 @@
 **领域规则**：`docs/domain/**`（蛋组、大亲密度、目标性格、覆盖度、配种排序）、`docs/产品交互规范.md`。
 
 **范围与基准**：审查范围 `779b08c..894de06`（`test` 分支），**行号一律以 `894de06` 为基准**，报告里注明这一点。
-工作区当前有未提交内容（`docs/设计资产/registry.json`、`.preview/`、`2026-11-xx/` 原型目录），**不属于本次审查范围**，不要把它们当成变更来审。
+工作区当前有未提交内容（`docs/设计资产/registry.json`、`../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/`、`2026-11-xx/` 原型目录），**不属于本次审查范围**，不要把它们当成变更来审。
 
 **规范依据白名单**（只能引这些判「中风险」，指不出依据的一律降为「建议」，不计入中风险）：
 1. `tsconfig.json` / `tsconfig.node.json` / `functions/tsconfig.json` 的 `strict`、`noUnusedLocals`、`noUnusedParameters`、`noFallthroughCasesInSwitch`、`isolatedModules`

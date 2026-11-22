@@ -1,7 +1,7 @@
 # R8a · Android 壳 · 采集与附近悬浮（Java）
 
 - **审查基线**：`894de06`（`779b08c..894de06`，`test` 分支）；**行号一律以 `894de06` 为准**。
-- **工作区一致性**：`git diff 894de06..HEAD -- android-shell` 与 `git status -- android-shell` 均为空，磁盘内容即基线内容；`.preview/`、`2026-11-xx/` 原型目录不在范围内。
+- **工作区一致性**：`git diff 894de06..HEAD -- android-shell` 与 `git status -- android-shell` 均为空，磁盘内容即基线内容；`../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/`、`2026-11-xx/` 原型目录不在范围内。
 - **编译校验**：未执行。`android-shell/gradlew.bat compileReleaseJavaWithJavac` 因 `JAVA_HOME` 指向不存在的 `D:\software\jdk\Java\jdk1.8.0_321` 直接失败（`java -version` 也不可用），本报告全部为静态审查结论。
 - **本次覆盖**：`capture/{NearbyPanelController, NearbyOverlayModel, BattleOverlayController, OverlayGeometry, CaptureController, CaptureState, CaptureBridgePolicy, CaptureVpnService}`、`assets/{capture-bridge.js, overlay-map.html, maps/maps.json}`、`MainActivity` 的桥接与生命周期、壳单测。
 
@@ -216,4 +216,4 @@
 
 - `MainActivity` 的 `IdentityRescue`、`UpdateController`、`ServerConfig`、`build.gradle` 通道断言属 R8b，本批只做了调用点确认。
 - 网页侧推送节流、payload 体积与旧壳兼容属 R9a；本批仅从壳的接收视角引用，未作结论。
-- 工作区中的 `.preview/`、`2026-11-1x/` 原型与截图、`docs/设计资产/registry.json` 改动不属本次审查范围。
+- 工作区中的 `../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/`、`2026-11-1x/` 原型与截图、`docs/设计资产/registry.json` 改动不属本次审查范围。

@@ -17,7 +17,7 @@
 ## 1. 开工前必须拍板的 6 件事（不许猜）
 
 - [ ] **① 是否固化基线快照**：工作区有 5 个已改文件 + 1 个新迁移 + 多个未跟踪目录。建议提交一个「审查前基线快照」commit，作为总回滚点；不固化则修复阶段的 HEAD 会被工作区污染。
-- [ ] **② 基线快照纳入哪些未跟踪内容**：建议只 add 代码与文档；`2026-11-12/15/16/17`、`output/`、`public/ui/eggs/`、`.preview/`、`.playwright-cli/`、`tmp-inspect-pcap.mjs` 先确认是产物还是源码，产物不纳入（或补 `.gitignore`），不要直接 `git add -A`。
+- [ ] **② 基线快照纳入哪些未跟踪内容**：建议只 add 代码与文档；`2026-11-12/15/16/17`、`output/`、`public/ui/eggs/`、`../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/`、`.playwright-cli/`、`tmp-inspect-pcap.mjs` 先确认是产物还是源码，产物不纳入（或补 `.gitignore`），不要直接 `git add -A`。
 - [ ] **③ 今天工作区里的巡查改动是否算本轮范围**：`functions/_lib/eggPatrol.ts`、`src/shared/eggPatrol.ts`、`src/shared/eggPatrol.test.ts`、`tools/test/egg-patrol-api.test.mjs`、`functions/schema.sql`、`functions/migrations/2026-11-18-egg-patrol-repeat-reminders.sql`。建议算入（并入 B3 / B4 / B5）。
 - [ ] **④ 是否审 `android-shell/**`**：本轮 +6415/−2111，建议审，拆成 3 批 + 测试跟批。
 - [ ] **⑤ 并行度**：默认 ≤3 个会话（本机终端上限 5）。

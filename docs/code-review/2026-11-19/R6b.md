@@ -155,5 +155,5 @@
 
 - 与本批相邻、未在此展开的：`AccountFilterBar` 重写与 `MyPets` 卡片（R7a / R6a）、`MotherView` 的母本条件控件（R7b）、`e2e/*.spec.ts` 的整体改造（R9c）。`e2e/my-pets.spec.ts:192` 找的 `page-indicator` 在 `779b08c` 基线就已不存在，属既有失效，不是本轮引入。
 - 本轮看板/收集明显改版，`src/data/changelog.json` 没有对应条目（最新为 2026-11-17）；是否必须在发版说明里补一条，按 `docs/发版与更新规范.md` 由发版流程判断。
-- 工作区未提交的 `docs/设计资产/registry.json`、`.preview/`、原型目录未纳入审查，也未改动。
+- 工作区未提交的 `docs/设计资产/registry.json`、`../../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/`、原型目录未纳入审查，也未改动。
 - 未执行 Playwright、未打包、未部署；本报告只做了静态核对与上述单测/类型检查。

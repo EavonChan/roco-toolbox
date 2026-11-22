@@ -60,4 +60,4 @@
 3. 归档只改索引状态，历史 HTML 和附件保留原位。内容变更须经授权并更新 SHA-256。
 4. 更新后生成：`node scripts/design-assets.mjs --write`；验收：`node scripts/design-assets.mjs --check`。校验不自动更改指纹。
 
-扫描范围：根 HTML，docs/、.preview/、日期目录、截图日期目录、.trae-html-share-packages/，及明确排除的 desktop/overlay/ 与补充数据/ HTML。依赖、构建、worktree、运行时源码内 HTML 不作为项目设计稿。漏登会校验失败。
+扫描范围：根 HTML，docs/、../../%E5%8E%9F%E5%9E%8B/%E5%8E%86%E5%8F%B2/preview/、日期目录、截图日期目录、.trae-html-share-packages/，及明确排除的 desktop/overlay/ 与补充数据/ HTML。依赖、构建、worktree、运行时源码内 HTML 不作为项目设计稿。漏登会校验失败。
