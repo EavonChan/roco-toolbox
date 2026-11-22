@@ -279,7 +279,17 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
         data-testid="home-header"
       >
         {view === 'nests' && loaded && activeAccount ? (
-          <section className="relative w-[14rem] max-w-[60%] min-w-0 shrink-0" data-testid="home-account-switcher">
+          /*
+           * 2026-11-22 修「家园页一滑整窗横向走」：
+           * 原来是 `w-[14rem] max-w-[60%] shrink-0`，账号器宽度写死且不许收缩，
+           * 右边「接单上窝 / 刷新家园 / ?」又整组 shrink-0，加起来超过 343px，
+           * 把问号图标挤出屏幕（线上实测 scrollWidth 391 / 视口 375）。
+           * 改成账号器 flex-1 + min-w-0（宽度让出来，名字自己截断），右侧动作保持 shrink-0。
+           */
+          <section
+            className="relative min-w-0 max-w-[14rem] flex-1"
+            data-testid="home-account-switcher"
+          >
             <button
               type="button"
               onClick={() => setAccountPickerOpen((open) => !open)}
