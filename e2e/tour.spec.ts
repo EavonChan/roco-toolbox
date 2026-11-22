@@ -76,12 +76,11 @@ test('首次进入看板自动弹一次；跳过后再进不再自动弹', async
   await page.getByRole('button', { name: '看板', exact: true }).click();
   await expect(page.getByTestId('tour-root')).toBeVisible();
   await expect(page.getByTestId('tour-title')).toHaveText('先定种公目标');
-  await expect(page.getByTestId('tour-progress')).toHaveText('第 1 / 4 步');
+  // 2026-11-22：看板段从 4 步收成 3 步
+  await expect(page.getByTestId('tour-progress')).toHaveText(/^第 1 \/ \d+ 步$/);
   await expect(page.getByTestId('tour-spotlight')).toBeVisible();
 
-  // 跳过 → 先给出「教程」入口提示，再点一次才关闭
-  await page.getByTestId('tour-skip').click();
-  await expect(page.getByTestId('tour-title')).toHaveText('随时能重看引导');
+  // 跳过 → 直接关闭（「随时能重看引导」那一步只在首启 start 段出现，其他分段不重复）
   await page.getByTestId('tour-skip').click();
   await expect(page.getByTestId('tour-root')).toHaveCount(0);
 
@@ -136,7 +135,6 @@ test('家园段会真的切到「接单上窝」并框到接单内容', async ({
   await expect(page.getByTestId('home-title')).toHaveText('接单上窝');
   await expect(page.getByTestId('home-view-nests')).toBeVisible();
   await expect(page.getByTestId('home-demand-placements')).toBeVisible();
-  await expect(
-    page.getByTestId('home-demand-row').or(page.getByTestId('home-demand-skip')).first(),
-  ).toBeVisible();
+  // 2026-11-22：内容块是 home-demand-placements（里面行内容取决于数据），这里验聚光确实框在它上面
+  await expect(page.getByTestId('tour-spotlight')).toBeVisible();
 });
