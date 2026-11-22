@@ -9,6 +9,7 @@ import { CARD, HINT, PAGE, TITLE } from './primitives/styles';
 import { useSnapshots } from './useSnapshots';
 import { labelerFor } from './useOwnedPets';
 import { useHomeRefresh, type HomeRefreshController } from './useHomeRefresh';
+import { EggStockView } from './plan/EggStockView';
 
 /**
  * 家园页（2026-10-27）。
@@ -23,6 +24,10 @@ import { useHomeRefresh, type HomeRefreshController } from './useHomeRefresh';
  */
 export interface HomeLandProps {
   onGoImport?: () => void;
+  /** 蛋仓要跟着小组走：没入组时给一个直接去组内广场的出口 */
+  onGoGroups?: () => void;
+  /** 没登录时同样给出口，不在家园页里做登录表单 */
+  onGoAccount?: () => void;
 }
 
 function formatCapturedAt(value: string): string {
@@ -210,12 +215,13 @@ function AccountHome({ snapshot, label }: { snapshot: AccountSnapshot; label: st
 }
 
 const HOME_VIEW_KEY = 'roco.homeView';
-type HomeView = 'nests' | 'demands';
+type HomeView = 'nests' | 'demands' | 'stock';
 
 const readHomeView = (): HomeView => {
   if (typeof window === 'undefined') return 'nests';
   try {
-    return window.localStorage.getItem(HOME_VIEW_KEY) === 'demands' ? 'demands' : 'nests';
+    const saved = window.localStorage.getItem(HOME_VIEW_KEY);
+    return saved === 'demands' || saved === 'stock' ? saved : 'nests';
   } catch {
     return 'nests';
   }
@@ -236,7 +242,7 @@ export function saveHomeView(view: HomeView): void {
 }
 
 /** 家园现状默认展示首个账号；接单上窝可从页头切换。 */
-export function HomeLand({ onGoImport }: HomeLandProps = {}) {
+export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps = {}) {
   const { snapshots, loaded } = useSnapshots();
   const homeRefresh = useHomeRefresh();
   const labelOf = useMemo(() => labelerFor(snapshots), [snapshots]);
@@ -265,28 +271,32 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
   }, []);
 
   const changeView = (next: string) => {
-    const target: HomeView = next === 'demands' ? 'demands' : 'nests';
+    // 2026-11-22：蛋仓也走页内分页（用户不要悬浮窗）
+    const target: HomeView = next === 'demands' || next === 'stock' ? next : 'nests';
     setView(target);
     setAccountPickerOpen(false);
     saveHomeView(target);
   };
 
   return (
-    <div className={PAGE}>
+    <div className={PAGE} data-testid="home-page" data-view={view}>
       <header
         className="flex items-center gap-2"
         data-tour="home-tabs"
         data-testid="home-header"
+        data-view={view}
       >
+        {/* 2026-11-22 用户口径：账号胶囊宽度跟着账号名走，不再写死 14rem；
+            名字太长时最多占 60% 并省略，别把右边的接单/刷新按钮挤出去。 */}
         {view === 'nests' && loaded && activeAccount ? (
-          <section className="relative w-[14rem] max-w-[60%] min-w-0 shrink-0" data-testid="home-account-switcher">
+          <section className="relative min-w-0 max-w-[60%] shrink-0" data-testid="home-account-switcher">
             <button
               type="button"
               onClick={() => setAccountPickerOpen((open) => !open)}
               aria-expanded={accountPickerOpen}
               aria-controls={accountPickerOpen ? 'home-account-options' : undefined}
               title={activeAccount}
-              className="flex min-h-[36px] w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left text-sm text-slate-700 shadow-sm"
+              className="flex min-h-[36px] w-auto max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left text-sm text-slate-700 shadow-sm"
               data-testid="home-account-summary"
             >
               <span className="truncate">{activeAccount}</span>
@@ -332,9 +342,24 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
           <h1 className={`${TITLE} min-w-0 flex-1`} data-testid="home-title">
             接单上窝
           </h1>
+        ) : view === 'stock' ? (
+          // 横屏：标题让给蛋仓右侧栏的标题栏（index.css 的 .home-stock-title 规则），竖屏照旧
+          <h1 className={`${TITLE} home-stock-title min-w-0 flex-1`} data-testid="home-title">
+            我的蛋仓
+          </h1>
         ) : (
           <div className="min-w-0 flex-1" aria-hidden="true" />
         )}
+        {view === 'nests' && loaded ? (
+          <button
+            type="button"
+            onClick={() => changeView('stock')}
+            className="min-h-[28px] shrink-0 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-600"
+            data-testid="home-egg-stock"
+          >
+            蛋仓
+          </button>
+        ) : null}
         <div className="flex shrink-0 items-center gap-1">
           {view === 'nests' ? (
             <button
@@ -369,6 +394,14 @@ export function HomeLand({ onGoImport }: HomeLandProps = {}) {
           // 接单上窝按全部账号计算，不受家园页的当前账号选择影响。
           <HomeDemandPlacements snapshots={snapshots} labelOf={labelOf} />
         )
+      ) : view === 'stock' ? (
+        // 蛋仓跟着小组走，和有没有家园数据无关，所以排在家园判空前面。
+        <EggStockView
+          snapshots={snapshots}
+          onGoGroups={onGoGroups}
+          onGoAccount={onGoAccount}
+          onBack={() => changeView('nests')}
+        />
       ) : snapshots.length === 0 ? (
         <EmptyState onGoImport={onGoImport} />
       ) : !activeSnapshot?.home ? (

@@ -37,6 +37,16 @@ export function useEggMatching(groupId: string, accountId: string) {
     } finally { if (identity.current === requested) setLoading(false); }
   }, [groupId, key]);
   useEffect(() => {
+    // 没有小组就没有蛋仓 / 需求：别拿空 groupId 去打接口（家园页的蛋仓入口在未入组时会这样挂载）。
+    if (!groupId) {
+      identity.current = '';
+      current.current = null;
+      setData(null);
+      setLoading(false);
+      setBusy(false);
+      setError(null);
+      return;
+    }
     identity.current = key; writing.current=null; setBusy(false); setError(null);
     const cached = cache.get(key) ?? null;
     current.current = cached;
