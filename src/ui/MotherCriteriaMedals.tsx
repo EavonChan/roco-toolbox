@@ -10,7 +10,6 @@ import {
   type MotherVoice,
 } from '../domain/motherCriteria';
 import { getMotherCriteria, setMotherCriteria, useMotherCriteria } from './motherCriteriaStore';
-import { setTargetGrade, useCoverageFilter } from './coverageFilterStore';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { setTargetMode, useTargetMode } from './targetModeStore';
 import { TargetGradeSelector } from './TargetGradeSelector';
@@ -22,25 +21,20 @@ const DEFAULT_GRADE: PetGrade = '大婉';
 
 export interface MotherCriteriaMedalsProps {
   testIdPrefix: string;
-  /**
-   * 母本页（收集 · 母本）打开时，奖牌组合跟**全局目标**（看板「目标奖牌组合（公母共用）」）
-   * 走同一个 store，点选时两处一起写。否则母本页选了「满分大粗」，悬浮窗和
-   * 母本全收集还按旧的「满分大婉」算。
-   *
-   * 目标编辑器（编辑母本标准）不传：那一处是母本自己的口径，不能顺带改种公目标。
-   */
-  syncTargetGrade?: boolean;
 }
 
-/** 母本按体型 + 声音组合选择达标奖牌，**强制单选**：点一个换一个，不累加、也不会清空。 */
-export function MotherCriteriaMedals({ testIdPrefix, syncTargetGrade }: MotherCriteriaMedalsProps) {
+/**
+ * 母本按体型 + 声音组合选择达标奖牌，**强制单选**：点一个换一个，不累加、也不会清空。
+ *
+ * 口径（2026-11-22 用户拍板）：**判定跟所选档位走，覆盖度目标与母本判定互不影响**。
+ * 所以这里只读写母本自己的 store（`motherCriteriaStore`），既不显示看板 / 覆盖度的
+ * 种公目标，也不在点选时顺手改它——以前那样写会让「母本页显示哪一档」和「母本按哪一档
+ * 算已收集」变成两份数据，在看板改目标后直接分叉。
+ */
+export function MotherCriteriaMedals({ testIdPrefix }: MotherCriteriaMedalsProps) {
   const mode = useTargetMode();
   const criteria = useMotherCriteria();
-  const coverageGrades = useCoverageFilter().grades;
-  const selectedGrades =
-    syncTargetGrade && coverageGrades.length > 0
-      ? coverageGrades
-      : selectedGradesFor(criteria, mode);
+  const selectedGrades = selectedGradesFor(criteria, mode);
 
   const saveGrades = (current: MotherCriteria, grades: PetGrade[], targetMode: TargetMode) => {
     const bodies = [...new Set(grades.map((grade) => GRADE_BODY[grade]))];
@@ -63,8 +57,7 @@ export function MotherCriteriaMedals({ testIdPrefix, syncTargetGrade }: MotherCr
 
   const selectGrade = (grade: PetGrade) => {
     const current = getMotherCriteria();
-    // 母本页：全局目标跟着一起换；目标编辑器不传，母本标准自己存
-    if (syncTargetGrade) setTargetGrade(grade);
+    // 只写母本自己的口径：看板 / 覆盖度的种公目标不跟着变（2026-11-22 用户口径）
     const selected = selectedGradesFor(current, mode);
     if (selected.length === 1 && selected[0] === grade) return; // 已经是它：保持选中，不清空
     saveGrades(current, [grade], mode);

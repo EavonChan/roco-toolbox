@@ -430,8 +430,9 @@ export function MotherView({
         />
       </div>
 
-      {/* 母本页的奖牌组合与看板全局目标同一份：syncTargetGrade 让两处一起写 */}
-      <MotherCriteriaMedals testIdPrefix="mother-criteria" syncTargetGrade />
+      {/* 母本页的奖牌组合只读母本自己的口径（2026-11-22 用户口径：判定跟所选档位走，
+          覆盖度目标与母本判定互不影响），不再传 syncTargetGrade 跟看板目标联动 */}
+      <MotherCriteriaMedals testIdPrefix="mother-criteria" />
         <div className="flex flex-wrap items-center justify-between gap-1 px-1">
           <span className="text-[11px] text-slate-400" data-testid="mother-chain-summary">
             共 {matchedGroups.length} 条链 · 已收集 {collectedChainCount}
