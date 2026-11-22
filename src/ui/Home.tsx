@@ -253,6 +253,8 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
   );
   const accounts = useMemo(() => orderedSnapshots.map(labelOf), [orderedSnapshots, labelOf]);
   const [view, setView] = useState<HomeView>(() => readHomeView());
+  /** 蛋仓屏把自己的角色筛选 portal 到标题行里（只有它知道这个账号下有哪些游戏角色）。 */
+  const [eggStockHeaderSlot, setEggStockHeaderSlot] = useState<HTMLElement | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const activeAccount = accounts.includes(selectedAccount ?? '')
@@ -353,9 +355,17 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
           </h1>
         ) : view === 'stock' ? (
           // 横屏：标题让给蛋仓右侧栏的标题栏（index.css 的 .home-stock-title 规则），竖屏照旧
-          <h1 className={`${TITLE} home-stock-title min-w-0 flex-1`} data-testid="home-title">
-            我的蛋仓
-          </h1>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <h1 className={`${TITLE} home-stock-title min-w-0 shrink-0`} data-testid="home-title">
+              我的蛋仓
+            </h1>
+            {/* 角色筛选挂在标题后面（2026-11-23 用户口径）；选择器本体由蛋仓屏挂进来 */}
+            <span
+              ref={setEggStockHeaderSlot}
+              className="flex min-w-0 items-center"
+              data-testid="home-stock-character-slot"
+            />
+          </div>
         ) : (
           <div className="min-w-0 flex-1" aria-hidden="true" />
         )}
@@ -410,6 +420,7 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
           onGoGroups={onGoGroups}
           onGoAccount={onGoAccount}
           onBack={() => changeView('nests')}
+          headerSlot={eggStockHeaderSlot}
         />
       ) : snapshots.length === 0 ? (
         <EmptyState onGoImport={onGoImport} />

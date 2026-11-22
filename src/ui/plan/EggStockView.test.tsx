@@ -1,6 +1,8 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import * as motherGroupsApi from '../../api/motherGroups';
+import type { AccountSnapshot } from '../../domain/parseBackup';
 import { readCurrentGroupId, saveCurrentGroupId } from '../motherGroupStore';
 import { EggStockView } from './EggStockView';
 
@@ -20,7 +22,7 @@ const setLandscape = (landscape: boolean) => {
 
 /**
  * 小组接口按用例返回：这里 mock 的是**服务端**，不 mock `useMotherGroups`。
- * 本次线上 bug 的根因就是「本机偏好 ≠ 群组成员关系」，只有让真实 hook 跑起来
+ * 线上 bug 的根因就是「本机偏好 ≠ 群组成员关系」，只有让真实 hook 跑起来
  * （本地没记住组 ID、服务端却返回了组）才测得到。
  */
 vi.mock('../../api/motherGroups', async (importOriginal) => {
@@ -39,30 +41,28 @@ const detail = {
   members: [{ accountId: 'acc-1', displayName: '甲', joinedAt: 1, resourceRevision: 0, resource: null }],
 };
 
+const h = vi.hoisted(() => ({ eggs: [] as Array<Record<string, unknown>> }));
+
+const eggOf = (id: string, gameAccountKey: string, accountName?: string): Record<string, unknown> => ({
+  id, accountId: 'acc-1', gameAccountKey, ...(accountName ? { accountName } : {}),
+  eggGameId: 3227, nature: '固执', body: '大块头', voice: '婉转声', kind: 'ordinary',
+  status: 'available', listed: true, provenance: 'unknown', confidence: 'manual',
+  labelSource: 'unknown', location: 'bag', lastConfirmedAt: 1,
+});
+
+const snapshotOf = (gameId: number, accountName: string): AccountSnapshot => ({
+  accountName,
+  gameId,
+  accountKey: `uid:${gameId}`,
+  exportedAt: '2026-11-23T00:00:00.000Z',
+  importedAt: '2026-11-23T00:00:00.000Z',
+  pets: [],
+  eggs: [],
+});
+
 vi.mock('./useEggMatching', () => ({
   useEggMatching: () => ({
-    data: {
-      version: 1,
-      state: {
-        demands: [],
-        eggs: [
-          {
-            id: 'e1', accountId: 'acc-1', gameAccountKey: 'uid:1', eggGameId: 3227,
-            nature: '固执', body: '大块头', voice: '婉转声', kind: 'ordinary',
-            status: 'available', listed: true, provenance: 'unknown', confidence: 'manual',
-            labelSource: 'unknown', location: 'bag', lastConfirmedAt: 1,
-          },
-          {
-            id: 'e2', accountId: 'acc-1', gameAccountKey: 'uid:1', eggGameId: 3227,
-            nature: '保守', body: '小不点', voice: '粗嗓门', kind: 'ordinary',
-            status: 'available', listed: false, provenance: 'self-bred', confidence: 'manual',
-            labelSource: 'unknown', location: 'home', lastConfirmedAt: 2,
-          },
-        ],
-        lines: [],
-        trades: [],
-      },
-    },
+    data: { version: 1, state: { demands: [], eggs: h.eggs, lines: [], trades: [] } },
     loading: false,
     busy: false,
     error: null,
@@ -71,12 +71,24 @@ vi.mock('./useEggMatching', () => ({
   }),
 }));
 
+/** 蛋仓屏在真实页面里由 Home 提供标题行的插槽；这里复刻同一份结构。 */
+function SlotHarness({ snapshots = [] as readonly AccountSnapshot[] }: { snapshots?: readonly AccountSnapshot[] }) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  return (
+    <div>
+      <div data-testid="header-slot" ref={setSlot} />
+      <EggStockView snapshots={snapshots} headerSlot={slot} />
+    </div>
+  );
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   // 已登录（身份是 localStorage 里的一行，不 mock 会话模块）
   window.localStorage.setItem('roco.accountId', 'acc-1');
   vi.mocked(motherGroupsApi.listMotherGroups).mockResolvedValue([summary]);
   vi.mocked(motherGroupsApi.getMotherGroup).mockResolvedValue(detail);
+  h.eggs = [eggOf('e1', 'uid:1', '阿甲'), eggOf('e2', 'uid:1', '阿甲')];
 });
 
 afterEach(() => {
@@ -138,6 +150,33 @@ test('没登录时提示先登录，不渲染蛋仓列表', async () => {
   expect(onGoAccount).toHaveBeenCalledTimes(1);
   expect(screen.queryAllByTestId('stock-card')).toHaveLength(0);
   expect(screen.queryByTestId('egg-stock-need-group')).toBeNull();
+});
+
+test('角色筛选：标题行列出本账号的游戏角色，选中后只留这个角色的蛋', async () => {
+  h.eggs = [eggOf('a1', 'uid:1', '阿甲'), eggOf('a2', 'uid:1', '阿甲'), eggOf('b1', 'uid:2', '阿乙')];
+  render(<SlotHarness />);
+  expect(await screen.findAllByTestId('stock-card')).toHaveLength(3);
+  const slot = screen.getByTestId('header-slot');
+  const select = within(slot).getByRole('combobox', { name: '按游戏角色筛选' });
+  expect(within(select).getAllByRole('option').map((option) => option.textContent))
+    .toEqual(['全部角色', '阿甲', '阿乙']);
+  fireEvent.change(select, { target: { value: 'uid:2' } });
+  expect(screen.getAllByTestId('stock-card')).toHaveLength(1);
+});
+
+test('蛋上没带角色名：用本机快照里的账号名顶上', async () => {
+  h.eggs = [eggOf('a1', 'uid:1', '阿甲'), eggOf('b1', 'uid:2')];
+  render(<SlotHarness snapshots={[snapshotOf(2, '阿乙')]} />);
+  expect(await screen.findAllByTestId('stock-card')).toHaveLength(2);
+  const select = within(screen.getByTestId('header-slot')).getByRole('combobox', { name: '按游戏角色筛选' });
+  expect(within(select).getAllByRole('option').map((option) => option.textContent))
+    .toEqual(['全部角色', '阿甲', '阿乙']);
+});
+
+test('只有一个游戏角色：不出现角色筛选，别白占标题行', async () => {
+  render(<SlotHarness />);
+  expect(await screen.findAllByTestId('stock-card')).toHaveLength(2);
+  expect(within(screen.getByTestId('header-slot')).queryByRole('combobox')).toBeNull();
 });
 
 test('横屏蛋仓的标题栏带返回家园，点了回家园页', async () => {

@@ -1,11 +1,14 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CATALOG_VERSION, species } from '../../data/catalog';
 import type { AccountSnapshot } from '../../domain/parseBackup';
 import { saveCurrentGroupId } from '../motherGroupStore';
 import { Button } from '../primitives/Button';
 import { CARD } from '../primitives/styles';
 import { useMotherGroups } from '../useMotherGroups';
+import { EggCharacterSelect } from './EggCharacterSelect';
 import { EggStockPanel } from './EggStockPanel';
+import { eggCharactersOf } from './eggCharacter';
 import { useEggMatching } from './useEggMatching';
 import { useEggStockSync } from './useEggStockSync';
 import { useLandscape } from '../useWideLandscape';
@@ -72,19 +75,40 @@ export interface EggStockViewProps {
   onGoAccount?: () => void;
   /** 回家园页（横屏标题栏里的「返回家园」） */
   onBack?: () => void;
+  /**
+   * 「我的蛋仓」标题行里放角色筛选的位置（Home 提供）。
+   * 竖屏时把选择器挂进去，横屏标题在右侧栏、改由面板筛选栏出选择器。
+   */
+  headerSlot?: HTMLElement | null;
 }
 
-function StockBody({ groupId, me, snapshots, onBack }: {
+function StockBody({ groupId, me, snapshots, onBack, headerSlot }: {
   groupId: string;
   me: string;
   snapshots: readonly AccountSnapshot[];
   onBack?: () => void;
+  headerSlot?: HTMLElement | null;
 }) {
   const api = useEggMatching(groupId, me);
   const sync = useEggStockSync({ api, groupId, me, snapshots });
-  const eggs = (api.data?.state.eggs ?? []).filter((egg) => egg.accountId === me && egg.status !== 'transferred');
+  const landscape = useLandscape();
+  /** '' = 全部角色；同一账号下多个游戏号时才有意义（2026-11-23 用户口径）。 */
+  const [character, setCharacter] = useState('');
+  const myEggs = useMemo(
+    () => (api.data?.state.eggs ?? []).filter((egg) => egg.accountId === me && egg.status !== 'transferred'),
+    [api.data, me],
+  );
+  const characters = useMemo(() => eggCharactersOf(myEggs, snapshots), [myEggs, snapshots]);
+  useEffect(() => {
+    // 换组 / 蛋换走了：选中的角色不在蛋仓里了就回到「全部角色」，别让屏幕空着。
+    if (character && !characters.some((item) => item.key === character)) setCharacter('');
+  }, [character, characters]);
+  const characterSelect = characters.length > 1
+    ? <EggCharacterSelect value={character} characters={characters} onChange={setCharacter} />
+    : null;
   return (
     <div className="flex flex-col gap-2" data-testid="egg-stock-body">
+      {headerSlot && !landscape && characterSelect ? createPortal(characterSelect, headerSlot) : null}
       {sync.syncError ? (
         <div role="alert" className="flex items-center justify-between rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
           <span>蛋仓同步失败：{sync.syncError}</span>
@@ -100,13 +124,23 @@ function StockBody({ groupId, me, snapshots, onBack }: {
       {!api.data ? (
         <p className="py-6 text-center text-xs text-slate-500">{api.loading ? '正在读取蛋仓…' : '蛋仓还没读出来，点上面的重试'}</p>
       ) : (
-        <EggStockPanel eggs={eggs} species={species} busy={api.busy} mutate={api.mutate} collapsibleFilterRail railBack={onBack?{onClick:onBack}:undefined} />
+        <EggStockPanel
+          eggs={myEggs}
+          species={species}
+          busy={api.busy}
+          mutate={api.mutate}
+          collapsibleFilterRail
+          railBack={onBack?{onClick:onBack}:undefined}
+          character={character}
+          characters={characters}
+          onCharacterChange={setCharacter}
+        />
       )}
     </div>
   );
 }
 
-export function EggStockView({ snapshots, onGoGroups, onGoAccount, onBack }: EggStockViewProps) {
+export function EggStockView({ snapshots, onGoGroups, onGoAccount, onBack, headerSlot }: EggStockViewProps) {
   /**
    * 成员资格以**服务端返回的组列表**为准（2026-11-23 F2 线上 bug）。
    *
@@ -155,7 +189,14 @@ export function EggStockView({ snapshots, onGoGroups, onGoAccount, onBack }: Egg
           onBack={onBack}
         />
       ) : groupId ? (
-        <StockBody key={`${groupId}:${accountId}`} groupId={groupId} me={accountId} snapshots={snapshots} onBack={onBack} />
+        <StockBody
+          key={`${groupId}:${accountId}`}
+          groupId={groupId}
+          me={accountId}
+          snapshots={snapshots}
+          onBack={onBack}
+          headerSlot={headerSlot}
+        />
       ) : groupsLoaded ? (
         <EmptyStockState
           testId="egg-stock-need-group"

@@ -1,35 +1,66 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
-import { clearEggMatchingCache, useEggMatching } from './useEggMatching';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import {
+  EGG_MATCHING_FRESH_MS,
+  clearEggMatchingCache,
+  clearEggMatchingMemoryForTests,
+  useEggMatching,
+} from './useEggMatching';
 import { emptyEggWorkflow } from '../../shared/eggWorkflow';
 import { getEggMatching,mutateEggMatching } from '../../api/eggMatching';
 import { getPlanAlertBadge, publishPlanAlertBadge } from './planAlertsStore';
 vi.mock('../../api/eggMatching',async original=>({...await original<typeof import('../../api/eggMatching')>(),getEggMatching:vi.fn(),mutateEggMatching:vi.fn()}));
 const response=()=>({version:0,state:emptyEggWorkflow()});
 beforeEach(()=>{clearEggMatchingCache();vi.mocked(getEggMatching).mockReset().mockResolvedValue(response());vi.mocked(mutateEggMatching).mockReset();});
-test('re-entering the demand center reuses the last loaded data instead of loading again',async()=>{
+afterEach(()=>{vi.restoreAllMocks();});
+
+test('60 秒内再次进入：直接用上次数据，不再请求',async()=>{
   vi.mocked(getEggMatching).mockResolvedValueOnce({...response(),version:3});
   const first=renderHook(()=>useEggMatching('g','a'));
   await waitFor(()=>expect(first.result.current.data?.version).toBe(3));
   first.unmount();
-  let resolve!:(value:ReturnType<typeof response>)=>void;
-  vi.mocked(getEggMatching).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
   const second=renderHook(()=>useEggMatching('g','a'));
   expect(second.result.current.data?.version).toBe(3);
   expect(second.result.current.loading).toBe(false);
-  await act(async()=>{resolve({...response(),version:3});});
+  await new Promise(r=>setTimeout(r,20));
+  expect(getEggMatching).toHaveBeenCalledTimes(1);
 });
-test('a stale background response never replaces newer cached data',async()=>{
+
+test('刷新页面后：先用 localStorage 的蛋仓出内容，不等网络',async()=>{
+  vi.mocked(getEggMatching).mockResolvedValueOnce({...response(),version:7});
+  const first=renderHook(()=>useEggMatching('g','a'));
+  await waitFor(()=>expect(first.result.current.data?.version).toBe(7));
+  first.unmount();
+  // 模拟刷新：内存缓存没了，localStorage 还在
+  clearEggMatchingMemoryForTests();
+  const now=Date.now();
+  vi.spyOn(Date,'now').mockReturnValue(now+EGG_MATCHING_FRESH_MS+1000);
+  let resolve!:(value:ReturnType<typeof response>)=>void;
+  vi.mocked(getEggMatching).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+  const second=renderHook(()=>useEggMatching('g','a'));
+  expect(second.result.current.data?.version).toBe(7);
+  expect(second.result.current.loading).toBe(false);
+  expect(getEggMatching).toHaveBeenCalledTimes(2);
+  await act(async()=>{resolve({...response(),version:8});});
+  expect(second.result.current.data?.version).toBe(8);
+});
+
+test('缓存超过 60 秒：先用缓存出内容，再后台刷新；旧响应不覆盖新数据',async()=>{
   vi.mocked(getEggMatching).mockResolvedValueOnce({...response(),version:5});
   const first=renderHook(()=>useEggMatching('g','a'));
   await waitFor(()=>expect(first.result.current.data?.version).toBe(5));
   first.unmount();
-  vi.mocked(getEggMatching).mockResolvedValueOnce({...response(),version:4});
+  vi.spyOn(Date,'now').mockReturnValue(Date.now()+EGG_MATCHING_FRESH_MS+1000);
+  let resolve!:(value:ReturnType<typeof response>)=>void;
+  vi.mocked(getEggMatching).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
   const second=renderHook(()=>useEggMatching('g','a'));
   expect(second.result.current.data?.version).toBe(5);
-  await waitFor(()=>expect(getEggMatching).toHaveBeenCalledTimes(2));
+  expect(second.result.current.loading).toBe(false);
+  expect(getEggMatching).toHaveBeenCalledTimes(2);
+  await act(async()=>{resolve({...response(),version:4});});
   expect(second.result.current.data?.version).toBe(5);
 });
+
 test('changing identity cannot leave the new group busy or install an old mutation response',async()=>{
   let resolve!:(value:ReturnType<typeof response>)=>void;
   vi.mocked(mutateEggMatching).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
