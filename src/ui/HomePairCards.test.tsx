@@ -88,7 +88,8 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     );
 
     const card = screen.getByTestId('home-pair-card');
-    expect(within(card).getByTestId('home-pair-released')).toHaveTextContent('缺失喵');
+    expect(within(card).queryByTestId('home-pair-released')).toBeNull();
+    expect(card).not.toHaveTextContent('放生');
     expect(within(card).queryByTestId('home-pair-head')).toBeNull();
     const extra = within(card).getByTestId('home-pair-head-extra');
     expect(extra).toHaveTextContent('30%固执');
@@ -117,12 +118,10 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     const card = screen.getByTestId('home-pair-card');
     expect(within(card).getByTestId('home-pair-females')).toHaveTextContent('胆小鳗鱼');
     expect(within(card).getByTestId('home-pair-males')).toHaveTextContent('豆丁鱼');
-    // 母本可能已放生：卡头改写成提示，不再算后代性格和声音
-    const notice = within(card).getByTestId('home-pair-released');
-    expect(notice).toHaveTextContent('胆小鳗鱼');
-    expect(notice).toHaveTextContent('可能已被放生');
-    expect(notice).not.toHaveTextContent('30%');
-    expect(notice).not.toHaveTextContent('dB');
+    // 2026-11-22 用户口径：背包里没有这只实例时，不再提示「已放生 / 不计算后代」
+    expect(card).not.toHaveTextContent('放生');
+    expect(card).not.toHaveTextContent('不计算后代');
+    expect(within(card).queryByTestId('home-pair-released')).toBeNull();
     expect(within(card).queryByTestId('home-pair-head')).toBeNull();
   });
 
