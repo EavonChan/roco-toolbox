@@ -84,7 +84,8 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
     medalBody: p.body === '满体重' ? '大块头' : p.body === '零体重' ? '小不点' : p.body,
     voiceDb: p.voice === '+100' ? 100 : p.voice === '-100' ? -100 : p.voice === '婉转声' ? 96 : p.voice === '粗嗓门' ? -96 : null,
     weightPercent: p.body === '满体重' ? 100 : p.body === '零体重' ? 0 : null,
-    box: p.nestName || '窝未知',
+    // 学院小窝 100% 传性格：文字补回卡底，不能只靠绿框暗示
+    box: `${p.nestName || '窝未知'}${p.academy ? ' · 100%性格' : ''}`,
   });
   const parentNatures=(e:WorkflowEgg)=>[...new Set([e.parents?.mother?.nature,...(e.parents?.fathers??[]).map(f=>f.nature)].filter((n):n is string=>!!n))];
   const fullness=(e:WorkflowEgg)=>{ if(e.location!=='home'||e.body!=='大块头')return ''; const entry=eggWeightOf(name(e.eggGameId));
@@ -212,7 +213,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
         {/* 关键数值；横屏左栏两列，竖屏三列；时间保留完整值，长文本截断但悬停可看全 */}
         <div className={`grid ${landscape ? 'grid-cols-2' : 'grid-cols-3'} gap-x-2 gap-y-1 rounded-lg bg-slate-50 px-2 py-1.5`}>
           <div className="col-span-2 min-w-0">
-            <span className="block text-[9px] leading-3 text-slate-400">获得</span>
+            <span className="block text-[9px] leading-3 text-slate-400">获得时间</span>
             <span className="block truncate text-[11px] leading-4 tabular-nums text-slate-700" title={formatEggObtainedAtFull(egg.obtainedAt)||'采集数据里没有获得时间'} data-testid="detail-obtained-at">{formatEggObtainedAtFull(egg.obtainedAt)||'采集数据里没有获得时间'}</span>
           </div>
           {egg.location==='home'?<div className="min-w-0">
@@ -239,7 +240,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
         <div className="rounded-lg bg-slate-50 px-2 py-1.5" data-testid="stock-parents">
           <div className="mb-1 flex items-center justify-between gap-2">
             <h4 className="text-[11px] font-semibold leading-4 text-slate-700">实际父母</h4>
-            {egg.parents?<span className="shrink-0 text-[9px] text-slate-400">{egg.parents.stale?'配对可能已过期':'按采集时配对推算'}</span>:null}
+            {egg.parents?<span className="shrink-0 text-[9px] text-slate-400">{egg.parents.stale?'采集期间有精灵进出，配对可能已经过期':'按采集时配对推算'}</span>:null}
           </div>
           {egg.parents?<>
             <div className="egg-parent-grid">
@@ -251,6 +252,9 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
           </>:<p className="text-[10px] text-slate-400">暂无亲本记录</p>}
         </div>
         </div>
+
+        {/* 原来父母卡下面那句说明不能省：游戏未确认亲子关系，以实物为准 */}
+        <p className={`text-[9px] leading-3 text-slate-400 ${landscape ? 'col-span-2' : ''}`}>按采集时的当前配对与父母属性推算；游戏未确认亲子关系，收进背包后以实物为准。</p>
 
         {/* 标注编辑器：四列性格、两行体型 / 声音，尽量少占高度 */}
         {labeling?<div ref={labelEditorRef} data-testid="egg-label-editor" className={`flex flex-col gap-1 rounded-lg bg-slate-50 p-2 ${landscape ? 'col-span-2' : ''}`}>
