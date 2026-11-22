@@ -145,6 +145,12 @@ export type CardColumns = 3 | 4 | 5 | 6;
 let columns: CardColumns = ([3, 4, 5, 6] as const).includes(persisted.columns as CardColumns)
   ? (persisted.columns as CardColumns)
   : 4;
+/**
+ * 用户是否显式选过列数（R3-P1-01）：**内存标志**，不能再看模块加载时那份 `persisted`。
+ * 旧实现只看启动快照，于是「选四列」既不落盘、也不被记成「选过」，
+ * 宽横屏的自动补五列副作用会在下一轮渲染立刻把它改回去。
+ */
+let columnsChosen = ([3, 4, 5, 6] as const).includes(persisted.columns as CardColumns);
 
 const listeners = new Set<Listener>();
 
@@ -154,7 +160,8 @@ const persist = (): void => {
     if (heightRange.min !== 0 || heightRange.max !== 100) value.heightRange = heightRange;
     if (sizeUnit !== 'percent') value.sizeUnit = sizeUnit;
     if (eggGroupMatchMode === 'dual') value.eggGroupMatchMode = eggGroupMatchMode;
-    if (columns !== 4) value.columns = columns;
+    // 显式选过就落盘，**四列也算**（R3-P1-01）；没选过时保持缺省（默认四列由读取侧兜底）
+    if (columnsChosen) value.columns = columns;
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(value),
@@ -214,7 +221,7 @@ export function getMyPetsSizeUnit(): SizeUnit {
 /** 卡片列数（3–6）：只改网格排布，不参与筛选；5 / 6 只在宽横屏出现。 */
 /** 用户是否手动选过列数：没选过时宽屏默认五列，选过就完全按用户来（2026-11-21 用户口径）。 */
 export function hasChosenColumns(): boolean {
-  return ([3, 4, 5, 6] as const).includes(persisted.columns as CardColumns);
+  return columnsChosen;
 }
 
 export function getMyPetsColumns(): CardColumns {
@@ -222,9 +229,13 @@ export function getMyPetsColumns(): CardColumns {
 }
 
 export function setMyPetsColumns(next: CardColumns): void {
-  if (columns === next) return;
+  const changed = columns !== next;
+  // 显式选择一律记成「选过」，**包括本来就等于默认四列**（R3-P1-01）：
+  // 否则宽横屏的「没选过就补五列」副作用会在下一次渲染把它改回去。
+  columnsChosen = true;
   columns = next;
-  commit();
+  if (changed) commit();
+  else persist();
 }
 
 /** 卡片显示开关：身高和体重一起切换百分比 / 数值，不参与筛选。 */
@@ -291,6 +302,7 @@ export function resetMyPetsFiltersForTest(): void {
   sizeUnit = 'percent';
   eggGroupMatchMode = 'multi';
   columns = 4;
+  columnsChosen = false;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
   } catch {

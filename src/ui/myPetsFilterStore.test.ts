@@ -198,6 +198,34 @@ describe('myPetsFilterStore 持久化读取', () => {
   });
 });
 
+describe('卡片列数持久化（R3-P1-01）', () => {
+  test('选五列 → 选四列 → 重新加载 store → 仍是四列', async () => {
+    const store = await import('./myPetsFilterStore');
+    store.setMyPetsColumns(5);
+    expect(store.getMyPetsColumns()).toBe(5);
+
+    store.setMyPetsColumns(4);
+    expect(store.getMyPetsColumns()).toBe(4);
+    // 四列也是用户显式选过的，必须落盘（旧实现只在 columns !== 4 时写盘）
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}').columns).toBe(4);
+
+    vi.resetModules();
+    const reloaded = await import('./myPetsFilterStore');
+    expect(reloaded.getMyPetsColumns()).toBe(4);
+    expect(reloaded.hasChosenColumns()).toBe(true);
+  });
+
+  test('点当前已经是四列也算「选过」：宽屏不再把它自动补成五列', async () => {
+    const store = await import('./myPetsFilterStore');
+    expect(store.hasChosenColumns()).toBe(false);
+
+    store.setMyPetsColumns(4);
+
+    expect(store.hasChosenColumns()).toBe(true);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}').columns).toBe(4);
+  });
+});
+
 describe('重置只清精灵背包的标签', () => {
   test('重置后标签清空，且写回 localStorage', async () => {
     localStorage.clear();
