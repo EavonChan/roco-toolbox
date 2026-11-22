@@ -15,7 +15,7 @@
 │   └─ index.css       入口（只做三行 @import）
 ├─ _shell/           评审外壳（HTML + CSS + JS，只有一份）
 ├─ _tools/           脚本：截图 / 对账 / 自检 / 组件规格截图
-├─ _baseline/        基准截图 375 / 390 + 登录态；`_work/` 放排障临时图
+├─ _baseline/        基准截图 375 / 390 + 登录态（`_work/`、`_prev-*/` 不入库，见其 .gitignore）
 ├─ components/       ★ 组件库：一组件一目录（README 八段 + spec.html + 2 张截图）
 │   ├─ README.md       组件索引 + 待补清单
 │   ├─ pet-card/       精灵卡（sm 96 / md 104 × 7 variant）

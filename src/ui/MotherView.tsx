@@ -282,35 +282,50 @@ export function MotherView({
    * 按**主蛋组**（链的最小可孵蛋组）分区，组内按图鉴号排序；每条链一行。
    */
   const chainSections = useMemo(() => {
-    const list = matchedGroups.filter((group) => {
-      const collected = isChainCollected(group);
-      // 计划中的蛋组仍留在「未收集」清单里，用淡蓝卡表示进度（2026-11-21 用户口径）；
-      // 上方「计划收集」只做汇总，不再把卡片从清单里抽走。
-      if (chainFilter === 'uncollected') return !collected;
-      if (chainFilter === 'collected') return collected;
-      return false;
-    });
+    /**
+     * 分母口径（2026-11-22 用户拍板，未收集 / 已收集共用）：
+     * - 分母 = **该蛋组内有多少只精灵**（按链算，不按性格分摊），不是"当前筛出来几条"；
+     * - 开了「只算推荐性格」→ 分母只算**有推荐性格的精灵**；
+     * - 分子 = 该蛋组**实际已收集**的数量，与筛选无关。
+     */
+    const recommendedOnly = criteria.recommendedNatures === true;
+    const hasNatureTarget = (group: MotherGroup) =>
+      eggNatures(catalogSpecies, group.eggGameId, natureOverrides).length > 0;
     const byGroup = new Map<number, MotherGroup[]>();
-    for (const group of list) {
+    for (const group of matchedGroups) {
       const primary = group.eggGroups[0];
       if (primary === undefined) continue;
       const bucket = byGroup.get(primary) ?? [];
       bucket.push(group);
       byGroup.set(primary, bucket);
     }
-    return [...byGroup.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([groupId, groups]) => ({
+    const sections: Array<{
+      groupId: number;
+      label: string;
+      collected: number;
+      total: number;
+      groups: MotherGroup[];
+    }> = [];
+    for (const [groupId, all] of [...byGroup.entries()].sort((a, b) => a[0] - b[0])) {
+      // 计划中的蛋组仍留在「未收集」清单里，用淡蓝卡表示进度（2026-11-21 用户口径）
+      const rows = all.filter((group) => {
+        const collected = isChainCollected(group);
+        return chainFilter === 'collected' ? collected : !collected;
+      });
+      if (rows.length === 0) continue;
+      sections.push({
         groupId,
         label: eggGroupNames[groupId] ?? `蛋组${groupId}`,
-        collected: groups.filter(isChainCollected).length,
-        total: groups.length,
-        groups: [...groups].sort(
+        collected: all.filter(isChainCollected).length,
+        total: recommendedOnly ? all.filter(hasNatureTarget).length : all.length,
+        groups: [...rows].sort(
           (a, b) => a.number.localeCompare(b.number) || a.formLabel.localeCompare(b.formLabel),
         ),
-      }));
+      });
+    }
+    return sections;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchedGroups, chainFilter, owned, criteria, activeVoices.join(','), naturesOf, plannedSet]);
+  }, [matchedGroups, chainFilter, owned, criteria, activeVoices.join(','), naturesOf, plannedSet, natureOverrides, eggGroupNames]);
   useEffect(() => {
     setVisibleSectionCount(initialSections);
   }, [chainFilter, keyword, eggGroupFilter.join(','), initialSections]);
@@ -537,10 +552,15 @@ export function MotherView({
             >
               <p className="flex items-center justify-between bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500">
                 <span>{section.label}</span>
+                {/* 分子 = 已收集数，分母 = 该蛋组精灵数（只算推荐性格时只算有推荐性格的）（2026-11-22） */}
                 <span className="text-slate-400">
-                  {chainFilter === 'collected'
-                    ? `${section.total} 只`
-                    : `已收集 ${section.collected}/${section.total}`}
+                  已收集 {section.collected}/{section.total}
+                  {section.total === 0 ? (
+                    /* 开了「只算推荐性格」而本组没有推荐性格数据：链还在，只是没有数据可算（2026-11-22 用户口径：保留、说清楚） */
+                    <span className="ml-1 text-amber-600" data-testid="mother-section-nodata">
+                      本组暂无推荐性格数据
+                    </span>
+                  ) : null}
                 </span>
               </p>
               <ul

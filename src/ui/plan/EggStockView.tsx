@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { readAccountId } from '../../api/session';
-import { species } from '../../data/catalog';
+import { useEffect, useMemo } from 'react';
+import { CATALOG_VERSION, species } from '../../data/catalog';
 import type { AccountSnapshot } from '../../domain/parseBackup';
-import { readCurrentGroupId } from '../motherGroupStore';
+import { saveCurrentGroupId } from '../motherGroupStore';
 import { Button } from '../primitives/Button';
 import { CARD } from '../primitives/styles';
+import { useMotherGroups } from '../useMotherGroups';
 import { EggStockPanel } from './EggStockPanel';
 import { useEggMatching } from './useEggMatching';
 import { useEggStockSync } from './useEggStockSync';
@@ -14,7 +14,7 @@ import { useLandscape } from '../useWideLandscape';
  * 家园页记住的页内分页（与 Home.tsx 的 HOME_VIEW_KEY 同一个键）。
  * 蛋仓屏渲染不出来时（未登录 / 未入组）把这个记忆抹掉：横屏顶栏整块隐藏，
  * 用户没有别的出口，若还把「上次停在蛋仓」记进下次启动，会一直困在空态。
- * 有账号有小组时不动它，保留「上次在哪就在哪」。
+ * 有账号有小组时不动它，保留「上次在哪就在哪」；**加载中 / 读失败也不算空态**。
  */
 const HOME_VIEW_KEY = 'roco.homeView';
 
@@ -107,42 +107,74 @@ function StockBody({ groupId, me, snapshots, onBack }: {
 }
 
 export function EggStockView({ snapshots, onGoGroups, onGoAccount, onBack }: EggStockViewProps) {
-  /** 进来时读一次身份：登录 / 换组都在「我的」或「组内广场」里发生，回来自然重读。 */
-  const [who, setWho] = useState<{ me: string; groupId: string | null } | null | undefined>(undefined);
-  useEffect(() => {
-    const me = readAccountId();
-    if (!me) {
-      // 空态不写盘：别把「停在蛋仓」记到下次启动（2026-11-22 遗留 1）。
-      forgetEggStockView();
-      setWho(null);
-      return;
-    }
-    const groupId = readCurrentGroupId(me);
-    if (!groupId) forgetEggStockView();
-    setWho({ me, groupId });
-  }, []);
+  /**
+   * 成员资格以**服务端返回的组列表**为准（2026-11-23 F2 线上 bug）。
+   *
+   * 以前用 `readCurrentGroupId()` 判空——那只是「上次在组内广场选了哪个组」的本机偏好：
+   * 账号在组里、但这台设备从没进过组内广场时本地没有记录，整屏会被误拦成「先加入一个小组」。
+   * 组内广场用的是这份 hook，`groups` 才是权威来源。
+   */
+  const mothers = useMotherGroups({
+    snapshots: useMemo(() => [...snapshots], [snapshots]),
+    species,
+    catalogVersion: CATALOG_VERSION,
+  });
+  const { accountId, groups, groupsLoaded, currentGroupId, loading, error } = mothers;
 
-  // 身份还没读出来（effect 尚未执行）时先不画：避免已登录用户闪一下「先登录」空态。
-  if (who === undefined) return null;
+  /**
+   * 有小组：取当前组；本机记住的组不在列表里（退出 / 解散 / 换号）就回落到第一个，
+   * 绝不拿一个服务端不认的组去拉蛋仓。列表没回来之前先不认组，等它回来再定。
+   */
+  const groupId = useMemo(() => {
+    if (!groupsLoaded) return null;
+    return groups.find((group) => group.id === currentGroupId)?.id ?? groups[0]?.id ?? null;
+  }, [currentGroupId, groups, groupsLoaded]);
+
+  // 有小组但本机没记住（或记的不是列表里的）：把回落的组记下来，下次进来不用再等列表。
+  useEffect(() => {
+    if (!accountId || !groupId || groupId === currentGroupId) return;
+    saveCurrentGroupId(accountId, groupId);
+  }, [accountId, currentGroupId, groupId]);
+
+  /**
+   * 只有「未登录」和「服务端确实一个组都没有」才算空态：加载中、列表读失败都不抹分页记忆，
+   * 否则网络慢一次就把用户「上次停在蛋仓」冲掉（E1 的约束，别回退）。
+   */
+  const empty = !accountId || (groupsLoaded && !groupId);
+  useEffect(() => {
+    if (empty) forgetEggStockView();
+  }, [empty]);
 
   return (
     <section className={CARD} data-testid="home-egg-stock-view">
-      {!who ? (
+      {!accountId ? (
         <EmptyStockState
           testId="egg-stock-need-account"
           reason="蛋仓跟着账号走：先登录，蛋仓才会和组内广场那边对得上。"
           action={onGoAccount ? { label: '去登录', onClick: onGoAccount } : undefined}
           onBack={onBack}
         />
-      ) : !who.groupId ? (
+      ) : groupId ? (
+        <StockBody key={`${groupId}:${accountId}`} groupId={groupId} me={accountId} snapshots={snapshots} onBack={onBack} />
+      ) : groupsLoaded ? (
         <EmptyStockState
           testId="egg-stock-need-group"
           reason="蛋仓按小组同步：先加入一个小组，蛋仓才能收集和换出去。"
           action={onGoGroups ? { label: '去组内广场', onClick: onGoGroups } : undefined}
           onBack={onBack}
         />
+      ) : error ? (
+        <EmptyStockState
+          testId="egg-stock-group-error"
+          reason={`小组信息没读出来：${error}`}
+          action={{ label: '重试', onClick: () => void mothers.refresh() }}
+          onBack={onBack}
+        />
       ) : (
-        <StockBody key={`${who.groupId}:${who.me}`} groupId={who.groupId} me={who.me} snapshots={snapshots} onBack={onBack} />
+        // 组列表还在路上：只说读取中，不先闪「先加入一个小组」。
+        <p className="text-xs text-slate-600" data-testid="egg-stock-loading-groups">
+          {loading ? '正在读取你的小组…' : '小组列表还没读出来，稍等一下'}
+        </p>
       )}
     </section>
   );

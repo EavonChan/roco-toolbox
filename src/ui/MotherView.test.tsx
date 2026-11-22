@@ -325,10 +325,145 @@ describe('MotherView', () => {
     );
 
     const section = screen.getByTestId('mother-chain-group-1');
-    expect(section.textContent).toContain('1 只');
-    expect(section.textContent).not.toContain('1/1');
+    // 2026-11-22：已收集也用 分子/分母（分子=已收集数，分母=该蛋组精灵数）
+    expect(section.textContent).toContain('已收集 1/1');
   });
 
+
+/** 分母口径用的样本：一条真有推荐性格的链（3003 火花）+ 两条图鉴里没有推荐性格的链 */
+const denominatorGroups: MotherGroup[] = [
+  {
+    chainKey: 'egg:3003',
+    eggGameId: 3003,
+    collected: true,
+    quality: true,
+    motherClass: '大婉',
+    formLabel: '火花',
+    number: '005',
+    eggGroups: [1],
+    memberIndexes: [0],
+  },
+  {
+    chainKey: 'egg:9001',
+    eggGameId: 9001,
+    collected: false,
+    quality: false,
+    motherClass: null,
+    formLabel: '无推荐甲',
+    number: '901',
+    eggGroups: [1],
+    memberIndexes: [],
+  },
+  {
+    chainKey: 'egg:9002',
+    eggGameId: 9002,
+    collected: false,
+    quality: false,
+    motherClass: null,
+    formLabel: '无推荐乙',
+    number: '902',
+    eggGroups: [1],
+    memberIndexes: [],
+  },
+];
+
+const denominatorOwned: OwnedPet[] = [
+  {
+    gameId: 3003,
+    name: '火花',
+    gender: '母',
+    nature: '固执',
+    voiceDb: 100,
+    medalBody: '大块头',
+    weightPercent: 100,
+    isShiny: false,
+    account: '账号甲',
+  },
+];
+
+test('没开只算推荐性格：分母是该蛋组全部精灵数，不随筛选变', () => {
+  render(
+    <MotherView
+      owned={denominatorOwned}
+      searchIndex={new Map()}
+      eggGroupNames={{ 1: '巨灵组' }}
+      motherGroups={denominatorGroups}
+      mode="perfect"
+      status="missing"
+    />,
+  );
+
+  // 清单里只列未收集的 2 条，但分母是这一组全部 3 只精灵
+  const section = screen.getByTestId('mother-chain-group-1');
+  expect(section.textContent).toContain('已收集 1/3');
+});
+
+test('开了只算推荐性格：分母只算该蛋组内有推荐性格的精灵数', () => {
+  setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, recommendedNatures: true });
+  render(
+    <MotherView
+      owned={denominatorOwned}
+      searchIndex={new Map()}
+      eggGroupNames={{ 1: '巨灵组' }}
+      motherGroups={denominatorGroups}
+      mode="perfect"
+      status="missing"
+    />,
+  );
+
+  const section = screen.getByTestId('mother-chain-group-1');
+  expect(section.textContent).toContain('已收集 1/1');
+});
+
+test('开了只算推荐性格、该组没有推荐性格数据：分组头仍渲染并说明，分母不写非 0', () => {
+  setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, recommendedNatures: true });
+  const noNatureGroups: MotherGroup[] = [
+    {
+      chainKey: 'egg:9001',
+      eggGameId: 9001,
+      collected: false,
+      quality: false,
+      motherClass: null,
+      formLabel: '无推荐甲',
+      number: '901',
+      eggGroups: [1],
+      memberIndexes: [],
+    },
+  ];
+  render(
+    <MotherView
+      owned={[]}
+      searchIndex={new Map()}
+      eggGroupNames={{ 1: '巨灵组' }}
+      motherGroups={noNatureGroups}
+      mode="perfect"
+      status="missing"
+    />,
+  );
+
+  // 链还在清单里（不剔），只是没有推荐性格数据 → 分组头要说明，而不是被漏算
+  const section = screen.getByTestId('mother-chain-group-1');
+  expect(section.textContent).toContain('已收集 0/0');
+  expect(section.textContent).toContain('本组暂无推荐性格数据');
+  expect(section.textContent).not.toMatch(/已收集 0\/[1-9]/);
+  expect(screen.getByTestId('mother-chain-row')).toBeTruthy();
+});
+test('已收集视图同口径：分子是已收集数，分母是该蛋组全部精灵数', () => {
+  render(
+    <MotherView
+      owned={denominatorOwned}
+      searchIndex={new Map()}
+      eggGroupNames={{ 1: '巨灵组' }}
+      motherGroups={denominatorGroups}
+      mode="perfect"
+      status="collected"
+    />,
+  );
+
+  const section = screen.getByTestId('mother-chain-group-1');
+  expect(section.textContent).toContain('已收集 1/3');
+  expect(section.textContent).not.toContain('1 只');
+});
   test('已收集空态给「清除筛选」和「去未收集挑计划」两个出口', () => {
     render(
       <MotherView
