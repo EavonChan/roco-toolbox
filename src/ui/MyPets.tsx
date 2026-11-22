@@ -30,6 +30,7 @@ import { FilterAccordion } from './FilterAccordion';
 import { formatPercent } from './formatPercent';
 import { FilterPanel } from './primitives/FilterPanel';
 import { SearchField } from './primitives/SearchField';
+import { StateNotice } from './primitives/StateNotice';
 import { useOwnedPets } from './useOwnedPets';
 import {
   clearInventoryFilters,
@@ -367,7 +368,9 @@ export interface MyPetsProps {
  * 母本去看「收集 · 母本」。这里不再有视角切换。
  */
 export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
-  const { owned, accounts } = useOwnedPets();
+  const { owned, accounts, all } = useOwnedPets();
+  // 本机全部精灵（不受账号筛选影响）：用来区分「真没数据」和「筛选后为空」
+  const libraryPets = all ?? owned;
   // 筛选状态提升到模块级 store：切页签 / 切视角都不丢（2026-10-04 用户拍板）
   const {
     selected,
@@ -909,9 +912,16 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
         </div>
         <div className="collection-main space-y-1">
       {visiblePets.length === 0 ? (
-        <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
-          没有符合条件的精灵，试试取消部分标签。
-        </div>
+        libraryPets.length === 0 ? (
+          <EmptyState onGoImport={onGoImport} />
+        ) : (
+          <StateNotice
+            kind="empty-query"
+            title="没有符合条件的精灵"
+            description="试试取消部分标签或搜索词。"
+            testId="my-pets-no-match"
+          />
+        )
       ) : (
         <PetList
           pets={visiblePets}
