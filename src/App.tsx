@@ -249,7 +249,11 @@ export default function App() {
       {navigation.page === 'dashboard' ? (
         <Dashboard onNavigate={navigate} />
       ) : navigation.page === 'home' ? (
-        <HomeLand onGoImport={() => navigate({ type: 'open-profile', section: 'data' })} />
+        <HomeLand
+          onGoImport={() => navigate({ type: 'open-profile', section: 'data' })}
+          onGoGroups={() => navigate({ type: 'open-groups' })}
+          onGoAccount={() => navigate({ type: 'open-profile', section: 'identity', returnToGroups: true })}
+        />
       ) : navigation.page === 'profile' || navigation.page === 'nearby' ? (
         <Profile
           section={navigation.page === 'nearby' ? 'data' : navigation.profileSection}

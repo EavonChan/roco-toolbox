@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>modal-surface · 弹层外壳规格</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../_doc.css" />
+    <link rel="stylesheet" href="./modal-surface.css" />
+  </head>
+  <body>
+    <h1>modal-surface</h1>
+    <p>弹层外壳：遮罩 + 头（标题 / 关闭）+ 可滚动主体 + 可选底部操作区。所有悬浮窗、面板、确认框都套它。</p>
+    <div class="lede">
+      <span class="tag">placement: sheet / dialog</span>
+      <span class="tag">最大高 85vh</span>
+      <span class="tag">头脚固定、中间滚动</span>
+    </div>
+
+    <div class="note">
+      <b>只做外壳：</b>这里不定义业务内容与按钮样式；内容区由调用方填，按钮用 <code>primitives/Button</code>。
+    </div>
+
+    <h2>A · 两种放置</h2>
+    <p>下面用固定高度的示意框画结构（真实弹层是 <code>position: fixed</code> 全屏）。</p>
+    <div class="grid">
+      <div class="cell">
+        <div class="demo-frame">
+          <div class="demo-modal modal modal--sheet">
+            <div class="modal__panel">
+              <div class="modal__head">
+                <h2 class="modal__title">怎么补</h2>
+                <button class="modal__close" type="button" aria-label="关闭">×</button>
+              </div>
+              <div class="modal__body"><p style="margin: 0; padding: var(--sp-16); color: var(--text-muted)">主体内容，超出后这里自己滚。</p></div>
+              <div class="modal__foot"><span style="font-size: var(--fs-hint); color: var(--text-faint)">底部操作区（可选）</span></div>
+            </div>
+          </div>
+        </div>
+        <span class="label">sheet · 底部上滑</span>
+      </div>
+      <div class="cell">
+        <div class="demo-frame">
+          <div class="demo-modal modal modal--dialog">
+            <div class="modal__panel">
+              <div class="modal__head">
+                <h2 class="modal__title">确认删除</h2>
+                <button class="modal__close" type="button" aria-label="关闭">×</button>
+              </div>
+              <div class="modal__body"><p style="margin: 0; padding: var(--sp-16); color: var(--text-muted)">居中弹窗，适合确认类。</p></div>
+            </div>
+          </div>
+        </div>
+        <span class="label">dialog · 居中</span>
+      </div>
+    </div>
+
+    <h2>B · 结构</h2>
+    <table>
+      <tr><th>部件</th><th>class</th><th>说明</th></tr>
+      <tr><td>遮罩</td><td><code>.modal</code></td><td><code>position: fixed; inset: 0</code>，点击空白关闭</td></tr>
+      <tr><td>面板</td><td><code>.modal__panel</code></td><td>最大高 85vh；sheet 只圆上两角</td></tr>
+      <tr><td>头</td><td><code>.modal__head</code></td><td>标题 16 semibold + 关闭 44×44 触区</td></tr>
+      <tr><td>身</td><td><code>.modal__body</code></td><td>唯一滚动区，<code>overscroll-behavior: contain</code></td></tr>
+      <tr><td>脚</td><td><code>.modal__foot</code></td><td>可选，放主操作</td></tr>
+    </table>
+
+    <h2>C · Token 引用（③ 组件层）</h2>
+    <table>
+      <tr><th>用途</th><th>token</th><th>值</th></tr>
+      <tr><td>最大高</td><td><code>--modal-max-h</code></td><td>85vh</td></tr>
+      <tr><td>遮罩</td><td><code>--modal-overlay</code></td><td>black 40%</td></tr>
+      <tr><td>圆角</td><td><code>--modal-radius</code></td><td>16px</td></tr>
+      <tr><td>头 / 脚内边距</td><td><code>--modal-head-pad-x/-y</code> / <code>--modal-foot-pad</code></td><td>16/8 / 12</td></tr>
+      <tr><td>标题字号</td><td><code>--modal-title-size</code></td><td>16px</td></tr>
+      <tr><td>关闭触区</td><td><code>--modal-close-size</code></td><td>44px</td></tr>
+      <tr><td>层级</td><td><code>--chrome-z</code></td><td>50（弹层再叠 100 见实现）</td></tr>
+    </table>
+
+    <h2>D · 无障碍</h2>
+    <p>
+      <code>role="dialog"</code> + <code>aria-modal="true"</code> + <code>aria-labelledby</code> 指向标题；打开时焦点进面板，
+      Esc 关闭，关闭后焦点回到触发元素。实现见 <code>ModalSurface.tsx</code>。
+    </p>
+
+    <style>
+      .demo-frame {
+        position: relative;
+        height: var(--doc-demo-frame-h);
+        overflow: hidden;
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--r-md);
+        background: var(--bg-inset);
+        padding: var(--sp-4);
+      }
+      .demo-frame .modal {
+        position: absolute;
+        inset: var(--sp-4);
+        z-index: 0;
+      }
+      .demo-modal {
+        display: flex;
+        background: var(--modal-overlay);
+      }
+      .demo-modal .modal__panel {
+        max-height: none;
+        height: 100%;
+      }
+      .demo-modal--dialog {
+        align-items: center;
+      }
+    </style>
+  </body>
+</html>

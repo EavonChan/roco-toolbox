@@ -1,4 +1,4 @@
-﻿import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { expectProgressZero, progressOf } from './progress';
 
@@ -62,8 +62,9 @@ test('导入抓包数据后看板给出进度与建议', async ({ page }) => {
   await expect(
     page.getByTestId('progress-card-action-mother').getByRole('heading', { name: '母本全收集' }),
   ).toBeVisible();
-  await expect(page.getByRole('heading', { name: '种公推荐' })).toBeVisible();
-  await expect(page.getByTestId('recommend-item').first()).toBeVisible();
+  // 2026-11-22：看板不再放「种公推荐」网格（改到 收集 · 种公 看），这一栏只剩配窝建议 + 两个开关
+  await expect(page.getByTestId('dashboard-action-switch')).toBeVisible();
+  await expect(page.getByTestId('dashboard-action-studs')).toBeVisible();
 });
 
 test('母本进度：看板卡与点进去的母本页是同一口径（数字一致）', async ({ page }) => {
@@ -83,30 +84,6 @@ test('母本进度：看板卡与点进去的母本页是同一口径（数字�
   await expect(page.getByTestId('mother-chain-summary')).toContainText(`已收集 ${cardNum}`);
 });
 
-test('种公推荐：勾选移入已换到折叠区，可展开还原', async ({ page }) => {
-  await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  await expect(page.getByText('还没有数据')).toHaveCount(0);
-  await waitImported(page);
-  await openTab(page, '看板');
-
-  // 首页推荐卡就是精灵卡：点卡面 = 标记「已换到」，条目收进折叠区（默认收起）
-  await expect(page.getByTestId('recommend-done-toggle')).toHaveCount(0);
-  await page
-    .getByTestId('recommend-item')
-    .first()
-    .getByRole('button', { name: /已换到/ })
-    .click();
-  await expect(page.getByTestId('recommend-done-toggle')).toContainText('已换到 1 只');
-  // 展开折叠区：能看到已换到条目（划掉样式）
-  await page.getByTestId('recommend-done-toggle').click();
-  const doneItems = page.getByTestId('recommend-done').getByTestId('recommend-item');
-  await expect(doneItems).toHaveCount(1);
-  await expect(doneItems.first().getByRole('button')).toHaveAttribute('aria-pressed', 'true');
-  // 再点一次 → 还原回主列表
-  await doneItems.first().getByRole('button', { name: /已换到/ }).click();
-  await expect(page.getByTestId('recommend-done-toggle')).toHaveCount(0);
-});
 
 test('重置按钮一键清空已导入的数据', async ({ page }) => {
   await page.goto('/');
@@ -135,7 +112,7 @@ test('切页签不再闪"正在读取本地数据"', async ({ page }) => {
   await waitImported(page);
 
   // 四个页签来回切，加载文案都不应再出现（数据已在内存缓存里）
-  for (const tab of ['收集', '小组', '我的', '看板', '收集', '小组']) {
+  for (const tab of ['收集', '换蛋', '我的', '看板', '收集', '换蛋']) {
     await page.getByRole('button', { name: tab, exact: true }).click();
     await expect(page.getByText('正在读取本地数据')).toHaveCount(0);
   }
@@ -290,47 +267,6 @@ test('用「合并导入」选抓包文件时给出可读错误', async ({ page 
   await expect(page.getByText(/不是小布助手的备份文件/)).toBeVisible();
 });
 
-test('母本按代表档位查看：四档分开计数，切换档位换列表', async ({ page }) => {
-  await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  await expect(page.getByText('还没有数据')).toHaveCount(0);
-  await waitImported(page);
-
-  // 2026-10-24：完整档位库存从看板迁到「收集 · 精灵库」的固定次入口
-  await openTab(page, '收集');
-  await page.getByTestId('collection-kind-inventory').click();
-  await page.getByTestId('inventory-grade-toggle').click();
-
-  // 档位是页内下拉栏：默认显示满分大婉（带计数）
-  const gradeSelect = page.getByTestId('mother-grade-select');
-  await expect(gradeSelect).toContainText(/满分大婉 \(\d+\)/);
-
-  await expect(page.getByTestId('mother-filter-title')).toContainText('按代表档位查看');
-  // 点开下拉栏：4 个档位都在
-  await gradeSelect.click();
-  const gradeOptions = page.getByTestId('mother-grade-options');
-  await expect(gradeOptions).toBeVisible();
-  await expect(gradeOptions.getByRole('radio')).toHaveCount(4);
-
-  // 母本列表默认收起，先展开再断言内容（2026-10-04 优化）
-  await page.getByTestId('mother-list-toggle').click();
-
-  // fixture 里「机械方方」是母本 · 大块头 · 100dB → 属于满分大婉，列表里能看到它的账号与盒子
-  const rows = page.getByTestId('mother-filter-row');
-  await expect(rows.first()).toContainText('机械方方');
-  await expect(rows.first()).toContainText('（');
-  await expect(rows.first()).toContainText('盒子');
-  // 母本列表按账号聚拢：账号作为分组标题
-  await expect(page.getByTestId('account-section').first()).toBeVisible();
-
-  // 切到满分小婉（fixture 里没有）→ 列表为空、下拉选中项跟着换（选择档位会自动展开列表）。
-  // 展开母本列表那一下算「点外部」，下拉已收起（2026-10-24 统一单选：外点关闭），这里重新打开再选
-  await gradeSelect.click();
-  await page.getByTestId('mother-grade-option-小婉').click();
-  await expect(gradeSelect).toContainText(/满分小婉/);
-  await expect(page.getByTestId('mother-filter-result')).toContainText('这个档位暂时没有合格的母本');
-  await expect(page.getByTestId('mother-filter-result')).toBeVisible();
-});
 
 test('当前模式：看板开关切到追双牌，全程序跟着换', async ({ page }) => {
   await page.goto('/');
@@ -344,12 +280,8 @@ test('当前模式：看板开关切到追双牌，全程序跟着换', async ({
 
   await page.getByTestId('target-mode-medal').click();
   await expect(page.getByTestId('target-mode-medal')).toHaveAttribute('aria-pressed', 'true');
-  // 档位库存已迁到「收集 · 精灵库」的次入口；选项不再带「满分」前缀
-  await openTab(page, '收集');
-  await page.getByTestId('collection-kind-inventory').click();
-  await page.getByTestId('inventory-grade-toggle').click();
-  await page.getByTestId('mother-grade-select').click();
-  await expect(page.getByTestId('mother-grade-option-大婉')).toHaveText(/^大婉 \(\d+\)$/);
+  // 2026-11-22：精灵库那个「按代表档位查看」次入口已下线（MotherGradeInventory 没有挂载点了），
+  // 这里只验模式切换本身；奖牌标签不带「满分」前缀由 MotherCriteriaMedals 单测覆盖。
 
   // 覆盖度页显示当前模式
   await openTab(page, '收集');
@@ -394,10 +326,11 @@ test('账号筛选：三页共用一份，取消账号后看板进度跟着变',
   // 覆盖度页是同一个 store：那边取消一个账号，看板这边也是 1/2
   await openTab(page, '收集');
   await page.getByTestId('collection-kind-studs').click();
-  await expect(page.getByTestId('account-filter-summary')).toContainText('(2/2)');
+  // 收集页顶部的账号筛选显示「账号名 2/2」（没有括号，2026-11-21 紧凑条改版）
+  await expect(page.getByTestId('account-filter-summary')).toContainText('2/2');
   await page.getByTestId('account-filter-summary').click();
   await page.getByTestId('account-filter-测试乙').click();
-  await expect(page.getByTestId('account-filter-summary')).toContainText('(1/2)');
+  await expect(page.getByTestId('account-filter-summary')).toContainText('1/2');
 
   await openTab(page, '看板');
   await expect(page.getByTestId('dashboard-account-summary')).toContainText('(1/2)');
@@ -430,15 +363,14 @@ test('跳转后落在目标页顶部：切页签会重置滚动位置', async ({
   await page.goto('/');
   await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
   await waitImported(page);
-  await openTab(page, '看板');
-  await expect(page.getByRole('heading', { name: '种公全收集' })).toBeVisible();
-
-  // 把看板滚到底：页面够长，滚动偏移一定 > 0
+  // 2026-11-22：看板已经短到一屏装得下（滚不动），改用收集 · 母本这种长页来验「切页签回到顶部」
+  await openTab(page, '收集');
+  await page.getByTestId('collection-kind-mothers').click();
+  await expect(page.getByTestId('mother-chain-summary')).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 
-  // 切到覆盖度（目标页比视口高：不重置的话会沿用看板的旧偏移，跳转位置不准）
-  await openTab(page, '收集');
+  // 切到覆盖度（目标页比视口高：不重置的话会沿用上一页的旧偏移，跳转位置不准）
   await page.getByTestId('collection-kind-studs').click();
   await expect(page.getByTestId('coverage-mode')).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
@@ -482,11 +414,14 @@ test.describe('本次导入新增', () => {
     await expect(stud).toContainText('巨灵组');
     await expect(stud).toContainText('盒子01 第3位');
 
-    // 机械方方：大块头 + 100dB 母本 → 分到「满分大婉」档，并标出盒子位置
+    // 机械方方 + 恶魔狼：大块头 + 100dB 母本 → 都分到「满分大婉」档，并各标盒子位置
+    // （2026-11-22 C1 给样本补了恶魔狼，母本数 1 → 2）
     await expect(accounts.first()).toContainText('新增满分大婉种公 1');
-    await expect(accounts.first()).toContainText('新增满分大婉母本 1');
-    await expect(card.getByTestId('import-result-mother').first()).toContainText('机械方方');
-    await expect(card.getByTestId('import-result-mother').first()).toContainText('盒子01');
+    await expect(accounts.first()).toContainText('新增满分大婉母本 2');
+    const mothers = card.getByTestId('import-result-mother');
+    await expect(mothers).toHaveCount(2);
+    await expect(mothers.first()).toContainText('机械方方');
+    await expect(mothers.first()).toContainText('盒子01');
   });
 
   test('同一份数据再导入一次 → 没有新增（不会把老精灵当成新抓的）', async ({ page }) => {

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>segmented-control · 分段控件规格</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../_doc.css" />
+    <link rel="stylesheet" href="./segmented-control.css" />
+  </head>
+  <body>
+    <h1>segmented-control</h1>
+    <p>
+      互斥视角切换：一排按钮里只有一个「当前项」，用于切换同一块内容的观察角度
+      （种公推荐 / 母本缺口、追满分 / 追双牌、未收集 / 收集中 / 已收集）。
+    </p>
+    <div class="lede">
+      <span class="tag">轨道高 34 / 分段 30</span>
+      <span class="tag">2~4 段</span>
+      <span class="tag">state: default / selected / disabled</span>
+    </div>
+
+    <div class="note">
+      <b>何时不用：</b>筛选项（可多选、可清空）用 chip；页面级导航用底部页签；
+      「点一下就执行」的动作用按钮。分段控件只表示<b>互斥视角</b>，不混维度。
+    </div>
+
+    <h2>A · 两段（最常用）</h2>
+    <div class="grid">
+      <div class="cell">
+        <div class="seg seg--fit" role="group" aria-label="看板行动">
+          <button class="seg__item" type="button" aria-pressed="true">种公推荐</button>
+          <button class="seg__item" type="button" aria-pressed="false">母本缺口</button>
+        </div>
+        <span class="label">左侧选中</span>
+      </div>
+      <div class="cell">
+        <div class="seg seg--fit" role="group" aria-label="看板行动">
+          <button class="seg__item" type="button" aria-pressed="false">种公推荐</button>
+          <button class="seg__item" type="button" aria-pressed="true">母本缺口</button>
+        </div>
+        <span class="label">右侧选中</span>
+      </div>
+      <div class="cell">
+        <div class="seg seg--fit" role="group" aria-label="目标模式">
+          <button class="seg__item" type="button" aria-pressed="true">追满分</button>
+          <button class="seg__item" type="button" aria-pressed="false">追双牌</button>
+        </div>
+        <span class="label">短文案</span>
+      </div>
+    </div>
+
+    <h2>B · 三段（收集页状态）</h2>
+    <p>
+      三段没有固定宽度要求：插入到任何位置都行，<b>标签必须完整显示</b>——不缩字号、不加省略号。
+      容器比标签总宽还窄时，控件保持自身宽度（由父级让位），而不是把字挤掉。
+    </p>
+    <div class="stack">
+      <div>
+        <div class="seg seg--fit" role="group" aria-label="收集状态">
+          <button class="seg__item" type="button" aria-pressed="true">未收集</button>
+          <button class="seg__item" type="button" aria-pressed="false">收集中</button>
+          <button class="seg__item" type="button" aria-pressed="false">已收集</button>
+        </div>
+        <span class="label">三段 · 左侧选中</span>
+      </div>
+      <div>
+        <div class="seg seg--fit" role="group" aria-label="收集状态">
+          <button class="seg__item" type="button" aria-pressed="false">未收集</button>
+          <button class="seg__item" type="button" aria-pressed="false">收集中</button>
+          <button class="seg__item" type="button" aria-pressed="false" disabled>已收集</button>
+        </div>
+        <span class="label">三段 · 末段禁用</span>
+      </div>
+      <div>
+        <div class="narrow-box">
+          <div class="seg" role="group" aria-label="收集状态（窄容器）">
+            <button class="seg__item" type="button" aria-pressed="true">未收集</button>
+            <button class="seg__item" type="button" aria-pressed="false">收集中</button>
+            <button class="seg__item" type="button" aria-pressed="false">已收集</button>
+          </div>
+        </div>
+        <span class="label">塞进 140px 容器：字仍然完整（控件保持自身宽度，溢出容器也不缩字）</span>
+      </div>
+    </div>
+
+    <h2>C · 状态明细</h2>
+    <table>
+      <tr><th>状态</th><th>视觉</th><th>说明</th></tr>
+      <tr><td>default</td><td>透明底 + 灰字</td><td>轨道 <code>--bg-muted</code></td></tr>
+      <tr><td>selected</td><td>白底 + 主色字 + 阴影</td><td><code>aria-pressed="true"</code></td></tr>
+      <tr><td>disabled</td><td>浅灰字、不可点</td><td><code>disabled</code> 属性</td></tr>
+    </table>
+
+    <h2>D · Token 引用（③ 组件层）</h2>
+    <table>
+      <tr><th>用途</th><th>token</th><th>值</th></tr>
+      <tr><td>轨道高</td><td><code>--segmented-track-h</code></td><td>34px（2 + 30 + 2）</td></tr>
+      <tr><td>分段高</td><td><code>--segmented-item-h</code></td><td>30px</td></tr>
+      <tr><td>轨道 / 分段圆角</td><td><code>--segmented-radius</code> / <code>-item-radius</code></td><td>8px / 6px</td></tr>
+      <tr><td>内边距 / 间隙</td><td><code>--segmented-pad</code> / <code>-gap</code></td><td>2px / 2px</td></tr>
+      <tr><td>颜色</td><td><code>--bg-muted</code> / <code>--bg-surface</code> / <code>--accent-text</code></td><td>见 semantic.css</td></tr>
+    </table>
+  </body>
+</html>

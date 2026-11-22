@@ -2,12 +2,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { DEFAULT_MOTHER_CRITERIA } from '../domain/motherCriteria';
 import { getMotherCriteria, setMotherCriteria } from './motherCriteriaStore';
+import { getCoverageFilter, setTargetGrade } from './coverageFilterStore';
 import { setTargetMode } from './targetModeStore';
 import { MotherCriteriaMedals } from './MotherCriteriaMedals';
 
 beforeEach(() => {
   setTargetMode('perfect');
   setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA });
+  setTargetGrade('大婉');
 });
 
 describe('MotherCriteriaMedals', () => {
@@ -41,13 +43,30 @@ describe('MotherCriteriaMedals', () => {
       'false',
     );
 
-    // 再点已选中的那个 = 保持选中，不清空（母本页会把全局目标一起写）
+    // 再点已选中的那个 = 保持选中，不清空
     fireEvent.click(screen.getByTestId('mother-criteria-grade-小粗'));
     expect(getMotherCriteria().grades).toEqual(['小粗']);
     expect(screen.getByTestId('mother-criteria-grade-小粗')).toHaveAttribute(
       'aria-pressed',
       'true',
     );
+  });
+
+  test('只读写母本口径：看板目标不同也不显示它，点档位也不改它（R2-P1-01）', () => {
+    setTargetGrade('大粗');
+    setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, grades: ['小婉'] });
+    render(<MotherCriteriaMedals testIdPrefix="mother-criteria" />);
+
+    expect(screen.getByTestId('mother-criteria-grade-小婉')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mother-criteria-grade-大粗')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+
+    fireEvent.click(screen.getByTestId('mother-criteria-grade-大婉'));
+
+    expect(getMotherCriteria().grades).toEqual(['大婉']);
+    expect(getCoverageFilter().grades).toEqual(['大粗']);
   });
 
   test('旧数据的多选组合只显示第一个，不会被改写成默认「大婉」', () => {

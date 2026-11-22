@@ -1,0 +1,90 @@
+/* =============================================================================
+ * modal-surface.css — 弹层外壳（唯一来源）
+ * sheet（底部上滑）/ dialog（居中）两种放置，共用同一套头/身/脚结构。
+ * ========================================================================== */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--chrome-z);
+  display: flex;
+  justify-content: center;
+  background: var(--modal-overlay);
+}
+.modal--sheet {
+  align-items: flex-end;
+  padding: 0;
+}
+.modal--dialog {
+  align-items: center;
+  padding: var(--sp-16);
+}
+
+.modal__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+}
+
+.modal__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: var(--modal-max-h);
+  overflow: hidden;
+  border-radius: var(--modal-radius) var(--modal-radius) 0 0;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xl);
+  font-family: var(--font-sans);
+}
+.modal--dialog .modal__panel {
+  border-radius: var(--modal-radius);
+  max-width: var(--container-max);
+}
+
+.modal__head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-8);
+  border-bottom: 1px solid var(--line-subtle);
+  padding: var(--modal-head-pad-y) var(--modal-head-pad-x);
+}
+.modal__title {
+  margin: 0;
+  font-size: var(--modal-title-size);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  color: var(--text-strong);
+}
+.modal__close {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--modal-close-size);
+  min-height: var(--modal-close-size);
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  font-size: var(--fs-title);
+  line-height: 1;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.modal__foot {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--line-subtle);
+  padding: var(--modal-foot-pad);
+}

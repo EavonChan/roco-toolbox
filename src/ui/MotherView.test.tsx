@@ -6,9 +6,10 @@ import { DEFAULT_MOTHER_CRITERIA } from '../domain/motherCriteria';
 import { eggNatures } from '../domain/recommendedNatures';
 import { species } from '../data/catalog';
 import { MotherView } from './MotherView';
-import { setMotherCriteria } from './motherCriteriaStore';
+import { getMotherCriteria, setMotherCriteria } from './motherCriteriaStore';
 import { setTargetMode } from './targetModeStore';
-import { clearMotherPlan } from './motherPlanStore';
+import { clearMotherPlan, mergeMotherPlan } from './motherPlanStore';
+import { getCoverageFilter, setTargetGrade } from './coverageFilterStore';
 
 const groups: MotherGroup[] = [1, 2, 3, 4].map((id) => ({
   chainKey: `egg:${id}`,
@@ -48,16 +49,16 @@ describe('MotherView', () => {
     expect(list).toHaveClass('grid-cols-4');
     expect(within(list).getAllByTestId('mother-chain-row')).toHaveLength(4);
     expect(within(list).getAllByTestId('pet-avatar')).toHaveLength(4);
-    // 2026-11-21：母本卡改成精灵背包同款（44px 头像、8px 名字、104px 高），未收集白底灰边
+    // 2026-11-22：母本卡与看板四列卡统一（48px 头像、10px 名字、104px 高、白底灰边、满宽融合底条）
     expect(within(list).getAllByTestId('pet-card-avatar')[0]).toHaveClass(
-      'top-[16px]',
-      'h-11',
-      'w-11',
+      'top-[18px]',
+      'h-12',
+      'w-12',
     );
-    expect(within(list).getAllByTestId('pet-avatar')[0]).toHaveClass('h-11', 'w-11');
+    expect(within(list).getAllByTestId('pet-avatar')[0]).toHaveClass('h-12', 'w-12');
     expect(within(list).getAllByRole('heading', { level: 3 })[0]).toHaveClass(
-      'top-[62px]',
-      'text-[8px]',
+      'top-[66px]',
+      'text-[10px]',
       'font-bold',
     );
     expect(within(list).getAllByTestId('mother-chain-row')[0]).toHaveAttribute(
@@ -100,9 +101,9 @@ describe('MotherView', () => {
     const planButton = within(planRow).getByTestId('mother-plan-toggle');
     fireEvent.click(planButton);
     expect(screen.queryByTestId('gap-fill-dialog')).toBeNull();
-    // 计划中换成淡蓝底（2026-11-21 用户口径）
+    // 计划中换成淡蓝底（2026-11-22：改成满宽融合条，底色统一 sky-50）
     expect(planRow).toHaveAttribute('data-mother-status', 'planned');
-    expect(within(planRow).getByTestId('mother-plan-toggle')).toHaveClass('bg-sky-100');
+    expect(within(planRow).getByTestId('mother-plan-toggle')).toHaveClass('bg-sky-50');
   });
 
   test('已收集卡片只显示「查看」，按达标母本给性格上色，点击查看带齐背包筛选', () => {
@@ -264,4 +265,173 @@ describe('MotherView', () => {
     fireEvent.click(more);
     expect(screen.getAllByTestId('mother-chain-row').length).toBeGreaterThan(60);
   });
+
+  test('「计划收集」折叠区已下线，计划中的链只留在未收集清单里', () => {
+    mergeMotherPlan(['egg:1', 'egg:2']);
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={groups}
+        mode="perfect"
+        status="missing"
+      />,
+    );
+
+    expect(screen.queryByTestId('mother-plan')).toBeNull();
+    expect(screen.queryByTestId('mother-plan-row')).toBeNull();
+    expect(screen.queryByTestId('mother-plan-clear-done')).toBeNull();
+    const statuses = screen
+      .getAllByTestId('mother-chain-row')
+      .map((row) => row.getAttribute('data-mother-status'));
+    expect(statuses).toContain('planned');
+  });
+
+  test('已收集分组标题只给只数，不再显示恒等于 N/N 的进度', () => {
+    const nature = eggNatures(species, 3003, {})[0] ?? '固执';
+    const group: MotherGroup = {
+      chainKey: 'egg:3003',
+      eggGameId: 3003,
+      collected: true,
+      quality: true,
+      motherClass: '大婉',
+      formLabel: '火花',
+      number: '005',
+      eggGroups: [1],
+      memberIndexes: [0],
+    };
+    render(
+      <MotherView
+        owned={[
+          {
+            gameId: 3003,
+            name: '火花',
+            gender: '母',
+            nature,
+            voiceDb: 100,
+            medalBody: '大块头',
+            weightPercent: 100,
+            isShiny: false,
+            account: '账号甲',
+          },
+        ]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '巨灵组' }}
+        motherGroups={[group]}
+        mode="perfect"
+        status="collected"
+      />,
+    );
+
+    const section = screen.getByTestId('mother-chain-group-1');
+    expect(section.textContent).toContain('1 只');
+    expect(section.textContent).not.toContain('1/1');
+  });
+
+  test('已收集空态给「清除筛选」和「去未收集挑计划」两个出口', () => {
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={groups}
+        mode="perfect"
+        status="collected"
+      />,
+    );
+
+    expect(screen.getByTestId('mother-chain-empty')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '清除筛选' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '去未收集挑计划' }));
+    expect(
+      screen.getByTestId('mother-chain-filter-uncollected').getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
 });
+
+/**
+ * 2026-11-22 用户口径：**判定跟所选档位走，覆盖度目标与母本判定互不影响**。
+ * 母本页显示与判定必须同读母本 store；点档位不能顺手改看板 / 覆盖度的种公目标。
+ */
+describe('母本页奖牌显示与判定同源（R2-P1-01）', () => {
+  beforeEach(() => {
+    setTargetGrade('大婉');
+  });
+
+  const motherGradePressed = (grade: string) =>
+    screen.getByTestId(`mother-criteria-grade-${grade}`).getAttribute('aria-pressed');
+
+  test('显示读母本 store；点档位只写母本 store，不改覆盖度目标', () => {
+    // 看板 / 覆盖度的种公目标 = 大粗，母本自己的档位 = 小粗：两处故意选不一样
+    setTargetGrade('大粗');
+    setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, grades: ['小粗'] });
+
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '怪兽组' }}
+        motherGroups={groups}
+        mode="perfect"
+        status="missing"
+      />,
+    );
+
+    // 高亮跟母本自己那份走，不再被看板目标顶掉
+    expect(motherGradePressed('小粗')).toBe('true');
+    expect(motherGradePressed('大粗')).toBe('false');
+
+    fireEvent.click(screen.getByTestId('mother-criteria-grade-大婉'));
+
+    expect(getMotherCriteria().grades).toEqual(['大婉']);
+    expect(getCoverageFilter().grades).toEqual(['大粗']);
+  });
+
+  test('「已收集」按母本档位判定，不跟看板目标走', () => {
+    // 一只大粗母本；看板目标恰好是大粗，母本档位是大婉 → 这条链不算已收集
+    const owned: OwnedPet[] = [
+      {
+        gameId: 3003,
+        name: '火花',
+        gender: '母',
+        nature: '固执',
+        voiceDb: -100,
+        medalBody: '大块头',
+        weightPercent: 100,
+        isShiny: false,
+        account: '账号甲',
+      },
+    ];
+    const group: MotherGroup = {
+      chainKey: 'egg:3003',
+      eggGameId: 3003,
+      collected: false,
+      quality: false,
+      motherClass: null,
+      formLabel: '火花',
+      number: '005',
+      eggGroups: [1],
+      memberIndexes: [0],
+    };
+    setTargetGrade('大粗');
+    setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, grades: ['大婉'] });
+
+    render(
+      <MotherView
+        owned={owned}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '巨灵组' }}
+        motherGroups={[group]}
+        mode="perfect"
+        status="missing"
+      />,
+    );
+
+    expect(screen.getByTestId('mother-chain-summary').textContent).toContain('已收集 0');
+  });
+});
+
+
+
+

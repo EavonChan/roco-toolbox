@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>pet-card · 精灵卡规格</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../_doc.css" />
+    <link rel="stylesheet" href="./pet-card.css" />
+
+  </head>
+  <body>
+    <h1>pet-card</h1>
+    <p>
+      精灵卡：在看板、收集、背包、需求里展示“一只精灵 + 它的蛋组/性格/状态”的卡片。全站只有这一个组件，
+      通过 <code>size</code> × <code>variant</code> × <code>state</code> 三个维度表达不同用途。
+    </p>
+    <div class="lede">
+      <span class="tag">size: sm 96 / md 104</span>
+      <span class="tag">variant: 7 个</span>
+      <span class="tag">state: 5 个</span>
+      <span class="tag tag--warn">变更：母本卡 106 → 104</span>
+    </div>
+
+    <div class="note">
+      <b>2026-11-22 尺寸收敛：</b>母本卡原来 106px，本次并入 <code>--pet-card-height-md</code>（104px）。
+      下面「尺寸对照」里用红色虚线标出了 −2px 的差；106px 只允许出现在本对照图里，生产样式与页面不得引用。
+    </div>
+
+    <!-- ================= A. 尺寸对照 ================= -->
+    <h2>A · 尺寸对照（含 106 → 104）</h2>
+    <p>左：旧母本卡 106px（已废弃，仅对照）。中/右：新的 md 104 与 sm 96。</p>
+    <div class="ruler">
+      <div class="ruler-item legacy">
+        <div class="pc pc--md pc--mother" data-status="uncollected" style="width: 84px">
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pc__name">白发懒人</div>
+          <div class="pc__footer">计划</div>
+        </div>
+        <span class="delta"></span>
+        <div class="mark" data-h="106 旧" style="top: 0"></div>
+      </div>
+      <div class="ruler-item">
+        <div class="pc pc--md pc--mother pc--with-footer" data-status="uncollected" style="width: 84px">
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pc__name">白发懒人</div>
+          <div class="pc__footer">计划</div>
+        </div>
+        <div class="mark" data-h="104 md" style="top: 0"></div>
+      </div>
+      <div class="ruler-item">
+        <div class="pc pc--sm" style="width: 84px">
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pc__name">白发懒人</div>
+        </div>
+        <div class="mark" data-h="96 sm" style="top: 0"></div>
+      </div>
+    </div>
+
+    <!-- ================= B. 七个变体 ================= -->
+    <h2>B · 变体 × 尺寸（7 个）</h2>
+    <p>变体按“用途”命名，不按外观；<code>compact</code> / <code>stack</code> 用 sm 96，其余用 md 104。</p>
+
+    <h3 style="margin: 0 0 var(--sp-4); font-size: var(--fs-meta); color: var(--text-muted)">stud-recommend · 种公推荐（md）</h3>
+    <div class="grid">
+      <div class="cell">
+        <div class="pc pc--md pc--stud">
+          <div class="pc__head">
+            <div class="pc__left">
+              <span class="pc__number">No.027</span>
+              <span class="pc__chips"><span class="pc__chip">巨灵组</span></span>
+            </div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">固执</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+          <div class="pc__name">布是石</div>
+        </div>
+        <span class="label">default</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--stud pc--hover">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__number">No.142</span><span class="pc__chips"><span class="pc__chip">妖精组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">平和</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3436/icon.png" alt="" /></div>
+          <div class="pc__name">柴渣虫</div>
+        </div>
+        <span class="label">hover</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--stud pc--selected">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__number">No.258</span><span class="pc__chips"><span class="pc__chip">海洋组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">聪明</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3536/icon.png" alt="" /></div>
+          <div class="pc__name">乌达·极夜</div>
+        </div>
+        <span class="label">selected</span>
+      </div>
+    </div>
+
+    <h3 style="margin: var(--sp-16) 0 var(--sp-4); font-size: var(--fs-meta); color: var(--text-muted)">mother · 母本（md，三态底色 + 融合底栏）</h3>
+    <div class="grid">
+      <div class="cell">
+        <div class="pc pc--md pc--mother pc--with-footer" data-status="uncollected">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__number">No.027</span><span class="pc__chips"><span class="pc__chip">巨灵组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">平和</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+          <div class="pc__name">布是石</div>
+          <div class="pc__footer">计划</div>
+        </div>
+        <span class="label">未收集 · 白</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--mother pc--with-footer" data-status="planned">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__number">No.142</span><span class="pc__chips"><span class="pc__chip">妖精组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">固执</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3436/icon.png" alt="" /></div>
+          <div class="pc__name">柴渣虫</div>
+          <div class="pc__footer">已计划</div>
+        </div>
+        <span class="label">计划中 · sky</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--mother pc--with-footer" data-status="collected">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__number">No.076</span><span class="pc__chips"><span class="pc__chip">海洋组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature" data-collected="true">沉默</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3536/icon.png" alt="" /></div>
+          <div class="pc__name">海盔虫</div>
+          <div class="pc__footer">查看</div>
+        </div>
+        <span class="label">已收集 · emerald</span>
+      </div>
+    </div>
+
+    <h3 style="margin: var(--sp-16) 0 var(--sp-4); font-size: var(--fs-meta); color: var(--text-muted)">gap · 缺口（md） / inventory · 背包（md）</h3>
+    <div class="grid">
+      <div class="cell">
+        <div class="pc pc--md pc--gap">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__number">No.220</span><span class="pc__chips"><span class="pc__chip">海洋组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">胆小</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+          <div class="pc__name">布是石</div>
+        </div>
+        <span class="label">gap · default</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--inventory pc--with-footer" data-gender="母">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__number">No.007</span><span class="pc__chips"><span class="pc__chip">魔力组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">固执</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3001/icon.png" alt="" /></div>
+          <div class="pc__name">火神</div>
+          <div class="pc__details">高 100% · 重 46.7%</div>
+          <div class="pc__footer">哈基米 · 盒子01-1</div>
+        </div>
+        <span class="label">inventory · 母</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--inventory" data-gender="公">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__number">No.048</span><span class="pc__chips"><span class="pc__chip">动物组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">稳重</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3008/icon.png" alt="" /></div>
+          <div class="pc__name">音速犬·本来</div>
+          <div class="pc__details">高 21.8% · 重 96.4%</div>
+        </div>
+        <span class="label">inventory · 公</span>
+      </div>
+    </div>
+
+    <h3 style="margin: var(--sp-16) 0 var(--sp-4); font-size: var(--fs-meta); color: var(--text-muted)">compact（sm） / stack（sm） / demand（md）</h3>
+    <div class="grid grid--wide">
+      <div class="cell">
+        <div class="pc pc--sm pc--compact pc--with-footer">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__chips"><span class="pc__chip">巨灵组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">平和</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pc__name">白发懒人</div>
+          <div class="pc__details">高 100% · 重 98.3%</div>
+          <div class="pc__footer">盒子31 第6位</div>
+        </div>
+        <span class="label">compact · 96</span>
+      </div>
+      <div class="cell">
+        <div class="pc-stack">
+          <div class="pc pc--sm"><div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div><div class="pc__name">白发懒人</div></div>
+          <div class="pc pc--sm pc--academy"></div>
+        </div>
+        <span class="label">stack · 96</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--demand pc--with-footer" style="width: var(--pet-card-compact-width)">
+          <div class="pc__head">
+            <div class="pc__left"><span class="pc__chips"><span class="pc__chip">巨灵组</span></span></div>
+            <div class="pc__right"><span class="pc__natures"><span class="pc__nature">固执</span></span></div>
+          </div>
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3436/icon.png" alt="" /></div>
+          <div class="pc__name">柴渣虫</div>
+          <div class="pc__footer">待接单</div>
+        </div>
+        <span class="label">demand · 104</span>
+      </div>
+    </div>
+
+    <!-- ================= C. 状态 ================= -->
+    <h2>C · 状态（5 个，以 mother md 为例）</h2>
+    <div class="grid">
+      <div class="cell">
+        <div class="pc pc--md pc--mother pc--with-footer" data-status="uncollected">
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+          <div class="pc__name">布是石</div>
+          <div class="pc__footer">计划</div>
+        </div>
+        <span class="label">default</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--mother pc--with-footer pc--hover" data-status="uncollected">
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+          <div class="pc__name">布是石</div>
+          <div class="pc__footer">计划</div>
+        </div>
+        <span class="label">hover</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--mother pc--with-footer pc--selected" data-status="planned">
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+          <div class="pc__name">布是石</div>
+          <div class="pc__footer">已计划</div>
+        </div>
+        <span class="label">selected</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--mother pc--with-footer pc--disabled" data-status="uncollected">
+          <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+          <div class="pc__name">布是石</div>
+          <div class="pc__footer">计划</div>
+        </div>
+        <span class="label">disabled</span>
+      </div>
+      <div class="cell">
+        <div class="pc pc--md pc--empty">暂无数据</div>
+        <span class="label">empty</span>
+      </div>
+    </div>
+
+    <!-- ================= D. Anatomy ================= -->
+    <h2>D · Anatomy（6 个部件）</h2>
+    <div class="anatomy" style="margin-bottom: var(--sp-24)">
+      <div class="pc pc--md pc--mother pc--with-footer" data-status="uncollected" style="width: 160px">
+        <div class="pc__head">
+          <div class="pc__left"><span class="pc__number">No.027</span><span class="pc__chips"><span class="pc__chip">巨灵组</span></span></div>
+          <div class="pc__right"><span class="pc__natures"><span class="pc__nature">平和</span></span></div>
+        </div>
+        <div class="pc__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+        <div class="pc__name">布是石</div>
+        <div class="pc__footer">计划</div>
+      </div>
+      <span class="pin" style="left: 12px; top: 10px">1</span>
+      <span class="pin" style="left: 128px; top: 10px">2</span>
+      <span class="pin" style="left: 73px; top: 40px">3</span>
+      <span class="pin" style="left: 73px; top: 84px">4</span>
+      <span class="pin" style="left: 73px; top: 118px">5</span>
+      <span class="pin" style="left: 12px; top: 118px">6</span>
+    </div>
+    <table>
+      <tr><th>#</th><th>部件</th><th>class</th><th>说明</th></tr>
+      <tr><td>1</td><td>图鉴号 / 蛋组</td><td><code>.pc__left</code></td><td>左上角，蛋组最多两行，超出截断</td></tr>
+      <tr><td>2</td><td>性格</td><td><code>.pc__right</code></td><td>贴右上角，未达标灰、已收集绿</td></tr>
+      <tr><td>3</td><td>头像</td><td><code>.pc__avatar</code></td><td>48px 居中；有底栏时 top 18，无底栏 top 24</td></tr>
+      <tr><td>4</td><td>名字</td><td><code>.pc__name</code></td><td>10px，长名字用精简形态（<code>乌达_极夜的样子 → 乌达·极夜</code>）</td></tr>
+      <tr><td>5</td><td>细节行</td><td><code>.pc__details</code></td><td>仅背包/紧凑出现（高/重/盒位），8px</td></tr>
+      <tr><td>6</td><td>底栏</td><td><code>.pc__footer</code></td><td>满宽融合条 18px，圆角跟随卡片</td></tr>
+    </table>
+
+    <!-- ================= E. Token ================= -->
+    <h2>E · Token 引用（组件层 ③）</h2>
+    <table>
+      <tr><th>用途</th><th>token</th><th>值</th></tr>
+      <tr><td>高度 sm / md</td><td><code>--pet-card-height-sm / md</code></td><td>96px / 104px</td></tr>
+      <tr><td>头像</td><td><code>--pet-card-avatar</code></td><td>48px</td></tr>
+      <tr><td>名字字号 / 行高</td><td><code>--pet-card-name-size / line</code></td><td>10px / 12px</td></tr>
+      <tr><td>底栏高度</td><td><code>--pet-card-footer-h</code></td><td>18px</td></tr>
+      <tr><td>圆角 / 内边距</td><td><code>--pet-card-radius / pad</code></td><td>12px / 4px</td></tr>
+      <tr><td>卡头字号</td><td><code>--pet-card-meta-size / chip-size</code></td><td>7px / 9px</td></tr>
+    </table>
+    <p style="margin-top: var(--sp-16)">
+      颜色一律走 ② semantic：<code>--state-default/planned/collected-*</code>、<code>--text-*</code>、<code>--line-*</code>。
+      本页与 <code>pet-card.css</code> 内不出现裸色值。
+    </p>
+  </body>
+</html>

@@ -16,8 +16,10 @@ import type { CollectionSummary } from './useCollectionSummary';
  * 否则同一个缺口在两边给的概率会不一样。所以把条件组装、建议计算和
  * 目标卡文案都收在这一个 hook 里。
  *
- * 档位取的是全局目标奖牌组合（看板「公母共用」那一组；母本页顶部四张组合卡
- * 写的是同一个 store，选「满分大粗」两边都会变），以前只差声音图标没跟着档位走。
+ * 档位取的是全局目标奖牌组合（看板「公母共用」那一组）。**母本页顶部四张组合卡不再
+ * 跟它联动**（2026-11-22 用户口径：判定跟所选档位走，覆盖度目标与母本判定互不影响）：
+ * 快照里的 `targetLabel` / 奖牌图标仍然是看板 / 覆盖度那份，母本页只拿它当"怎么补"
+ * 悬浮窗的目标说明，母本达标判定另有 `motherCriteriaStore` 一份。
  */
 export interface MotherSuggestionsView {
   selectedGrade: PetGrade | null;

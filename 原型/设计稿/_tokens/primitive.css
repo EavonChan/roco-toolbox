@@ -1,0 +1,155 @@
+/* =============================================================================
+ * ① primitive.css — 原值层（只放"是什么"，不写"用在哪"）
+ *
+ * 规矩：
+ *   - 本层只允许被 ② semantic 与 ③ component 引用，页面/组件**不许直接**引用；
+ *   - 换主题只改这一层（例如把主色换成另一个色阶），上层自动跟着变；
+ *   - 取值全部来自线上实测与 Tailwind v3 默认调色板，不凭记忆新增。
+ *
+ * 证据链见 原型/设计稿/README.md「token 取证」与 _baseline/基线信息.json。
+ * ========================================================================== */
+
+:root {
+  /* ---------------- 调色板：只收线上真的用到的档位 ---------------- */
+
+  /* slate：中性阶，文字/描边/内嵌底主力 */
+  --c-slate-50: #f8fafc;
+  --c-slate-100: #f1f5f9;
+  --c-slate-200: #e2e8f0;
+  --c-slate-300: #cbd5e1;
+  --c-slate-400: #94a3b8;
+  --c-slate-500: #64748b;
+  --c-slate-600: #475569;
+  --c-slate-700: #334155;
+  --c-slate-800: #1e293b;
+  --c-slate-900: #0f172a;
+  --c-slate-950: #020617;
+
+  /* emerald：主色。选中态 / 主按钮 / 进度 */
+  --c-emerald-50: #ecfdf5;
+  --c-emerald-100: #d1fae5;
+  --c-emerald-200: #a7f3d0;
+  --c-emerald-300: #6ee7b7;
+  --c-emerald-400: #34d399;
+  --c-emerald-500: #10b981;
+  --c-emerald-600: #059669;
+  --c-emerald-700: #047857;
+  --c-emerald-800: #065f46;
+  --c-emerald-900: #064e3b;
+
+  /* rose：危险 / 未收集 / 红点 */
+  --c-rose-50: #fff1f2;
+  --c-rose-100: #ffe4e6;
+  --c-rose-200: #fecdd3;
+  --c-rose-300: #fda4af;
+  --c-rose-400: #fb7185;
+  --c-rose-500: #f43f5e;
+  --c-rose-600: #e11d48;
+  --c-rose-700: #be123c;
+
+  /* amber：提醒 / 数据过期 / 待办 */
+  --c-amber-50: #fffbeb;
+  --c-amber-100: #fef3c7;
+  --c-amber-200: #fde68a;
+  --c-amber-300: #fcd34d;
+  --c-amber-400: #fbbf24;
+  --c-amber-500: #f59e0b;
+  --c-amber-600: #d97706;
+  --c-amber-700: #b45309;
+  --c-amber-800: #92400e;
+  --c-amber-900: #78350f;
+
+  /* sky：信息 / 采集状态 */
+  --c-sky-50: #f0f9ff;
+  --c-sky-100: #e0f2fe;
+  --c-sky-200: #bae6fd;
+  --c-sky-300: #7dd3fc;
+  --c-sky-400: #38bdf8;
+  --c-sky-500: #0ea5e9;
+  --c-sky-600: #0284c7;
+  --c-sky-700: #0369a1;
+  --c-sky-800: #075985;
+
+  /* 低频：只在个别卡片上出现 */
+  --c-lime-50: #f7fee7;
+  --c-lime-700: #4d7c0f;
+  --c-violet-50: #f5f3ff;
+  --c-violet-300: #c4b5fd;
+  --c-violet-700: #6d28d9;
+  --c-pink-50: #fdf2f8;
+  --c-pink-100: #fce7f3;
+  --c-pink-200: #fbcfe8;
+  --c-pink-500: #ec4899;
+  --c-pink-600: #db2777;
+  --c-pink-700: #be185d;
+  --c-pink-800: #9d174d;
+  --c-red-50: #fef2f2;
+  --c-red-100: #fee2e2;
+  --c-red-200: #fecaca;
+  --c-red-500: #ef4444;
+  --c-red-600: #dc2626;
+  --c-red-700: #b91c1c;
+  --c-orange-50: #fff7ed;
+  --c-orange-200: #fed7aa;
+  --c-orange-600: #ea580c;
+
+  /* 纯色与固定透明度 */
+  --c-white: #ffffff;
+  --c-black: #000000;
+  --c-white-85: rgb(255 255 255 / 0.85);
+  --c-slate-900-85: rgb(15 23 42 / 0.85);
+  --c-black-40: rgb(0 0 0 / 0.4);
+
+  /* ---------------- 字体族 ---------------- */
+  /* 实测线上：Tailwind 默认 sans 栈 + emoji 兜底 */
+  --font-sans: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+
+  /* ---------------- 字号阶（成对使用，禁止只写字号） ---------------- */
+  --fs-title: 16px;
+  --lh-title: 24px;
+  --fs-body: 14px;
+  --lh-body: 20px;
+  --fs-hint: 12px;
+  --lh-hint: 16px;
+  --fs-meta: 11px;
+  --lh-meta: 16.5px;
+  --fs-micro: 10px;
+  --lh-micro: 16px;
+  --fs-nano: 9px;
+  --lh-nano: 12px;
+  --fs-tiny: 8px;
+  --lh-tiny: 12px;
+
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* ---------------- 间距阶：4px 栅格 ---------------- */
+  --sp-0: 0;
+  --sp-2: 2px;
+  --sp-4: 4px;
+  --sp-6: 6px;
+  --sp-8: 8px;
+  --sp-10: 10px;
+  --sp-12: 12px;
+  --sp-16: 16px;
+  --sp-20: 20px;
+  --sp-24: 24px;
+  --sp-32: 32px;
+  --sp-40: 40px;
+
+  /* ---------------- 圆角 ---------------- */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+  --r-2xl: 16px;
+  --r-full: 9999px;
+
+  /* ---------------- 阴影 ---------------- */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}

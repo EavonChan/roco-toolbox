@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>卡片统一方案 · 洛克工具箱设计稿</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../../_shell/shell.css" />
+    <style>
+      /* =====================================================================
+       * 卡片统一方案稿（2026-11-22，对 test 2026-11-22 13:27 构建）
+       *
+       * 线上现状（实测）：
+       *   看板·种公推荐  98px  头像 44  名字 6px  绿底
+       *   看板·母本缺口 104px  头像 52  名字 12px 绿底
+       *   收集·母本     104px  头像 44  名字 8px   白底 + 「计划」描边胶囊
+       * 三者的信息完全一样：图鉴号 · 蛋组 · 性格 · 头像 · 名字。
+       *
+       * 本稿做法：一套 104px 白底卡（高度另给 100 / 96 两档比），
+       * 头像在「正文区」垂直居中，底部控件换成换蛋页需求卡那种满宽融合条。
+       * ================================================================== */
+
+      .panel {
+        background: var(--bg-surface);
+        border-radius: var(--r-2xl);
+        padding: var(--sp-16);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .panel h2 {
+        margin: 0 0 var(--sp-8);
+        font-size: var(--fs-title);
+        line-height: var(--lh-title);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .panel p {
+        margin: 0;
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .panel p + p {
+        margin-top: var(--sp-6);
+      }
+
+      .panel code {
+        padding: 0 3px;
+        border-radius: 3px;
+        background: var(--bg-inset);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        color: var(--text-body);
+      }
+
+      .sec {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-8);
+      }
+
+      .sec-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--sp-8);
+        padding: 0 var(--sp-4);
+      }
+
+      .sec-head h2 {
+        margin: 0;
+        font-size: var(--fs-body);
+        line-height: var(--lh-body);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .sec-spec {
+        padding: 0 var(--sp-4);
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+      }
+
+      .cap {
+        padding: 0 var(--sp-4);
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+      }
+
+      .grid-4 {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 4px;
+      }
+
+      /* 模拟线上 section：白卡 + 上边框。贴边问题就在这个 padding-top 上 */
+      .sec-card {
+        background: var(--bg-surface);
+        border-radius: var(--r-2xl);
+        box-shadow: var(--shadow-sm);
+        padding: 0 8px 8px;
+      }
+
+      .sec-card[data-fix='true'] {
+        padding-top: 8px;
+      }
+
+      .seg {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 8px;
+        padding: 4px;
+        border-radius: var(--r-lg);
+        background: var(--bg-muted);
+      }
+
+      .seg span {
+        flex: 1 1 0%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        border-radius: 6px;
+        font-size: var(--fs-body);
+        color: var(--text-muted);
+      }
+
+      .seg span[data-on='true'] {
+        background: var(--bg-surface);
+        color: var(--text-body);
+        box-shadow: var(--shadow-sm);
+      }
+
+      /* ---------------- 卡片骨架：现状与方案共用 ---------------- */
+      .card {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: var(--r-xl);
+        background: var(--bg-surface);
+        box-shadow: var(--shadow-sm);
+        font-family: var(--font-sans);
+      }
+
+      /* 现状：看板两档是绿底 + emerald-300 描边 */
+      .card[data-tone='legacy'] {
+        border-color: var(--c-emerald-300);
+        background: rgb(236 253 245 / 0.6);
+      }
+
+      /* 卡片头：图鉴号 + 蛋组贴左上，性格贴右上。
+         两栏都用绝对定位——不靠 grid 轨道算，右上角就一定是右上角。
+         注意：线上蛋组 chip **不截断**，会自然往右伸到头像上方，照抄这个行为。 */
+      .c-left {
+        position: absolute;
+        left: 4px;
+        top: 4px;
+        z-index: 10;
+        font-size: 7px;
+        line-height: 8px;
+        max-width: 46px;
+      }
+
+      .c-right {
+        position: absolute;
+        right: 4px;
+        top: 4px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 1px;
+        max-width: 44px;
+      }
+
+      .c-no {
+        font-size: 7px;
+        line-height: 8px;
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .c-eggs {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        align-items: flex-start;
+      }
+
+      .c-eggs span {
+        padding: 0 2px;
+        border-radius: 2px;
+        background: var(--c-sky-100);
+        font-size: 7px;
+        line-height: 8px;
+        color: var(--c-sky-800);
+        white-space: nowrap;
+      }
+
+      .c-natures span {
+        display: inline-flex;
+        align-items: center;
+        height: 12px;
+        padding: 0 2px;
+        border-radius: 4px;
+        background: var(--c-amber-100);
+        font-size: 7px;
+        line-height: 8px;
+        font-weight: var(--fw-medium);
+        color: var(--c-amber-900);
+        white-space: nowrap;
+      }
+
+      .c-natures {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        align-items: flex-end;
+      }
+
+      .c-avatar {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .c-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .c-name {
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: var(--fw-bold);
+        color: var(--text-strong);
+      }
+
+      /* ---------------- 现状三张（严格照抄线上尺寸） ---------------- */
+      .old-dash {
+        height: 98px;
+      }
+      .old-dash .c-avatar {
+        top: 50%;
+        height: 44px;
+        width: 44px;
+        transform: translate(-50%, -50%);
+      }
+      .old-dash .c-name {
+        top: 70px;
+        height: 8px;
+        font-size: 6px;
+        line-height: 8px;
+      }
+
+      .old-gap {
+        height: 104px;
+      }
+      .old-gap .c-avatar {
+        top: 8px;
+        height: 52px;
+        width: 52px;
+      }
+      .old-gap .c-name {
+        top: 64px;
+        height: 16px;
+        font-size: 12px;
+        line-height: 16px;
+      }
+
+      .old-coll {
+        height: 104px;
+      }
+      .old-coll .c-avatar {
+        top: 17px;
+        height: 44px;
+        width: 44px;
+      }
+      .old-coll .c-name {
+        top: 63px;
+        height: 10px;
+        font-size: 8px;
+        line-height: 10px;
+      }
+
+      /* 现状底部那颗「计划」：白底 + emerald 描边 + 药丸圆角 —— 被说像创口贴的就是它 */
+      .old-pill {
+        position: absolute;
+        left: 2px;
+        right: 2px;
+        bottom: 3px;
+        height: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--c-emerald-200);
+        border-radius: var(--r-full);
+        background: var(--bg-surface);
+        font-size: 9px;
+        line-height: 11px;
+        color: var(--accent-text);
+      }
+
+      /* ---------------- 方案：白底 + 融合底条 ---------------- */
+      .uc {
+        height: 104px;
+      }
+
+      .uc[data-h='100'] {
+        height: 100px;
+      }
+
+      .uc[data-h='96'] {
+        height: 96px;
+      }
+
+      /* 头像在「正文区」（卡片高 - 20px 底条）垂直居中；用户口径：比线上 44 再大一点 → 48 */
+      .uc .c-avatar {
+        height: 48px;
+        width: 48px;
+        top: 18px;
+      }
+
+      .uc[data-h='100'] .c-avatar {
+        top: 16px;
+      }
+
+      .uc[data-h='96'] .c-avatar {
+        top: 14px;
+      }
+
+      /* 名字紧贴头像下方，与底条之间留 2~4px */
+      .uc .c-name {
+        top: 68px;
+        height: 12px;
+        font-size: 10px;
+        line-height: 12px;
+        font-weight: var(--fw-semibold);
+      }
+
+      .uc[data-h='100'] .c-name {
+        top: 66px;
+      }
+
+      .uc[data-h='96'] .c-name {
+        top: 62px;
+      }
+
+      /* 名字用 12px 的旧变体：留作对照 */
+      .uc[data-name='lg'] .c-name {
+        top: 66px;
+        height: 16px;
+        font-size: 12px;
+        line-height: 16px;
+        font-weight: var(--fw-semibold);
+      }
+
+      .uc[data-name='lg'][data-h='100'] .c-name {
+        top: 62px;
+      }
+
+      .uc[data-name='lg'][data-h='96'] .c-name {
+        top: 58px;
+      }
+
+      /* 满宽融合条：通栏、贴底、圆角跟卡片走（线上是 overflow:hidden 自动裁） */
+      .c-foot {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        line-height: 20px;
+        font-weight: var(--fw-medium);
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      .c-foot[data-tone='collecting'] {
+        background: var(--c-amber-50);
+        color: var(--c-amber-800);
+      }
+
+      .c-foot[data-tone='collected'] {
+        background: var(--c-slate-100);
+        color: var(--text-muted);
+      }
+
+      .c-foot[data-tone='accepted'] {
+        background: var(--c-sky-50);
+        color: var(--c-sky-700);
+      }
+
+      .c-foot[data-tone='done'] {
+        background: var(--c-slate-50);
+        color: var(--text-faint);
+      }
+
+      /* ---------------- 底条语义色卡 ---------------- */
+      .tone-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: var(--sp-12);
+        background: var(--bg-surface);
+        border-radius: var(--r-xl);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .tone-row {
+        display: flex;
+        align-items: center;
+        gap: var(--sp-8);
+      }
+
+      .tone-row small {
+        flex: 0 0 132px;
+        font-size: var(--fs-nano);
+        line-height: 12px;
+        color: var(--text-faint);
+      }
+
+      .tone-bar {
+        flex: 1 1 auto;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        font-size: 10px;
+        line-height: 20px;
+        font-weight: var(--fw-medium);
+      }
+
+      .tone-bar[data-tone='plan'] {
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+      .tone-bar[data-tone='collecting'] {
+        background: var(--c-amber-50);
+        color: var(--c-amber-800);
+      }
+      .tone-bar[data-tone='collected'] {
+        background: var(--c-slate-100);
+        color: var(--text-muted);
+      }
+      .tone-bar[data-tone='accepted'] {
+        background: var(--c-sky-50);
+        color: var(--c-sky-700);
+      }
+      .tone-bar[data-tone='done'] {
+        background: var(--c-slate-50);
+        color: var(--text-faint);
+      }
+
+      /* ---------------- 上间距对照 ---------------- */
+      .gap-demo {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .gap-demo > div {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .gap-demo small {
+        font-size: var(--fs-nano);
+        line-height: 12px;
+        color: var(--text-faint);
+        text-align: center;
+      }
+
+      .gap-demo .grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      /* 自适应实测表 */
+      .adapt-scroll {
+        overflow-x: auto;
+        margin: var(--sp-8) 0;
+      }
+
+      .adapt-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--fs-nano);
+        line-height: 14px;
+        white-space: nowrap;
+      }
+
+      .adapt-table th,
+      .adapt-table td {
+        padding: 3px 4px;
+        border-bottom: 1px solid var(--line-subtle);
+        text-align: left;
+        color: var(--text-body);
+      }
+
+      .adapt-table th {
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+      }
+
+      /* 宽屏模拟：按真实 px 宽度排版，再等比缩到手机宽，用来在 375 里看 1024/1280 的列数 */
+      .wide-sim {
+        overflow: hidden;
+        margin: var(--sp-8) 0;
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--bg-inset);
+      }
+
+      .wide-sim-inner {
+        transform-origin: top left;
+        padding: 8px;
+        background: var(--bg-surface);
+      }
+
+      .wide-sim-label {
+        display: flex;
+        justify-content: space-between;
+        padding: 3px 6px;
+        background: var(--c-slate-100);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 10px;
+        line-height: 14px;
+        color: var(--text-muted);
+      }
+    </style>
+  </head>
+  <body data-state="default">
+    <div class="proto-page" data-page="collection" data-title="卡片统一方案" data-tabs="static" data-baseline="">
+      <div class="panel">
+        <h2>卡片统一方案 · 看板 / 收集 用同一张卡</h2>
+        <p>
+          线上现在三套（2026-11-22 13:27 构建实测）：看板「种公推荐」
+          <code>98 / 头像44 / 名字6px / 绿底</code>、看板「母本缺口」
+          <code>104 / 52 / 12px / 绿底</code>、收集「母本」
+          <code>104 / 44 / 8px / 白底 + 计划胶囊</code>。
+          展示的信息一模一样，只是尺寸和底部那颗控件不同。
+        </p>
+        <p>
+          方向（2026-11-22 已拍）：<b>一套白底卡</b>，高 <b>104px</b>、头像 <b>48px</b> 在正文区居中、
+          名字 <b>10px</b>、性格贴右上角、底部换成换蛋页需求卡那种<b>满宽融合条</b>。
+          另外补了一节「自适应」：线上卡片在宽屏会加列，不是死的 4 列。
+        </p>
+      </div>
+
+      <!-- ① 现状 -->
+      <div class="sec">
+        <div class="sec-head"><h2>① 现状：同一份信息，三套卡</h2></div>
+        <div class="sec-spec">左起：看板种公推荐 98 · 看板母本缺口 104 · 收集母本 104（白底）· 收集母本（两条性格）</div>
+        <div class="grid-4" id="old-row"></div>
+        <div class="cap">看板的绿底、缺口卡的 52 头像和 12px 名字、收集的白底和 8px 名字，都是线上真实值，没有夸张</div>
+      </div>
+
+      <!-- ② 定稿 -->
+      <div class="sec">
+        <div class="sec-head"><h2>② 定稿卡 · 104 / 头像 48 / 名字 10px</h2></div>
+        <div class="sec-spec">白底 · slate-200 描边 · 头像 48 居中（18~66）· 名字 10px 压在 68 · 性格贴右上 4px · 融合条 20px</div>
+        <div id="row-104"></div>
+        <div class="cap">与线上 375 的收集页等高（104），头像比线上 44 大 4px，名字比线上 8px 大 2px —— 两者都不挤</div>
+      </div>
+
+      <!-- ③ 100 / 96 -->
+      <div class="sec">
+        <div class="sec-head"><h2>③ 同规则缩到 100 / 96（对照）</h2></div>
+        <div class="sec-spec">上面 100px（头像 16~64 · 名字 66）· 下面 96px（头像 14~62 · 名字 62）——一屏能多看半行，但名字与底条只剩 2px</div>
+        <div id="row-100"></div>
+        <div id="row-96" style="margin-top: 10px"></div>
+      </div>
+
+      <!-- ④ 12px 对照 -->
+      <div class="sec">
+        <div class="sec-head"><h2>④ 名字 12px（对照，未采用）</h2></div>
+        <div class="sec-spec">104 / 100 / 96 三档的 12px 版本：可读性最好，但与底条的呼吸只剩 2px</div>
+        <div id="row-name-lg"></div>
+      </div>
+
+      <!-- ⑤ 底条语义 -->
+      <div class="sec">
+        <div class="sec-head"><h2>⑤ 融合底条的状态色</h2></div>
+        <div class="sec-spec">换蛋页那条「等待组员回应」的延伸：只换底色，位置和高度不变</div>
+        <div class="tone-list">
+          <div class="tone-row"><small>收集 · 未收集</small><span class="tone-bar" data-tone="plan">计划</span></div>
+          <div class="tone-row"><small>收集 · 已入表</small><span class="tone-bar" data-tone="collecting">收集中</span></div>
+          <div class="tone-row"><small>收集 · 达标</small><span class="tone-bar" data-tone="collected">已收集</span></div>
+          <div class="tone-row"><small>换蛋 · 待响应</small><span class="tone-bar" data-tone="plan">等待组员回应</span></div>
+          <div class="tone-row"><small>换蛋 · 有人接</small><span class="tone-bar" data-tone="accepted">已接单</span></div>
+          <div class="tone-row"><small>换蛋 · 收工</small><span class="tone-bar" data-tone="done">已完成</span></div>
+        </div>
+      </div>
+
+      <!-- ⑥ 自适应 -->
+      <div class="sec">
+        <div class="sec-head"><h2>⑥ 卡片的自适应（实测线上）</h2></div>
+        <div class="sec-spec">卡片宽度不写死，跟着网格走；网格列数在宽屏会加，容器 max-w 会放开</div>
+        <div class="panel">
+          <p>
+            线上不是「固定 4 列」：竖屏手机 4 列，宽屏横屏会加列，页面容器也从
+            <code>max-w-md 448px</code> 放开。
+          </p>
+          <div class="adapt-scroll">
+            <table class="adapt-table">
+              <thead>
+                <tr><th>视口</th><th>收集首行</th><th>卡宽</th><th>看板首行</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>375×812</td><td>4 张</td><td>84.8</td><td>4 张</td></tr>
+                <tr><td>390×844</td><td>4 张</td><td>88.5</td><td>4 张</td></tr>
+                <tr><td>844×390 横屏</td><td>4 张</td><td>71.3</td><td>4 张</td></tr>
+                <tr><td>1024×768 平板</td><td><b>6 张</b></td><td>75.7</td><td>4 张</td></tr>
+                <tr><td>1180×820</td><td><b>6 张</b></td><td>98.6</td><td>4 张</td></tr>
+                <tr><td>1280×800 桌面</td><td><b>8 张</b></td><td>82.8</td><td>4 张</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            断点就三条（代码 <code>useWideLandscape.ts</code>）：
+            <code>landscape</code>（折叠侧栏）、
+            <code>landscape and min-width:1000px</code>（收集页加列）、
+            <code>landscape and min-width:1120px</code>（并排两栏）。
+            所以卡片组件只定「高度 + 内部相对位置」，宽度交给网格。
+          </p>
+        </div>
+
+        <div class="sec-spec">下面两张按<b>真实 px 宽度</b>排版再等比缩到手机宽：上 1024 六列、下 1280 八列 —— 卡片在 6/8 列下依然成立</div>
+        <div class="wide-sim" id="sim-6"></div>
+        <div class="wide-sim" id="sim-8"></div>
+      </div>
+
+      <!-- ⑦ 上间距 -->
+      <div class="sec">
+        <div class="sec-head"><h2>⑦ 第一行卡片贴住分段控件</h2></div>
+        <div class="sec-spec">左：现状（分段条下沿与卡片上沿 0 间距，看着像粘在一起）· 右：中间补 8px</div>
+        <div class="gap-demo">
+          <div>
+            <div class="sec-card" id="gap-before"></div>
+            <small>现状 0px</small>
+          </div>
+          <div>
+            <div class="sec-card" data-fix="true" id="gap-after"></div>
+            <small>修法 8px</small>
+          </div>
+        </div>
+        <div class="cap">
+          实测：线上分段条 <code>mt-2</code> 之后直接接 <code>grid grid-cols-4 gap-1</code>，
+          控件与卡片之间没有留白；补 8px 后第一行不再贴住控件，卡片之间的 4px 也不变。
+        </div>
+      </div>
+
+      <!-- ⑦ 家园溢出 -->
+      <div class="sec">
+        <div class="sec-head"><h2>⑦ 家园「滑动带动整个窗口」</h2></div>
+        <div class="sec-spec">已在线上复现并定位到元素，属页面 bug，做家园那页时一起修</div>
+        <div class="panel">
+          <p>
+            实测：viewport <code>375</code>，但 <code>document.scrollWidth = 391</code>，整页可以横向拖 ——
+            手指一滑整个窗口跟着走。
+          </p>
+          <p>
+            溢出元素：<code>div.flex.shrink-0.items-center.gap-1</code>（接单上窝 / 刷新家园 / ?），
+            宽 <code>160</code>、<code>shrink-0</code> 不许收缩，<code>left 229.8 → right 389.8</code>，挤出 <code>14.8px</code>。
+          </p>
+          <p>
+            修法我实测了五种（只改本机 DOM，不动线上）：
+          </p>
+          <div class="adapt-scroll">
+            <table class="adapt-table">
+              <thead><tr><th>试法</th><th>document.scrollWidth</th><th>结论</th></tr></thead>
+              <tbody>
+                <tr><td>① 现状「刷新家园」</td><td><b>391</b></td><td>溢出 16px</td></tr>
+                <tr><td>② 文案改「刷新」</td><td>375</td><td>✅ 够用（省 24px，只需 14.8）</td></tr>
+                <tr><td>③ 文案改「刷新数据」</td><td><b>391</b></td><td>❌ 4 个字仍然太长</td></tr>
+                <tr><td>④ 只去掉 <code>shrink-0</code></td><td>375</td><td>✅ 文案不用改</td></tr>
+                <tr><td>⑤ 短文案 + 去 shrink-0</td><td>375</td><td>✅ 最稳</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            推荐 <b>④</b>：一处 CSS，不动文案。因为标题栏右上角已经有一颗「刷新」（刷新到最新版本 / 清缓存），
+            家园里再来一颗「刷新」会让人分不清刷的是哪个；真要用短文案，建议换成不撞词的两个字（如「重读」）。
+            另外 ① 的根因是 <code>shrink-0</code>，所以只改文案属于「正好够」，将来加个按钮或账号名变长还会复发。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const CDN = (id) => `https://game.gtimg.cn/images/rocom/rocodata/jingling/${id}/icon.png`;
+
+      const PETS = {
+        haibao: { no: '181', name: '海豹战士', gameId: 3215, eggs: ['动物组', '两栖组'], natures: ['固执'] },
+        keliji: { no: '266', name: '可立鸡', gameId: 3086, eggs: ['天空组', '拟人组'], natures: ['聪明', '胆小'] },
+        bushishi: { no: '027', name: '布是石', gameId: 3103, eggs: ['大地组', '巨灵组'], natures: ['平和'] },
+        chaizha: { no: '325', name: '柴渣虫', gameId: 3436, eggs: ['昆虫组', '植物组'], natures: ['固执', '聪明'] },
+        wuda: { no: '258', name: '乌达', gameId: 3536, eggs: ['巨灵组'], natures: ['固执'] },
+        duoxi: { no: '221', name: '多西', gameId: 3206, eggs: ['机械组', '巨灵组'], natures: ['平和', '固执'] },
+        cuitong: { no: '234', name: '脆筒甜甜', gameId: 3124, eggs: ['软体组', '魔力组'], natures: ['胆小'] },
+        tiantianluo: { no: '185', name: '甜田螺', gameId: 3112, eggs: ['妖精组', '软体组'], natures: ['聪明'] },
+      };
+
+      function head(pet) {
+        return `<div class="c-left">
+            <div class="c-no">No.${pet.no}</div>
+            <div class="c-eggs">${pet.eggs.map((e) => `<span>${e}</span>`).join('')}</div>
+          </div>
+          <div class="c-right"><div class="c-natures">${pet.natures.map((n) => `<span>${n}</span>`).join('')}</div></div>
+          <div class="c-avatar"><img src="${CDN(pet.gameId)}" alt="" loading="lazy" /></div>
+          <h3 class="c-name">${pet.name}</h3>`;
+      }
+
+      /** 现状卡：cls 决定高度与头像/名字位置，tone=legacy 用绿底 */
+      function oldCard(pet, cls, foot) {
+        return `<article class="card ${cls}" data-tone="legacy">${head(pet)}${foot ? `<span class="old-pill">${foot}</span>` : ''}</article>`;
+      }
+
+      /** 方案卡：h=104/100/96，name='sm'|'lg'，foot 文案 + 语义色 */
+      function uc(pet, { h = 104, name = 'sm', foot = '计划', tone = 'plan' } = {}) {
+        return `<article class="card uc" data-h="${h}" data-name="${name}">
+          ${head(pet)}
+          <span class="c-foot" data-tone="${tone}">${foot}</span>
+        </article>`;
+      }
+
+      function section(inner, { fixTop = true } = {}) {
+        return `<div class="sec-card" ${fixTop ? 'data-fix="true"' : ''}>
+          <div class="seg"><span data-on="true">种公推荐</span><span>母本缺口</span></div>
+          <div class="grid-4">${inner}</div>
+        </div>`;
+      }
+
+      document.getElementById('old-row').innerHTML = [
+        oldCard(PETS.haibao, 'old-dash'),
+        oldCard(PETS.keliji, 'old-gap'),
+        oldCard(PETS.bushishi, 'old-coll', '计划'),
+        oldCard(PETS.chaizha, 'old-coll', '计划'),
+      ].join('');
+
+      const four = (opts) =>
+        section(
+          [
+            uc(PETS.haibao, opts),
+            uc(PETS.keliji, opts),
+            uc(PETS.bushishi, { ...opts, foot: '收集中', tone: 'collecting' }),
+            uc(PETS.chaizha, { ...opts, foot: '已收集', tone: 'collected' }),
+            uc(PETS.wuda, opts),
+            uc(PETS.duoxi, { ...opts, foot: '收集中', tone: 'collecting' }),
+            uc(PETS.cuitong, opts),
+            uc(PETS.tiantianluo, { ...opts, foot: '已收集', tone: 'collected' }),
+          ].join(''),
+        );
+
+      document.getElementById('row-104').innerHTML = four({ h: 104 });
+      document.getElementById('row-100').innerHTML = four({ h: 100 });
+      document.getElementById('row-96').innerHTML = four({ h: 96 });
+      document.getElementById('row-name-lg').innerHTML =
+        section(
+          [
+            uc(PETS.haibao, { h: 104, name: 'lg' }),
+            uc(PETS.keliji, { h: 104, name: 'lg' }),
+            uc(PETS.bushishi, { h: 100, name: 'lg', foot: '收集中', tone: 'collecting' }),
+            uc(PETS.chaizha, { h: 96, name: 'lg', foot: '已收集', tone: 'collected' }),
+          ].join(''),
+        );
+
+      const mini = (withGap) => `<div class="seg" style="margin-bottom:${withGap ? '8px' : '0'}"><span data-on="true">种公推荐</span><span>母本缺口</span></div>
+        <div class="grid-4">${uc(PETS.bushishi, { h: 104 })}${uc(PETS.wuda, { h: 104 })}</div>`;
+      document.getElementById('gap-before').innerHTML = mini(false);
+      document.getElementById('gap-after').innerHTML = mini(true);
+
+      /* ⑥ 宽屏模拟：真实 px 排版 + 等比缩放 */
+      const manyPets = [
+        PETS.haibao, PETS.keliji, PETS.bushishi, PETS.chaizha, PETS.wuda, PETS.duoxi,
+        PETS.cuitong, PETS.tiantianluo, PETS.haibao, PETS.keliji, PETS.bushishi, PETS.chaizha,
+        PETS.wuda, PETS.duoxi, PETS.cuitong, PETS.tiantianluo,
+      ];
+      function wideSim(el, widthPx, cols) {
+        const cards = manyPets
+          .slice(0, cols * 2)
+          .map((pet, i) =>
+            uc(pet, {
+              h: 104,
+              foot: i % 3 === 0 ? '收集中' : i % 5 === 0 ? '已收集' : '计划',
+              tone: i % 3 === 0 ? 'collecting' : i % 5 === 0 ? 'collected' : 'plan',
+            }),
+          )
+          .join('');
+        el.innerHTML =
+          `<div class="wide-sim-label"><span>${widthPx}px 宽 · ${cols} 列</span><span>等比缩放到手机宽</span></div>` +
+          `<div class="wide-sim-inner" data-w="${widthPx}" style="width:${widthPx}px">` +
+          `<div style="display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:4px">${cards}</div>` +
+          `</div>`;
+        // 量出真实高度后缩放到容器宽（先取未缩放的 offsetHeight，别被 transform 绕进去）
+        requestAnimationFrame(() => {
+          const outer = el.getBoundingClientRect().width;
+          const inner = el.querySelector('.wide-sim-inner');
+          const naturalH = inner.offsetHeight;
+          const scale = outer / widthPx;
+          inner.style.transform = `scale(${scale})`;
+          el.style.height = `${naturalH * scale + 24}px`;
+        });
+      }
+      wideSim(document.getElementById('sim-6'), 1024, 6);
+      wideSim(document.getElementById('sim-8'), 1280, 8);
+    </script>
+    <script src="../../_shell/shell.js"></script>
+  </body>
+</html>

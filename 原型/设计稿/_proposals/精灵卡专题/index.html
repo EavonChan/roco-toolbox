@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>精灵卡专题 · 洛克工具箱设计稿</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../../_shell/shell.css" />
+    <style>
+      /* =====================================================================
+       * 精灵卡专题（阶段 0 加餐）
+       *
+       * 目的：项目里的「精灵卡」不止一种，散在收集 / 看板 / 家园 / 小组四个页面。
+       * 这里把它们的真实几何集中成一份可对照的样张：尺寸全部照抄代码
+       * （`src/ui/PetCardLayout.tsx` 的四档 size、`EggDemandCard.tsx`、`StudStack.tsx`），
+       * 头像 / 奖牌 / 稀有度 / 绿窝全部用线上同一套资源，做到仿真。
+       *
+       * 卡片一律用「绝对定位 + 固定 px」还原，因为线上就是这么写的：
+       * 卡片高度写死 98/104/106px，头像、名字、详情行各自 top 定位。
+       * 换成 flex 排会得到"看起来差不多但差 2px"的假还原。
+       * ================================================================== */
+
+      .gallery-note {
+        background: var(--bg-surface);
+        border-radius: var(--r-2xl);
+        padding: var(--sp-16);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .gallery-note h2 {
+        margin: 0 0 var(--sp-8);
+        font-size: var(--fs-title);
+        line-height: var(--lh-title);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .gallery-note p {
+        margin: 0;
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .gallery-note p + p {
+        margin-top: var(--sp-6);
+      }
+
+      .gallery-note code {
+        padding: 0 3px;
+        border-radius: 3px;
+        background: var(--bg-inset);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        color: var(--text-body);
+      }
+
+      /* --- 分组标题：标题 + 一行规格（尺寸出处写清楚，评审时不用再翻代码） --- */
+      .gallery-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-8);
+      }
+
+      .gallery-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--sp-8);
+        padding: 0 var(--sp-4);
+      }
+
+      .gallery-head h2 {
+        margin: 0;
+        font-size: var(--fs-body);
+        line-height: var(--lh-body);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .gallery-head span {
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+        text-align: right;
+      }
+
+      .gallery-spec {
+        padding: 0 var(--sp-4);
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+      }
+
+      /* ---------------- 通用精灵卡（PetCardLayout 四档） ----------------
+       * 根：relative + overflow-hidden + rounded-xl 12px + 1px 描边 + p-1(4px) + shadow-sm
+       * 高度：default 98 / tall 104 / gap 104 / mother 106
+       * 性别色：母 pink-200/pink-50 · 公 sky-200/sky-50 · 未知 slate-200/slate-50
+       *         未传 = 母本绿 emerald-300 / emerald-50 60%
+       * ----------------------------------------------------------------- */
+      .pet-card {
+        position: relative;
+        min-width: 0;
+        height: 98px;
+        overflow: hidden;
+        padding: 4px;
+        border: 1px solid var(--c-emerald-300);
+        border-radius: var(--r-xl);
+        background: rgb(236 253 245 / 0.6);
+        box-shadow: var(--shadow-sm);
+        font-family: var(--font-sans);
+        text-align: left;
+      }
+
+      .pet-card[data-size='tall'],
+      .pet-card[data-size='gap'] {
+        height: 104px;
+      }
+
+      .pet-card[data-size='mother'] {
+        height: 106px;
+      }
+
+      .pet-card[data-gender='母'] {
+        border-color: var(--c-pink-200);
+        background: var(--c-pink-50);
+      }
+
+      .pet-card[data-gender='公'] {
+        border-color: var(--c-sky-200);
+        background: var(--c-sky-50);
+      }
+
+      .pet-card[data-gender='未知'] {
+        border-color: var(--c-slate-200);
+        background: var(--c-slate-50);
+      }
+
+      /* 卡片头：左上图鉴号 + 蛋组，右上性格。grid 三列，中间留 44px 给头像。 */
+      .pet-head {
+        position: absolute;
+        inset: 4px 4px auto 4px;
+        z-index: 10;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 2.75rem minmax(0, 1fr);
+        align-items: start;
+        max-height: 48px;
+        overflow: hidden;
+        font-size: 7px;
+        line-height: 8px;
+      }
+
+      .pet-head-left {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1px;
+      }
+
+      .pet-no {
+        font-size: 7px;
+        line-height: 8px;
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pet-egg-groups {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1px;
+      }
+
+      /* 蛋组 chip：sky-100 底 / sky-800 字 / 2px 圆角 / 1px 内边距 */
+      .pet-egg {
+        max-width: 100%;
+        padding: 0 1px;
+        border-radius: 2px;
+        background: var(--c-sky-100);
+        font-size: 7px;
+        line-height: 8px;
+        color: var(--c-sky-800);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pet-head-right {
+        grid-column-start: 3;
+        grid-row-start: 1;
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 1px;
+      }
+
+      /* 性格 chip：12px 高、amber-100 底、amber-900 字（已收集会换 emerald / 未收集换 slate） */
+      .pet-nature {
+        display: inline-flex;
+        align-items: center;
+        height: 12px;
+        max-width: 100%;
+        padding: 0 1px;
+        border-radius: 4px;
+        background: var(--c-amber-100);
+        font-size: 7px;
+        line-height: 8px;
+        font-weight: var(--fw-medium);
+        color: var(--c-amber-900);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pet-nature[data-collected='true'] {
+        background: var(--c-emerald-100);
+        color: var(--c-emerald-700);
+      }
+
+      .pet-nature[data-collected='false'] {
+        background: var(--c-slate-100);
+        color: var(--c-slate-400);
+      }
+
+      /* 头像：四档位置/尺寸 */
+      .pet-avatar {
+        position: absolute;
+        left: 50%;
+        z-index: 0;
+        display: flex;
+        height: 44px;
+        width: 44px;
+        transform: translate(-50%, -50%);
+        align-items: center;
+        justify-content: center;
+        top: 50%;
+      }
+
+      .pet-card[data-size='tall'] .pet-avatar {
+        top: 16px;
+        transform: translateX(-50%);
+      }
+
+      .pet-card[data-size='gap'] .pet-avatar {
+        top: 8px;
+        height: 52px;
+        width: 52px;
+        transform: translateX(-50%);
+      }
+
+      .pet-card[data-size='mother'] .pet-avatar {
+        top: 9px;
+        height: 62px;
+        width: 62px;
+        transform: translateX(-50%);
+      }
+
+      .pet-avatar img.pet {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      /* 稀有度角标：右上 -4px，12px */
+      .pet-rarity {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        height: 12px;
+        width: 12px;
+        filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.05));
+      }
+
+      /* 名字：四档 */
+      .pet-name {
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 8px;
+        top: 70px;
+        font-size: 6px;
+        line-height: 8px;
+        font-weight: var(--fw-bold);
+        color: var(--text-strong);
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pet-card[data-size='tall'] .pet-name {
+        top: 62px;
+        height: 10px;
+        font-size: 8px;
+        line-height: 10px;
+      }
+
+      .pet-card[data-size='gap'] .pet-name {
+        top: 64px;
+        height: 16px;
+        font-size: 12px;
+        line-height: 16px;
+      }
+
+      .pet-card[data-size='mother'] .pet-name {
+        left: 2px;
+        right: 2px;
+        top: 72px;
+        height: 14px;
+        font-size: 12px;
+        line-height: 14px;
+        font-weight: var(--fw-medium);
+      }
+
+      /* 详情行：性别 / 奖牌 / dB · 高 · 重 */
+      .pet-details {
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 8px;
+        top: 80px;
+        overflow: hidden;
+        text-align: center;
+      }
+
+      .pet-card[data-size='tall'] .pet-details {
+        top: 74px;
+        height: 10px;
+      }
+
+      .pet-card[data-size='gap'] .pet-details {
+        top: 84px;
+        height: 10px;
+      }
+
+      .pet-card[data-size='mother'] .pet-details {
+        top: 90px;
+        height: 8px;
+      }
+
+      .pet-details-inner {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+        white-space: nowrap;
+        font-size: 6px;
+        line-height: 8px;
+        color: var(--c-slate-600);
+      }
+
+      .pet-card[data-size='gap'] .pet-details-inner,
+      .pet-card[data-size='tall'] .pet-details-inner {
+        font-size: 8px;
+        line-height: 10px;
+      }
+
+      .pet-details-inner .medals {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        gap: 1px;
+      }
+
+      .pet-details-inner .medals img {
+        height: 10px;
+        width: 10px;
+      }
+
+      .pet-gender {
+        font-size: 7px;
+        line-height: 8px;
+      }
+
+      .pet-gender[data-g='母'] {
+        color: var(--c-pink-500, #ec4899);
+      }
+
+      .pet-gender[data-g='公'] {
+        color: var(--c-sky-500);
+      }
+
+      /* 底部一行（家园写小窝位置、需求写账号·盒位） */
+      .pet-footer {
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        bottom: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 6px;
+        font-size: 6px;
+        line-height: 8px;
+        color: var(--text-faint);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* 母本卡底部那两颗「查看 / 计划」：白底 + 描边胶囊，2 个平分 */
+      .pet-footer-actions {
+        position: absolute;
+        left: 2px;
+        right: 2px;
+        bottom: 3px;
+        display: flex;
+        gap: 2px;
+        height: 12px;
+      }
+
+      .pet-footer-actions span {
+        flex: 1 1 0%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--c-emerald-200);
+        border-radius: 4px;
+        background: var(--bg-surface);
+        font-size: 8px;
+        line-height: 10px;
+        color: var(--accent-text);
+      }
+
+      /* ---- 排列：母本 / 缺口 / 背包都是四列，gap 1（4px）；紧凑卡固定 160px ---- */
+      .grid-4 {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 4px;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+      }
+
+      .row-160 {
+        display: flex;
+        gap: var(--sp-8);
+        overflow-x: auto;
+        padding-bottom: 2px;
+      }
+
+      .row-160 .pet-card {
+        width: 160px;
+        flex-shrink: 0;
+      }
+
+      /* ---------------- 需求卡（EggDemandCard） ----------------
+       * rounded-xl / 1px slate-200 / 白底 / shadow-sm / overflow-hidden
+       * 头像 56px · 名字 11/15 semibold · 性格 10/14 · 奖牌行 19px · 已收 10/16 · 底部状态条 10/20
+       * ------------------------------------------------------------- */
+      .demand-card {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        align-items: stretch;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: var(--r-xl);
+        background: var(--bg-surface);
+        box-shadow: var(--shadow-sm);
+        font-family: var(--font-sans);
+        text-align: center;
+        cursor: pointer;
+      }
+
+      .demand-avatar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 0 2px;
+      }
+
+      .demand-avatar img {
+        height: 56px;
+        width: 56px;
+        object-fit: contain;
+      }
+
+      .demand-name {
+        padding: 0 4px;
+        font-size: 11px;
+        line-height: 15px;
+        font-weight: var(--fw-semibold);
+        color: var(--c-slate-800);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .demand-natures {
+        min-height: 15px;
+        padding: 1px 2px;
+        font-size: 10px;
+        line-height: 14px;
+        color: var(--c-slate-600);
+      }
+
+      .demand-medals {
+        display: flex;
+        height: 19px;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+      }
+
+      .demand-medals img {
+        height: 16px;
+        width: 16px;
+        object-fit: contain;
+      }
+
+      .demand-count {
+        margin-bottom: 3px;
+        padding: 0 4px;
+        font-size: 10px;
+        line-height: 16px;
+        color: var(--text-muted);
+      }
+
+      /* 底部状态条：emerald-50 底、emerald-700 字 */
+      .demand-status {
+        margin-top: auto;
+        padding: 0 4px;
+        background: var(--accent-soft);
+        font-size: 10px;
+        line-height: 20px;
+        color: var(--accent-text);
+      }
+
+      .demand-status[data-tone='wait'] {
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      /* ---------------- 种公堆叠卡（StudStack CandidateCard） ----------------
+       * h-96px / rounded-xl / 1.5px 边框（按档位换色）/ sky-50→白 渐变
+       * 图鉴号 8.5px · 奖牌 12px · 头像 42px 盒子(44px 图) · 名字 12px bold · dB 9.5px
+       * 蛋组 chip 8.5/11 · 右下路由标签 8.5px 圆角胶囊
+       * ---------------------------------------------------------------- */
+      .stud-card {
+        position: relative;
+        height: 96px;
+        width: 100%;
+        overflow: hidden;
+        border: 1.5px solid var(--c-sky-300);
+        border-radius: var(--r-xl);
+        background: linear-gradient(to bottom, var(--c-sky-50), #fff);
+        font-family: var(--font-sans);
+        text-align: left;
+      }
+
+      .stud-card[data-tier='many'] {
+        border-color: var(--c-rose-400);
+      }
+      .stud-card[data-tier='ok'] {
+        border-color: var(--c-violet-300);
+      }
+      .stud-card[data-tier='single'] {
+        border-color: var(--c-sky-300);
+      }
+      .stud-card[data-tier='few'] {
+        border-color: var(--c-emerald-300);
+      }
+
+      .stud-no {
+        position: absolute;
+        left: 6px;
+        top: 4px;
+        font-size: 8.5px;
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+      }
+
+      .stud-medals {
+        position: absolute;
+        right: 6px;
+        top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 1px;
+      }
+
+      .stud-medals img {
+        height: 12px;
+        width: 12px;
+      }
+
+      .stud-avatar {
+        position: absolute;
+        left: 8px;
+        top: 18px;
+        display: flex;
+        height: 42px;
+        width: 42px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .stud-avatar img {
+        height: 44px;
+        width: 44px;
+        object-fit: contain;
+      }
+
+      .stud-name {
+        position: absolute;
+        left: 58px;
+        right: 6px;
+        top: 18px;
+        margin: 0;
+        font-size: 12px;
+        font-weight: var(--fw-bold);
+        color: var(--text-strong);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .stud-name i {
+        font-size: 9px;
+        font-style: normal;
+        color: var(--text-faint);
+      }
+
+      .stud-db {
+        position: absolute;
+        left: 58px;
+        right: 6px;
+        top: 36px;
+        margin: 0;
+        font-size: 9.5px;
+        color: var(--text-muted);
+      }
+
+      .stud-groups {
+        position: absolute;
+        left: 58px;
+        right: 6px;
+        top: 52px;
+        margin: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px;
+        overflow: hidden;
+      }
+
+      .stud-groups span {
+        padding: 0 3px;
+        border-radius: 2px;
+        background: var(--c-sky-100);
+        font-size: 8.5px;
+        line-height: 11px;
+        color: var(--c-sky-800);
+      }
+
+      .stud-route {
+        position: absolute;
+        right: 6px;
+        bottom: 7px;
+        padding: 0 6px;
+        border-radius: var(--r-full);
+        font-size: 8.5px;
+        font-weight: var(--fw-bold);
+        line-height: 13px;
+      }
+
+      .stud-route[data-route='self'] {
+        background: var(--c-emerald-100);
+        color: var(--c-emerald-700);
+      }
+      .stud-route[data-route='transfer'] {
+        background: var(--c-sky-100);
+        color: var(--c-sky-700);
+      }
+      .stud-route[data-route='ask'] {
+        background: var(--c-slate-100);
+        color: var(--text-muted);
+      }
+
+      /* 收起态：三层纸叠 + 下方说明行 */
+      .stud-stack {
+        position: relative;
+        display: block;
+        height: 128px;
+        width: 100%;
+        border: 0;
+        padding: 0;
+        background: transparent;
+        text-align: center;
+        cursor: pointer;
+      }
+
+      .stud-stack .layer {
+        position: absolute;
+        height: 96px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-xl);
+        background: var(--bg-surface);
+      }
+
+      .stud-stack .layer-3 {
+        left: 4px;
+        right: 4px;
+        top: 20px;
+      }
+
+      .stud-stack .layer-2 {
+        left: 3px;
+        right: 3px;
+        top: 10px;
+      }
+
+      .stud-stack .top {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+      }
+
+      .stud-caption {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 120px;
+        font-size: 10.5px;
+        line-height: 14px;
+        color: var(--c-slate-600);
+      }
+
+      /* ---------------- 状态行（默认 / 悬停 / 选中 / 禁用） ---------------- */
+      .state-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 4px;
+      }
+
+      .state-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+      }
+
+      .state-cell > .pet-card {
+        width: 100%;
+      }
+
+      .state-cell > small {
+        font-size: var(--fs-nano);
+        line-height: 12px;
+        color: var(--text-faint);
+        text-align: center;
+      }
+
+      /* 线上：可点卡片 hover 时描边变 emerald-500；「选中」没有独立视觉 */
+      .pet-card[data-state='hover'] {
+        border-color: var(--c-emerald-500);
+      }
+
+      .pet-card[data-state='pressed'] {
+        border-color: var(--c-emerald-500);
+        outline: 2px solid var(--c-emerald-500);
+      }
+
+      .pet-card[data-state='disabled'] {
+        opacity: 0.5;
+      }
+
+      /* 空位：没有数据时占住格子，避免整行塌陷 */
+      .pet-empty {
+        display: flex;
+        height: 98px;
+        align-items: center;
+        justify-content: center;
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--r-xl);
+        font-size: var(--fs-nano);
+        color: var(--text-faint);
+      }
+
+      /* 规格表 */
+      .spec-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-4);
+        margin: 0;
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+      }
+
+      .spec-list > div {
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: var(--sp-8);
+        padding-bottom: var(--sp-4);
+        border-bottom: 1px solid var(--line-subtle);
+      }
+
+      .spec-list dt {
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .spec-list dd {
+        margin: 0;
+        color: var(--text-muted);
+      }
+
+      .spec-src {
+        margin: var(--sp-8) 0 0;
+        padding-left: var(--sp-16);
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+      }
+
+      .spec-src code {
+        margin-right: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .spec-table th,
+      .spec-table td {
+        padding: 4px 6px;
+        border-bottom: 1px solid var(--line-subtle);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .spec-table th {
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .spec-table code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .card-panel {
+        background: var(--bg-surface);
+        border-radius: var(--r-xl);
+        padding: var(--sp-12);
+        box-shadow: var(--shadow-sm);
+      }
+
+      /* 分组之间用 16px，组内标题/规格/样张之间 8px */
+      #gallery-root {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-16);
+      }
+    </style>
+  </head>
+  <body data-state="default">
+    <div class="proto-page" data-page="collection" data-title="精灵卡专题" data-tabs="static" data-baseline="">
+      <div class="gallery-note">
+        <h2>精灵卡家族（真头像 / 真奖牌 / 真图标）</h2>
+        <p>
+          项目里的精灵卡不是一个组件，是四档尺寸的同一个骨架（<code>PetCardLayout</code>）+ 两个独立卡型（需求卡、种公堆叠卡）。
+          这里按代码里的真实 px 还原，头像走线上同一套官方 CDN，奖牌与绿窝用 <code>public/ui/</code> 里的图。
+        </p>
+        <p>切到「并排」可以同时看 375 与 390；卡片之间的 4px 间距是线上 <code>gap-1</code>，不要当留白用。</p>
+      </div>
+
+      <div id="gallery-root"></div>
+    </div>
+
+    <script>
+      /* -------------------------------------------------------------------
+       * 数据：全部取自项目真实数据（data/pets.json 的图鉴号 / 蛋组 / gameId）
+       * 与线上登录态截图里看到的真实属性（性格、dB、身高体重百分比）。
+       * ---------------------------------------------------------------- */
+      const CDN = (gameId) => `https://game.gtimg.cn/images/rocom/rocodata/jingling/${gameId}/icon.png`;
+      const MEDAL = '../../../public/ui/medals/';
+      const NEST = '../../../public/ui/nest/green-nest.png';
+
+      const P = {
+        baifa: { no: '073', name: '白发懒人', gameId: 3049, groups: ['拟人组', '巨灵组'] },
+        huojuren: { no: '395', name: '火巨人', gameId: 3756, groups: ['巨灵组', '拟人组'] },
+        wuda: { no: '258', name: '乌达', gameId: 3536, groups: ['巨灵组'] },
+        bushishi: { no: '027', name: '布是石', gameId: 3103, groups: ['大地组', '巨灵组'] },
+        haibao: { no: '181', name: '海豹战士', gameId: 3215, groups: ['动物组', '两栖组'] },
+        keliji: { no: '266', name: '可立鸡', gameId: 3086, groups: ['天空组', '拟人组'] },
+        cuitong: { no: '234', name: '脆筒甜甜', gameId: 3124, groups: ['软体组', '魔力组'] },
+        tiantianluo: { no: '185', name: '甜田螺', gameId: 3112, groups: ['妖精组', '软体组'] },
+        chaizha: { no: '325', name: '柴渣虫', gameId: 3436, groups: ['昆虫组', '植物组'] },
+        dujiaoshou: { no: '116', name: '小独角兽', gameId: 3062, groups: ['动物组', '巨灵组'] },
+        huodouding: { no: '393', name: '火豆丁', gameId: 3754, groups: ['巨灵组', '拟人组'] },
+        duoxi: { no: '221', name: '多西', gameId: 3206, groups: ['机械组', '巨灵组'] },
+      };
+
+      /** 奖牌取图规则照抄 src/domain/petIcons.ts */
+      function bodyMedal(medalBody, weightPercent) {
+        if (medalBody === '大块头') return MEDAL + (weightPercent >= 100 ? '1001-max.png' : '1001.png');
+        if (medalBody === '小不点') return MEDAL + (weightPercent <= 0 ? '1002-min.png' : '1002.png');
+        return null;
+      }
+
+      function voiceMedal(voiceDb) {
+        if (voiceDb == null) return null;
+        if (voiceDb >= 100) return MEDAL + '1026-max.png';
+        if (voiceDb <= -100) return MEDAL + '1025-max.png';
+        if (voiceDb >= 96) return MEDAL + '1026.png';
+        if (voiceDb <= -96) return MEDAL + '1025.png';
+        return null;
+      }
+
+      const pct = (v) => (v == null ? '—' : `${Number(v).toFixed(1).replace(/\.0$/, '')}%`);
+
+      /**
+       * 精灵卡（PetCardLayout）。
+       * size：default 98 / tall 104 / gap 104 / mother 106
+       */
+      function petCard(p, opts = {}) {
+        const {
+          size = 'default',
+          gender,
+          nature = '',
+          natures,
+          natureCollected,
+          medalBody,
+          voiceDb,
+          heightPercent,
+          weightPercent,
+          footer,
+          footerActions,
+          hideDetails,
+          state,
+          shiny,
+        } = opts;
+        const body = bodyMedal(medalBody, weightPercent);
+        const voice = voiceMedal(voiceDb);
+        const genderTone = gender ? ` data-gender="${gender}"` : '';
+        const stateAttr = state ? ` data-state="${state}"` : '';
+        const sizeAttr = size === 'default' ? '' : ` data-size="${size}"`;
+        // 性格可以有多条（收集页「平和 / 固执」就是两枚 chip 竖排）
+        const natureList = natures ?? (nature ? [{ text: nature, collected: natureCollected }] : [{ text: '未知' }]);
+        const natureHtml = natureList
+          .map((n) => {
+            const flag =
+              n.collected == null ? '' : ` data-collected="${n.collected ? 'true' : 'false'}"`;
+            return `<span class="pet-nature"${flag} title="${n.text}">${n.text}</span>`;
+          })
+          .join('');
+        return `
+          <article class="pet-card"${sizeAttr}${genderTone}${stateAttr} title="${p.name}">
+            <header class="pet-head">
+              <div class="pet-head-left">
+                <span class="pet-no">No.${p.no}</span>
+                <span class="pet-egg-groups">${p.groups.map((g) => `<span class="pet-egg" title="${g}">${g}</span>`).join('')}</span>
+              </div>
+              <div class="pet-head-right">${natureHtml}</div>
+            </header>
+            <div class="pet-avatar">
+              <img class="pet" src="${CDN(p.gameId)}" alt="" loading="lazy" />
+              ${shiny ? `<img class="pet-rarity" src="../../../public/ui/rarity/${shiny}.png" alt="" />` : ''}
+            </div>
+            <h3 class="pet-name">${p.name}</h3>
+            ${
+              hideDetails
+                ? ''
+                : `<div class="pet-details">
+              <span class="pet-details-inner">
+                <span class="medals">
+                  ${gender ? `<span class="pet-gender" data-g="${gender}">${gender === '母' ? '♀' : '♂'}</span>` : ''}
+                  ${body ? `<img src="${body}" alt="${medalBody}" title="${medalBody}" />` : ''}
+                  ${voice ? `<img src="${voice}" alt="" title="声音 ${voiceDb}dB" />` : ''}
+                </span>
+                <span>${voiceDb != null ? `${voiceDb}dB` : '—'} · ${pct(heightPercent)} · ${pct(weightPercent)}</span>
+              </span>
+            </div>`
+            }
+            ${footer ? `<span class="pet-footer" title="${footer}">${footer}</span>` : ''}
+            ${footerActions ? `<span class="pet-footer-actions">${footerActions.map((a) => `<span>${a}</span>`).join('')}</span>` : ''}
+          </article>`;
+      }
+
+      /** 需求卡（EggDemandCard）：56px 头像 + 底部状态条 */
+      function demandCard(p, opts) {
+        const { natures = [], body, voice, greenNest, fulfilled = 0, quantity = 1, status, owner } = opts;
+        const bodyIcon = { 大块头: MEDAL + '1001.png', 小不点: MEDAL + '1002.png', 满体重: MEDAL + '1001-max.png', 零体重: MEDAL + '1002-min.png' }[body];
+        const voiceIcon = { '+100': MEDAL + '1026-max.png', '-100': MEDAL + '1025-max.png', 婉转声: MEDAL + '1026.png', 粗嗓门: MEDAL + '1025.png' }[voice];
+        return `
+          <button type="button" class="demand-card">
+            <span class="demand-avatar"><img src="${CDN(p.gameId)}" alt="" loading="lazy" /></span>
+            <span class="demand-name">${p.name}</span>
+            <span class="demand-natures">${natures.length ? natures.join(' / ') : '不挑性格'}</span>
+            <span class="demand-medals">
+              ${bodyIcon ? `<img src="${bodyIcon}" alt="${body}" />` : ''}
+              ${voiceIcon ? `<img src="${voiceIcon}" alt="${voice}" />` : ''}
+              ${greenNest ? `<img src="${NEST}" alt="绿窝" />` : ''}
+            </span>
+            <span class="demand-count">${owner ? `${owner} · ` : ''}已收 ${fulfilled}/${quantity}</span>
+            <span class="demand-status">${status}</span>
+          </button>`;
+      }
+
+      /** 种公堆叠卡（StudStack CandidateCard） */
+      function studCard(p, opts) {
+        const { tier = 'ok', route = 'self', voiceDb = 100, medalBody = '大块头', weightPercent = 100 } = opts;
+        const body = bodyMedal(medalBody, weightPercent);
+        const voice = voiceMedal(voiceDb);
+        const routeLabel = { self: '本号可配', transfer: '跨号 · 千度月', ask: '只能求助' }[route];
+        return `
+          <article class="stud-card" data-tier="${tier}">
+            <span class="stud-no">No.${p.no}</span>
+            <span class="stud-medals">
+              ${body ? `<img src="${body}" alt="${medalBody}" />` : ''}
+              ${voice ? `<img src="${voice}" alt="" title="声音 ${voiceDb}dB" />` : ''}
+            </span>
+            <div class="stud-avatar"><img src="${CDN(p.gameId)}" alt="" loading="lazy" /></div>
+            <p class="stud-name">${p.name} <i>♂</i></p>
+            <p class="stud-db">${voiceDb}dB</p>
+            <p class="stud-groups">${p.groups.map((g) => `<span>${g}</span>`).join('')}</p>
+            <span class="stud-route" data-route="${route}">${routeLabel}</span>
+          </article>`;
+      }
+
+      /* -------------------------------------------------------------------
+       * 六个分组
+       * ---------------------------------------------------------------- */
+      const SECTIONS = [
+        {
+          title: '① 种公推荐卡 · 98px（看板默认视图）',
+          spec: 'PetCardLayout 默认档 · 头像 44 · 名字 6px · 看板「种公推荐」四列，一屏能放 90+ 张',
+          body: () => `<div class="grid-4">
+            ${petCard(P.haibao, { nature: '固执', hideDetails: true })}
+            ${petCard(P.keliji, { natures: [{ text: '聪明' }, { text: '胆小' }], hideDetails: true })}
+            ${petCard(P.cuitong, { nature: '胆小', hideDetails: true })}
+            ${petCard(P.tiantianluo, { natures: [{ text: '踏实' }, { text: '平和' }], hideDetails: true })}
+            ${petCard(P.chaizha, { nature: '固执', hideDetails: true })}
+            ${petCard(P.duoxi, { natures: [{ text: '平和' }, { text: '固执' }], hideDetails: true })}
+            ${petCard(P.wuda, { nature: '固执', hideDetails: true })}
+            ${petCard(P.huodouding, { nature: '固执', hideDetails: true })}
+          </div>`,
+        },
+        {
+          title: '② 母本卡 · 106px',
+          spec: 'PetCardLayout size="mother" · 头像 62 · 名字 12→9 自适应 · 底部一颗「计划」',
+          body: () => `<div class="grid-4">
+            ${petCard(P.bushishi, { size: 'mother', nature: '平和', natureCollected: true, hideDetails: true, footerActions: ['计划'] })}
+            ${petCard(P.wuda, { size: 'mother', natures: [{ text: '固执', collected: false }], hideDetails: true, footerActions: ['计划'] })}
+            ${petCard(P.dujiaoshou, { size: 'mother', natures: [{ text: '平和', collected: true }, { text: '固执', collected: false }], hideDetails: true, shiny: 'shiny', footerActions: ['计划'] })}
+            ${petCard(P.chaizha, { size: 'mother', natures: [{ text: '固执', collected: false }, { text: '聪明', collected: false }], hideDetails: true, footerActions: ['计划'] })}
+          </div>`,
+        },
+        {
+          title: '③ 看板缺口卡 · 104px',
+          spec: 'PetCardLayout size="gap" · 头像 52 · 名字 12px · 切到「母本缺口」才出现，无 dB / 百分比行',
+          body: () => `<div class="grid-4">
+            ${petCard(P.haibao, { size: 'gap', nature: '固执', natureCollected: true, hideDetails: true })}
+            ${petCard(P.keliji, { size: 'gap', natures: [{ text: '聪明' }, { text: '胆小' }], hideDetails: true })}
+            ${petCard(P.cuitong, { size: 'gap', nature: '胆小', natureCollected: true, hideDetails: true })}
+            ${petCard(P.tiantianluo, { size: 'gap', natures: [{ text: '踏实' }, { text: '平和' }], hideDetails: true })}
+          </div>`,
+        },
+        {
+          title: '④ 精灵背包卡 · 104px',
+          spec: 'PetCardLayout size="tall" · 头像 44 · 名字 8px · 传性别时整卡换粉/蓝底',
+          body: () => `<div class="grid-4">
+            ${petCard(P.huodouding, { size: 'tall', gender: '公', nature: '固执', medalBody: '大块头', voiceDb: 100, heightPercent: 100, weightPercent: 99.5 })}
+            ${petCard(P.duoxi, { size: 'tall', gender: '母', nature: '平和', medalBody: '大块头', voiceDb: 100, heightPercent: 100, weightPercent: 98.9 })}
+            ${petCard(P.baifa, { size: 'tall', gender: '母', nature: '平和', medalBody: '大块头', voiceDb: 100, heightPercent: 100, weightPercent: 100 })}
+            ${petCard(P.wuda, { size: 'tall', gender: '未知', nature: '固执', medalBody: '大块头', voiceDb: 100 })}
+          </div>`,
+        },
+        {
+          title: '⑤ 需求卡 · 三列',
+          spec: 'EggDemandCard · 头像 56 · 名字 11px · 奖牌 16 · 底部状态条 10/20',
+          body: () => `<div class="grid-3">
+            ${demandCard(P.haibao, { natures: ['固执'], body: '大块头', voice: '+100', greenNest: true, status: '等待组员回应' })}
+            ${demandCard(P.keliji, { natures: ['固执'], body: '大块头', voice: '+100', greenNest: true, status: '等测试222回应' })}
+            ${demandCard(P.cuitong, { natures: ['胆小'], body: '小不点', voice: '婉转声', greenNest: true, status: '等待组员回应' })}
+            ${demandCard(P.tiantianluo, { natures: ['聪明'], body: '大块头', voice: '+100', greenNest: true, status: '等待组员回应' })}
+            ${demandCard(P.dujiaoshou, { natures: ['急躁', '平和'], body: '大块头', voice: '粗嗓门', owner: '千度月', status: '已接单' })}
+            ${demandCard(P.chaizha, { natures: [], body: '小不点', voice: '婉转声', status: '已完成' })}
+          </div>`,
+        },
+        {
+          title: '⑥ 紧凑卡 · 160×98',
+          spec: 'PetCompactCard / w-160 shrink-0 · 头像 44 · 名字 6px · 带 dB 与身高体重，家园配对用',
+          body: () => `<div class="row-160">
+            ${petCard(P.baifa, { gender: '母', nature: '平和', medalBody: '大块头', voiceDb: 100, heightPercent: 100, weightPercent: 100, footer: '巨灵组 · 盒子 31 第 19 位' })}
+            ${petCard(P.huojuren, { gender: '公', nature: '固执', medalBody: '大块头', voiceDb: 100, heightPercent: 100, weightPercent: 99.8, footer: '巨灵组 · 盒子 26 第 18 位' })}
+          </div>`,
+        },
+        {
+          title: '⑦ 种公堆叠卡 · 96px',
+          spec: 'StudStack CandidateCard · 1.5px 边框按档位换色 · 头像 42 盒 / 44 图 · 右下路由胶囊',
+          body: () => `<div class="card-panel" style="display:flex;flex-direction:column;gap:8px">
+            <button type="button" class="stud-stack">
+              <span class="layer layer-3"></span>
+              <span class="layer layer-2"></span>
+              <span class="top">${studCard(P.huodouding, { tier: 'ok', route: 'self' })}</span>
+              <span class="stud-caption">巨灵组 4 只公 · 点卡片换一只</span>
+            </button>
+            ${studCard(P.duoxi, { tier: 'many', route: 'transfer', voiceDb: 100 })}
+            ${studCard(P.keliji, { tier: 'few', route: 'ask', voiceDb: 96, medalBody: '小不点', weightPercent: 2 })}
+          </div>`,
+        },
+        {
+          title: '⑧ 状态',
+          spec: '线上可点卡片 hover 描边变 emerald-500；「选中」没有独立视觉（只换 aria-pressed）',
+          body: () => `<div class="state-row">
+            <div class="state-cell">${petCard(P.bushishi, { size: 'mother', nature: '平和', hideDetails: true })}<small>默认</small></div>
+            <div class="state-cell">${petCard(P.bushishi, { size: 'mother', nature: '平和', hideDetails: true, state: 'hover' })}<small>悬停</small></div>
+            <div class="state-cell">${petCard(P.bushishi, { size: 'mother', nature: '平和', hideDetails: true, state: 'pressed' })}<small>选中</small></div>
+            <div class="state-cell">${petCard(P.bushishi, { size: 'mother', nature: '平和', hideDetails: true, state: 'disabled' })}<small>禁用</small></div>
+          </div>
+          <div class="grid-4" style="margin-top:4px">
+            <div class="pet-empty">空</div><div class="pet-empty">空</div><div class="pet-empty">空</div><div class="pet-empty">空</div>
+          </div>`,
+        },
+        {
+          title: '⑨ 规格表',
+          spec: '改卡片前先查这张表；尺寸全部照抄代码，代码位置列在最后',
+          body: () => `<div class="card-panel">
+            <dl class="spec-list">
+              <div><dt>种公推荐卡</dt><dd>自适应×98 · 头像 44 · 名字 6/8 bold · 无详情行</dd></div>
+              <div><dt>母本卡</dt><dd>自适应×106 · 头像 62 · 名字 12/14 medium · 底部一颗「计划」</dd></div>
+              <div><dt>缺口卡</dt><dd>自适应×104 · 头像 52 · 名字 12/16 bold · 无详情行</dd></div>
+              <div><dt>背包卡</dt><dd>自适应×104 · 头像 44 · 名字 8/10 bold · 详情 8px</dd></div>
+              <div><dt>紧凑卡</dt><dd>160×98 · 头像 44 · 名字 6/8 bold · 详情 + 底注各 6px</dd></div>
+              <div><dt>需求卡</dt><dd>三列自适应 · 头像 56 · 名字 11/15 semibold · 状态条 10/20</dd></div>
+              <div><dt>种公堆叠卡</dt><dd>自适应×96 · 头像 42（图 44）· 名字 12 bold · 描边 1.5px</dd></div>
+            </dl>
+            <ul class="spec-src">
+              <li><code>PetCardLayout.tsx:127</code> 四档高度与性别底色（98 / 104 / 104 / 106）</li>
+              <li><code>PetCardLayout.tsx:138-247</code> 图鉴号 / 蛋组 / 性格 / 头像 / 名字 / 详情定位</li>
+              <li><code>SuggestionCard.tsx:149</code> 种公推荐用默认档</li>
+              <li><code>Dashboard.tsx:357</code> 母本缺口用 gap 档</li>
+              <li><code>PetCompactCard.tsx:77</code> 紧凑卡 160px</li>
+              <li><code>plan/EggDemandCard.tsx:23</code> 需求卡</li>
+              <li><code>StudStack.tsx:65</code> 种公堆叠卡（档位边框见 14-19 行）</li>
+              <li><code>domain/petIcons.ts</code> 奖牌 / 稀有度 / 绿窝取图规则</li>
+            </ul>
+          </div>`,
+        },
+      ];
+
+      document.getElementById('gallery-root').innerHTML = SECTIONS.map(
+        (s) => `
+        <div class="gallery-section">
+          <div class="gallery-head"><h2>${s.title}</h2></div>
+          <div class="gallery-spec">${s.spec}</div>
+          ${s.body()}
+        </div>`,
+      ).join('');
+    </script>
+    <script src="../../_shell/shell.js"></script>
+  </body>
+</html>

@@ -1,0 +1,67 @@
+/* =============================================================================
+ * ② semantic.css — 语义层（写"用在哪"，值只能引用 ① primitive）
+ *
+ * 规矩：
+ *   - 页面只许用这一层（+ ③ component）；
+ *   - 本层禁止出现裸 hex / rgb，只能 `var(--c-*)`；
+ *   - 命名按用途不按外观：`--text-secondary` 而不是 `--gray-text`。
+ * ========================================================================== */
+
+:root {
+  /* ---------------- 底与面 ---------------- */
+  --bg-canvas: var(--c-white);      /* 页面底色 */
+  --bg-surface: var(--c-white);     /* 主卡片 rounded-2xl bg-white */
+  --bg-inset: var(--c-slate-50);    /* 卡内嵌块 bg-slate-50 */
+  --bg-muted: var(--c-slate-100);   /* 分段控件轨道 / 次要块 */
+  --bg-overlay: var(--c-black-40);  /* 弹层遮罩 */
+  --bg-toast: var(--c-slate-900-85);
+
+  /* ---------------- 文字：四档 + 反色 ---------------- */
+  --text-strong: var(--c-slate-900); /* 标题 */
+  --text-body: var(--c-slate-700);   /* 正文 */
+  --text-muted: var(--c-slate-500);  /* 说明 / 未选中页签 */
+  --text-faint: var(--c-slate-400);  /* 弱提示 / 占位符 */
+  --text-inverse: var(--c-white);
+
+  /* ---------------- 线 ---------------- */
+  --line-subtle: var(--c-slate-100); /* 标题栏 / 页签下边线 */
+  --line: var(--c-slate-200);        /* 输入框 / 次按钮描边 */
+  --line-strong: var(--c-slate-300);
+
+  /* ---------------- 主色 ---------------- */
+  --accent: var(--c-emerald-600);
+  --accent-text: var(--c-emerald-700);
+  --accent-line: var(--c-emerald-500);
+  --accent-soft: var(--c-emerald-50);
+  --accent-softer: var(--c-emerald-100);
+
+  /* ---------------- 状态：危险 ---------------- */
+  --danger: var(--c-rose-600);
+  --danger-text: var(--c-rose-700);
+  --danger-soft: var(--c-rose-50);
+  --danger-line: var(--c-rose-200);
+
+  /* ---------------- 状态：提醒 ---------------- */
+  --warn: var(--c-amber-500);
+  --warn-text: var(--c-amber-800);
+  --warn-soft: var(--c-amber-50);
+  --warn-line: var(--c-amber-200);
+
+  /* ---------------- 状态：信息 ---------------- */
+  --info: var(--c-sky-500);
+  --info-text: var(--c-sky-700);
+  --info-soft: var(--c-sky-50);
+  --info-line: var(--c-sky-200);
+
+  /* ---------------- 卡片状态面（组件层复用，避免组件里写色阶） ---------------- */
+  --state-default-surface: var(--c-white);
+  --state-default-line: var(--c-slate-200);
+  --state-planned-surface: var(--c-sky-50);
+  --state-planned-line: var(--c-sky-200);
+  --state-planned-text: var(--c-sky-700);
+  --state-collected-surface: var(--c-emerald-50);
+  --state-collected-line: var(--c-emerald-200);
+  --state-collected-text: var(--c-emerald-700);
+  --state-academy-line: var(--c-emerald-300);
+  --state-academy-surface: var(--c-emerald-50);
+}

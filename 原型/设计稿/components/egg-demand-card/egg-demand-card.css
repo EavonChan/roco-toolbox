@@ -1,0 +1,76 @@
+/* =============================================================================
+ * egg-demand-card.css — 换蛋需求卡（唯一来源）
+ * 需求列表里的「一只想要 + 目标 + 状态」，窄卡、竖向排列。
+ * ========================================================================== */
+
+.demand-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--demand-card-radius);
+  background: var(--bg-surface);
+  padding: var(--demand-card-pad);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.demand-card__art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6) 0 var(--sp-2);
+}
+.demand-card__art img {
+  width: 100%;
+  max-height: var(--pet-card-avatar);
+  object-fit: contain;
+}
+
+.demand-card__name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--sp-4);
+  font-size: var(--demand-name-size);
+  line-height: 15px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-body);
+  text-align: center;
+}
+
+.demand-card__meta {
+  min-height: 15px;
+  padding: 1px var(--sp-2);
+  font-size: var(--demand-meta-size);
+  line-height: 14px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.demand-card__medals {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  height: var(--demand-footer-h);
+}
+.demand-card__medals img {
+  width: var(--demand-medal-size);
+  height: var(--demand-medal-size);
+  object-fit: contain;
+}
+
+.demand-card__footer {
+  margin-top: auto;
+  background: var(--accent-soft);
+  padding: 0 var(--sp-4);
+  font-size: var(--demand-meta-size);
+  line-height: var(--demand-footer-h);
+  color: var(--accent-text);
+  text-align: center;
+}

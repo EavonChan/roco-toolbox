@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { CATALOG_VERSION, species } from '../../data/catalog';
 import type { MotherGroup, TargetMode } from '../../domain/petFilters';
-import { buildCollectionPlanCards, type CollectionPlanCard } from '../../domain/collectionPlan';
+import type { CollectionPlanCard } from '../../domain/collectionPlan';
 import { useCollectionGroups } from '../useCollectionGroups';
 import { useSnapshots } from '../useSnapshots';
 import { useMotherPlan } from '../motherPlanStore';
@@ -9,12 +9,15 @@ import { PetAvatar } from '../PetAvatar';
 import { PetCardLayout } from '../PetCardLayout';
 import { Button } from '../primitives/Button';
 import { useEggMatching } from './useEggMatching';
-import {
-  GroupEggRequestSheet,
-  type GroupEggRequestCriteria,
-} from './GroupEggRequestSheet';
+import { GroupEggRequestSheet, type GroupEggRequestCriteria } from './GroupEggRequestSheet';
 import { newUuid } from '../../shared/uuid';
 import type { NavigationIntent } from '../navigation';
+import {
+  collectingFooterClass,
+  useMotherCollectionData,
+  type CollectingFilter,
+  type CollectingStatus,
+} from '../useMotherCollectionData';
 
 export interface MotherCollectingViewProps {
   motherGroups: readonly MotherGroup[];
@@ -26,46 +29,83 @@ export interface MotherCollectingViewProps {
   onNavigate: (intent: NavigationIntent) => void;
 }
 
-function collectingCards(
-  plan: readonly string[],
-  motherGroups: readonly MotherGroup[],
-  missingNaturesByEgg: ReadonlyMap<number, readonly string[]>,
-  demands: Parameters<typeof buildCollectionPlanCards>[0]['demands'],
-  trades: Parameters<typeof buildCollectionPlanCards>[0]['trades'],
-  members: Parameters<typeof buildCollectionPlanCards>[0]['members'],
-  viewerAccountId: string,
-) {
-  return buildCollectionPlanCards({
-    planKeys: plan,
-    motherGroups: motherGroups.map((group) => ({
-      chainKey: group.chainKey,
-      eggGameId: group.eggGameId,
-      formLabel: group.formLabel,
-      number: group.number,
-      eggGroups: group.eggGroups,
-    })),
-    naturesByEgg: missingNaturesByEgg,
-    demands,
-    trades,
-    members,
-    viewerAccountId,
-  });
+/** 收集中：状态快速筛选（带数字，点了就筛） */
+function CollectingStatusBar({
+  filters,
+  value,
+  onChange,
+}: {
+  filters: ReadonlyArray<{ value: CollectingFilter; label: string; count: number }>;
+  value: CollectingFilter;
+  onChange: (next: CollectingFilter) => void;
+}) {
+  if (filters.length <= 1) return null;
+  return (
+    <div
+      className="flex gap-1 overflow-x-auto scrollbar-none"
+      data-testid="mother-collecting-status"
+      role="group"
+      aria-label="收集中状态筛选"
+    >
+      {filters.map((filter) => {
+        const active = filter.value === value;
+        return (
+          <button
+            key={filter.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(filter.value)}
+            data-testid={`collecting-status-${filter.value}`}
+            className={`min-h-[28px] shrink-0 rounded-md border px-2 text-[11px] ${
+              active
+                ? 'border-emerald-500 bg-emerald-50 font-medium text-emerald-700'
+                : 'border-slate-200 bg-white text-slate-500'
+            }`}
+          >
+            {`${filter.label} ${filter.count}`}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function CollectingCards({
   cards,
   eggGroupNames,
+  received,
+  filtered,
+  onClearFilter,
   onOpen,
 }: {
   cards: readonly CollectionPlanCard[];
   eggGroupNames: Record<number, string>;
+  /** 已收到、已归「已收集」的条数：空态要说清楚去哪了 */
+  received: number;
+  /** 当前是否处于状态筛选（空态文案不同） */
+  filtered: boolean;
+  onClearFilter: () => void;
   onOpen: (card: CollectionPlanCard) => void;
 }) {
   if (cards.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-6 text-center text-xs text-slate-500">
-        还没有收集中精灵。先在未收集卡片点“计划”。
-      </p>
+      <div
+        className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-6 text-center text-xs text-slate-500"
+        data-testid="mother-collecting-empty"
+      >
+        {filtered ? (
+          <>
+            这一状态下没有收集中精灵。
+            <Button variant="text" size="sm" className="ml-1" onClick={onClearFilter}>
+              显示全部
+            </Button>
+          </>
+        ) : received > 0 ? (
+          `收集中都收到了，已转到「已收集」（${received} 条）。`
+        ) : (
+          '还没有收集中精灵。先在未收集卡片点“计划”。'
+        )}
+      </div>
     );
   }
   return (
@@ -79,16 +119,17 @@ function CollectingCards({
             eggGroups={card.eggGroups.map((id) => eggGroupNames[id] ?? `蛋组${id}`)}
             natures={card.natures}
             size="tall"
-            status="planned"
+            /* 整卡统一白底：状态只由底条承担（2026-11-22 用户口径） */
+            status="uncollected"
             fitName
-            fitNameBase={8}
-            fitNameMin={6}
-            avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={44} />}
+            avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={48} />}
             title={card.statusDetail}
             onClick={() => onOpen(card)}
             footer={
               <span
-                className="w-full truncate rounded-full bg-sky-100 px-1 text-[7px] font-medium leading-[13px] text-sky-700"
+                className={`h-full w-full truncate px-1 text-center text-[10px] font-medium leading-[18px] ${collectingFooterClass(
+                  card.status as CollectingStatus,
+                )}`}
                 title={card.statusDetail}
               >
                 {card.statusLabel}
@@ -102,14 +143,36 @@ function CollectingCards({
 }
 
 function NoGroupCollecting({
-  cards,
+  motherGroups,
+  missingNaturesByEgg,
   eggGroupNames,
+  accountId,
   onNavigate,
 }: {
-  cards: readonly CollectionPlanCard[];
+  motherGroups: readonly MotherGroup[];
+  missingNaturesByEgg: ReadonlyMap<number, readonly string[]>;
   eggGroupNames: Record<number, string>;
+  accountId: string;
   onNavigate: (intent: NavigationIntent) => void;
 }) {
+  const [filter, setFilter] = useState<CollectingFilter>('all');
+  const plan = useMotherPlan();
+  const data = useMotherCollectionData({
+    planKeys: plan,
+    motherGroups: motherGroups.map((group) => ({
+      chainKey: group.chainKey,
+      eggGameId: group.eggGameId,
+      formLabel: group.formLabel,
+      number: group.number,
+      eggGroups: group.eggGroups,
+    })),
+    naturesByEgg: missingNaturesByEgg,
+    demands: [],
+    trades: [],
+    members: [],
+    viewerAccountId: accountId,
+  });
+
   return (
     <section className="space-y-2" data-testid="mother-collecting-view">
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
@@ -123,9 +186,13 @@ function NoGroupCollecting({
           去小组
         </Button>
       </div>
+      <CollectingStatusBar filters={data.filters} value={filter} onChange={setFilter} />
       <CollectingCards
-        cards={cards}
+        cards={data.visible(filter)}
         eggGroupNames={eggGroupNames}
+        received={data.received}
+        filtered={filter !== 'all'}
+        onClearFilter={() => setFilter('all')}
         onOpen={() => onNavigate({ type: 'tab', page: 'groups' })}
       />
     </section>
@@ -134,7 +201,6 @@ function NoGroupCollecting({
 
 function GroupCollecting({
   groupHook,
-  plan,
   motherGroups,
   missingNaturesByEgg,
   eggGroupNames,
@@ -145,7 +211,6 @@ function GroupCollecting({
   onClose,
 }: {
   groupHook: ReturnType<typeof useCollectionGroups>;
-  plan: readonly string[];
   motherGroups: readonly MotherGroup[];
   missingNaturesByEgg: ReadonlyMap<number, readonly string[]>;
   eggGroupNames: Record<number, string>;
@@ -160,24 +225,28 @@ function GroupCollecting({
   const api = useEggMatching(groupId, accountId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [filter, setFilter] = useState<CollectingFilter>('all');
   const state = api.data?.state;
+  const plan = useMotherPlan();
   const members = groupHook.currentGroup?.members ?? [];
-  const cards = useMemo(
-    () =>
-      collectingCards(
-        plan,
-        motherGroups,
-        missingNaturesByEgg,
-        state?.demands ?? [],
-        state?.trades ?? [],
-        members.map((member) => ({
-          accountId: member.accountId,
-          displayName: member.displayName,
-        })),
-        accountId,
-      ),
-    [plan, motherGroups, missingNaturesByEgg, state?.demands, state?.trades, members, accountId],
-  );
+  const data = useMotherCollectionData({
+    planKeys: plan,
+    motherGroups: motherGroups.map((group) => ({
+      chainKey: group.chainKey,
+      eggGameId: group.eggGameId,
+      formLabel: group.formLabel,
+      number: group.number,
+      eggGroups: group.eggGroups,
+    })),
+    naturesByEgg: missingNaturesByEgg,
+    demands: state?.demands ?? [],
+    trades: state?.trades ?? [],
+    members: members.map((member) => ({
+      accountId: member.accountId,
+      displayName: member.displayName,
+    })),
+    viewerAccountId: accountId,
+  });
   const memberName = (id: string) =>
     members.find((member) => member.accountId === id)?.displayName ?? '组员';
   const whoCanHelp = open
@@ -257,7 +326,15 @@ function GroupCollecting({
           </button>
         ))}
       </div>
-      <CollectingCards cards={cards} eggGroupNames={eggGroupNames} onOpen={onOpen} />
+      <CollectingStatusBar filters={data.filters} value={filter} onChange={setFilter} />
+      <CollectingCards
+        cards={data.visible(filter)}
+        eggGroupNames={eggGroupNames}
+        received={data.received}
+        filtered={filter !== 'all'}
+        onClearFilter={() => setFilter('all')}
+        onOpen={onOpen}
+      />
       <GroupEggRequestSheet
         open={open != null}
         eggGameId={open?.eggGameId ?? 0}
@@ -290,7 +367,6 @@ export function MotherCollectingView({
   targetVoice,
   onNavigate,
 }: MotherCollectingViewProps) {
-  const plan = useMotherPlan();
   const { snapshots } = useSnapshots();
   const groupHook = useCollectionGroups({
     snapshots,
@@ -300,16 +376,14 @@ export function MotherCollectingView({
   const [open, setOpen] = useState<CollectionPlanCard | null>(null);
   const accountId = groupHook.accountId ?? '';
   const groupId = groupHook.currentGroupId;
-  const noGroupCards = useMemo(
-    () => collectingCards(plan, motherGroups, missingNaturesByEgg, [], [], [], accountId),
-    [plan, motherGroups, missingNaturesByEgg, accountId],
-  );
 
   if (!accountId || !groupId) {
     return (
       <NoGroupCollecting
-        cards={noGroupCards}
+        motherGroups={motherGroups}
+        missingNaturesByEgg={missingNaturesByEgg}
         eggGroupNames={eggGroupNames}
+        accountId={accountId}
         onNavigate={onNavigate}
       />
     );
@@ -318,7 +392,6 @@ export function MotherCollectingView({
   return (
     <GroupCollecting
       groupHook={groupHook}
-      plan={plan}
       motherGroups={motherGroups}
       missingNaturesByEgg={missingNaturesByEgg}
       eggGroupNames={eggGroupNames}

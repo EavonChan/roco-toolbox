@@ -56,3 +56,11 @@ test('committed mutations immediately clear resolved task alerts',async()=>{
   await act(async()=>{await hook.result.current.mutate({type:'receive',id:'t'});});
   expect(getPlanAlertBadge()).toBe(0);
 });
+
+test('没有小组时不发请求，也不停在加载中',async()=>{
+  const hook=renderHook(()=>useEggMatching('','a'));
+  await new Promise(r=>setTimeout(r,20));
+  expect(getEggMatching).not.toHaveBeenCalled();
+  expect(hook.result.current.loading).toBe(false);
+  expect(hook.result.current.data).toBeNull();
+});

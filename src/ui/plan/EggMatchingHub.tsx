@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { OwnedPet, SpeciesEntry } from '../../domain/types';
 import type { AccountSnapshot } from '../../domain/parseBackup';
-import { inventoryFromSnapshot } from '../../domain/eggInventory';
 import { canCirculateEgg, canMatchDemand, type EggDemand, type EggRecord } from '../../shared/eggMatching';
 import { emptyEggWorkflow, type EggLine, type PublishedEggLine, type WorkflowEgg } from '../../shared/eggWorkflow';
 import type { PublishedMotherResource } from '../../shared/motherGroups';
@@ -15,10 +14,9 @@ import { EggDemandCard } from './EggDemandCard';
 import { EggDemandEditor } from './EggDemandEditor';
 import { useEggMatching } from './useEggMatching';
 import { EggStockPanel, EggMedals, EggArt } from './EggStockPanel';
-import { emptyEggStock, reconcileEggStock, type EggStockState, type StockEgg } from './eggStockModel';
 import { newUuid } from '../../shared/uuid';
-import { homeStockFromSnapshot } from './homeEggAdapter';
 import { EggTasksPanel } from './EggTasksPanel';
+import { useEggStockSync } from './useEggStockSync';
 
 export interface EggMatchingHubProps {
   groupId: string; viewerAccountId: string; species: readonly SpeciesEntry[];
@@ -55,15 +53,10 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   const [confirming, setConfirming] = useState<{ back: WorkflowEgg | { line: EggLine; id?: string }; returnDemandId?: string } | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const syncing = useRef(false);
-  const attemptedCaptures = useRef(new Set<string>());
-  // 服务端库存是持久化基线；家蛋只补 home 这一层，不能覆盖背包的 complete 语义。
-  const stockRef = useRef<EggStockState>(emptyEggStock());
-  const partTimes = useRef<Record<string, { bag: number; home: number }>>({});
-  const hydrated = useRef(false);
-  const [syncError,setSyncError] = useState('');
-  const [syncRetry,setSyncRetry] = useState(0);
   const lineAttempt=useRef('');
+  /** 产线同步（不是蛋仓同步）的错误与重试计数，两者分开，重试按钮一次都重来。 */
+  const [lineError,setLineError]=useState('');
+  const [retryTick,setRetryTick]=useState(0);
   const name = (id: number) => species.find(s => s.gameId === id)?.name ?? '未收录精灵';
   const owner = (id: string) => id === me ? '我' : members.find(m => m.accountId === id)?.displayName ?? '已退出成员';
   const statusOfMine = (value: EggDemand): string => {
@@ -86,67 +79,8 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   const act = async (action: unknown) => { setError(''); try { await api.mutate(action); } catch (e) { setError(e instanceof Error ? e.message : '操作失败'); throw e; } };
   const run = (action: unknown, done?: () => void) => { void act(action).then(done).catch(() => {}); };
 
-  // Read only real imported captures. The server watermark makes repeated visits idempotent.
-  useEffect(() => {
-    if (!api.data || api.busy || syncing.current) return;
-    if (!hydrated.current) {
-      // 先用服务端库存水合，避免把已经同步过的蛋当成新蛋重新发一遍。
-      const eggs = api.data.state.eggs.map(egg => ({
-        ...egg,
-        location: egg.location ?? 'bag',
-        lastConfirmedAt: egg.lastConfirmedAt ?? 0,
-      } as StockEgg));
-      stockRef.current = { eggs, captureWatermarks: {}, provenanceHistory: {} };
-      for (const egg of eggs) {
-        const key = egg.gameAccountKey ?? '';
-        const times = partTimes.current[key] ?? { bag: -1, home: -1 };
-        if (egg.location === 'home') times.home = Math.max(times.home, egg.lastConfirmedAt);
-        else times.bag = Math.max(times.bag, egg.lastConfirmedAt);
-        partTimes.current[key] = times;
-      }
-      hydrated.current = true;
-    }
-    for (const snapshot of snapshots) {
-      try {
-        const bag = inventoryFromSnapshot(snapshot, me);
-        const home = homeStockFromSnapshot(snapshot, me);
-        const key = bag.gameAccountKey;
-        const times = partTimes.current[key] ?? { bag: -1, home: -1 };
-        const bagTime = Number.isFinite(bag.capturedAt) ? bag.capturedAt : -1;
-        const homeTime = home?.capturedAt ?? -1;
-        const bagChanged = bagTime > times.bag;
-        const homeChanged = homeTime > times.home;
-        if (!bagChanged && !homeChanged) continue;
-        const attempt = JSON.stringify([groupId, me, key, bagChanged ? bagTime : -1, homeChanged ? homeTime : -1]);
-        if (attemptedCaptures.current.has(attempt)) continue;
-        attemptedCaptures.current.add(attempt);
-        const capturedAt = Math.max(bagChanged ? bagTime : -1, homeChanged ? homeTime : -1);
-        const nextStock = reconcileEggStock(stockRef.current, {
-          accountId: me, gameAccountKey: key, capturedAt,
-          ...(bagChanged ? { bag: { eggs: bag.eggs, complete: bag.complete, capturedAt: bagTime } } : {}),
-          ...(homeChanged && home ? { home: { eggs: home.eggs, complete: home.complete, capturedAt: homeTime } } : {}),
-        });
-        syncing.current = true;
-        void api.mutate({ type: 'stock-sync', gameAccountKey: key, capturedAt,
-          complete: bagChanged ? bag.complete : false,
-          homeComplete: homeChanged ? !!home?.complete : false,
-          eggs: nextStock.eggs
-            .filter(egg => egg.accountId === me && (egg.gameAccountKey ?? '') === key)
-            .map(egg => ({ ...egg, gameAccountKey: key })) })
-          .then(() => {
-            // 只有服务端确认成功才推进本地基线与部位时间，失败时重试仍能重发同一批。
-            stockRef.current = nextStock;
-            partTimes.current[key] = { bag: bagChanged ? bagTime : times.bag, home: homeChanged ? homeTime : times.home };
-            setSyncError('');
-          })
-          .catch(e => setSyncError(e instanceof Error ? e.message : '蛋仓同步失败'))
-          .finally(() => { syncing.current = false; setSyncRetry(n => n + 1); });
-        break;
-      } catch (e) {
-        setSyncError(e instanceof Error ? e.message : '蛋仓同步失败');
-      }
-    }
-  }, [api.data, api.busy, api.mutate, snapshots, me, groupId, syncRetry]);
+  // 蛋仓同步（2026-11-22 与家园页共用）：本机采集 → 服务器水印增量推送。
+  const stock = useEggStockSync({ api, groupId, me, snapshots });
 
   const sharedAccountKeys=members.find(m=>m.accountId===me)?.resource?.accounts.map(a=>a.accountKey)??[];
   const sharedSnapshots=snapshots.filter(s=>sharedAccountKeys.includes(accountKeyOf(s)));
@@ -155,14 +89,14 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     ,[state.demands,sharedSnapshots,species,me]);
   const linePayload=JSON.stringify([...new Map(sharedLines.map(l=>[l.id,l])).values()].slice(0,1024));
   useEffect(()=>{
-    if(!api.data||api.busy||syncing.current)return;
+    if(!api.data||api.busy||stock.syncing.current)return;
     const signature=JSON.stringify([groupId,me,linePayload]);
     if(lineAttempt.current===signature)return;
     const current=JSON.stringify((api.data.state.lines??[]).filter(l=>l.accountId===me));
     if(current===linePayload)return;
     lineAttempt.current=signature;
-    void api.mutate({type:'line-sync',lines:JSON.parse(linePayload)}).catch(e=>setSyncError(e instanceof Error?e.message:'产线同步失败'));
-  },[api.data,api.busy,api.mutate,groupId,me,linePayload,syncRetry]);
+    void api.mutate({type:'line-sync',lines:JSON.parse(linePayload)}).then(()=>setLineError('')).catch(e=>setLineError(e instanceof Error?e.message:'产线同步失败'));
+  },[api.data,api.busy,api.mutate,groupId,me,linePayload,retryTick]);
 
   const demand = state.demands.find(d => d.id === detailId);
   const mine = demand?.demanderAccountId === me;
@@ -242,7 +176,7 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
   };
 
   return <div className="flex min-w-0 flex-col gap-2" data-testid="egg-matching-hub" data-tour="egg-matching-hub">
-    {syncError?<div role="alert" className="flex items-center justify-between rounded-lg bg-amber-50 p-2 text-xs text-amber-800"><span>蛋仓同步失败：{syncError}</span><Button size="sm" variant="text" disabled={api.busy} onClick={()=>{attemptedCaptures.current.clear();lineAttempt.current='';setSyncError('');setSyncRetry(n=>n+1);}}>重试同步</Button></div>:null}
+    {stock.syncError||lineError?<div role="alert" className="flex items-center justify-between rounded-lg bg-amber-50 p-2 text-xs text-amber-800"><span>{stock.syncError?`蛋仓同步失败：${stock.syncError}`:`产线同步失败：${lineError}`}</span><Button size="sm" variant="text" disabled={api.busy} onClick={()=>{lineAttempt.current='';setLineError('');setRetryTick(n=>n+1);stock.retrySync();}}>重试同步</Button></div>:null}
     {api.error || error ? <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 p-2 text-xs text-rose-700"><span>{error || api.error}</span><Button variant="text" size="sm" onClick={() => void api.refresh()}>重试</Button></div> : null}
     {notice ? <div role="status" className="text-xs text-emerald-700">{notice}<button type="button" aria-label="关闭提示" onClick={() => setNotice('')} className="ml-2 min-h-7 px-2">×</button></div> : null}
     {page ? <div className="flex items-center gap-2"><Button variant="text" size="sm" onClick={() => setPage(null)}>‹ 返回</Button><h3 className="text-sm font-semibold">{page === 'stock' ? '我的蛋仓' : '我的换蛋'}</h3></div> : <>

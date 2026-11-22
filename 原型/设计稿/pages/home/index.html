@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>家园 · 洛克工具箱设计稿</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../../_shell/shell.css" />
+    <style>
+      /* =====================================================================
+       * 家园（对齐 test 2026-11-22 13:27 构建，登录态数据：石岚 / 家园 25 级）
+       *
+       * 这一页含两处已确认的修改：
+       *   ① 顶部工具行去掉 shrink-0 —— 修「手指一滑整个窗口横向走」的溢出
+       *      （线上实测 viewport 375 但 scrollWidth 391，溢出源就是这组按钮）
+       *   ② 配窝卡沿用线上几何：小组卡 rounded-xl border-l-4，内部 70px 粉/蓝小卡
+       * ================================================================== */
+
+      /* ---------------- 顶部工具行（含 ④ 修法） ---------------- */
+      .home-tools {
+        display: flex;
+        align-items: center;
+        gap: var(--sp-8);
+      }
+
+      /* 账号选择器：flex-1 + min-w-0，名字长了先截断 */
+      .account-pick {
+        flex: 1 1 0%;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--sp-4);
+        min-height: 36px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--bg-surface);
+        font-size: var(--fs-body);
+        color: var(--text-body);
+      }
+
+      .account-pick span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .account-pick i {
+        flex: 0 0 auto;
+        font-style: normal;
+        font-size: 10px;
+        color: var(--text-faint);
+      }
+
+      /*
+       * ④ 的落点：这一组从 shrink-0 改成「可收缩」。
+       * 线上这里是 flex shrink-0 items-center gap-1，宽 160 不许缩 → 挤出 14.8px；
+       * 改成 min-width:0 + 允许收缩后，文案仍然写「刷新家园」，窗口不再横向跑。
+       */
+      .home-tools-actions {
+        display: flex;
+        flex-shrink: 1;
+        min-width: 0;
+        align-items: center;
+        gap: var(--sp-4);
+      }
+
+      .tool-btn {
+        flex-shrink: 1;
+        min-width: 0;
+        min-height: 36px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--bg-surface);
+        font-family: inherit;
+        font-size: var(--fs-hint);
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+      }
+
+      .tool-btn[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .tool-help {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--r-full);
+        background: var(--bg-surface);
+        font-size: 12px;
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+      }
+
+      /* ---------------- 家园概览 ---------------- */
+      .home-summary {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-6);
+      }
+
+      .home-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--sp-8);
+      }
+
+      .home-title {
+        margin: 0;
+        font-size: var(--fs-title);
+        line-height: var(--lh-title);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .home-badge {
+        flex: 0 0 auto;
+        padding: 2px 8px;
+        border-radius: var(--r-full);
+        background: var(--c-slate-100);
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .home-meta {
+        margin: 0;
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .home-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--sp-6);
+      }
+
+      .home-stat {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: var(--r-md);
+        background: var(--c-slate-100);
+        font-size: var(--fs-hint);
+        line-height: var(--lh-hint);
+        color: var(--text-muted);
+      }
+
+      .home-stat b {
+        font-size: var(--fs-body);
+        font-weight: var(--fw-semibold);
+        color: var(--text-body);
+      }
+
+      /* ---------------- 配窝卡片 ---------------- */
+      .pair-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-8);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--sp-8);
+      }
+
+      .section-head h2 {
+        margin: 0;
+        font-size: var(--fs-body);
+        line-height: var(--lh-body);
+        font-weight: var(--fw-semibold);
+        color: var(--text-strong);
+      }
+
+      .section-head span {
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+      }
+
+      /* 一组配对：rounded-xl + 4px 左边线（颜色来自 pairingColors）+ slate-50 底 */
+      .pair-group {
+        padding: var(--sp-4) var(--sp-6);
+        border-left: 4px solid var(--c-violet-700);
+        border-radius: var(--r-xl);
+        background: var(--c-slate-50);
+      }
+
+      .pair-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--sp-4);
+        margin-bottom: var(--sp-4);
+      }
+
+      .pair-nature {
+        padding: 2px 6px;
+        border-radius: var(--r-sm);
+        background: var(--c-amber-50);
+        font-size: 10px;
+        line-height: 12px;
+        font-weight: var(--fw-semibold);
+        color: var(--c-amber-700);
+      }
+
+      .pair-db {
+        font-size: 10px;
+        line-height: 12px;
+        color: var(--text-muted);
+      }
+
+      .pair-cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--sp-4);
+      }
+
+      .pair-cards[data-single='true'] {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      /* 70px 粉/蓝小卡：结构照抄 PairingPetCard（home 档） */
+      .pair-pet {
+        position: relative;
+        min-width: 0;
+        height: 70px;
+        overflow: hidden;
+        padding: var(--sp-6);
+        border: 1px solid var(--c-pink-200);
+        border-radius: var(--r-xl);
+        background: var(--c-pink-50);
+        box-shadow: var(--shadow-sm);
+        font-family: var(--font-sans);
+      }
+
+      .pair-pet[data-g='公'] {
+        border-color: var(--c-sky-200);
+        background: var(--c-sky-50);
+      }
+
+      /* 学院小窝：绿框 */
+      .pair-pet[data-academy='true'] {
+        border: 2px solid var(--c-emerald-500);
+      }
+
+      .pp-head {
+        position: absolute;
+        inset: 6px 6px auto;
+        z-index: 10;
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+        align-items: start;
+        gap: 2px;
+        overflow: hidden;
+      }
+
+      .pp-eggs {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1px;
+      }
+
+      .pp-eggs span {
+        max-width: 100%;
+        padding: 1px 4px;
+        border-radius: var(--r-sm);
+        background: var(--c-sky-100);
+        font-size: 9px;
+        line-height: 12px;
+        color: var(--c-sky-800);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pp-medals {
+        display: flex;
+        align-items: center;
+        gap: var(--sp-4);
+        margin-top: 2px;
+      }
+
+      .pp-medals img {
+        height: 14px;
+        width: 14px;
+        filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.05));
+      }
+
+      .pp-right {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 1px;
+        font-size: 10px;
+        line-height: 13px;
+        color: var(--text-muted);
+      }
+
+      .pp-nature-row {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 2px;
+      }
+
+      .pp-gender {
+        font-size: 11px;
+        line-height: 13px;
+      }
+
+      .pp-gender[data-g='母'] {
+        color: var(--c-pink-500);
+      }
+
+      .pp-gender[data-g='公'] {
+        color: var(--c-sky-500);
+      }
+
+      .pp-nature {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        padding: 0 4px;
+        border-radius: var(--r-sm);
+        background: var(--c-amber-100);
+        font-size: 10px;
+        line-height: 12px;
+        font-weight: var(--fw-medium);
+        color: var(--c-amber-900);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pp-avatar {
+        position: absolute;
+        left: 50%;
+        top: 6px;
+        width: 44px;
+        height: 44px;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .pp-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .pp-name {
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        top: 52px;
+        margin: 0;
+        font-size: 11px;
+        line-height: 16px;
+        font-weight: var(--fw-bold);
+        color: var(--text-strong);
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pair-note {
+        margin: 0;
+        padding: 0 var(--sp-4);
+        font-size: var(--fs-meta);
+        line-height: var(--lh-meta);
+        color: var(--text-faint);
+      }
+    </style>
+  </head>
+  <body data-state="default">
+    <div class="proto-page" data-page="home" data-title="家园" data-baseline="home">
+      <!-- 顶部工具行：账号 / 接单上窝 / 刷新家园 / ? -->
+      <div class="home-tools">
+        <button type="button" class="account-pick" title="切换账号">
+          <span>石岚</span>
+          <i>⌄</i>
+        </button>
+        <div class="home-tools-actions">
+          <button type="button" class="tool-btn">接单上窝</button>
+          <button type="button" class="tool-btn">刷新家园</button>
+          <button type="button" class="tool-help" title="家园怎么用">?</button>
+        </div>
+      </div>
+
+      <!-- 家园概览 -->
+      <div class="home-summary">
+        <div class="home-title-row">
+          <h1 class="home-title">石岚 的家园</h1>
+          <span class="home-badge">没有蛋</span>
+        </div>
+        <p class="home-meta">采集时间 2026/11/21 08:01:17 · 家园 25 级 · 房间 5 级</p>
+        <div class="home-stats">
+          <span class="home-stat"><b>11</b>家园精灵</span>
+          <span class="home-stat"><b>11</b>小窝（学院 1）</span>
+          <span class="home-stat"><b>6</b>实际配对</span>
+        </div>
+      </div>
+
+      <!-- 配窝卡片 -->
+      <div class="pair-section">
+        <div class="section-head">
+          <h2>配窝卡片</h2>
+          <span>按游戏实际配对</span>
+        </div>
+        <div id="pairs"></div>
+      </div>
+
+      <p class="pair-note">
+        一组配对一个左边线颜色（与摆位图同色），同一组里母本在左、种公在右；
+        卡片是 70px 版，只写蛋组 / 性别 / 性格 / dB / 身高 / 体重，不写小窝位置。
+      </p>
+
+      <div class="pair-section">
+        <div class="section-head">
+          <h2>接单上窝</h2>
+          <span>在需求中心接的单</span>
+        </div>
+        <div class="pair-note">本号还没接过单，这一块是空态（线上同样只在有单时出现）。</div>
+      </div>
+    </div>
+
+    <script>
+      const CDN = (id) => `https://game.gtimg.cn/images/rocom/rocodata/jingling/${id}/icon.png`;
+      const MEDAL = '../../../public/ui/medals/';
+      /** 左边线颜色：照抄 src/ui/pairingColors.ts 的顺序 */
+      const PAIRING_COLORS = ['#7c3aed', '#d97706', '#0d9488', '#65a30d', '#4f46e5', '#c026d3'];
+
+      const GROUPS = [
+        {
+          natures: [{ p: 100, n: '平和' }],
+          db: 100,
+          pets: [
+            { g: '母', name: '白发懒人', id: 3049, eggs: ['拟人组', '巨灵组'], nature: '平和', db: 100, h: '100%', w: '99.8%', medal: '1001-max.png', voice: '1026-max.png' },
+            { g: '公', name: '火巨人', id: 3756, eggs: ['巨灵组', '拟人组'], nature: '固执', db: 100, h: '100%', w: '100%', medal: '1001-max.png', voice: '1026-max.png' },
+          ],
+        },
+        {
+          natures: [{ p: 60, n: '固执' }],
+          db: 100,
+          pets: [
+            { g: '母', name: '乌达', id: 3536, eggs: ['巨灵组'], nature: '固执', db: 100, h: '100%', w: '98.2%', medal: '1001.png', voice: '1026-max.png' },
+            { g: '公', name: '布是石', id: 3103, eggs: ['大地组', '巨灵组'], nature: '平和', db: 100, h: '100%', w: '98.8%', medal: '1001.png', voice: '1026-max.png' },
+          ],
+        },
+        {
+          natures: [{ p: 60, n: '平和' }],
+          db: 100,
+          pets: [
+            { g: '母', name: '小独角兽', id: 3062, eggs: ['动物组', '巨灵组'], nature: '急躁', db: 100, h: '100%', w: '98.2%', medal: '1001.png', voice: '1026.png' },
+            { g: '公', name: '火豆丁', id: 3754, eggs: ['巨灵组', '拟人组'], nature: '急躁', db: 100, h: '100%', w: '98.1%', medal: '1001.png', voice: '1026.png' },
+          ],
+        },
+        {
+          natures: [{ p: 30, n: '冷静' }, { p: 30, n: '平和' }],
+          db: 100,
+          pets: [
+            { g: '母', name: '柴渣虫', id: 3436, eggs: ['昆虫组', '植物组'], nature: '冷静', db: 100, h: '100%', w: '98.1%', medal: '1001.png', voice: '1026-max.png' },
+            { g: '公', name: '海豹战士', id: 3215, eggs: ['动物组', '两栖组'], nature: '平和', db: 100, h: '100%', w: '99.8%', medal: '1001.png', voice: '1026-max.png' },
+          ],
+        },
+      ];
+
+      function petCard(p) {
+        return `<article class="pair-pet" data-g="${p.g}">
+          <div class="pp-head">
+            <div class="pp-eggs">
+              ${p.eggs.map((e) => `<span>${e}</span>`).join('')}
+              <span class="pp-medals">
+                <img src="${MEDAL}${p.medal}" alt="体型奖牌" />
+                <img src="${MEDAL}${p.voice}" alt="声音奖牌" />
+              </span>
+            </div>
+            <div class="pp-right">
+              <span class="pp-nature-row">
+                <span class="pp-gender" data-g="${p.g}">${p.g === '母' ? '♀' : '♂'}</span>
+                <span class="pp-nature">${p.nature}</span>
+              </span>
+              <span>${p.db}dB</span>
+              <span>高${p.h}</span>
+              <span>重${p.w}</span>
+            </div>
+          </div>
+          <div class="pp-avatar"><img src="${CDN(p.id)}" alt="" loading="lazy" /></div>
+          <h4 class="pp-name">${p.name}</h4>
+        </article>`;
+      }
+
+      document.getElementById('pairs').innerHTML = GROUPS.map(
+        (group, i) => `<div class="pair-group" style="border-left-color:${PAIRING_COLORS[i % PAIRING_COLORS.length]}">
+          <div class="pair-head">
+            ${group.natures.map((n) => `<span class="pair-nature">${n.p}%${n.n}</span>`).join('')}
+            <span class="pair-db">${group.db}dB</span>
+          </div>
+          <div class="pair-cards">${group.pets.map(petCard).join('')}</div>
+        </div>`,
+      ).join('');
+    </script>
+    <script src="../../_shell/shell.js"></script>
+  </body>
+</html>

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>nest-pair-card · 配对卡规格</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../_doc.css" />
+    <link rel="stylesheet" href="./nest-pair-card.css" />
+  </head>
+  <body>
+    <h1>nest-pair-card</h1>
+    <p>
+      配对卡：一对配窝里的<b>一只</b>精灵（母本或种公），两张并排才是「一对」；一对由外层组卡的
+      左侧色条标出，色条颜色来自摆位图同一套 12 色，便于对号入座。
+    </p>
+    <div class="lede">
+      <span class="tag">size: full 86 / home 70</span>
+      <span class="tag">variant: mother / stud / academy</span>
+      <span class="tag">state: default / collected / hover</span>
+      <span class="tag tag--warn">目标态：名字统一 10px + 精简形态</span>
+    </div>
+
+    <div class="note">
+      <b>与 pet-card 的区别：</b>pet-card 是「一只精灵一览」；配对卡是「一对里的角色」，
+      必须成对出现、带性别底色、带盒位/分贝/身高体重。所以是<b>两个组件</b>，不是同一个组件的 variant。
+    </div>
+
+    <!-- ============ A. 一对的完整形态（含色条） ============ -->
+    <h2>A · 一对配窝（组卡 + 左色条）</h2>
+    <p>外层组卡承载「第几条线」的颜色；内部两张卡分别是母本（粉）与种公（蓝）。</p>
+
+    <div class="pair-group" style="--pair-color: #7c3aed">
+      <div class="pair-cards">
+        <article class="pair-card pair-card--full" data-gender="母">
+          <div class="pair-card__head">
+            <div class="pair-card__eggs">
+              <span class="pair-card__egg">拟人组</span>
+              <span class="pair-card__egg" data-collected="true">巨灵组</span>
+              <span class="pair-card__medals">
+                <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" hidden />
+              </span>
+            </div>
+            <div class="pair-card__right">
+              <span class="pair-card__line">
+                <span class="pair-card__gender" data-gender="母">♀</span>
+                <span class="pair-card__nature">平和</span>
+              </span>
+              <span>100dB</span>
+              <span>高 100%</span>
+              <span>重 98.3%</span>
+            </div>
+          </div>
+          <div class="pair-card__avatar">
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" />
+          </div>
+          <div class="pair-card__name">白发懒人</div>
+          <div class="pair-card__position">盒子31 第6位</div>
+        </article>
+
+        <article class="pair-card pair-card--full" data-gender="公">
+          <div class="pair-card__head">
+            <div class="pair-card__eggs">
+              <span class="pair-card__egg">机械组</span>
+              <span class="pair-card__egg">巨灵组</span>
+            </div>
+            <div class="pair-card__right">
+              <span class="pair-card__line">
+                <span class="pair-card__gender" data-gender="公">♂</span>
+                <span class="pair-card__nature">固执</span>
+              </span>
+              <span>100dB</span>
+              <span>高 100%</span>
+              <span>重 99.4%</span>
+            </div>
+          </div>
+          <div class="pair-card__avatar">
+            <img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" />
+          </div>
+          <div class="pair-card__name">圣剑侍从</div>
+          <div class="pair-card__position">盒子26 第18位</div>
+        </article>
+      </div>
+    </div>
+
+    <!-- ============ B. 两档高度 ============ -->
+    <h2>B · 两档高度</h2>
+    <p><code>full</code> 86px（配窝建议，带盒位一行）／<code>home</code> 70px（家园，不带盒位）。</p>
+    <div class="grid">
+      <div class="cell">
+        <article class="pair-card pair-card--full" data-gender="母">
+          <div class="pair-card__head">
+            <div class="pair-card__eggs"><span class="pair-card__egg">巨灵组</span></div>
+            <div class="pair-card__right">
+              <span class="pair-card__line"><span class="pair-card__gender" data-gender="母">♀</span><span class="pair-card__nature">平和</span></span>
+              <span>100dB</span>
+            </div>
+          </div>
+          <div class="pair-card__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pair-card__name">白发懒人</div>
+          <div class="pair-card__position">盒子31 第6位</div>
+        </article>
+        <span class="label">full · 86</span>
+      </div>
+      <div class="cell">
+        <article class="pair-card pair-card--home" data-gender="母">
+          <div class="pair-card__head">
+            <div class="pair-card__eggs"><span class="pair-card__egg">巨灵组</span></div>
+            <div class="pair-card__right">
+              <span class="pair-card__line"><span class="pair-card__gender" data-gender="母">♀</span><span class="pair-card__nature">平和</span></span>
+              <span>100dB</span>
+            </div>
+          </div>
+          <div class="pair-card__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pair-card__name">白发懒人</div>
+        </article>
+        <span class="label">home · 70</span>
+      </div>
+    </div>
+
+    <!-- ============ C. 性别 / 学院 / 已收集 ============ -->
+    <h2>C · 变体（性别底色 / 学院 / 已收齐蛋组）</h2>
+    <div class="grid">
+      <div class="cell">
+        <article class="pair-card pair-card--home" data-gender="母">
+          <div class="pair-card__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pair-card__name">母本</div>
+        </article>
+        <span class="label">mother · 粉</span>
+      </div>
+      <div class="cell">
+        <article class="pair-card pair-card--home" data-gender="公">
+          <div class="pair-card__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3103/icon.png" alt="" /></div>
+          <div class="pair-card__name">种公</div>
+        </article>
+        <span class="label">stud · 蓝</span>
+      </div>
+      <div class="cell">
+        <article class="pair-card pair-card--home" data-gender="母" data-academy="true">
+          <div class="pair-card__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pair-card__name">学院窝</div>
+        </article>
+        <span class="label">academy · 绿框</span>
+      </div>
+      <div class="cell">
+        <article class="pair-card pair-card--home">
+          <div class="pair-card__head">
+            <div class="pair-card__eggs">
+              <span class="pair-card__egg">偏爱组</span>
+              <span class="pair-card__egg" data-collected="true">巨灵组</span>
+            </div>
+          </div>
+          <div class="pair-card__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pair-card__name">蛋组已齐</div>
+        </article>
+        <span class="label">collected 蛋组</span>
+      </div>
+    </div>
+
+    <!-- ============ D. 摆位色条（12 色） ============ -->
+    <h2>D · 摆位色条（12 条线）</h2>
+    <p>色值来自 <code>src/ui/pairingColors.ts</code>，属于数据侧；第 13 条起改用虚线区分。</p>
+    <div class="palette">
+      <i style="--pair-color: #7c3aed"></i>
+      <i style="--pair-color: #d97706"></i>
+      <i style="--pair-color: #0d9488"></i>
+      <i style="--pair-color: #65a30d"></i>
+      <i style="--pair-color: #4f46e5"></i>
+      <i style="--pair-color: #c026d3"></i>
+      <i style="--pair-color: #e11d48"></i>
+      <i style="--pair-color: #0891b2"></i>
+      <i style="--pair-color: #b45309"></i>
+      <i style="--pair-color: #1d4ed8"></i>
+      <i style="--pair-color: #047857"></i>
+      <i style="--pair-color: #a21caf"></i>
+    </div>
+
+    <!-- ============ E. Anatomy ============ -->
+    <h2>E · Anatomy</h2>
+    <div class="grid">
+      <div class="cell">
+        <article class="pair-card pair-card--full" data-gender="母">
+          <div class="pair-card__head">
+            <div class="pair-card__eggs"><span class="pair-card__egg">①蛋组</span></div>
+            <div class="pair-card__right">
+              <span class="pair-card__line"><span class="pair-card__gender" data-gender="母">♀</span><span class="pair-card__nature">②性格</span></span>
+              <span>③dB / 高 / 重</span>
+            </div>
+          </div>
+          <div class="pair-card__avatar"><img src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /></div>
+          <div class="pair-card__name">④名字</div>
+          <div class="pair-card__position">⑤盒位</div>
+        </article>
+        <span class="label">①蛋组 ②性格 ③数值 ④名字 ⑤盒位</span>
+      </div>
+    </div>
+
+    <!-- ============ F. Token ============ -->
+    <h2>F · Token 引用（③ 组件层）</h2>
+    <table>
+      <tr><th>用途</th><th>token</th><th>值</th></tr>
+      <tr><td>高度 full / home</td><td><code>--pair-card-height-full / -home</code></td><td>86px / 70px</td></tr>
+      <tr><td>圆角 / 内边距 / 间距</td><td><code>--pair-card-radius / -pad / -gap</code></td><td>12 / 6 / 2</td></tr>
+      <tr><td>摆位色条</td><td><code>--pair-card-stripe-w</code></td><td>4px</td></tr>
+      <tr><td>头像</td><td><code>--pair-card-avatar</code> / <code>-avatar-top</code></td><td>44px / 6px</td></tr>
+      <tr><td>名字</td><td><code>--pair-card-name-size / -line</code></td><td>10px / 12px（目标态）</td></tr>
+      <tr><td>蛋组 chip</td><td><code>--pair-card-chip-size / -line</code></td><td>9px / 12px</td></tr>
+    </table>
+  </body>
+</html>

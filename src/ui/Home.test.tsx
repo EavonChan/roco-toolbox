@@ -217,6 +217,14 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-account-switcher').parentElement).toBe(
       screen.getByTestId('home-header'),
     );
+    // 2026-11-22 修横向溢出：账号器必须可收缩（flex-1 + min-w-0），不能写死宽度 + shrink-0，
+    // 否则右侧「接单上窝 / 刷新家园 / ?」会把问号挤出屏幕
+    const switcher = screen.getByTestId('home-account-switcher');
+    const cls = switcher.className.split(/\s+/);
+    expect(cls).toContain('flex-1');
+    expect(cls).toContain('min-w-0');
+    expect(cls).not.toContain('shrink-0');
+    expect(cls).not.toContain('w-[14rem]');
     expect(screen.getByTestId('home-account-151910')).toBeTruthy();
     expect(screen.queryByTestId('home-account-151911')).toBeNull();
 
@@ -228,6 +236,48 @@ describe('家园页', () => {
     expect(screen.queryByTestId('home-account-151910')).toBeNull();
     expect(screen.getByTestId('home-account-151911')).toBeTruthy();
     expect(screen.getByTestId('home-pair-card-list')).toHaveTextContent('母本乙');
+  });
+
+  test('账号胶囊宽度交给文本：不写死固定宽度，只保留 60% 上限', () => {
+    h.snapshots = [snapshotWithHome()];
+    render(<HomeLand />);
+
+    const switcher = screen.getByTestId('home-account-switcher');
+    const summary = screen.getByTestId('home-account-summary');
+    const hasFixedWidth = (el: HTMLElement) =>
+      el.className.split(/\s+/).some((token) => token.startsWith('w-['));
+    // 2026-11-22 用户口径：宽度自适应账号名长度（以前写死 w-[14rem]，「莱茵」右边空一大块）
+    expect(hasFixedWidth(switcher)).toBe(false);
+    expect(hasFixedWidth(summary)).toBe(false);
+    expect(summary.className).toContain('w-auto');
+    expect(summary.className).toContain('max-w-full');
+    // 长名字仍要留上限，别把右边的「接单上窝 / 刷新家园」挤出屏幕
+    expect(switcher.className).toContain('max-w-[60%]');
+  });
+
+  test('账号和接单上窝中间有蛋仓入口，点开在家园页里看蛋仓（不弹窗）', () => {
+    h.snapshots = [snapshotWithHome()];
+    render(<HomeLand />);
+
+    const entry = screen.getByTestId('home-egg-stock');
+    // 位置：账号胶囊之后、「接单上窝」之前
+    expect(entry.previousElementSibling).toBe(screen.getByTestId('home-account-switcher'));
+    expect(entry.nextElementSibling?.contains(screen.getByTestId('home-view-demands'))).toBe(true);
+
+    fireEvent.click(entry);
+    // 2026-11-22 用户口径：蛋仓是页内一屏，不是悬浮窗
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByTestId('home-title')).toHaveTextContent('我的蛋仓');
+    // 横屏把标题让给右侧的蛋仓标题栏（home-stock-title 由 index.css 在横屏隐藏）
+    expect(screen.getByTestId('home-title').className).toContain('home-stock-title');
+    // 横屏「返回家园」跟着靠右，和右侧标题栏同一列（data-view 供 index.css 用）
+    expect(screen.getByTestId('home-header')).toHaveAttribute('data-view', 'stock');
+    expect(screen.getByTestId('home-egg-stock-view')).toBeTruthy();
+    // 本机没登录时说明原因，不拿空列表糊弄
+    expect(screen.getByTestId('egg-stock-need-account')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('home-view-nests'));
+    expect(screen.getByTestId('home-account-switcher')).toBeTruthy();
   });
 
   test('账号切换器按数字排序：没数字的号在前，2号在6号前', () => {

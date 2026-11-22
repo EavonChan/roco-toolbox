@@ -8,10 +8,12 @@ import {
 } from '../domain/nestPlan';
 import type { MotherNestPairing } from '../domain/motherNest';
 import { NestPlanCard } from './NestPlanCard';
+import { resetNestPicksForTest } from './nestPicksStore';
 
-/** 勾选占窝会写 localStorage：每个用例从 0 开始，避免串味 */
+/** 勾选占窝是模块级 store + localStorage：每个用例从 0 开始，避免串味 */
 beforeEach(() => {
   localStorage.clear();
+  resetNestPicksForTest();
 });
 
 const nestPet = (key: string, name: string): NestPet => ({
@@ -511,79 +513,62 @@ describe('NestPlanCard 配窝建议（2026-11-18）', () => {
     expect(screen.queryByText('缺带这个性格的公')).toBeNull();
     expect(screen.queryByText('由 账号乙 出蛋，孵好传过来')).toBeNull();
   });
-
-  test('缺口页签显示本号种公推荐（按本号缺口算），不混进高概率', () => {
-    const recommendations = [
-      {
-        id: '3001|认真|大婉|3',
-        natureName: '认真',
-        displayName: '认真喵',
-        groupIds: [3],
-        groupLabels: ['巨灵组'],
-        grade: '大婉' as const,
-        gameId: 3001,
-      },
-      {
-        id: '3002|固执|大婉|6',
-        natureName: '固执',
-        displayName: '固执犬',
-        groupIds: [6],
-        groupLabels: ['动物组'],
-        grade: '大婉' as const,
-        gameId: 3002,
-      },
-    ];
+  test('多账号用滑条切换；账号 tab 写勾选的「窝」且默认 0', () => {
+    const breeder = { ...planOf([pairingOf(mother, father)]), account: '账号甲', nestsUsed: 2 };
+    const receiver = {
+      ...planOf([]),
+      account: '账号乙',
+      nestsUsed: 0,
+      delegated: [
+        { groupId: 2, natureName: '固执', grade: '大婉' as const, byAccount: '账号甲' },
+      ],
+    };
     render(
       <NestPlanCard
-        plans={[planOf([pairingOf(mother, father)])]}
-        gapsByAccount={new Map([['账号甲', 27]])}
-        studRecommendationsByAccount={new Map([['账号甲', recommendations]])}
+        plans={[breeder, receiver]}
+        studRecommendationsByAccount={
+          new Map([
+            [
+              '账号乙',
+              [
+                {
+                  id: '3003|固执|大婉|2',
+                  natureName: '固执',
+                  displayName: '固执鸟',
+                  groupIds: [2],
+                  groupLabels: ['天空组'],
+                  grade: '大婉' as const,
+                  gameId: 3003,
+                },
+              ],
+            ],
+          ])
+        }
       />,
     );
 
-    // 2026-11-20：缺口页签跟标题「差 N 个种公目标」对得上，内容是本号的种公推荐
-    expect(screen.getByTestId('stud-tab-gap')).toHaveTextContent('缺口27');
-    expect(screen.queryByTestId('stud-gap-card')).toBeNull();
+    expect(screen.getByTestId('breed-account-tabs')).toBeTruthy();
+    const tabs = screen.getAllByTestId('breed-account-tab');
+    // 2026-11-20：方案不再自动算窝数，默认是 0
+    expect(tabs[0]).toHaveTextContent('账号甲0 窝');
+    expect(tabs[1]).toHaveTextContent('账号乙待补');
 
-    fireEvent.click(screen.getByTestId('stud-tab-gap'));
-    expect(screen.getByTestId('stud-gap')).toHaveTextContent('本号还差 27 个种公目标');
-    expect(screen.getByTestId('stud-gap')).toHaveTextContent('推荐 2 只');
-    const cards = screen.getAllByTestId('stud-gap-card');
-    expect(cards).toHaveLength(2);
-    expect(cards[0]).toHaveTextContent('认真喵');
-    expect(cards[1]).toHaveTextContent('固执犬');
+    // 默认显示有配对的号，并写明这颗蛋还有谁在等
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('账号甲');
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 0/11 个窝');
+    expect(screen.getByTestId('breed-receivers')).toHaveTextContent('账号乙');
+
+    // 勾当前号的一对卡 = 母 + 公两个窝，只加这个号
+    fireEvent.click(within(screen.getByTestId('breed-suggestion')).getByTestId('nest-pick'));
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 2/11 个窝');
+    expect(screen.getAllByTestId('breed-account-tab')[0]).toHaveTextContent('2 窝');
+    expect(screen.getAllByTestId('breed-account-tab')[1]).toHaveTextContent('待补');
+
+    fireEvent.click(screen.getAllByTestId('breed-account-tab')[1]);
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('账号乙');
   });
 
-  test('点缺口页签的推荐卡，按当前号开「怎么补」', () => {
-    const onOpen = vi.fn();
-    const recommendations = [
-      {
-        id: '3001|认真|大婉|3',
-        natureName: '认真',
-        displayName: '认真喵',
-        groupIds: [3],
-        groupLabels: ['巨灵组'],
-        grade: '大婉' as const,
-        gameId: 3001,
-      },
-    ];
-    render(
-      <NestPlanCard
-        plans={[planOf([pairingOf(mother, father)])]}
-        gapsByAccount={new Map([['账号甲', 1]])}
-        studRecommendationsByAccount={new Map([['账号甲', recommendations]])}
-        onOpenStudRecommendation={onOpen}
-      />,
-    );
 
-    fireEvent.click(screen.getByTestId('stud-tab-gap'));
-    const card = screen.getByTestId('stud-gap-card');
-    fireEvent.click(within(card).getByRole('button'));
-    expect(onOpen).toHaveBeenCalledWith(
-      '账号甲',
-      expect.objectContaining({ gameId: 3001, displayName: '认真喵' }),
-    );
-  });
 
   test('账号格按账号名排序，名字里的数字按数值', () => {
     const planFor = (account: string) => {
@@ -657,64 +642,6 @@ describe('NestPlanCard 配窝建议（2026-11-18）', () => {
     expect(screen.getByTestId('breed-receivers')).toHaveTextContent('账号2 → 账号10');
   });
 
-  test('多账号用滑条切换；账号 tab 写勾选的「窝」且默认 0', () => {
-    const breeder = { ...planOf([pairingOf(mother, father)]), account: '账号甲', nestsUsed: 2 };
-    const receiver = {
-      ...planOf([]),
-      account: '账号乙',
-      nestsUsed: 0,
-      delegated: [
-        { groupId: 2, natureName: '固执', grade: '大婉' as const, byAccount: '账号甲' },
-      ],
-    };
-    render(
-      <NestPlanCard
-        plans={[breeder, receiver]}
-        studRecommendationsByAccount={
-          new Map([
-            [
-              '账号乙',
-              [
-                {
-                  id: '3003|固执|大婉|2',
-                  natureName: '固执',
-                  displayName: '固执鸟',
-                  groupIds: [2],
-                  groupLabels: ['天空组'],
-                  grade: '大婉' as const,
-                  gameId: 3003,
-                },
-              ],
-            ],
-          ])
-        }
-      />,
-    );
-
-    expect(screen.getByTestId('breed-account-tabs')).toBeTruthy();
-    const tabs = screen.getAllByTestId('breed-account-tab');
-    // 2026-11-20：方案不再自动算窝数，默认是 0
-    expect(tabs[0]).toHaveTextContent('账号甲0 窝');
-    expect(tabs[1]).toHaveTextContent('账号乙待补');
-
-    // 默认显示有配对的号，并写明这颗蛋还有谁在等
-    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('账号甲');
-    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 0/11 个窝');
-    expect(screen.getByTestId('breed-receivers')).toHaveTextContent('账号乙');
-
-    // 勾当前号的一对卡 = 母 + 公两个窝，只加这个号
-    fireEvent.click(within(screen.getByTestId('breed-suggestion')).getByTestId('nest-pick'));
-    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 2/11 个窝');
-    expect(screen.getAllByTestId('breed-account-tab')[0]).toHaveTextContent('2 窝');
-    expect(screen.getAllByTestId('breed-account-tab')[1]).toHaveTextContent('待补');
-
-    fireEvent.click(tabs[1]);
-    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('账号乙');
-    // 账号乙没有自己要配的窝，但有本号的种公推荐
-    expect(screen.getByTestId('stud-tab-gap')).toHaveTextContent('缺口');
-    fireEvent.click(screen.getByTestId('stud-tab-gap'));
-    expect(screen.getByTestId('stud-gap-card')).toHaveTextContent('固执鸟');
-  });
 
   test('账号 tab 只报勾选的窝数：方案本身占 11 个窝也默认 0', () => {
     const a = { ...planOf([pairingOf(mother, father)]), account: '账号甲', nestsUsed: 11 };
@@ -866,49 +793,6 @@ const renderMotherTask = (motherNature: string, fatherNature: string): void => {
   render(<NestPlanCard plans={[planOf([])]} motherSuggestions={motherSuggestions} />);
 };
 
-test('母本缺口页签写本号未收集的具体数量（2026-11-20 用户口径）', () => {
-  const mother = { ...nestPet('gm', '喵喵'), gender: '母' as const };
-  const father = { ...nestPet('gf', '喵喵'), gender: '公' as const };
-  const suggestions = new Map([
-    [
-      '账号甲',
-      {
-        gapCount: 7,
-        pairings: [
-          {
-            account: '账号甲',
-            grade: '大婉' as const,
-            eggGameId: 3001,
-            eggName: '喵喵',
-            groupIds: [6],
-            recommendedNatures: ['踏实'],
-            mother,
-            father,
-            natureChance: 0.6,
-            femaleChance: 0.5,
-            motherGain: 0.3,
-            studGain: 0,
-            expectedValue: 0.3,
-            sameSpecies: true,
-            nestsNeeded: 2,
-          },
-        ],
-        tasks: [],
-        helps: [],
-        nestsUsed: 2,
-      },
-    ],
-  ]);
-  render(
-    <NestPlanCard
-      plans={[planOf([])]}
-      motherSuggestions={suggestions as never}
-      section="mothers"
-    />,
-  );
-  expect(screen.getByTestId('mother-tab-high')).toHaveTextContent('配窝建议1');
-  expect(screen.getByTestId('mother-tab-gap')).toHaveTextContent('缺口7');
-});
 
 test('只有双方都是非八大性格时，卡头才写非八大性格', () => {
   renderMotherTask('调皮', '偏执');
@@ -1328,5 +1212,45 @@ describe('NestPlanCard section 联动（2026-11-20 用户口径）', () => {
       />,
     );
     expect(screen.getByTestId('breed-empty')).toHaveTextContent('没有能自己孵的方案');
+  });
+
+});
+
+/**
+ * 看板宽横屏（≥1120px）会同时挂两份 `NestPlanCard`（左「种公推荐」、右「母本缺口」）。
+ * 窝数勾选必须只有**一份**状态：一边勾了，另一边立刻同步，不能各记一份、后写的覆盖先写的。
+ */
+describe('宽横屏两栏共用一份窝数（R2-P1-02）', () => {
+  const female = { ...nestPet('m', '乙兽'), gender: '母' as const };
+  const male = { ...nestPet('f', '甲兽'), gender: '公' as const };
+  const plan = planOf([pairingOf(female, male)]);
+
+  test('两栏同时存在时勾选不丢：左栏勾一窝，右栏同账号窝数同步，刷新后仍是同一数字', () => {
+    const view = render(
+      <>
+        <NestPlanCard plans={[plan]} section="studs" />
+        <NestPlanCard plans={[plan]} section="studs" />
+      </>,
+    );
+
+    const heads = () => screen.getAllByTestId('breed-account-name').map((node) => node.textContent);
+    expect(heads()).toHaveLength(2);
+    expect(heads()[0]).toContain('用 0/11 个窝');
+    expect(heads()[1]).toContain('用 0/11 个窝');
+
+    // 左栏勾一对（母 + 公）= 两个窝
+    fireEvent.click(screen.getAllByTestId('nest-pick')[0]);
+
+    expect(heads()[0]).toContain('用 2/11 个窝');
+    expect(heads()[1]).toContain('用 2/11 个窝');
+
+    // 落盘在旧 key 上：重开页面（重新挂载、只从存储读）仍是同一个数字
+    expect(
+      Object.values(JSON.parse(localStorage.getItem('roco.nestPicks.v1') ?? '{}')),
+    ).toEqual([true]);
+
+    view.unmount();
+    render(<NestPlanCard plans={[plan]} section="studs" />);
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 2/11 个窝');
   });
 });

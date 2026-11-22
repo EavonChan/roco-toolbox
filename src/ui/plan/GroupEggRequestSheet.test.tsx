@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
-import { GroupEggRequestSheet } from './GroupEggRequestSheet';
+import { expect, test, vi } from 'vitest';import { GroupEggRequestSheet } from './GroupEggRequestSheet';
 
 const common = {
   open: true,
@@ -56,4 +55,17 @@ test('发布时带回已选性格、声音、可选体重和绿窝', () => {
       groupId: 'g1',
     },
   );
+});
+
+test('一个性格都没选时发布按钮置灰，并提示先选性格（绿窝同样必须先选）', () => {
+  render(<GroupEggRequestSheet {...common} initialNatures={[]} />);
+
+  const publish = screen.getByRole('button', { name: '先选至少 1 个性格' });
+  expect(publish).toBeDisabled();
+  expect(screen.getByTestId('group-request-need-nature')).toHaveTextContent('绿窝也要先选性格');
+
+  // 选一个性格后按钮恢复成「发布 1 条需求」
+  fireEvent.click(screen.getByRole('button', { name: '固执' }));
+  expect(screen.getByRole('button', { name: /发布 1 条需求/ })).not.toBeDisabled();
+  expect(screen.queryByTestId('group-request-need-nature')).toBeNull();
 });

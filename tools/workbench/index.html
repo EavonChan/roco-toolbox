@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>任务看板 · 工作台</title>
+<style>
+  :root{
+    --bg:#0a0d12;
+    --panel:#111823;
+    --panel-2:#0d141d;
+    --line:#1e2a3a;
+    --line-soft:#182333;
+    --text:#e6edf3;
+    --muted:#8b98a9;
+    --muted-2:#6b7787;
+    --doing:#f2b632;
+    --waiting:#4c9aff;
+    --done:#3fb950;
+    --backlog:#93a1b1;
+    --blocked:#f85149;
+    --radius:14px;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(1100px 520px at 50% -180px, #172231 0%, rgba(23,34,49,0) 70%),
+      var(--bg);
+    color:var(--text);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+
+  /* ── 顶栏 ── */
+  .top{
+    position:sticky;top:0;z-index:20;
+    border-bottom:1px solid var(--line);
+    background:rgba(10,13,18,.86);
+    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  }
+  .top-inner{
+    max-width:1560px;margin:0 auto;padding:14px 24px;
+    display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .mark{
+    width:36px;height:36px;flex:none;border-radius:10px;
+    display:grid;place-items:center;font-size:17px;
+    color:#dbe7f3;background:linear-gradient(145deg,#1d2a3b,#131c28);
+    border:1px solid #2a3a50;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .brand h1{margin:0;font-size:16px;font-weight:650;letter-spacing:.2px}
+  .brand p{margin:1px 0 0;font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .brand p b{color:#aab8c8;font-weight:500}
+  .chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .chip{
+    display:inline-flex;align-items:baseline;gap:6px;
+    padding:5px 10px;border:1px solid var(--line);border-radius:999px;
+    background:rgba(255,255,255,.02);font-size:11.5px;color:var(--muted);white-space:nowrap;
+  }
+  .chip b{color:var(--text);font-weight:600;font-size:12px}
+  .chip.branch b{color:#c9d6e4}
+  .chip.dirty b{color:var(--doing)}
+  .chip.dirty.clean b{color:var(--done)}
+  .live{
+    display:inline-flex;align-items:center;gap:7px;
+    padding:5px 11px;border-radius:999px;border:1px solid var(--line);
+    font-size:11.5px;color:var(--muted);white-space:nowrap;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--done);box-shadow:0 0 0 0 rgba(63,185,80,.5);animation:pulse 2.4s infinite}
+  .live.is-down .dot{background:var(--blocked);animation:none}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,.45)}70%{box-shadow:0 0 0 7px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+
+  /* ── 主体 ── */
+  .wrap{max-width:1560px;margin:0 auto;padding:20px 24px 34px}
+  .alert{
+    display:none;margin:0 0 16px;padding:11px 14px;border-radius:12px;
+    border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.1);
+    color:#ffb4ae;font-size:12.5px;
+  }
+  .alert.show{display:block}
+
+  .board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;align-items:start}
+  .col{
+    min-width:0;border:1px solid var(--line);border-radius:var(--radius);
+    background:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,0));
+    padding:13px 13px 15px;
+  }
+  .col-head{
+    display:flex;align-items:center;gap:9px;padding:2px 2px 12px;
+  }
+  .col-head .swatch{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+  .col-head h2{margin:0;font-size:13.5px;font-weight:650;letter-spacing:.3px}
+  .col-head .n{
+    margin-left:auto;min-width:22px;text-align:center;padding:1px 7px;border-radius:999px;
+    font-size:11.5px;font-weight:600;color:var(--accent);
+    background:color-mix(in srgb,var(--accent) 14%,transparent);
+    border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);
+  }
+  .col[data-col="doing"]{--accent:var(--doing)}
+  .col[data-col="waiting"]{--accent:var(--waiting)}
+  .col[data-col="done"]{--accent:var(--done)}
+  .col[data-col="backlog"]{--accent:var(--backlog)}
+  .cards{display:flex;flex-direction:column;gap:10px}
+
+  .card{
+    position:relative;padding:12px 13px 12px 14px;border-radius:12px;
+    background:var(--panel);border:1px solid var(--line-soft);
+    display:flex;flex-direction:column;gap:8px;
+    transition:border-color .18s,transform .18s,box-shadow .18s;
+    overflow-wrap:anywhere;
+  }
+  .card::before{
+    content:"";position:absolute;left:0;top:11px;bottom:11px;width:2px;border-radius:2px;
+    background:var(--accent);opacity:.55;
+  }
+  .card:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line));transform:translateY(-1px);box-shadow:var(--shadow)}
+  .card[data-status="blocked"]{border-color:rgba(248,81,73,.42)}
+  .card[data-status="blocked"]::before{background:var(--blocked);opacity:.9}
+
+  .card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11px;font-weight:700;letter-spacing:.4px;padding:2px 7px;border-radius:6px;
+    color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);
+    border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);
+  }
+  .badge{
+    margin-left:auto;display:inline-flex;align-items:center;gap:4px;
+    font-size:10.5px;padding:1px 7px;border-radius:999px;color:var(--muted);
+    border:1px solid var(--line);background:rgba(255,255,255,.02);white-space:nowrap;
+  }
+  .badge[data-status="doing"]{color:var(--doing);border-color:rgba(242,182,50,.32);background:rgba(242,182,50,.08)}
+  .badge[data-status="waiting"]{color:var(--waiting);border-color:rgba(76,154,255,.32);background:rgba(76,154,255,.08)}
+  .badge[data-status="done"]{color:var(--done);border-color:rgba(63,185,80,.32);background:rgba(63,185,80,.08)}
+  .badge[data-status="backlog"]{color:var(--backlog);border-color:rgba(147,161,177,.3);background:rgba(147,161,177,.07)}
+  .badge[data-status="blocked"]{color:var(--blocked);border-color:rgba(248,81,73,.4);background:rgba(248,81,73,.1)}
+
+  .title{margin:0;font-size:14px;font-weight:600;line-height:1.45;letter-spacing:.1px}
+  .meta{display:flex;align-items:baseline;gap:7px;font-size:11.5px;color:var(--muted)}
+  .meta .k{flex:none;color:var(--muted-2)}
+  .meta .v{color:#b8c6d6;min-width:0}
+  .meta .v.rel{color:#c8d5e3}
+  .blocker{
+    display:flex;gap:6px;align-items:flex-start;
+    padding:6px 8px;border-radius:8px;font-size:11.5px;line-height:1.45;
+    color:#ffb3ad;background:rgba(248,81,73,.09);border:1px solid rgba(248,81,73,.28);
+  }
+  .blocker .tag{flex:none;font-weight:600;color:#ff8b82}
+  .detail{
+    margin:0;font-size:12px;line-height:1.55;color:#9fb0c2;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .next{font-size:11.5px;color:var(--muted);display:flex;gap:6px}
+  .next .arrow{color:var(--accent);opacity:.85}
+  .empty{
+    padding:22px 10px;text-align:center;font-size:12px;color:var(--muted-2);
+    border:1px dashed var(--line);border-radius:10px;background:rgba(255,255,255,.008);
+  }
+
+  /* ── 底栏 ── */
+  .foot{
+    max-width:1560px;margin:0 auto;padding:0 24px 30px;
+    display:flex;gap:16px;flex-wrap:wrap;align-items:center;
+    font-size:11.5px;color:var(--muted-2);
+  }
+  .legend{display:flex;gap:12px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:5px;color:var(--muted)}
+  .legend i{font-style:normal}
+  .foot .sep{flex:1}
+  .foot code{color:#9fb0c2;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  .flash{animation:flash .6s ease-out}
+  @keyframes flash{0%{box-shadow:0 0 0 0 rgba(76,154,255,.35)}100%{box-shadow:0 0 0 14px rgba(76,154,255,0)}}
+
+  @media (max-width:1180px){
+    .board{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .chips{margin-left:0}
+  }
+  @media (max-width:680px){
+    .top-inner{padding:12px 14px;gap:10px;position:relative}
+    .brand h1{font-size:15px}
+    .brand p{font-size:11px;white-space:normal;padding-right:104px}
+    .live{position:absolute;right:14px;top:12px;margin:0;font-size:11px;padding:4px 9px}
+    .chips{width:100%;gap:6px;margin-left:0}
+    .chip{padding:4px 8px;font-size:11px}
+    .chip.total{display:none}
+    .wrap{padding:14px 14px 24px}
+    .board{grid-template-columns:1fr;gap:14px}
+    .col{padding:12px}
+    .col-head{position:static;padding-bottom:10px}
+    .title{font-size:14.5px}
+    .detail{-webkit-line-clamp:4}
+    .foot{padding:0 14px 24px}
+    .alert{margin:0 0 12px}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">▦</div>
+      <div>
+        <h1>任务看板</h1>
+        <p>只读工作台 · 数据源 <b>docs/任务看板.md</b></p>
+      </div>
+    </div>
+    <div class="chips" id="chips" aria-label="仓库信息"></div>
+    <div class="live" id="live">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="liveText">5 秒自动刷新</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="alert" id="alert" role="status"></div>
+  <div class="board" id="board" aria-busy="true">
+    <div class="empty" style="grid-column:1/-1">正在读取看板…</div>
+  </div>
+  <div class="foot" id="foot">
+    <div class="legend" id="legend"></div>
+    <span class="sep"></span>
+    <span>读取 <code id="readAt">—</code> · 哈希 <code id="sha">—</code> · 每次刷新重读 md，不缓存</span>
+  </div>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const REFRESH_MS = 5000;
+  const boardEl = document.getElementById('board');
+  const chipsEl = document.getElementById('chips');
+  const liveEl = document.getElementById('live');
+  const liveText = document.getElementById('liveText');
+  const alertEl = document.getElementById('alert');
+  const legendEl = document.getElementById('legend');
+  const readAtEl = document.getElementById('readAt');
+  const shaEl = document.getElementById('sha');
+
+  let lastFingerprint = null;
+  let lastReadAt = null;
+  let timer = null;
+
+  const esc = (value) => String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  function rel(ts) {
+    if (!ts) return '未知';
+    const diff = Date.now() - new Date(ts).getTime();
+    if (!Number.isFinite(diff)) return '未知';
+    if (diff < 0) return '刚刚';
+    const s = Math.floor(diff / 1000);
+    if (s < 60) return '刚刚';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + ' 分钟前';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + ' 小时前';
+    const d = Math.floor(h / 24);
+    return d + ' 天前';
+  }
+
+  function exact(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  function tickRelative() {
+    document.querySelectorAll('[data-ts]').forEach((el) => {
+      el.textContent = rel(el.getAttribute('data-ts'));
+    });
+    if (lastReadAt) {
+      if (liveEl.classList.contains('is-down')) return;
+      const secs = Math.max(0, Math.floor((Date.now() - lastReadAt) / 1000));
+      liveText.textContent = secs < 3 ? '刚刚刷新 · 5 秒自动' : `${secs} 秒前刷新 · 5 秒自动`;
+    }
+  }
+
+  function chip(label, value, cls, title, ts) {
+    return `<span class="chip ${cls || ''}"${title ? ` title="${esc(title)}"` : ''}>` +
+      `<span>${esc(label)}</span><b class="${cls === 'branch' ? 'mono' : ''}"` +
+      `${ts ? ` data-ts="${esc(ts)}"` : ''}>${esc(value)}</b></span>`;
+  }
+
+  function renderMeta(data) {
+    const repo = data.repo || {};
+    const dirty = Number(repo.dirtyFiles || 0);
+    chipsEl.innerHTML = [
+      chip('版本', repo.version ? 'v' + repo.version : '—', '', 'package.json version'),
+      chip('分支', repo.branch || '—', 'branch', 'git rev-parse --abbrev-ref HEAD'),
+      chip('脏文件', String(dirty), dirty ? 'dirty' : 'dirty clean', 'git status --porcelain 行数'),
+      chip('最近提交', rel(repo.lastCommitAt), '', repo.lastCommitAt
+        ? exact(repo.lastCommitAt) + (repo.lastCommitSubject ? '\n' + repo.lastCommitSubject : '')
+        : '', repo.lastCommitAt),
+      chip('任务', String((data.counts && data.counts.total) || 0), 'total', '任务看板.md 四个表的行数合计'),
+    ].join('');
+
+    legendEl.innerHTML = (data.legend || []).map((item) =>
+      `<span title="${esc(item.meaning)}"><i>${esc(item.symbol)}</i>${esc(item.label)}</span>`
+    ).join('');
+
+    if (data.source) {
+      readAtEl.textContent = exact(data.generatedAt);
+      shaEl.textContent = data.source.sha256 ? data.source.sha256.slice(0, 10) : '—';
+      readAtEl.title = data.source.path || '';
+    }
+  }
+
+  function card(task) {
+    const status = task.statusKey || 'doing';
+    const meta = [];
+    if (task.assignee) {
+      meta.push(`<div class="meta"><span class="k">派给</span><span class="v mono">${esc(task.assignee)}</span></div>`);
+    }
+    meta.push(
+      `<div class="meta"><span class="k">更新</span>` +
+      `<span class="v rel" data-ts="${esc(task.updatedAt || '')}" title="${esc(exact(task.updatedAt))}">${esc(rel(task.updatedAt))}</span>` +
+      `<span class="k" style="margin-left:auto">${task.updatedSource === 'row' ? '行内时间' : task.updatedSource === 'doc' ? '看板更新' : '文件时间'}</span></div>`
+    );
+    return `<article class="card" data-status="${esc(status)}">` +
+      `<div class="card-top">` +
+        (task.code ? `<span class="code">${esc(task.code)}</span>` : '') +
+        `<span class="badge" data-status="${esc(status)}">${esc(task.status || '')} ${esc(task.statusLabel || '')}</span>` +
+      `</div>` +
+      `<h3 class="title">${esc(task.title)}</h3>` +
+      meta.join('') +
+      (task.blocker ? `<div class="blocker"><span class="tag">阻塞</span><span>${esc(task.blocker)}</span></div>` : '') +
+      (task.detail ? `<p class="detail">${esc(task.detail)}</p>` : '') +
+      (task.next ? `<div class="next"><span class="arrow">→</span><span>${esc(task.next)}</span></div>` : '') +
+      `</article>`;
+  }
+
+  function renderBoard(data) {
+    boardEl.innerHTML = (data.columns || []).map((col) => {
+      const cards = col.tasks.length
+        ? col.tasks.map(card).join('')
+        : '<div class="empty">暂无任务</div>';
+      return `<section class="col" data-col="${esc(col.key)}" aria-label="${esc(col.title)}">` +
+        `<div class="col-head"><span class="swatch" aria-hidden="true"></span>` +
+        `<h2>${esc(col.title)}</h2><span class="n">${col.count}</span></div>` +
+        `<div class="cards">${cards}</div></section>`;
+    }).join('');
+    boardEl.setAttribute('aria-busy', 'false');
+  }
+
+  function fingerprint(data) {
+    return JSON.stringify([
+      data.source && data.source.sha256,
+      data.repo && data.repo.branch,
+      data.repo && data.repo.dirtyFiles,
+      data.repo && data.repo.lastCommitHash,
+      data.repo && data.repo.version,
+      data.columns,
+    ]);
+  }
+
+  function flash() {
+    boardEl.classList.remove('flash');
+    void boardEl.offsetWidth;
+    boardEl.classList.add('flash');
+  }
+
+  async function load() {
+    try {
+      const res = await fetch('/api/board', { cache: 'no-store' });
+      if (!res.ok) {
+        let detail = 'HTTP ' + res.status;
+        try {
+          const body = await res.json();
+          if (body && body.message) detail = body.message;
+        } catch (_) { /* 非 JSON 错误体 */ }
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      const fp = fingerprint(data);
+      const changed = fp !== lastFingerprint;
+      lastFingerprint = fp;
+      lastReadAt = Date.now();
+      liveEl.classList.remove('is-down');
+      alertEl.classList.remove('show');
+      renderMeta(data);
+      if (changed) {
+        renderBoard(data);
+        if (boardEl.getAttribute('data-first') === '1') flash();
+        boardEl.setAttribute('data-first', '1');
+      }
+      tickRelative();
+    } catch (err) {
+      liveEl.classList.add('is-down');
+      liveText.textContent = '连不上服务，重试中';
+      alertEl.classList.add('show');
+      alertEl.textContent = '读不到看板数据：' + (err && err.message ? err.message : '未知错误') +
+        '。面板只读，不会写任何东西；恢复服务后 5 秒内自动接上。';
+    }
+  }
+
+  load();
+  timer = setInterval(load, REFRESH_MS);
+  setInterval(tickRelative, 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) load();
+  });
+  window.addEventListener('beforeunload', () => clearInterval(timer));
+})();
+</script>
+</body>
+</html>
