@@ -15,7 +15,6 @@ import { accountTabColumns, compareAccountNames } from './accountOrder';
 import { genderShareOf } from '../domain/genderRatio';
 import type { StudRecommendation } from '../domain/suggestions';
 import { PetAvatar } from './PetAvatar';
-import { PetCardLayout } from './PetCardLayout';
 import { pairingColor, pairingDashed } from './pairingColors';
 import { formatPercent } from './formatPercent';
 import { getMyPetsSizeUnit } from './myPetsFilterStore';
@@ -1127,57 +1126,6 @@ export interface MotherGapCard {
   ariaLabel?: string;
 }
 
-/** 母本缺口四列卡 + 去收集入口（缺口横条和没有配窝方案时的兜底共用） */
-function MotherGapGrid({
-  cards,
-  onOpen,
-  onOpenAll,
-}: {
-  cards: MotherGapCard[];
-  onOpen?: (chainKey: string) => void;
-  onOpenAll?: () => void;
-}) {
-  return (
-    <>
-      {cards.length > 0 ? (
-        <ul className="grid grid-cols-4 gap-1" data-testid="mother-action-items">
-          {cards.map((card) => (
-            <li
-              key={card.chainKey}
-              aria-label={card.ariaLabel ?? card.title}
-              data-testid="mother-action-item"
-            >
-              <PetCardLayout
-                name={card.name}
-                number={card.number}
-                eggGroups={card.eggGroups}
-                natures={card.natures}
-                naturesTestId="mother-action-nature"
-                title={card.title}
-                size="gap"
-                fitName
-                avatar={<PetAvatar gameId={card.eggGameId} name={card.name} size={48} />}
-                onClick={() => onOpen?.(card.chainKey)}
-              />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-[11px] text-emerald-700">个人母本目标已全部收集。</p>
-      )}
-      {onOpenAll ? (
-        <button
-          type="button"
-          onClick={onOpenAll}
-          className="mx-1 mt-2 min-h-[28px] text-xs font-medium text-emerald-700"
-          data-testid="mother-actions-more"
-        >
-          去收集看母本缺口 ›
-        </button>
-      ) : null}
-    </>
-  );
-}
 
 /**
  * 「一键配窝」卡片：按账号给出**哪只进哪个窝、和谁配、小窝怎么摆**。
@@ -1196,9 +1144,6 @@ export function NestPlanCard({
   section,
   targetBodyMedal,
   targetVoiceDb,
-  motherGaps,
-  onOpenMotherGap,
-  onOpenMotherGaps,
   studRecommendationsByAccount,
   studCompleteAccounts,
 }: {
@@ -1463,18 +1408,7 @@ export function NestPlanCard({
   };
 
   if (!hasContent) {
-    // 没有配窝方案，但母本缺口还有：缺口横条仍要能看（2026-11-20 用户口径）
-    if (section === 'mothers' && motherGaps && motherGaps.length > 0) {
-      return (
-        <section className="rounded-2xl bg-white shadow-sm" data-testid="mother-actions">
-          <MotherGapGrid
-            cards={motherGaps}
-            onOpen={onOpenMotherGap}
-            onOpenAll={onOpenMotherGaps}
-          />
-        </section>
-      );
-    }
+    // 2026-11-22 用户口径：母本缺口卡不再铺到看板，缺口去「收集 → 母本」看。
     return (
       <p className="mt-1 text-sm text-slate-400" data-testid="breed-empty">
         {emptyNote ?? '当前没有能排的配窝方案——先到「覆盖度」挑要补的缺口，或缺的配对方/母本还没到位。'}

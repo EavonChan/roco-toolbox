@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { TARGET_MODE_LABELS, type TargetMode } from '../domain/petFilters';
 import {
   effectiveMotherVoices,
@@ -9,16 +9,14 @@ import { isStudCoverageComplete } from '../domain/studCoverage';
 import {
   computeStudRecommendations,
   findUncataloguedCount,
-  studEmptyNote,
 } from '../domain/suggestions';
 import { rankSwapWishes } from '../domain/swapPlan';
 import { eggGroupNames, maleCapableGameIds, species } from '../data/catalog';
 import { ImportAdditionCard } from './ImportAdditionCard';
 import { ProgressCard } from './ProgressCard';
-import { SuggestionCard } from './SuggestionCard';
 import { NestPlanCard, type StudRecommendationGroup } from './NestPlanCard';
-import { findMotherGapFill, findStudGapFill, type GapFill } from '../domain/gapFill';
 import { GapFillDialog, type GapTargetView } from './GapFillDialog';
+import { findStudGapFill, type GapFill } from '../domain/gapFill';
 import { mergeMotherPlan } from './motherPlanStore';
 import { useMotherSuggestions } from './useMotherSuggestions';
 import { useLandscape, useWideLandscape } from './useWideLandscape';
@@ -92,7 +90,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     canAddToPlan: boolean;
   } | null>(null);
 
-  const { owned, motherGroups, mode, stud, coverageByAccount, plans, recommendations } =
+  const { owned, motherGroups, mode, stud, coverageByAccount, plans } =
     useCollectionSummary();
   const { accounts: rawAccounts } = useOwnedPets();
   /** 看板账号选择器按数字排序（2026-11-20 用户口径）。 */
@@ -143,59 +141,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   );
   const collectedMothers = motherGroups.length - missingMothers.length;
   /** 母本缺口卡（移进配窝卡的「缺口」横条，2026-11-20 用户口径） */
-  const motherGapCards = useMemo(
-    () =>
-      missingMothers.map((group) => {
-        const name = group.formLabel || '未知精灵';
-        const natures = naturesOf(group.eggGameId);
-        const natureLabel = natures.length > 0 ? natures.join('、') : '暂无推荐性格';
-        const eggGroups = group.eggGroups
-          .slice(0, 2)
-          .map((groupId) => eggGroupNames[groupId] ?? `蛋组${groupId}`);
-        return {
-          chainKey: group.chainKey,
-          name,
-          number: group.number,
-          eggGameId: group.eggGameId,
-          eggGroups: eggGroups.length > 0 ? eggGroups : ['未分组'],
-          natures: natures.length > 0 ? [...natures] : ['暂无推荐性格'],
-          title: `${name} · ${natureLabel} · 点卡片看怎么补`,
-          ariaLabel: `${name}，推荐性格：${natureLabel}，还没有达标母本`,
-        };
-      }),
-    [missingMothers, naturesOf],
-  );
-  /** 点缺口卡：打开「怎么补」悬浮窗（原上方母本缺口卡的行为） */
-  const openMotherGap = (chainKey: string) => {
-    const group = missingMothers.find((item) => item.chainKey === chainKey);
-    if (!group) return;
-    const name = group.formLabel || '未知精灵';
-    const natures = naturesOf(group.eggGameId);
-    const eggGroups = group.eggGroups
-      .slice(0, 2)
-      .map((groupId) => eggGroupNames[groupId] ?? `蛋组${groupId}`);
-    setGapDialog({
-      chainKey: group.chainKey,
-      eyebrow: '母本缺口 · 怎么补',
-      canAddToPlan: true,
-      target: {
-        kind: 'mother',
-        name,
-        number: group.number,
-        gameId: group.eggGameId,
-        natures: natures.length > 0 ? natures : ['暂无推荐性格'],
-        eggGroupLabels: eggGroups.length > 0 ? eggGroups : ['未分组'],
-        tag: '未收集',
-        targetLabel: gapTargetLabel,
-        bodyMedal: gapTargetBody,
-        voiceTarget: gapTargetVoiceTarget,
-        voiceDb: gapTargetVoiceDb,
-        weightPercent: gapTargetWeight,
-      },
-      fill: findMotherGapFill(group.eggGameId, motherSuggestions, selectedAccountNames),
-    });
-  };
-
   /**
    * 缺口按号各算（2026-11-18 修正）：种公是成体、不能传，合并所有号算出来的「还差几个」
    * 会把别的号的种公误算成本号的进度，数字偏小。看板按每个号自己的覆盖度报缺口。
@@ -280,17 +225,10 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         : gapTotal === 0 && allGapsKnown
           ? '种公目标已全部收集，没有要补的缺口。'
           : '没有能自己孵的方案：缺可配对的母本 / 公本，先去覆盖度看每个缺口的判定。';
-  const suggestionEmptyNote = noSelectedAccounts
-    ? '当前未选中任何账号，请先选择账号后查看建议。'
-    : studEmptyNote({ hasData: accounts.length > 0, stud });
   /**
-   * 目标全收齐时不再显示「种公网络已全通，没有要补的缺口」这张空卡（2026-11-20 用户口径）；
-   * 没数据、没设目标、没选账号时仍要保留提示，不能一起藏掉。
+   * 2026-11-22 用户口径：看板不再放「种公推荐」网格，种公推荐去「收集 → 种公」的矩阵和分类看；
+   * 这里只保留配窝建议。原 showStudRecommendationCard / suggestionEmptyNote 随之删除。
    */
-  const showStudRecommendationCard =
-    noSelectedAccounts ||
-    recommendations.length > 0 ||
-    !(stud.groupCount > 0 && stud.passedGroups === stud.groupCount);
 
   const speciesGameIds = useMemo(() => new Set(species.map((entry) => entry.gameId)), []);
   const speciesByGameId = useMemo(() => new Map(species.map((entry) => [entry.gameId, entry])), []);
@@ -355,11 +293,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                 section={section}
                 targetBodyMedal={gapTargetBody}
                 targetVoiceDb={gapTargetVoiceDb}
-                motherGaps={motherGapCards}
-                onOpenMotherGap={openMotherGap}
-                onOpenMotherGaps={() =>
-                  onNavigate({ type: 'open-collection', location: { kind: 'mothers', status: 'missing' } })
-                }
                 onSeekHelp={() => onNavigate({ type: 'open-groups', groupType: 'mother' })}
               />
               {transferTasks.length > 0 ? (
@@ -614,13 +547,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               种公推荐
             </h2>
             <div className="dashboard-panel-scroll space-y-2">
-              {showStudRecommendationCard ? (
-                <SuggestionCard
-                  items={recommendations}
-                  emptyNote={suggestionEmptyNote}
-                  onOpenGap={(group) => openStudGap(group, selectedAccountNames)}
-                />
-              ) : null}
+              {/* 2026-11-22：种公推荐网格已从看板撤掉，这一栏只放配窝建议 */}
               {owned.length > 0 ? nestCard('studs') : null}
             </div>
           </div>
@@ -665,18 +592,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         </div>
 
         <div className="dashboard-narrow-scroll space-y-2">
-          <div className="dashboard-panel">
-      {actionPanel === 'mothers' ? null : showStudRecommendationCard ? (
-        <SuggestionCard
-          items={recommendations}
-          emptyNote={suggestionEmptyNote}
-          onOpenGap={(group) => openStudGap(group, selectedAccountNames)}
-        />
-      ) : null}
-          </div>
-
       {/* 配窝建议是产品亮点（2026-10-25 用户要求放回看板）：直接展示完整摆位与配对，
-          不再只给一个「去配窝」入口；收集页的完整视图仍然保留。 */}
+          不再只给一个「去配窝」入口；收集页的完整视图仍然保留。
+          2026-11-22：种公推荐网格已从这里撤掉（去「收集 → 种公」看）。 */}
           <div className="dashboard-panel">
       {owned.length > 0 ? nestCard(actionPanel) : null}
           </div>
@@ -707,3 +625,5 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     </main>
   );
 }
+
+
