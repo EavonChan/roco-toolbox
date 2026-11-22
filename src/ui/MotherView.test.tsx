@@ -415,6 +415,39 @@ test('开了只算推荐性格：分母只算该蛋组内有推荐性格的精�
   expect(section.textContent).toContain('已收集 1/1');
 });
 
+test('开了只算推荐性格、该组没有推荐性格数据：分组头仍渲染并说明，分母不写非 0', () => {
+  setMotherCriteria({ ...DEFAULT_MOTHER_CRITERIA, recommendedNatures: true });
+  const noNatureGroups: MotherGroup[] = [
+    {
+      chainKey: 'egg:9001',
+      eggGameId: 9001,
+      collected: false,
+      quality: false,
+      motherClass: null,
+      formLabel: '无推荐甲',
+      number: '901',
+      eggGroups: [1],
+      memberIndexes: [],
+    },
+  ];
+  render(
+    <MotherView
+      owned={[]}
+      searchIndex={new Map()}
+      eggGroupNames={{ 1: '巨灵组' }}
+      motherGroups={noNatureGroups}
+      mode="perfect"
+      status="missing"
+    />,
+  );
+
+  // 链还在清单里（不剔），只是没有推荐性格数据 → 分组头要说明，而不是被漏算
+  const section = screen.getByTestId('mother-chain-group-1');
+  expect(section.textContent).toContain('已收集 0/0');
+  expect(section.textContent).toContain('本组暂无推荐性格数据');
+  expect(section.textContent).not.toMatch(/已收集 0\/[1-9]/);
+  expect(screen.getByTestId('mother-chain-row')).toBeTruthy();
+});
 test('已收集视图同口径：分子是已收集数，分母是该蛋组全部精灵数', () => {
   render(
     <MotherView

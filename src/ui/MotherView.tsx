@@ -553,7 +553,15 @@ export function MotherView({
               <p className="flex items-center justify-between bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500">
                 <span>{section.label}</span>
                 {/* 分子 = 已收集数，分母 = 该蛋组精灵数（只算推荐性格时只算有推荐性格的）（2026-11-22） */}
-                <span className="text-slate-400">已收集 {section.collected}/{section.total}</span>
+                <span className="text-slate-400">
+                  已收集 {section.collected}/{section.total}
+                  {section.total === 0 ? (
+                    /* 开了「只算推荐性格」而本组没有推荐性格数据：链还在，只是没有数据可算（2026-11-22 用户口径：保留、说清楚） */
+                    <span className="ml-1 text-amber-600" data-testid="mother-section-nodata">
+                      本组暂无推荐性格数据
+                    </span>
+                  ) : null}
+                </span>
               </p>
               <ul
                 className="grid grid-cols-4 gap-1"
