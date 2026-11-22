@@ -47,7 +47,7 @@ describe('CollectionTargetEditor', () => {
     expect(getCoverageFilter().grades).toEqual(gradesBefore);
   });
 
-  test('组合奖牌强制单选：换档位只留最后点的那个，再点已选中的 = 取消选择', () => {
+  test('组合奖牌强制单选：换档位只留最后点的那个，再点已选中的不清空', () => {
     renderEditor('mothers');
     fireEvent.click(screen.getByTestId('editor-mother-grade-大粗'));
     expect(getMotherCriteria().grades).toEqual(['大粗']);
@@ -55,11 +55,12 @@ describe('CollectionTargetEditor', () => {
     fireEvent.click(screen.getByTestId('editor-mother-grade-小粗'));
     expect(getMotherCriteria().grades).toEqual(['小粗']);
 
-    // 再点已选中的那个 = 取消选择（与看板目标卡同一口径）
+    // 2026-11-22 口径：再点已选中的那个保持选中，不再清空
     fireEvent.click(screen.getByTestId('editor-mother-grade-小粗'));
-    expect(getMotherCriteria().grades).toEqual([]);
+    expect(getMotherCriteria().grades).toEqual(['小粗']);
+    expect(screen.getByTestId('editor-mother-grade-小粗')).toHaveAttribute('aria-pressed', 'true');
 
-    // 恢复默认按钮才把它改回默认
+    // 恢复默认按钮才把它改回「未设置组合」
     fireEvent.click(screen.getByTestId('editor-reset-mothers'));
     expect(getMotherCriteria().voices).toEqual(DEFAULT_MOTHER_CRITERIA.voices);
     expect(getMotherCriteria().grades).toBeUndefined();
@@ -67,19 +68,19 @@ describe('CollectionTargetEditor', () => {
 
   test('母本达标模式切换更新组合奖牌图标与声音条件', () => {
     renderEditor('mothers');
+    // 新口径（2026-11-22）：未设置组合时默认落在「大婉」，满分模式的声音图标是 MAX 缎带
     const perfectVoice = screen.getByTestId('editor-mother-grade-大婉').querySelectorAll('img')[1];
     expect(perfectVoice).toHaveAttribute('src', '/ui/medals/1026-max.png');
 
-    // 旧数据没有组合时不假装选中「大婉」：先明确选一档，再验证切模式会换声音条件
-    fireEvent.click(screen.getByTestId('editor-mother-grade-大婉'));
-    fireEvent.click(screen.getByTestId('editor-mother-mode-medal'));
+    // 明确选一档再切模式：store 里存的是规范值（追满分 = +100 / -100），切到双牌后按双牌语义映射
+    fireEvent.click(screen.getByTestId('editor-mother-grade-大粗'));
+    expect(getMotherCriteria().voices).toEqual(['-100']);
 
-    expect(getMotherCriteria().voices).toEqual(['婉转声']);
-    expect(screen.getByTestId('editor-mother-grade-大婉').querySelectorAll('img')[1]).toHaveAttribute(
-      'src',
-      '/ui/medals/1026.png',
-    );
-    expect(screen.queryByTestId('editor-mother-voice-+100')).toBeNull();
+    fireEvent.click(screen.getByTestId('editor-mother-mode-medal'));
+    expect(getMotherCriteria().voices).toEqual(['粗嗓门']);
+    expect(
+      screen.getByTestId('editor-mother-grade-大粗').querySelectorAll('img')[1]?.getAttribute('src'),
+    ).not.toContain('max');
   });
 
   test('双牌模式下恢复默认会恢复双牌声音条件', () => {

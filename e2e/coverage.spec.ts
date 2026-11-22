@@ -23,10 +23,10 @@ test('覆盖度页：14 个蛋组行 + 四态图例 + 主数字是「已通 N / 
   await expect(legend.getByText('可迭代', { exact: true })).toBeVisible();
   await expect(legend.getByText('未收集', { exact: true })).toBeVisible();
 
-  // 默认不展开；点击蛋组行后展开该组的性格明细（默认八大性格 → 8 个性格）
+  // 默认不展开；点击蛋组行后展开该组的性格明细（默认推荐性格 → 每组 3 个）
   await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(0);
   await page.getByTestId('coverage-group-toggle').first().click();
-  await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(8);
+  await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(3);
 
   // 明细要有状态词；精灵行是「名字 ♀/♂（账号 · 位置）」，不再有解释机制的前缀
   await expect(page.getByTestId('coverage-nature-cell').first()).toContainText(
@@ -77,12 +77,12 @@ test('覆盖度页：蛋组行按状态色档从差到好排（未收集多的�
 
   // 展开第一行 → 切到看板 → 切回来，仍然是展开状态
   await page.getByTestId('coverage-group-toggle').first().click();
-  await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(8);
+  await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(3);
   await page.getByRole('button', { name: '看板', exact: true }).click();
   await expect(page.getByRole('heading', { name: '小布助手' })).toBeVisible();
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-studs').click();
-  await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(8);
+  await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(3);
 });
 
 test('覆盖度页：分母只随蛋组变化（14 → 13），档位不再改分母，可恢复默认', async ({ page }) => {
@@ -105,7 +105,7 @@ test('覆盖度页：分母只随蛋组变化（14 → 13），档位不再改�
   await expect(page.getByTestId('coverage-total')).toHaveText(/\/ 13 组/);
   // 单一体型 × 声音组合，每种性格只生成一个目标槽位
   await page.getByTestId('coverage-group-toggle').first().click();
-  await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(8);
+  await expect(page.getByTestId('coverage-nature-cell')).toHaveCount(3);
 
   // 恢复默认
   await page.getByTestId('coverage-filter-reset').click();
@@ -113,11 +113,12 @@ test('覆盖度页：分母只随蛋组变化（14 → 13），档位不再改�
   await expect(page.getByTestId('coverage-group-row')).toHaveCount(14);
 });
 
-test('覆盖度页：署名保留（CC BY-SA 4.0）', async ({ page }) => {
+test('导入数据页保留 CC BY-SA 署名（看板/种公的来源说明块已按 2026-11-22 口径移除）', async ({
+  page,
+}) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '收集', exact: true }).click();
-  await page.getByTestId('collection-kind-studs').click();
 
+  // 2026-11-22 用户口径：看板与种公页去掉「数据来源」说明块，署名统一留在导入数据页
   await expect(page.getByText('CC BY-SA 4.0')).toBeVisible();
   await expect(page.getByRole('link', { name: '洛克王国：世界 Wiki' })).toBeVisible();
 });
@@ -131,13 +132,12 @@ test('覆盖度页：空数据给出可读空状态且不出现 NaN', async ({ p
   await expect(page.getByText('NaN')).toHaveCount(0);
 });
 
-test('覆盖度页：性格三模式（默认八大 → 自选可清空再勾回）', async ({ page }) => {
+test('覆盖度页：性格三模式（默认推荐 → 自选可清空再勾回）', async ({ page }) => {
   await importSample(page);
 
-  // 2026-11-19 用户口径：性格默认「八大性格」，三模式并列
+  // 2026-11-22 用户口径：性格默认「推荐性格」（每组推荐前 3），三模式并列
   await expect(page.getByTestId('coverage-filter-card')).toBeVisible();
-  await expect(page.getByTestId('nature-mode-eight')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('nature-mode-eight-list')).toContainText('固执');
+  await expect(page.getByTestId('nature-mode-recommended')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('coverage-group-row')).toHaveCount(14);
 
   // 切到自选：先预选八大；下拉默认收起，点开才出 6×5 网格（2026-11-19）

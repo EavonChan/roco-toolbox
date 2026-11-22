@@ -9,7 +9,7 @@ import { getTargetMode, setTargetMode } from './targetModeStore';
  * 覆盖度页的关键路径（R2-4-M05）：筛选、性格三模式与自选性格网格都在这一页，
  * 之前只有说明卡与筛选 store 有单测，页面级没有护栏。
  *
- * 2026-11-19 用户口径：筛选提成一级卡片常显、性格默认「八大性格」。
+ * 2026-11-19 用户口径：筛选提成一级卡片常显；2026-11-22 起性格默认「推荐性格」。
  * 种公阵列用轻壳替换（阵列/矩阵自身不在本用例范围）。
  */
 vi.mock('./useCollectionSummary', () => ({
@@ -41,7 +41,7 @@ describe('覆盖度页（筛选一级卡片 + 性格三模式）', () => {
     setTargetGrade('大婉');
   });
 
-  test('筛选常显在页面顶部，不需要点开关；默认选中八大性格', () => {
+  test('筛选常显在页面顶部，不需要点开关；默认选中推荐性格', () => {
     render(<Coverage />);
 
     expect(screen.getByTestId('coverage-filter-card')).toBeTruthy();
@@ -53,9 +53,10 @@ describe('覆盖度页（筛选一级卡片 + 性格三模式）', () => {
     expect(screen.queryByTestId('coverage-open-target-editor')).toBeNull();
     expect(screen.queryByTestId('coverage-filter-reset')).toBeNull();
 
-    expect(screen.getByTestId('nature-mode-eight')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('nature-mode-recommended')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByTestId('nature-mode-eight-list')).toHaveTextContent('八大性格：固执');
+    // 2026-11-22 用户口径：默认「推荐性格」（每组推荐前 3），八大的说明行不再常显
+    expect(screen.getByTestId('nature-mode-recommended')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('nature-mode-eight')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('nature-mode-eight-list')).toBeNull();
   });
 
   test('奖牌目标使用母本同款模式且强制单选，并更新种公档位', () => {
