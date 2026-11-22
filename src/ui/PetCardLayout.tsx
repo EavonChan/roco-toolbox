@@ -224,7 +224,7 @@ export function PetCardLayout({
 
       <div
         className={`absolute left-1/2 z-0 flex h-12 w-12 -translate-x-1/2 items-center justify-center ${
-          showFooter ? 'top-[16px]' : 'top-[22px]'
+          showFooter ? 'top-[18px]' : 'top-[24px]'
         }`}
         data-testid="pet-card-avatar"
       >
@@ -234,7 +234,7 @@ export function PetCardLayout({
       <h3
         ref={nameRef}
         className={`absolute inset-x-1 flex items-center justify-center truncate text-center text-[10px] font-bold leading-3 text-slate-900 ${
-          showFooter ? 'top-[68px] h-3' : 'top-[74px] h-3'
+          showFooter ? 'top-[66px] h-3' : 'top-[72px] h-3'
         }`}
         title={title ?? name}
       >
@@ -254,7 +254,7 @@ export function PetCardLayout({
       {showDetails ? (
         <div
           className={`absolute inset-x-1 flex items-center justify-center overflow-hidden text-center ${
-            showFooter ? 'top-[80px] h-2' : 'top-[86px] h-2'
+            showFooter ? 'top-[78px] h-2' : 'top-[84px] h-2'
           }`}
         >
           {details}
@@ -280,6 +280,7 @@ export function PetCardLayout({
     </article>
   );
 }
+
 
 
 

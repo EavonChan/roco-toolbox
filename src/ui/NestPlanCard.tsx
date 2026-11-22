@@ -1,4 +1,4 @@
-﻿import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { eggGroupNames, species, targetNatureNames } from '../data/catalog';
 import { heightMetersOf, weightKgOf } from '../domain/petFilters';
 import { petBodyMedalIcon, petVoiceMedalIcon } from '../domain/petIcons';
@@ -1907,27 +1907,30 @@ export function NestPlanCard({
                 </div>
               ) : null}
 
-              {motherTab === 'gap' ? (
-                <div className="mt-1.5 space-y-1.5" data-testid="mother-gap">
+              {/*
+                缺口卡直接铺在配窝建议下面（2026-11-22 用户口径）：
+                以前要点「缺口 198」那颗胶囊才出来，藏的太深找不到；
+                现在默认就展开，胶囊仍然保留做分组切换。
+              */}
+              <div className="mt-1.5 space-y-1.5" data-testid="mother-gap">
+                <p className="text-[11px] text-slate-500">
+                  种公目标：本号还差{' '}
+                  <b className="text-rose-600">{gapsByAccount?.get(activeName) ?? 0}</b> 个
+                  <span className="mx-1 text-slate-300">·</span>
+                  母本缺口：本号未收集 <b className="text-rose-600">{mother?.gapCount ?? 0}</b> 个
+                </p>
+                {activeIncoming.length > 0 ? (
                   <p className="text-[11px] text-slate-500">
-                    种公目标：本号还差{' '}
-                    <b className="text-rose-600">{gapsByAccount?.get(activeName) ?? 0}</b> 个
-                    <span className="mx-1 text-slate-300">·</span>
-                    母本缺口：本号未收集 <b className="text-rose-600">{mother?.gapCount ?? 0}</b> 个
+                    本号可收 {activeIncoming.reduce((sum, item) => sum + item.count, 0)} 个蛋：
+                    {activeIncoming.map((item) => `${item.source} ${item.count}`).join('、')}
                   </p>
-                  {activeIncoming.length > 0 ? (
-                    <p className="text-[11px] text-slate-500">
-                      本号可收 {activeIncoming.reduce((sum, item) => sum + item.count, 0)} 个蛋：
-                      {activeIncoming.map((item) => `${item.source} ${item.count}`).join('、')}
-                    </p>
-                  ) : null}
-                  <MotherGapGrid
-                    cards={motherGaps ?? []}
-                    onOpen={onOpenMotherGap}
-                    onOpenAll={onOpenMotherGaps}
-                  />
-                </div>
-              ) : null}
+                ) : null}
+                <MotherGapGrid
+                  cards={motherGaps ?? []}
+                  onOpen={onOpenMotherGap}
+                  onOpenAll={onOpenMotherGaps}
+                />
+              </div>
             </div>
           ) : null}
 
