@@ -1,140 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { SpeciesEntry } from '../../domain/types';
 import type { WorkflowEgg } from '../../shared/eggWorkflow';
-import { canCirculateEgg, type EggParentInfo } from '../../shared/eggMatching';
-import { eggWeightOf } from '../../domain/eggWeight';
-import { DEMAND_NATURE_MAX, type DemandBody, type DemandVoice } from '../../shared/collectionGroups';
-import { bodyMedalIconByLabel, voiceMedalIconByLabel } from '../../domain/petIcons';
-import { BODY_LABELS, PICKABLE_BODIES, PICKABLE_VOICES, VOICE_LABELS } from '../DemandPublishSheet';
-import { formatEggObtainedAt, formatEggObtainedAtFull } from './eggTime';
-import { ModalSurface } from '../primitives/ModalSurface';
 import { useLandscape } from '../useWideLandscape';
 import { RailLayout, RailAside, useRailCollapsed } from '../primitives/RailLayout';
 import { SearchField } from '../primitives/SearchField';
-import { Button } from '../primitives/Button';
-import eggIconUrls from '../../data/eggIconUrls.json';
-import { allNatureNames, eggGroupNames, targetNatureNames } from '../../data/catalog';
+import { formatEggObtainedAt } from './eggTime';
+import { EggArt, EggMedals, formatEggNature, GREEN_NEST_ICON, isSpecialEgg, eggStatus } from './eggArt';
+import { EggDetailModal } from './EggDetailModal';
+export { EggArt, EggMedals, formatEggNature } from './eggArt';
 
-const GREEN_NEST_ICON='/ui/nest/green-nest.png';
-/** 横屏右侧筛选栏是否收起（2026-11-22 用户口径：收起后蛋卡多排几列）。 */
 const EGG_RAIL_KEY='roco.eggStockRailCollapsed';
-const SPECIAL_CATEGORY_LABELS={shiny:'异色蛋',boss:'首领蛋',activity:'活动蛋',rare:'稀有蛋',special:'特殊蛋'} as const;
 type StockFilter='全部'|'已标注'|'未标注'|'自产'|'不可交换';
 
-export function formatEggNature(value:string):string {
-  return eggNatureNames(value).join(' / ');
-}
-function eggNatureNames(value:string):string[] {
-  return value.split(/[·/、,，]+/)
-    .map(part=>part.replace(/^\s*\d+(?:\.\d+)?%\s*/,'').trim())
-    .filter(Boolean);
-}
-function formatEggHeight(heightCm?:number):string {
-  if(typeof heightCm!=='number'||!Number.isFinite(heightCm)||heightCm<=0)return '未采集';
-  return `${Number((heightCm/100).toFixed(3))} m`;
-}
-function formatEggWeight(weightGrams?:number):string {
-  if(typeof weightGrams!=='number'||!Number.isFinite(weightGrams)||weightGrams<=0)return '未采集';
-  return `${Number((weightGrams/1000).toFixed(3))} kg`;
-}
-
-export function EggArt({ eggGameId, name, size=43, kind='ordinary', itemConfId }: {
-  eggGameId:number; name:string; size?:number; kind?:WorkflowEgg['kind']; itemConfId?:number;
-}) {
-  const [failed,setFailed]=useState<string[]>([]);
-  const ordinary=(eggIconUrls as Record<string,string>)[eggGameId];
-  const special=kind!=='ordinary'&&itemConfId
-    ? `https://wiki.biligame.com/nrc/Special:Redirect/file/Item_${itemConfId}.png`
-    : undefined;
-  const url=[...new Set([special,ordinary].filter((value):value is string=>!!value))].find(value=>!failed.includes(value));
-  const fail=()=>{const current=url;if(current)setFailed(values=>values.includes(current)?values:[...values,current]);};
-  return url ? <img src={url} alt={name+'的蛋'} onError={fail} width={size} height={size} className="shrink-0 object-contain"/> : <span role="img" aria-label={name+'的蛋（暂无图片）'} style={{width:size,height:size}} className="inline-flex shrink-0 items-center justify-center text-[10px] text-slate-400">暂无蛋图</span>;
-}
-export function EggMedals({body,voice}:{body:string;voice:string}) {
-  return <span className="inline-flex items-center justify-center gap-0.5">{[[body,bodyMedalIconByLabel(body)],[voice,voiceMedalIconByLabel(voice)]].map(([label,src],i)=>src?<img key={i} src={src} alt={label??''} className="size-4 object-contain"/>:null)}</span>;
-}
 export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRail=false, railBack }: { eggs:readonly WorkflowEgg[];species:readonly SpeciesEntry[];busy:boolean;mutate:(action:unknown)=>Promise<unknown>;/** 横屏把搜索与条件收进右侧折叠栏（家园页蛋仓屏用） */collapsibleFilterRail?:boolean;/** 横屏标题栏里的返回动作（家园页「返回家园」、换蛋页「返回换蛋」） */railBack?:{label?:string;onClick:()=>void} }) {
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState<StockFilter>('全部');
   const [selected,setSelected]=useState<string|null>(null);
-  const [labeling,setLabeling]=useState(false);
-  const [natures,setNatures]=useState<string[]>([]);
-  const [moreNatures,setMoreNatures]=useState(false);
-  const [body,setBody]=useState<DemandBody>('大块头');
-  const [voice,setVoice]=useState<DemandVoice>('婉转声');
-  const [greenNest,setGreenNest]=useState(false);
-  const [error,setError]=useState('');
   /** 横屏右侧筛选栏：只有 opt-in 且确实横屏时出现，竖屏保持原来的上下排布。 */
   const landscape=useLandscape();
   const rail= collapsibleFilterRail && landscape;
   const railState=useRailCollapsed(EGG_RAIL_KEY);
   const railCollapsed=railState.collapsed;
   const toggleRail=railState.toggle;
-  const labelEditorRef=useRef<HTMLDivElement>(null);
   const name=(id:number)=>species.find(s=>s.gameId===id)?.name??'未收录精灵';
-  const parentCard=(label:'母'|'父',p?:EggParentInfo,index=0)=>p?<div key={`${label}-${index}`} className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
-    <div className="text-[10px] text-slate-400">{label}本</div>
-    <div className="truncate text-xs font-semibold">{p.name||name(p.gameId)}</div>
-    <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-500"><span>{p.nature||'性格未采集'}</span><EggMedals body={p.body} voice={p.voice}/></div>
-    <div className={'mt-0.5 text-[10px] '+(p.academy?'text-emerald-700':'text-slate-400')}>{p.nestName||'窝未知'}{p.academy?' · 100% 传性格':''}</div>
-  </div>:<div key={`${label}-${index}`} className="flex min-h-14 items-center justify-center rounded-md border border-dashed border-slate-200 text-[11px] text-slate-400">{label}本暂无记录</div>;
-  const parentNatures=(e:WorkflowEgg)=>[...new Set([e.parents?.mother?.nature,...(e.parents?.fathers??[]).map(f=>f.nature)].filter((n):n is string=>!!n))];
-  const fullness=(e:WorkflowEgg)=>{ if(e.location!=='home'||e.body!=='大块头')return ''; const entry=eggWeightOf(name(e.eggGameId));
-    if(!entry||typeof entry.big!=='number')return ''; const total=Math.round(entry.max*1000)-Math.round(entry.big*1000)+1;
-    return total>0&&total<1000?`约 1/${total}`:''; };
-  const special=(e:WorkflowEgg)=>e.kind==='special'||e.kind==='shiny';
   const annotated=(e:WorkflowEgg)=>!!formatEggNature(e.nature)&&
     ['大块头','小不点','满体重','零体重'].includes(e.body)&&
     ['+100','-100','婉转声','粗嗓门'].includes(e.voice);
-  const unavailableLabel=(e:WorkflowEgg)=>SPECIAL_CATEGORY_LABELS[e.specialCategory??'special'];
-  const status=(e:WorkflowEgg)=>special(e)?unavailableLabel(e):e.location==='home'?'':e.status==='reserved'?'换蛋中':e.listed?'已挂出':'未挂出';
-  const matchesFilter=(e:WorkflowEgg)=>filter==='不可交换'?special(e):!special(e)&&(
+  const matchesFilter=(e:WorkflowEgg)=>filter==='不可交换'?isSpecialEgg(e):!isSpecialEgg(e)&&(
     filter==='全部'||filter==='已标注'&&annotated(e)||filter==='未标注'&&!annotated(e)||filter==='自产'&&e.provenance==='self-bred');
   const visible=eggs.filter(e=>e.status!=='transferred'&&(!query||name(e.eggGameId).includes(query))&&matchesFilter(e))
     .sort((a,b)=>Number(b.provenance==='self-bred')-Number(a.provenance==='self-bred')||Number(Boolean(b.greenNest))-Number(Boolean(a.greenNest)));
   const egg=eggs.find(e=>e.id===selected);
-  const selectedExtraNatures=natures.filter(value=>!targetNatureNames.includes(value));
-  const visibleNatures=moreNatures?allNatureNames:targetNatureNames;
-  const moreNatureCount=allNatureNames.length-targetNatureNames.length;
-  const toggleNature=(value:string)=>setNatures(current=>current.includes(value)
-    ? current.filter(item=>item!==value)
-    : current.length>=DEMAND_NATURE_MAX?current:[...current,value]);
-  const optionRow=<T extends string>(
-    label:string,
-    values:readonly T[],
-    current:T,
-    labels:Record<T,string>,
-    onPick:(value:T)=>void,
-    testPrefix:string,
-  )=><div className="flex flex-wrap items-center gap-1">
-    <span className="w-8 shrink-0 text-[11px] text-slate-400">{label}</span>
-    {values.map(value=><button key={`${testPrefix}:${value}`} type="button" aria-pressed={current===value} onClick={()=>onPick(value)} data-testid={`${testPrefix}-${value}`} className={`min-h-[30px] rounded-md border px-1.5 text-[11px] ${current===value?'border-emerald-500 bg-emerald-50 font-medium text-emerald-700':'border-slate-200 bg-white text-slate-500'}`}>{labels[value]}</button>)}
-  </div>;
-  useEffect(()=>{
-    if(labeling)requestAnimationFrame(()=>labelEditorRef.current?.scrollIntoView({block:'nearest'}));
-  },[labeling,selected]);
-  const run=(action:unknown,done?:()=>void)=>{setError('');void mutate(action).then(done).catch(e=>setError(e instanceof Error?e.message:'操作失败'));};
-  const beginLabeling=(target:WorkflowEgg)=>{
-    setNatures(eggNatureNames(target.nature));
-    setMoreNatures(false);
-    setBody(target.body==='unknown'||!target.body?'大块头':target.body);
-    setVoice(target.voice==='unknown'||!target.voice?'婉转声':target.voice);
-    setGreenNest(target.greenNest===true);
-    setLabeling(true);
-  };
-  const labelValues=(target:WorkflowEgg)=>labeling
-    ? {nature:natures.join(' / '),body,voice,greenNest}
-    : {
-        nature:formatEggNature(target.nature),
-        body:(target.body==='unknown'||!target.body?'大块头':target.body),
-        voice:(target.voice==='unknown'||!target.voice?'婉转声':target.voice),
-        greenNest:target.greenNest===true,
-      };
   const searchBlock=<SearchField label="搜索蛋名" value={query} onValueChange={setQuery} placeholder="搜索蛋名" className="[&_input]:text-left"/>;
   const filterBlock=<div className="flex flex-wrap gap-1" data-testid="egg-stock-filter-chips">{(['全部','已标注','未标注','自产','不可交换'] as const).map(f=><button key={f} type="button" aria-pressed={filter===f} onClick={()=>setFilter(f)} className={'min-h-7 rounded-md px-2 text-[11px] '+(filter===f?'bg-emerald-50 font-semibold text-emerald-700':'text-slate-500')}>{f}</button>)}</div>;
   const cards=visible.length?<div className="egg-stock-grid grid grid-cols-4 gap-1.5" data-testid="egg-stock-grid">{visible.map(e=>{
       const border=e.greenNest?'border-emerald-500':'border-slate-200';
-      return <button data-testid="stock-card" data-egg-id={e.id} key={e.id} type="button" onClick={()=>{setSelected(e.id);setLabeling(false);setError('');}} className={`relative flex min-w-0 flex-col items-center overflow-hidden rounded-lg border bg-white ${border}`}>
+      return <button data-testid="stock-card" data-egg-id={e.id} key={e.id} type="button" onClick={()=>setSelected(e.id)} className={`relative flex min-w-0 flex-col items-center overflow-hidden rounded-lg border bg-white ${border}`}>
         <div data-testid="stock-card-labels" className="flex h-4 w-full shrink-0 items-center justify-between gap-1 px-1">
           <span className="flex min-w-0 items-center gap-0.5">
             {e.greenNest?<img data-testid="stock-green-nest" src={GREEN_NEST_ICON} alt="绿窝" className="size-3.5 shrink-0 object-contain"/>:null}
@@ -149,7 +50,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
           <span className="min-h-4 text-[10px] leading-4 text-slate-500">{formatEggNature(e.nature)||'—'}</span>
           <span className="h-5"><EggMedals body={e.body} voice={e.voice}/></span>
           {e.location==='home'&&e.lastConfirmedAt?<span data-testid="stock-confirmed" className="text-[10px] leading-4 tabular-nums text-emerald-700">{formatEggObtainedAt(new Date(e.lastConfirmedAt).toISOString())}</span>:formatEggObtainedAt(e.obtainedAt)?<span data-testid="stock-time" className="text-[10px] leading-4 tabular-nums text-slate-400">{formatEggObtainedAt(e.obtainedAt)}</span>:null}
-          {status(e)?<span className={'mt-0.5 w-full text-center text-[10px] leading-5 '+(special(e)?'bg-slate-100 text-slate-500':e.provenance==='self-bred'?'bg-emerald-50 text-emerald-700':e.listed?'bg-emerald-50 text-emerald-700':'bg-slate-50 text-slate-500')}>{status(e)}</span>:null}
+          {eggStatus(e)?<span className={'mt-0.5 w-full text-center text-[10px] leading-5 '+(isSpecialEgg(e)?'bg-slate-100 text-slate-500':e.provenance==='self-bred'?'bg-emerald-50 text-emerald-700':e.listed?'bg-emerald-50 text-emerald-700':'bg-slate-50 text-slate-500')}>{eggStatus(e)}</span>:null}
         </div>
       </button>;
     })}</div>:<div className="py-6 text-center text-xs text-slate-500">{eggs.length?'没有符合的蛋':'暂无已采集的蛋'}</div>;
@@ -173,40 +74,13 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
       {filterBlock}
       {cards}
     </>}
-    {egg?<ModalSurface open title="蛋详情" onClose={()=>setSelected(null)} footer={<div className="w-full">{canCirculateEgg(egg)?<>
-    <div className="grid grid-cols-3 gap-2">
-      <Button variant="secondary" size="sm" busy={busy} onClick={()=>labeling?run({type:'label',id:egg.id,...labelValues(egg)},()=>setLabeling(false)):beginLabeling(egg)}>标注此蛋</Button>
-      <Button variant="secondary" size="sm" busy={busy} onClick={()=>run({type:'label-many',eggGameId:egg.eggGameId,...labelValues(egg)},()=>setLabeling(false))}>标注所有同类蛋</Button>
-      <Button size="sm" busy={busy} disabled={egg.location==='home'} title={egg.location==='home'?'收进背包后才能挂出':undefined} onClick={()=>run({type:'list',id:egg.id,listed:!egg.listed})}>{egg.listed?'取消挂出':'挂出'}</Button>
-    </div>{egg.location==='home'?<p className="mt-1 text-center text-[11px] text-slate-500">在地家园，收进背包后才能挂出</p>:null}
-    </>:<span className="text-sm text-slate-500">{status(egg)}</span>}</div>}>
-      <div className="flex flex-col gap-3 p-3 text-sm"><div className="flex items-center gap-2"><EggArt eggGameId={egg.eggGameId} name={name(egg.eggGameId)} size={48} kind={egg.kind} itemConfId={egg.itemConfId}/><div><strong className="text-base">{name(egg.eggGameId)}的蛋</strong><div className="flex items-center gap-1 text-sm text-slate-600">{formatEggNature(egg.nature)||'—'}<EggMedals body={egg.body} voice={egg.voice}/>{egg.greenNest?<img src={GREEN_NEST_ICON} alt="绿窝" className="size-4 object-contain"/>:null}</div><div className="text-xs text-slate-400">{egg.accountName||egg.gameAccountKey}</div></div></div>
-      <div className="text-xs text-slate-500">{status(egg)}</div>
-      <div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>获得时间</span><span className="text-right text-sm tabular-nums" data-testid="detail-obtained-at">{formatEggObtainedAtFull(egg.obtainedAt)||'采集数据里没有获得时间'}</span></div>
-      {egg.location==='home'?<div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>最后确认</span><span className="text-right text-sm tabular-nums" data-testid="detail-confirmed-at">{egg.lastConfirmedAt?formatEggObtainedAtFull(new Date(egg.lastConfirmedAt).toISOString()):'暂无'}</span></div>:null}
-      <div className="flex items-center justify-between text-xs text-slate-500"><span>蛋组</span><span className="text-sm">{species.find(s=>s.gameId===egg.eggGameId)?.eggGroups.map(g=>eggGroupNames[g]??String(g)).join(' / ')||'暂无记录'}</span></div>
-      <div className="flex items-center justify-between text-xs text-slate-500"><span>蛋高</span><span className="text-sm tabular-nums" data-testid="detail-egg-height">{formatEggHeight(egg.heightCm)}</span></div>
-      <div className="flex items-center justify-between text-xs text-slate-500"><span>蛋重</span><span className="text-sm tabular-nums" data-testid="detail-egg-weight">{formatEggWeight(egg.weightGrams)}</span></div>
-      <div className="rounded-lg bg-slate-50 p-2.5" data-testid="stock-parents"><h4 className="mb-1.5 text-sm font-semibold">实际父母</h4>{egg.parents?<>
-        <p className="mb-1.5 text-[11px] text-slate-500">按采集时的当前配对与父母属性推算；游戏未确认亲子关系，收进背包后以实物为准。</p>
-        <div className="grid grid-cols-2 gap-1.5">{parentCard('母',egg.parents.mother)}{(egg.parents.fathers??[]).map((father,index)=>parentCard('父',father,index))}</div>
-        {!egg.nature&&parentNatures(egg).length?<p className="mt-1.5 text-[11px] text-slate-500">可能性格：{parentNatures(egg).join(' / ')}（各 30%，其余随机）</p>:null}
-        {fullness(egg)?<p className="mt-1.5 text-[11px] text-slate-500">满重 {fullness(egg)}（收进背包后确定）</p>:null}
-        {egg.parents.stale?<p className="mt-1.5 text-[11px] text-emerald-700">采集期间有精灵进出，配对可能已经过期。</p>:null}
-      </>:<p className="text-xs text-slate-400">暂无亲本记录</p>}</div>
-      {labeling?<div ref={labelEditorRef} data-testid="egg-label-editor" className="flex flex-col gap-2 rounded-lg bg-slate-50 p-2.5">
-        <div className="flex items-center justify-between text-xs text-slate-500"><span>性格</span><span>最多选 {DEMAND_NATURE_MAX} 个</span></div>
-        <div className="grid grid-cols-3 gap-1" data-testid="egg-label-natures">
-          {visibleNatures.map(value=><button key={value} type="button" aria-pressed={natures.includes(value)} onClick={()=>toggleNature(value)} className={`min-h-[30px] rounded-md border px-0.5 text-[11px] leading-tight ${natures.includes(value)?'border-emerald-500 bg-emerald-50 font-medium text-emerald-700':'border-slate-200 bg-white text-slate-500'}`}>{value}</button>)}
-          {moreNatureCount>0?<button type="button" aria-label={`更多 +${moreNatureCount}`} aria-pressed={selectedExtraNatures.length>0||moreNatures} aria-expanded={moreNatures} onClick={()=>setMoreNatures(value=>!value)} className={`min-h-[30px] rounded-md border border-dashed px-0.5 text-[11px] ${selectedExtraNatures.length>0||moreNatures?'border-emerald-500 bg-emerald-50 font-medium text-emerald-700':'border-slate-300 bg-white text-slate-500'}`}>{moreNatures?`收起 +${moreNatureCount} ▴`:`更多 +${moreNatureCount}`}</button>:null}
-        </div>
-        <div className="flex flex-col gap-1">
-          {optionRow('体型',PICKABLE_BODIES,body,BODY_LABELS,setBody,'egg-label-body')}
-          {optionRow('声音',PICKABLE_VOICES,voice,VOICE_LABELS,setVoice,'egg-label-voice')}
-        </div>
-        <label className="flex min-h-[30px] items-center gap-2 text-sm text-slate-500"><input type="checkbox" checked={greenNest} onChange={e=>setGreenNest(e.target.checked)} className="size-4 accent-emerald-600"/>绿窝蛋</label>
-      </div>:null}
-      {error?<p role="alert" className="text-xs text-rose-600">{error}</p>:null}</div>
-    </ModalSurface>:null}
+    {egg?<EggDetailModal
+      key={egg.id}
+      egg={egg}
+      species={species}
+      busy={busy}
+      mutate={mutate}
+      onClose={()=>setSelected(null)}
+    />:null}
   </div>;
 }

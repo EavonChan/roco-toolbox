@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import { EggStockPanel, EggArt } from './EggStockPanel';
 import type { WorkflowEgg } from '../../shared/eggWorkflow';
@@ -152,6 +152,8 @@ test('home eggs show only the self-bred badge, keep confirmation time and parent
   expect(screen.getByText('海豹战士')).toBeTruthy();
   expect(screen.getByText('可能性格：保守 / 胆小（各 30%，其余随机）')).toBeTruthy();
   expect(screen.getByText('满重 约 1/18（收进背包后确定）')).toBeTruthy();
+  // 实际父母用配窝精灵卡渲染，而不是另画一种小卡
+  expect(screen.getByTestId('stock-parents').querySelectorAll('[data-testid="breed-pet-card"]')).toHaveLength(2);
   expect(screen.getByRole('button',{name:'挂出'})).toBeDisabled();
   expect(screen.getByText('在地家园，收进背包后才能挂出')).toBeTruthy();
 });
@@ -165,4 +167,63 @@ test('ordinary self-bred eggs have no green frame while green-nest eggs do',()=>
   const byId=(id:string)=>cards.find(card=>card.getAttribute('data-egg-id')===id)!;
   expect(byId('ordinary').className).not.toContain('border-emerald-500');
   expect(byId('green').className).toContain('border-emerald-500');
+});
+
+/** jsdom 没有 matchMedia：按用例给一份方向判定，供 useLandscape 用。 */
+const setOrientation = (landscape: boolean) => {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: query.includes('landscape') ? landscape : false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+};
+const stockSpecies = [{ gameId: 3227, key: 'p', name: '菊花梨', number: '1', eggGroups: [2] }];
+
+test('横屏蛋仓：搜索与条件在右侧折叠栏，收起后蛋卡加列', () => {
+  setOrientation(true);
+  window.localStorage.clear();
+  const eggs = Array.from({ length: 6 }, (_, index) => ({ ...ordinary, id: `e${index}` }));
+  const onBack = vi.fn();
+  render(<EggStockPanel eggs={eggs} species={stockSpecies} busy={false} mutate={vi.fn()} collapsibleFilterRail railBack={{ onClick: onBack }} />);
+
+  // 纵向标题栏：返回家园 / 我的蛋仓 / 收起筛选，竖着排在右边缘
+  const rail = screen.getByTestId('egg-stock-rail');
+  expect(within(rail).getByTestId('egg-stock-rail-title')).toHaveTextContent('我的蛋仓');
+  fireEvent.click(within(rail).getByRole('button', { name: '返回家园' }));
+  expect(onBack).toHaveBeenCalledTimes(1);
+  const toggle = within(rail).getByTestId('egg-stock-rail-toggle');
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // 搜索和条件在标题栏左边的筛选列里，不再占蛋卡上方一整行
+  const filters = screen.getByTestId('egg-stock-filters');
+  expect(within(filters).getByRole('searchbox', { name: '搜索蛋名' })).toBeTruthy();
+  expect(within(filters).getByRole('button', { name: '已标注' })).toBeTruthy();
+  expect(within(rail).queryByRole('searchbox')).toBeNull();
+  fireEvent.click(toggle);
+  expect(screen.getByTestId('egg-stock-scope')).toHaveAttribute('data-rail-collapsed', 'true');
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle).toHaveAccessibleName('展开筛选');
+  expect(screen.queryByTestId('egg-stock-filters')).toBeNull();
+  expect(window.localStorage.getItem('roco.eggStockRailCollapsed')).toBe('1');
+  // 收起后标题栏还在（竖排），只是不再占一整行
+  expect(screen.getByTestId('egg-stock-rail-title')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '返回家园' })).toBeTruthy();
+  // 折叠状态要记住：下次进来还是折叠的
+  cleanup();
+  render(<EggStockPanel eggs={eggs} species={stockSpecies} busy={false} mutate={vi.fn()} collapsibleFilterRail />);
+  expect(screen.getByTestId('egg-stock-scope')).toHaveAttribute('data-rail-collapsed', 'true');
+});
+
+test('竖屏不出现右侧折叠栏，搜索与条件仍在蛋卡上方', () => {
+  setOrientation(false);
+  window.localStorage.clear();
+  render(<EggStockPanel eggs={[ordinary]} species={stockSpecies} busy={false} mutate={vi.fn()} collapsibleFilterRail />);
+  expect(screen.queryByTestId('egg-stock-rail')).toBeNull();
+  expect(screen.queryByTestId('egg-stock-rail-toggle')).toBeNull();
+  expect(screen.getByRole('searchbox', { name: '搜索蛋名' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '自产' })).toBeTruthy();
 });
