@@ -182,28 +182,59 @@ function withoutDetailColumn(text, headingRe = /进行中/) {
 const servers = [];
 const tmpDirs = [];
 
+/**
+ * 起一个工作台实例。这台机器上偶尔会有别的东西把刚起来的 node 子进程杀掉
+ * （exit code -1、没有任何 stderr），所以启动失败自动重试一次；真崩的会两次都失败。
+ */
 function startServer(env) {
-  const child = spawn(process.execPath, [SERVER], {
-    cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
   let out = '';
   let err = '';
-  child.stderr.on('data', (b) => { err += b; });
-  const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`服务 8 秒没起来。stderr:\n${err}`)), 8000);
-    child.stdout.on('data', (buf) => {
-      out += buf.toString('utf8');
-      const m = /\[ready\]\s+(http:\/\/\S+)/.exec(out);
-      if (m) { clearTimeout(timer); resolve(m[1].replace(/\/$/, '')); }
+  const handle = {
+    child: null,
+    ready: null,
+    log: () => out,
+    stop: () => { try { if (handle.child) handle.child.kill(); } catch (_) { /* 已退出 */ } },
+  };
+  const attempt = (n) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [SERVER], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.on('exit', (code) => {
+    handle.child = child;
+    let own = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill(); } catch (_) { /* 已退出 */ }
+      reject(new Error(`服务 8 秒没起来。stderr:\n${err}`));
+    }, 8000);
+    child.stderr.on('data', (b) => { err += b; });
+    child.stdout.on('data', (buf) => {
+      const text = buf.toString('utf8');
+      own += text;
+      out += text;
+      const m = /\[ready\]\s+(http:\/\/\S+)/.exec(own);
+      if (m && !settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(m[1].replace(/\/$/, ''));
+      }
+    });
+    child.on('exit', (code, signal) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      reject(new Error(`服务提前退出（code=${code}）。输出:\n${out}\n${err}`));
+      if (n < 1) {
+        console.log(`  · 服务被提前终止（code=${code}${signal ? `，signal=${signal}` : ''}），自动重试一次`);
+        attempt(n + 1).then(resolve, reject);
+        return;
+      }
+      reject(new Error(`服务提前退出（code=${code}${signal ? `，signal=${signal}` : ''}）。输出:\n${out}\n${err}`));
     });
   });
-  const handle = { child, ready, log: () => out, stop: () => { try { child.kill(); } catch (_) { /* 已退出 */ } } };
+  handle.ready = attempt(0);
   servers.push(handle);
   return handle;
 }
@@ -719,11 +750,13 @@ try {
         await page.close();
       }
     }
-    // 再补一张展开后的卡片详情，留证据
+    // 再补一张展开后的卡片详情，留证据（优先挑有「详情」列的那张：进行中第二行）
     {
       const { page } = await openPage(urlD, { viewport: { width: 1440, height: 900 } });
-      await page.waitForSelector('.col[data-col="waiting"] .card', { timeout: 10000 });
-      await page.locator('.col[data-col="waiting"] .card .title').first().click();
+      await page.waitForSelector('.col[data-col="doing"] .card', { timeout: 10000 });
+      const doingCards = page.locator('.col[data-col="doing"] .card');
+      const n = await doingCards.count();
+      await doingCards.nth(n > 1 ? 1 : 0).locator('.title').click();
       await page.waitForSelector('.card.is-open .card-more', { timeout: 3000 });
       await page.locator('.card.is-open').first().scrollIntoViewIfNeeded();
       const file = path.join(PREVIEW, 'W2-1440-卡片详情.png');
