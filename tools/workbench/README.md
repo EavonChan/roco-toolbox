@@ -1,8 +1,9 @@
-# 任务看板工作台（W2）
+# 任务看板工作台（W2 + W4）
 
 把 `docs/任务看板.md` + `docs/会话台账.md` 变成能一眼看进度的面板：**任务视图**看每件事到哪一步，**会话视图**看每个会话到哪个阶段、卡在哪，卡片点开看完整内容，卡片上能直接「确认已完成 / 打回」。
+W4 又加了**汇报视图**：把 `docs/汇报/` 里的 Markdown 按标题层级 / 表格 / 列表 / 代码块渲染出来，零依赖。
 
-仍然**不建第二份状态**：没有数据库、没有 JSON 状态文件，两个视图都是每次请求重读 md 的投影。
+仍然**不建第二份状态**：没有数据库、没有 JSON 状态文件，三个视图都是每次请求重读 md（或目录）的投影。
 
 ## 跑起来
 
@@ -13,25 +14,92 @@ node tools/workbench/server.mjs
 
 - 端口被占用时自动 +1，并在终端打印**实际地址**（`[ready] http://…`）。
 - 只监听 `127.0.0.1`，纯本地，无登录、无外网依赖。
-- 页面每 5 秒只重拉当前视图的接口，不整页刷新；两个视图用 `#board` / `#sessions` 记在地址栏。
+- 页面每 5 秒只重拉当前视图的接口，不整页刷新；三个视图用 `#board` / `#sessions` / `#reports` 记在地址栏。
 
 ## 三个视图元素
 
 | 元素 | 说明 |
 | --- | --- |
-| 任务视图 | 深色四列（进行中 / 等你 / 已完成 / 待派）；卡片显示代号、状态、标题、派给、更新时间来源、阻塞、最近进展、下一步 |
+| 任务视图 | 四列（进行中 / 等你 / 已完成 / 待派），默认浅色；卡片显示代号、状态、标题、派给、更新时间来源、阻塞、最近进展、下一步 |
 | 卡片展开 | 点卡片（或聚焦后按 Enter/空格）展开：任务 / 派给 / 开始 / 最近进展 / 下一步 / 所在列 / 更新时间 / **详情** + 打回原因 + 看板原始字段表 |
 | 会话视图 | 一个会话一行：代号、说人话的名字、阶段（待派·执行中·已交付·已验收·已收口）、最后活动时间（带来源）、台账原话、看板里对得上的任务行、阻塞原因、产出链接 |
+
+## 汇报视图（W4，只读 Markdown）
+
+顶部第三个 tab「汇报」：**左列**是 `docs/汇报/` 下的 `.md`（按修改时间倒序，显示标题、文件名、多久前、大小），
+**右侧**渲染选中那份的正文。默认选中最新一份；点左列换文件，不刷新整页。
+
+- **零依赖**：Markdown 是自己写的，`index.html` 里一个渲染函数（`mdInline` + `mdToHtml`，约 90 行），
+  不引 marked / markdown-it，也不从 CDN 拿任何东西——包离线也能跑。
+- **支持**：`#` ~ `###` 标题、段落、`**加粗**`、`` `行内代码` ``、`[文字](链接)`、无序 / 有序列表
+  （`- [ ]` / `- [x]` 渲染成 ☐ / ☑）、`>` 引用、``` 代码块（等宽 + 浅灰底）、`|` 表格（含表头分隔行）、分隔线。
+- **只放行安全协议**：链接只给 `http(s)` / `mailto` / 站内相对路径开口子，`javascript:` 之类退化成纯文字。
+- **不白屏**：空文件给空态文案；渲染抛错就把原文原样放进 `<pre>`；正文下面还常驻一个「看原文」折叠块。
+
+### API 契约（`GET /api/reports`，schema 3）
+
+```jsonc
+{
+  "schema": 3,
+  "ok": true,
+  "generatedAt": "ISO",
+  "dir": "docs/汇报",
+  "absoluteDir": "D:\\…\\docs\\汇报",
+  "available": true,
+  "count": 1,
+  "sort": "mtime-desc",
+  "files": [
+    { "name": "2026-11-24.md", "path": "docs/汇报/2026-11-24.md",
+      "title": "2026-11-24 工作汇报（示例）",   // 正文第一行 `# ` 之后的内容；没有就退回文件名
+      "size": 2429, "bytes": 2429, "mtime": "ISO" }
+  ],
+  "readPolicy": "每次请求重读目录与文件，不缓存"
+}
+```
+
+目录还没建时返回 `available:false` + `reason`，不报错。隐藏文件、非 `.md` 一律不进清单。
+
+### `GET /api/reports/<文件名>` 回原文
+
+响应体就是文件字节（`Content-Type: text/markdown; charset=utf-8`），另带 `X-Report-Name` / `X-Report-Mtime` / `X-Report-Bytes`。
+
+**只允许读 `docs/汇报/` 这一个目录**，下面这些一律 `400 bad_report_path`，绝不吐别处的文件：
+
+| 试法 | 结果 |
+| --- | --- |
+| `/api/reports/../package.json`（裸 `..`） | 400 |
+| `/api/reports/..%2Fpackage.json`、`%2e%2e%2f…`（编码过的穿越） | 400 |
+| `/api/reports/C:%5CWindows%5Cwin.ini`（盘符 / 反斜杠） | 400 |
+| `/api/reports/`（空名字）、`/api/reports/package.json`（不是 `.md`） | 400 |
+| `/api/package.json`（客户端把 `..` 折叠掉之后剩下的路径） | 400 |
+| 目录里不存在的 `xxx.md` | 404 |
+
+判穿越用的是**请求行里的原始路径**：`new URL()` 会把 `/api/reports/../x` 折叠成 `/api/x`，靠它判就等于放过；
+名字校验通过后还会 `realpath` 再核一遍真实位置，防软链接指到目录外。
+另外**不认识的 `/api/` 路径一律 400**（不是 404）：curl / fetch 这类客户端会先把 `..` 归一化掉，
+服务端根本看不到那段 `..`，只剩 `/api/package.json`——当非法接口路径挡掉，穿越在任何客户端下都不会变成 200。
+
+## 主题：默认浅色，深色是选项
+
+- **默认浅色**：背景 `#F7F8FA`，卡片白底 + 1px `#E5E7EB` 边，主色 `#0F9D58`，正文 `#1F2329`，次要文字 `#6B7280`；
+  状态色 🟡`#D97706` 🔵`#2563EB` 🟢`#059669` 🔴`#DC2626` —— 只用来做**左侧 3px 竖条、小圆点、浅底深字的小标签**，不做整块高饱和底色。
+- **深色保留**：顶栏右上角 `☾ / ☀` 切换，选择写 `localStorage['workbench.theme']`（`light` / `dark`）。
+  没存过就是浅色；`<head>` 里有一段前置脚本，在首帧之前把 `data-theme` 定好，切主题不会闪一下。
+- **成体系**：字号只用 12 / 13 / 14 / 20，圆角只用 8 / 12（状态胶囊用 999），间距一律 4 的倍数（4 / 8 / 12 / 16 / 20 / 24）。
+- **可读性优先**：任务标题两行截断（`-webkit-line-clamp:2`，完整标题在展开的「任务」行），时间用弱化色，
+  375 下所有可点区域 ≥ 40px（视图切换、审批按钮、阶段筛选、主题按钮）。
+- 深浅两套颜色都只是 `:root` / `html[data-theme="dark"]` 上的 CSS 变量，组件里不写死颜色。
 
 ## 文件
 
 | 文件 | 作用 |
 | --- | --- |
-| `server.mjs` | 原生 Node HTTP：解析两份 md + `GET /api/board` + `GET /api/sessions` + `POST /api/approve` + 托管单文件页面。零 npm 依赖 |
-| `index.html` | 单文件前端：双视图、卡片展开、审批按钮、5 秒轮询、375 纵向堆叠 |
+| `server.mjs` | 原生 Node HTTP：解析两份 md + `GET /api/board` + `GET /api/sessions` + `GET /api/reports`（列目录 / 回原文，带穿越拦截）+ `POST /api/approve` + 托管单文件页面。零 npm 依赖 |
+| `index.html` | 单文件前端：三视图、卡片展开、审批按钮、自写 Markdown 渲染、5 秒轮询、375 纵向堆叠、浅色默认 + 深色可选 |
 | `check.mjs` | W1 接口级验收（行数 / sha / 端口 +1 / 改副本 5 秒内变 / 真文件未动） |
 | `check-ui.mjs` | W1 面板级验收（改副本符号，卡片 ≤5 秒内变，且没整页刷新） |
 | `check-approve.mjs` | **W2 验收**：审批 / 打回 / 写失败回滚 / 会话行数 / 详情列 / 375+1440 截图 |
+| `check-reports.mjs` | **W4 验收**：汇报清单 / 原文一致性 / 穿越拦截（裸 socket 发原始路径）/ 渲染（表格边框、标题层级）/ 空文件空态 / 375 布局 / 375+1440 截图 |
 | `shot.mjs` | 截图（`--tabs board,sessions`，375 / 1440），输出到 `docs/preview/` |
 
 ## 唯一写操作：`POST /api/approve`
@@ -170,7 +238,9 @@ node tools/workbench/server.mjs
 node tools/workbench/check.mjs          # W1 接口/端口/无缓存/不动真文件
 node tools/workbench/check-ui.mjs       # W1 浏览器里真的 5 秒内变，且不整页刷新
 node tools/workbench/check-approve.mjs  # W2 审批/打回/写失败/会话行数/详情列/截图
+node tools/workbench/check-reports.mjs  # W4 汇报清单/原文/穿越拦截/渲染/空态/375 布局/截图
 node tools/workbench/shot.mjs --prefix W2 --tabs board,sessions
+node tools/workbench/shot.mjs --prefix W3 --tabs board    # 浅色主题 375 / 1440
 ```
 
 `check-approve.mjs` 的八步：① 会话行数 == 台账现役行数；② 接口审批写 🟢 + 日志 + 快照 + 5 秒内同步；③ 面板点「确认已完成」5 秒内变 🟢 且不整页刷新；④ 面板点「打回」变 🔴 + 红色阻塞条 + 备注进日志；⑤ 只读副本上审批 → 报错、md 不变、日志不增行；⑥ 有/没有「详情」列都对；⑦ 真实 `docs/任务看板.md`、`docs/会话台账.md`、`docs/进度/` 未被测试写入；⑧ 375 / 1440 × 任务 / 会话 + 展开详情 截图落 `docs/preview/W2-*.png`。
@@ -185,6 +255,7 @@ node tools/workbench/shot.mjs --prefix W2 --tabs board,sessions
 | `WORKBENCH_BOARD` | `docs/任务看板.md` | 换一份看板（验收脚本用副本） |
 | `WORKBENCH_LEDGER` | `docs/会话台账.md` | 换一份台账 |
 | `WORKBENCH_PROGRESS` | `docs/进度/` | 换审批日志与快照目录 |
+| `WORKBENCH_REPORTS` | `docs/汇报/` | 换汇报目录（只读；验收脚本用临时目录测空文件与排序） |
 | `PORT` / `HOST` | `4320` / `127.0.0.1` | 起始端口 / 绑定地址 |
 
 ## 取舍
@@ -196,3 +267,7 @@ node tools/workbench/shot.mjs --prefix W2 --tabs board,sessions
 - **本地路径不做跳转**：`file://` 被浏览器拦、面板也不该替你启动外部程序，所以「详情」对本地路径做成"点击复制"。
 - **面板不托管仓库文件**：静态资源只放行 `/` 和 `/index.html`，不把 `tools/workbench` 下的脚本源码当静态文件暴露。
 - **不改看板结构**：解析侧兼容"表头后多一个空行"这类手滑写法，但不替看板做决定；格式问题只报告、不自动修。
+- **汇报不由工作台托管成静态站**：`/api/reports/<文件名>` 只回 `docs/汇报/` 里的 `.md` 字节，
+  既不列目录外的东西，也不解释 `.html`；要看别的文件自己开编辑器。
+- **渲染器宁小勿全**：不支持语法高亮、脚注、内嵌 HTML（会被转义成文字）。需要新语法再在里面加十行，
+  不引第三方包——"零依赖、可离线"是硬要求。

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Collection } from './Collection';
 
 vi.mock('./useCollectionSummary', () => ({
@@ -28,21 +28,46 @@ vi.mock('./MotherView', () => ({ MotherView: () => <div data-testid="stub-mother
 vi.mock('./MyPets', () => ({
   MyPets: ({
     onTotalCountChange,
+    filtersOnly,
   }: {
     onTotalCountChange?: (count: number) => void;
-  }) => (
-    <>
-      <div data-testid="stub-mypets" />
-      <button type="button" onClick={() => onTotalCountChange?.(12)}>
-        更新精灵数量
-      </button>
-    </>
-  ),
+    filtersOnly?: boolean;
+  }) =>
+    filtersOnly ? (
+      <div data-testid="stub-mypets-filters" />
+    ) : (
+      <>
+        <div data-testid="stub-mypets" />
+        <button type="button" onClick={() => onTotalCountChange?.(12)}>
+          更新精灵数量
+        </button>
+      </>
+    ),
 }));
 vi.mock('./Coverage', () => ({ Coverage: () => <div data-testid="stub-coverage" /> }));
 vi.mock('./useOwnedPets', () => ({
-  useOwnedPets: () => ({ owned: [], accounts: ['账号甲', '账号乙'] }),
+  useOwnedPets: () => ({ owned: [], all: [], accounts: ['账号甲', '账号乙'] }),
 }));
+
+const originalMatchMedia = window.matchMedia;
+
+afterEach(() => {
+  window.matchMedia = originalMatchMedia;
+});
+
+/** 让 useLandscape 读到指定横竖屏；jsdom 默认没有 matchMedia。 */
+function stubLandscape(matches: boolean) {
+  window.matchMedia = ((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
 
 describe('Collection（收集）', () => {
   test('母本不再在顶部重复「未收集 / 已收集」：列表内那个控件是唯一入口', () => {
@@ -126,5 +151,49 @@ describe('Collection（收集）', () => {
       type: 'open-collection',
       location: { kind: 'inventory' },
     });
+  });
+
+  test('仿真背包收起筛选只隐藏筛选栏，仿真页和顶部 / 分页保留', () => {
+    stubLandscape(true);
+    const onNavigate = vi.fn();
+    render(<Collection location={{ kind: 'inventory' }} onNavigate={onNavigate} />);
+
+    fireEvent.click(screen.getByTestId('collection-sim-backpack'));
+    expect(screen.getByTestId('sim-backpack')).toBeInTheDocument();
+    expect(screen.getByTestId('stub-mypets-filters')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('collection-rail-toggle'));
+    expect(screen.getByTestId('sim-backpack')).toBeInTheDocument();
+    expect(screen.queryByTestId('sim-filter-rail')).toBeNull();
+    expect(screen.getByTestId('sim-shell')).toHaveClass('is-expanded');
+    expect(screen.queryByTestId('stub-mypets')).toBeNull();
+    expect(screen.queryByTestId('stub-mypets-filters')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('collection-rail-toggle'));
+    expect(screen.getByTestId('sim-backpack')).toBeInTheDocument();
+    expect(screen.getByTestId('stub-mypets-filters')).toBeInTheDocument();
+  });
+
+  test('仿真背包入口只在横屏出现，点开是仿真背包弹层', () => {
+    stubLandscape(true);
+    const onNavigate = vi.fn();
+    const view = render(
+      <Collection location={{ kind: 'inventory' }} onNavigate={onNavigate} />,
+    );
+    expect(screen.getByTestId('collection-sim-backpack')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('collection-sim-backpack'));
+    expect(screen.getByTestId('sim-backpack')).toBeInTheDocument();
+    expect(screen.getByText('还没有导入精灵数据')).toBeInTheDocument();
+    expect(screen.queryByTestId('stub-mypets')).toBeNull();
+    expect(screen.getByTestId('stub-mypets-filters')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('collection-sim-backpack'));
+    expect(screen.getByTestId('stub-mypets')).toBeInTheDocument();
+
+    view.unmount();
+    stubLandscape(false);
+    render(<Collection location={{ kind: 'inventory' }} onNavigate={onNavigate} />);
+    expect(screen.queryByTestId('collection-sim-backpack')).toBeNull();
   });
 });
