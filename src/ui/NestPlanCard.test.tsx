@@ -6,7 +6,7 @@ import {
   type NestPlan,
   type NestTier,
 } from '../domain/nestPlan';
-import type { MotherNestPairing } from '../domain/motherNest';
+import type { MotherNestPairing, MotherNestTask } from '../domain/motherNest';
 import { NestPlanCard } from './NestPlanCard';
 import { resetNestPicksForTest } from './nestPicksStore';
 
@@ -1252,5 +1252,83 @@ describe('宽横屏两栏共用一份窝数（R2-P1-02）', () => {
     view.unmount();
     render(<NestPlanCard plans={[plan]} section="studs" />);
     expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 2/11 个窝');
+  });
+});
+
+/**
+ * 配窝建议默认 5 条 + 「显示全部」展开（2026-11-24 用户口径）：
+ * 两个页签都先放 5 条，点按钮一次多放 20 条，避免一进来就铺几十张卡。
+ */
+describe('配窝建议渐进展开（2026-11-24）', () => {
+  test('种公推荐默认 5 条，每次「显示更多 +20 条」，最后「显示全部」', () => {
+    const pairings = Array.from({ length: 30 }, (_, index) => ({
+      mother: { ...nestPet(`m${index}`, `母${index}`), gender: '母' as const },
+      father: { ...nestPet(`f${index}`, `公${index}`), gender: '公' as const },
+    })).map(({ mother, father }) => pairingOf(mother, father));
+
+    render(<NestPlanCard plans={[planOf(pairings)]} />);
+
+    expect(screen.getAllByTestId('breed-suggestion')).toHaveLength(5);
+    expect(screen.getByTestId('stud-tab-high')).toHaveTextContent('配窝建议30');
+    const more = screen.getByTestId('stud-show-more');
+    expect(more).toHaveTextContent('显示更多 +20 条');
+
+    fireEvent.click(more);
+    expect(screen.getAllByTestId('breed-suggestion')).toHaveLength(25);
+    expect(screen.getByTestId('stud-show-more')).toHaveTextContent('显示全部 5 条');
+
+    fireEvent.click(screen.getByTestId('stud-show-more'));
+    expect(screen.getAllByTestId('breed-suggestion')).toHaveLength(30);
+    expect(screen.queryByTestId('stud-show-more')).toBeNull();
+  });
+
+  test('母本缺口默认 5 条，点「显示全部 N 条」展开剩余', () => {
+    const tasks: MotherNestTask[] = Array.from({ length: 6 }, (_, index) => ({
+      account: '账号甲',
+      grade: '大婉',
+      eggGameId: 3000 + index,
+      eggName: `蛋${index}`,
+      groupIds: [6],
+      recommendedNatures: ['固执'],
+      sourceAccount: '账号乙',
+      mother: { ...nestPet(`m${index}`, `母${index}`), gender: '母' as const },
+      father: { ...nestPet(`f${index}`, `公${index}`), gender: '公' as const },
+      natureChance: 0.6,
+      femaleChance: 0.5,
+      chance: 0.3,
+      sameSpecies: false,
+    }));
+
+    render(
+      <NestPlanCard
+        section="mothers"
+        plans={[planOf([])]}
+        motherSuggestions={
+          new Map([
+            [
+              '账号甲',
+              {
+                gapCount: 6,
+                pairings: [],
+                tasks,
+                helps: [],
+                lowPairings: [],
+                nestsUsed: 0,
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(screen.getAllByTestId('mother-task')).toHaveLength(5);
+    expect(screen.getByTestId('mother-tab-high')).toHaveTextContent('配窝建议6');
+    const more = screen.getByTestId('mother-show-more');
+    expect(more).toHaveTextContent('显示全部 1 条');
+
+    fireEvent.click(more);
+
+    expect(screen.getAllByTestId('mother-task')).toHaveLength(6);
+    expect(screen.queryByTestId('mother-show-more')).toBeNull();
   });
 });
