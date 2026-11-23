@@ -1,4 +1,5 @@
 import { useCallback, useState, type ReactNode } from 'react';
+import './rail.css';
 
 /* 横屏三栏骨架：主区 + 可收起的功能列 + 最右纵向标题栏；竖屏不套这一层。 */
 export interface RailTestIds {
