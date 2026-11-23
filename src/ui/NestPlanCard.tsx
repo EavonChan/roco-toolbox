@@ -24,6 +24,13 @@ const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
 /** 玩家说的「八大性格」：只有这些性格才配在母本卡头上单独写概率 */
 const EIGHT_NATURES = new Set(targetNatureNames);
 
+/**
+ * 配窝建议默认先放 5 条，点「显示更多」每次再放 20 条（2026-11-24 用户口径）。
+ * 母本跨号传蛋可能上百条，一次性铺开会把看板拉得很长，所以留一个渐进展开。
+ */
+const SUGGESTION_FIRST_PAGE = 5;
+const SUGGESTION_PAGE_SIZE = 20;
+
 export const groupName = (groupId: number): string => eggGroupNames[groupId] ?? `蛋组${groupId}`;
 
 /** 一条配对的展示键（同一对精灵补多个性格 → 同一行；同名同内容的两只精灵 key 不同，不会被并） */
@@ -593,6 +600,41 @@ function SeekGroupButton({ onSeekHelp }: { onSeekHelp?: () => void }) {
 }
 
 /**
+ * 配窝建议的「显示更多」（2026-11-24 用户口径）：
+ * 默认 5 条，点一次 +20 条；剩下不足 20 条时直接写「显示全部 N 条」。
+ */
+function ShowMoreButton({
+  remaining,
+  onClick,
+  testId,
+  tone,
+}: {
+  remaining: number;
+  onClick: () => void;
+  testId: string;
+  tone: 'sky' | 'amber';
+}) {
+  const all = remaining <= SUGGESTION_PAGE_SIZE;
+  const label = all
+    ? `显示全部 ${remaining} 条`
+    : `显示更多 +${SUGGESTION_PAGE_SIZE} 条`;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      className={`col-span-full mt-1.5 w-full rounded-lg border bg-white py-1.5 text-[11px] font-medium active:bg-slate-50 ${
+        tone === 'sky'
+          ? 'border-sky-200 text-sky-700'
+          : 'border-amber-200 text-amber-700'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
  * 配窝卡右上角的「占窝」圆圈（2026-11-20 用户口径）：
  * 默认不勾 = 不占窝；种公卡和母本卡勾的是同一个窝数，由 NestPlanCard 统一记。
  */
@@ -1085,6 +1127,11 @@ interface SourceTransfer {
   targets: string[];
 }
 
+/** 母本「配窝建议」里的一张卡：本号自己配，或从别的号传蛋过来 */
+type MotherHighItem =
+  | { kind: 'local'; pairing: MotherNestPairing }
+  | { kind: 'transfer'; task: MotherNestTask; targets: string[] };
+
 const transferKeyOf = (task: MotherNestTask): string =>
   `${task.eggGameId}|${task.mother.key}|${task.father.key}`;
 
@@ -1164,6 +1211,10 @@ export function NestPlanCard({
   const [motherTab, setMotherTab] = useState<'high' | 'low'>('high');
   /** 种公推荐分组横条：高概率 / 低概率 / 缺口（2026-11-20 用户口径） */
   const [studTab, setStudTab] = useState<'high' | 'low'>('high');
+  /** 种公推荐「配窝建议」当前展示几条（默认 5，点「显示更多」+20） */
+  const [studShown, setStudShown] = useState(SUGGESTION_FIRST_PAGE);
+  /** 母本缺口「配窝建议」当前展示几条（默认 5，点「显示更多」+20） */
+  const [motherShown, setMotherShown] = useState(SUGGESTION_FIRST_PAGE);
   /**
    * 占窝勾选（2026-11-20 用户口径）：默认 **零个窝**，不按方案自动算；
    * 用户在对应号的配窝卡右上角自己点圆圈，种公卡和母本卡记在同一份窝数里。
@@ -1419,6 +1470,14 @@ export function NestPlanCard({
   const activePicked = pickedNestsOf(activeName);
   const activeLocal = localPairingsOf(activeName);
   const activeTransfers = sourceTransfersOf(activeName);
+  /** 「配窝建议」卡合成一条列表再分页：本号的线在前，跨号传蛋在后（2026-11-24） */
+  const activeMotherHigh: MotherHighItem[] = [
+    ...activeLocal.accepted.map((pairing) => ({ kind: 'local' as const, pairing })),
+    ...activeTransfers.map(({ task, targets }) => ({ kind: 'transfer' as const, task, targets })),
+  ];
+  const visibleMotherHigh =
+    motherTab === 'high' ? activeMotherHigh.slice(0, motherShown) : activeMotherHigh;
+  const motherRemaining = activeMotherHigh.length - visibleMotherHigh.length;
   const activeHelps = helpsOf(activeName);
   /**
    * 低概率里的求助卡（2026-11-20 用户口径修正）：只放**本号已经有这只母本**的线，
@@ -1453,6 +1512,13 @@ export function NestPlanCard({
   const activeLowLayouts = activeStudCards.filter((layout) => !isHighStudCard(layout));
   /** 种公区分组横条当前页：高概率 / 低概率（缺口页签已移除，2026-11-22 用户口径） */
   const activeStudLayouts = studTab === 'high' ? activeHighLayouts : activeLowLayouts;
+  /**
+   * 「配窝建议」渐进展开（2026-11-24）：只有高概率页分页，低概率页照旧整列铺出；
+   * 切账号 / 切页签都会回到前 5 条（在对应 onClick 里 reset）。
+   */
+  const visibleStudLayouts =
+    studTab === 'high' ? activeStudLayouts.slice(0, studShown) : activeStudLayouts;
+  const studRemaining = activeStudLayouts.length - visibleStudLayouts.length;
   /** 本号的种公推荐（按本号自己的缺口算）；没传时退回计划里没排上的条目当缺口提示 */
   const activeRecommendations = studRecommendationsByAccount?.get(activeName) ?? [];
   const activeGapTargets = gapsByAccount?.get(activeName) ?? activeRecommendations.length;
@@ -1479,7 +1545,11 @@ export function NestPlanCard({
               <button
                 key={entry.plan.account}
                 type="button"
-                onClick={() => setActiveAccount(entry.plan.account)}
+                onClick={() => {
+                  setActiveAccount(entry.plan.account);
+                  setStudShown(SUGGESTION_FIRST_PAGE);
+                  setMotherShown(SUGGESTION_FIRST_PAGE);
+                }}
                 data-testid="breed-account-tab"
                 aria-pressed={selected}
                 className={`flex w-full min-w-0 items-center justify-center whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium transition-colors ${
@@ -1559,7 +1629,10 @@ export function NestPlanCard({
                     <button
                       key={item.key}
                       type="button"
-                      onClick={() => setStudTab(item.key)}
+                      onClick={() => {
+                        setStudTab(item.key);
+                        setStudShown(SUGGESTION_FIRST_PAGE);
+                      }}
                       aria-pressed={selected}
                       data-testid={`stud-tab-${item.key}`}
                       className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
@@ -1583,10 +1656,10 @@ export function NestPlanCard({
                 })}
               </div>
 
-              {(
-                activeStudLayouts.length > 0 ? (
+              {activeStudLayouts.length > 0 ? (
+                <>
                   <ul className="mt-1.5 space-y-1.5" data-testid="breed-list">
-                    {activeStudLayouts.map((layout) => {
+                    {visibleStudLayouts.map((layout) => {
                       const collectedGroupIds =
                         collectedGroupIdsByAccount?.get(active.plan.account) ??
                         NO_COLLECTED_GROUPS;
@@ -1623,11 +1696,19 @@ export function NestPlanCard({
                       );
                     })}
                   </ul>
-                ) : (
-                  <p className="mt-1.5 text-[11px] text-slate-400" data-testid="stud-empty">
-                    {studTab === 'high' ? '本号没有配窝建议。' : '没有低概率种公配对。'}
-                  </p>
-                )
+                  {studTab === 'high' && studRemaining > 0 ? (
+                    <ShowMoreButton
+                      remaining={studRemaining}
+                      onClick={() => setStudShown((count) => count + SUGGESTION_PAGE_SIZE)}
+                      testId="stud-show-more"
+                      tone="sky"
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <p className="mt-1.5 text-[11px] text-slate-400" data-testid="stud-empty">
+                  {studTab === 'high' ? '本号没有配窝建议。' : '没有低概率种公配对。'}
+                </p>
               )}
             </>
           ) : null}
@@ -1640,7 +1721,7 @@ export function NestPlanCard({
                     {
                       key: 'high',
                       label: '配窝建议',
-                      count: activeLocal.accepted.length + activeTransfers.length,
+                      count: activeMotherHigh.length,
                     },
                     {
                       key: 'low',
@@ -1654,7 +1735,10 @@ export function NestPlanCard({
                     <button
                       key={item.key}
                       type="button"
-                      onClick={() => setMotherTab(item.key)}
+                      onClick={() => {
+                        setMotherTab(item.key);
+                        setMotherShown(SUGGESTION_FIRST_PAGE);
+                      }}
                       aria-pressed={selected}
                       data-testid={`mother-tab-${item.key}`}
                       className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
@@ -1680,34 +1764,49 @@ export function NestPlanCard({
 
               {motherTab === 'high' ? (
                 <div className="space-y-1.5" data-testid="mother-high">
-                  {activeLocal.accepted.length === 0 && activeTransfers.length === 0 ? (
+                  {activeMotherHigh.length === 0 ? (
                     <p className="text-[11px] text-slate-400">本号没有配窝建议。</p>
                   ) : null}
-                  {activeLocal.accepted.map((pairing) => (
-                    <MotherPairingCard
-                      key={`${pairing.eggGameId}-${pairing.mother.key}-${pairing.father.key}`}
-                      pairing={pairing}
-                      collectedGroupIds={
-                        collectedGroupIdsByAccount?.get(active.plan.account) ?? NO_COLLECTED_GROUPS
-                      }
-                      onSeekHelp={onSeekHelp}
-                      picked={isPicked(active.plan.account, motherPickKeyOf(pairing))}
-                      onTogglePick={() => togglePick(active.plan.account, motherPickKeyOf(pairing))}
+                  {visibleMotherHigh.map((item) =>
+                    item.kind === 'local' ? (
+                      <MotherPairingCard
+                        key={`${item.pairing.eggGameId}-${item.pairing.mother.key}-${item.pairing.father.key}`}
+                        pairing={item.pairing}
+                        collectedGroupIds={
+                          collectedGroupIdsByAccount?.get(active.plan.account) ??
+                          NO_COLLECTED_GROUPS
+                        }
+                        onSeekHelp={onSeekHelp}
+                        picked={isPicked(active.plan.account, motherPickKeyOf(item.pairing))}
+                        onTogglePick={() =>
+                          togglePick(active.plan.account, motherPickKeyOf(item.pairing))
+                        }
+                      />
+                    ) : (
+                      <MotherTaskCard
+                        key={transferKeyOf(item.task)}
+                        task={item.task}
+                        targets={item.targets}
+                        collectedGroupIds={
+                          collectedGroupIdsByAccount?.get(active.plan.account) ??
+                          NO_COLLECTED_GROUPS
+                        }
+                        onSeekHelp={onSeekHelp}
+                        picked={isPicked(active.plan.account, transferPickKeyOf(item.task))}
+                        onTogglePick={() =>
+                          togglePick(active.plan.account, transferPickKeyOf(item.task))
+                        }
+                      />
+                    ),
+                  )}
+                  {motherRemaining > 0 ? (
+                    <ShowMoreButton
+                      remaining={motherRemaining}
+                      onClick={() => setMotherShown((count) => count + SUGGESTION_PAGE_SIZE)}
+                      testId="mother-show-more"
+                      tone="amber"
                     />
-                  ))}
-                  {activeTransfers.map(({ task, targets }) => (
-                    <MotherTaskCard
-                      key={transferKeyOf(task)}
-                      task={task}
-                      targets={targets}
-                      collectedGroupIds={
-                        collectedGroupIdsByAccount?.get(active.plan.account) ?? NO_COLLECTED_GROUPS
-                      }
-                      onSeekHelp={onSeekHelp}
-                      picked={isPicked(active.plan.account, transferPickKeyOf(task))}
-                      onTogglePick={() => togglePick(active.plan.account, transferPickKeyOf(task))}
-                    />
-                  ))}
+                  ) : null}
                 </div>
               ) : null}
 

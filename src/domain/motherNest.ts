@@ -642,7 +642,9 @@ export function buildMotherNestSuggestions(input: MotherNestInput): Map<string, 
       gapCount,
       pairings: accepted,
       lowPairings,
-      tasks: tasks.slice(0, 5),
+      // 2026-11-24 用户口径：跨号传蛋不再在数据层截成 5 条，交给界面先放 5 条、
+      // 点「显示更多」每次 +20 条（见 NestPlanCard）。否则界面想展开也没有数据可展。
+      tasks,
       helps: helps.slice(0, 20),
       nestsUsed: accepted.reduce((sum, pairing) => sum + pairing.nestsNeeded, 0),
     });
