@@ -85,6 +85,8 @@ function petCardOf(node: HomePairNode): PairCardPet {
     medalBody: pet?.medalBody,
     heightPercent: pet?.heightPercent,
     weightPercent: pet?.weightPercent,
+    // 个体三维（2026-11-22 用户口径）：家园卡底部一行「物攻+8·生命+9·速度+10」
+    individualBonuses: pet?.individualBonuses,
     // 家园卡不写小窝位置（2026-11-19 用户口径）
     box: '',
   };
