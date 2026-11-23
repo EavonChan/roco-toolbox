@@ -21,6 +21,8 @@ export interface HomeRefreshController {
   /** 手动「完成刷新」：立刻读一次 */
   finish: () => void;
   cancel: () => void;
+  /** 关掉状态提示（2026-11-23）：提示单独一行，用户关掉后页面立刻复原 */
+  dismiss: () => void;
 }
 
 /**
@@ -141,6 +143,8 @@ export function useHomeRefresh(): HomeRefreshController {
     void stopHomeCapture();
   }, [clearTimer]);
 
+  const dismiss = useCallback(() => setMessage(''), []);
+
   useEffect(
     () => () => {
       clearTimer();
@@ -151,5 +155,5 @@ export function useHomeRefresh(): HomeRefreshController {
     [clearTimer],
   );
 
-  return { available, stage, message, start, finish, cancel };
+  return { available, stage, message, start, finish, cancel, dismiss };
 }
