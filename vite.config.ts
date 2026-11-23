@@ -1,6 +1,63 @@
-import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, type Plugin } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { build as esbuild } from 'esbuild';
 import { VitePWA } from 'vite-plugin-pwa';
+
+const DECODER_CORE = fileURLToPath(
+  new URL('./src/pcap-decoder/tools/pcap-json-app/src/core.js', import.meta.url),
+);
+
+/**
+ * `npm run dev` 下把内置抓包解析器现打一份 ESM 再交给浏览器（2026-11-23）。
+ *
+ * 解析器（`src/pcap-decoder/`）来自上游采集器，其中一部分文件是 CommonJS
+ * （`require` / `module.exports`）。打包时由下面 `build.commonjsOptions.include`
+ * 兜住，但开发态是浏览器原生 ESM 直接加载源码：CJS 文件没有具名导出，导入它的
+ * `core.js` 会整条链失败。表现就是网页里选 `.pcap` 报「无法完成后台解析」，
+ * 而生产包里同样的文件能正常解——只有 dev 坏，很难联想到是模块格式。
+ *
+ * 这里不改解析器源码（要保持和上游同构、方便整段替换），只在 dev 用 esbuild
+ * 把它打成一份 ESM 交给 Vite；构建仍走原来的模块，产物不受影响。
+ *
+ * 解析器改完要重启 dev：包在第一次导入时生成一次，之后复用。
+ */
+function devDecoderBundle(): Plugin {
+  const VIRTUAL_ID = '\0roco-dev-decoder-core';
+  let enabled = false;
+  let bundle: string | undefined;
+  return {
+    name: 'roco:dev-decoder-bundle',
+    enforce: 'pre',
+    configResolved(config) {
+      // 只管本地 dev：构建走原模块；vitest（mode=test）跑源码，Node 自己能处理 CJS 互操作
+      enabled = config.command === 'serve' && config.mode === 'development';
+    },
+    async resolveId(source, importer, options) {
+      // `core` 是解析器里唯一被外部引用的入口（worker / inspectCapture / wildNearby）
+      if (!enabled || !importer || !source.endsWith('/core')) return null;
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      return resolved?.id === DECODER_CORE ? VIRTUAL_ID : null;
+    },
+    async load(id) {
+      if (id !== VIRTUAL_ID) return null;
+      if (!bundle) {
+        const result = await esbuild({
+          entryPoints: [DECODER_CORE],
+          bundle: true,
+          format: 'esm',
+          platform: 'browser',
+          target: 'es2020',
+          write: false,
+          loader: { '.json': 'json' },
+          logLevel: 'silent',
+        });
+        bundle = result.outputFiles[0].text;
+      }
+      return bundle;
+    },
+  };
+}
 
 export default defineConfig({
   // 顶部显示的构建时间（本地时间，形如 2026-09-26 17:40）：
@@ -12,6 +69,7 @@ export default defineConfig({
   // 部署在域名根目录（Netlify / Cloudflare Pages 默认）时不用设。
   base: process.env.VITE_BASE ?? '/',
   plugins: [
+    devDecoderBundle(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
