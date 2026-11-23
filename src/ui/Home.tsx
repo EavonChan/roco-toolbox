@@ -51,9 +51,12 @@ function petsByInstance(snapshot: AccountSnapshot): Map<string, OwnedPet> {
 /**
  * 「刷新家园」：起一次短采集，回来只更新家园（2026-11-01 用户拍板）。
  * 浏览器里没有采集桥；说明文案收进右侧问号帮助卡。
+ *
+ * 2026-11-23：状态文案挪到页头下方的 `HomeRefreshNotice`。以前它挂在按钮列里，
+ * 长句会把页头撑宽（实测 375 屏整页 496px），「刷新家园」被推到屏幕外点不回来。
  */
 function HomeRefreshBar({ refresh }: { refresh: HomeRefreshController }) {
-  const { available, stage, message, start, finish, cancel } = refresh;
+  const { available, stage, start, finish, cancel } = refresh;
   const [helpOpen, setHelpOpen] = useState(false);
   const busy = stage === 'starting' || stage === 'saving';
   const hint = available
@@ -70,60 +73,82 @@ function HomeRefreshBar({ refresh }: { refresh: HomeRefreshController }) {
             ? '重试'
             : '刷新家园';
   return (
-    <div className="relative flex flex-col items-end" data-testid="home-refresh">
-      <div className="flex shrink-0 items-center gap-1">
-        {available && stage === 'waiting' ? (
-          <button
-            type="button"
-            onClick={finish}
-            className="min-h-[28px] rounded-lg border border-emerald-500 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700"
-            data-testid="home-refresh-finish"
-          >
-            完成刷新
-          </button>
-        ) : null}
+    <div className="relative flex shrink-0 items-center gap-1" data-testid="home-refresh">
+      {available && stage === 'waiting' ? (
         <button
           type="button"
-          onClick={stage === 'waiting' ? cancel : start}
-          disabled={!available || busy}
-          className="min-h-[28px] rounded-lg border border-slate-200 px-2 text-[11px] font-medium text-slate-600 disabled:text-slate-300"
-          data-testid="home-refresh-start"
+          onClick={finish}
+          className="min-h-[28px] rounded-lg border border-emerald-500 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700"
+          data-testid="home-refresh-finish"
         >
-          {stage === 'waiting' ? '取消' : label}
+          完成刷新
         </button>
-        <button
-          type="button"
-          onClick={() => setHelpOpen((open) => !open)}
-          aria-label="刷新家园说明"
-          aria-expanded={helpOpen}
-          aria-controls={helpOpen ? 'home-refresh-hint' : undefined}
-          title={hint}
-          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 text-xs font-semibold text-slate-500 hover:border-emerald-400 hover:text-emerald-700"
-          data-testid="home-refresh-help"
-        >
-          ?
-        </button>
-      </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={stage === 'waiting' ? cancel : start}
+        disabled={!available || busy}
+        className="min-h-[28px] shrink-0 whitespace-nowrap rounded-lg border border-slate-200 px-2 text-[11px] font-medium text-slate-600 disabled:text-slate-300"
+        data-testid="home-refresh-start"
+      >
+        {stage === 'waiting' ? '取消' : label}
+      </button>
+      <button
+        type="button"
+        onClick={() => setHelpOpen((open) => !open)}
+        aria-label="刷新家园说明"
+        aria-expanded={helpOpen}
+        aria-controls={helpOpen ? 'home-refresh-hint' : undefined}
+        title={hint}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-300 text-xs font-semibold text-slate-500 hover:border-emerald-400 hover:text-emerald-700"
+        data-testid="home-refresh-help"
+      >
+        ?
+      </button>
       {helpOpen ? (
         <p
           id="home-refresh-hint"
           role="note"
-          className="absolute right-0 top-full z-30 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-2 text-[11px] text-slate-600 shadow-lg"
+          className="absolute right-0 top-full z-30 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-2 text-[11px] text-slate-600 shadow-lg"
         >
           {hint}
-        </p>
-      ) : null}
-      {message ? (
-        <p
-          className={`mt-1 text-[11px] ${stage === 'failed' ? 'text-rose-600' : 'text-emerald-700'}`}
-          data-testid="home-refresh-message"
-        >
-          {message}
         </p>
       ) : null}
     </div>
   );
 }
+
+/**
+ * 刷新状态提示（2026-11-23 用户报障后改）：单独一行放在页头下面，整行换行、不吃页头宽度。
+ * 以前挤在页头按钮列里，长句把整页撑到 496px（375 屏），刷新按钮被推出屏幕且回不来；
+ * 现在页头永远只有一行按钮，提示出现 / 关掉都不动页头，点 × 立刻复原。
+ */
+function HomeRefreshNotice({ refresh }: { refresh: HomeRefreshController }) {
+  const { stage, message, dismiss } = refresh;
+  if (!message) return null;
+  const failed = stage === 'failed';
+  return (
+    <div
+      role={failed ? 'alert' : 'status'}
+      aria-live="polite"
+      className={`flex w-full max-w-full items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+        failed ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
+      }`}
+      data-testid="home-refresh-message"
+    >
+      <span className="min-w-0 flex-1 break-words">{message}</span>
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="关闭提示"
+        className="shrink-0 rounded px-1 text-slate-400 hover:text-slate-600"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 
 /**
  * 家园配窝卡单列 / 双列（2026-11-22 用户口径）：由横屏高度自动决定，不再手动切换。
@@ -404,6 +429,8 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
           ) : null}
         </div>
       </header>
+      {/* 刷新状态放在页头下面单独一行（2026-11-23）：页头只留按钮，宽度不再被文案撑开 */}
+      {view === 'nests' ? <HomeRefreshNotice refresh={homeRefresh} /> : null}
       {!loaded ? (
         <p className={`${HINT}`}>正在读取本地数据…</p>
       ) : view === 'demands' ? (
