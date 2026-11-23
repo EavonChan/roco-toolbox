@@ -9,6 +9,7 @@ import { formatEggObtainedAtFull } from './eggTime';
 import { ModalSurface } from '../primitives/ModalSurface';
 import { PairingPetCard, type PairCardPet } from '../NestPlanCard';
 import { useLandscape } from '../useWideLandscape';
+import './eggDetail.css';
 import { Button } from '../primitives/Button';
 import { allNatureNames, eggGroupNames, targetNatureNames } from '../../data/catalog';
 import {
