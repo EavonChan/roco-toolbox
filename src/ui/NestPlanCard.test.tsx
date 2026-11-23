@@ -1332,3 +1332,78 @@ describe('配窝建议渐进展开（2026-11-24）', () => {
     expect(screen.queryByTestId('mother-show-more')).toBeNull();
   });
 });
+
+describe('单选账号时把“别人补我”的线算进本号（2026-11-24）', () => {
+  test('本号缺口卡只读、计入本号配窝建议；出蛋号仍可勾选占窝', () => {
+    const mother = {
+      ...nestPet('src-m', '海盔虫'),
+      account: '账号乙',
+      gender: '母' as const,
+      nature: '沉默',
+    };
+    const father = {
+      ...nestPet('src-f', '翡翠水母'),
+      account: '账号乙',
+      gender: '公' as const,
+      nature: '沉默',
+    };
+    const task: MotherNestTask = {
+      account: '账号甲',
+      grade: '大婉',
+      eggGameId: 3001,
+      eggName: '海盔虫',
+      groupIds: [6],
+      recommendedNatures: ['沉默'],
+      sourceAccount: '账号乙',
+      mother,
+      father,
+      natureChance: 0.6,
+      femaleChance: 0.5,
+      chance: 0.3,
+      sameSpecies: false,
+    };
+    const motherSuggestions = new Map([
+      [
+        '账号甲',
+        {
+          gapCount: 1,
+          pairings: [],
+          tasks: [task],
+          helps: [],
+          lowPairings: [],
+          nestsUsed: 0,
+        },
+      ],
+    ]);
+    const planB = { ...planOf([]), account: '账号乙' };
+
+    render(
+      <NestPlanCard
+        plans={[planOf([]), planB]}
+        motherSuggestions={motherSuggestions}
+        selectedAccounts={['账号甲']}
+        accountFilterActive
+        section="mothers"
+      />,
+    );
+
+    // 默认停在“需要补”的本号：这张跨号卡只读，不占本号窝
+    expect(screen.getByTestId('mother-tab-high')).toHaveTextContent('配窝建议1');
+    const incoming = screen.getByTestId('mother-task');
+    expect(incoming).toHaveTextContent('账号乙');
+    expect(incoming).toHaveTextContent('不占本号窝');
+    expect(within(incoming).queryByTestId('nest-pick')).toBeNull();
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 0/11 个窝');
+
+    // 出蛋号（账号乙）下面还是可勾选的那张，勾一次占母 + 公两个窝
+    fireEvent.click(screen.getByRole('button', { name: /账号乙/ }));
+    const outgoing = screen.getByTestId('mother-task');
+    expect(outgoing).toHaveTextContent('传给 账号甲');
+    fireEvent.click(within(outgoing).getByTestId('nest-pick'));
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 2/11 个窝');
+
+    // 回到本号：仍然 0 窝，跨号卡不占本号
+    fireEvent.click(screen.getByRole('button', { name: /账号甲/ }));
+    expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 0/11 个窝');
+  });
+});

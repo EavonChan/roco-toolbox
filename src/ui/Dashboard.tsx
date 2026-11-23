@@ -90,7 +90,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     canAddToPlan: boolean;
   } | null>(null);
 
-  const { owned, motherGroups, mode, stud, coverageByAccount, plans } =
+  const { owned, allOwned, motherGroups, mode, stud, coverageByAccount, plans } =
     useCollectionSummary();
   const { accounts: rawAccounts } = useOwnedPets();
   /** 看板账号选择器按数字排序（2026-11-20 用户口径）。 */
@@ -113,7 +113,10 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     voiceTarget: gapTargetVoiceTarget,
     voiceDb: gapTargetVoiceDb,
     weightPercent: gapTargetWeight,
-  } = useMotherSuggestions({ owned, mode, coverageByAccount, plans });
+  } = useMotherSuggestions(
+    { owned, allOwned, mode, coverageByAccount, plans },
+    selectedAccountNames,
+  );
   const motherCriteria = useMotherCriteria();
   /**
    * 母本进度只认母本页自己的奖牌口径（上游 R7b-H01）：看板的目标档位是种公 / 覆盖度的，
@@ -290,6 +293,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                 onOpenStudRecommendation={(account, group) => openStudGap(group, [account])}
                 collectedGroupIdsByAccount={collectedGroupsByAccount}
                 motherSuggestions={motherSuggestions}
+                selectedAccounts={selectedAccountNames}
+                accountFilterActive={selectedAccountCount < accounts.length}
                 section={section}
                 targetBodyMedal={gapTargetBody}
                 targetVoiceDb={gapTargetVoiceDb}

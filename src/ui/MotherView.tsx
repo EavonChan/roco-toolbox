@@ -36,6 +36,16 @@ import { GapFillDialog, type GapTargetView } from './GapFillDialog';
 import { MotherCollectingView } from './plan/MotherCollectingView';
 import type { NavigationIntent } from './navigation';
 
+/** 未收集母本的跨号/本号补法摘要（卡片角标与顶部统计共用）。 */
+export interface MotherFillRoute {
+  /** 真实概率：性格 × 出母 */
+  chance: number;
+  /** 跨号来源；本号直配为空 */
+  sourceAccount?: string;
+  /** 本号自己配（true）还是别的号传蛋（false） */
+  self: boolean;
+}
+
 /** 点「查看」带到精灵背包的筛选：进化链名 + 标签（不再带身高范围，见 jumpBase）。 */
 export interface MotherInventoryJump {
   name: string;
@@ -278,6 +288,59 @@ export function MotherView({
   const collectedChainCount = matchedGroups.filter(isChainCollected).length;
 
   /**
+   * 未收集母本的可补路线（2026-11-24 用户口径，A+B）：
+   *
+   * - 账号筛选只决定“看哪个号”，不能决定“谁能补”；建议本身已经用全部账号算过，
+   *   这里按选中的目标号汇总；
+   * - 本号直配（pairings）和跨号传蛋（tasks）都算可补；同一条蛋取概率最高的一条；
+   * - “其他号可补”只数跨号来源，用于顶部统计；卡片角标本号/跨号都显示。
+   */
+  const accountKey = accountNames.join('\u0000');
+  const fillRoutes = useMemo(() => {
+    const map = new Map<number, MotherFillRoute>();
+    const suggestions = motherSuggestions ?? new Map();
+    for (const account of accountKey ? accountKey.split('\u0000') : []) {
+      const entry = suggestions.get(account);
+      if (!entry) continue;
+      for (const pairing of entry.pairings) {
+        const current = map.get(pairing.eggGameId);
+        if (!current || pairing.motherGain > current.chance) {
+          map.set(pairing.eggGameId, { chance: pairing.motherGain, self: true });
+        }
+      }
+      for (const task of entry.tasks) {
+        const current = map.get(task.eggGameId);
+        if (!current || task.chance > current.chance) {
+          map.set(task.eggGameId, {
+            chance: task.chance,
+            sourceAccount: task.sourceAccount,
+            self: false,
+          });
+        }
+      }
+    }
+    return map;
+  }, [motherSuggestions, accountKey]);
+
+  /** 当前筛选下未收集、且其他号有跨号传蛋线的蛋数（同一条蛋只算一次） */
+  const otherFillCount = useMemo(() => {
+    const suggestions = motherSuggestions ?? new Map();
+    const uncollected = new Set(
+      matchedGroups.filter((group) => !isChainCollected(group)).map((group) => group.eggGameId),
+    );
+    const eggs = new Set<number>();
+    for (const account of accountKey ? accountKey.split('\u0000') : []) {
+      const entry = suggestions.get(account);
+      if (!entry) continue;
+      for (const task of entry.tasks) {
+        if (uncollected.has(task.eggGameId)) eggs.add(task.eggGameId);
+      }
+    }
+    return eggs.size;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motherSuggestions, accountKey, matchedGroups, owned, criteria, activeVoices.join(','), naturesOf]);
+
+  /**
    * 链清单（按蛋组分区、图鉴号排序；每行四张精灵卡）：
    * 按**主蛋组**（链的最小可孵蛋组）分区，组内按图鉴号排序；每条链一行。
    */
@@ -486,6 +549,14 @@ export function MotherView({
             />
           </div>
         </div>
+        {otherFillCount > 0 && chainFilter === 'uncollected' ? (
+          <p
+            className="mx-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-700"
+            data-testid="mother-fill-summary"
+          >
+            未收集 {matchedGroups.length - collectedChainCount} · 其他号可补 {otherFillCount}
+          </p>
+        ) : null}
       </div>
 
       <div className="collection-main space-y-2">
@@ -581,6 +652,7 @@ export function MotherView({
                     planned={plannedSet.has(group.chainKey)}
                     onTogglePlan={() => toggleMotherPlan(group.chainKey)}
                     jumpBase={jumpBase}
+                    fill={fillRoutes.get(group.eggGameId) ?? null}
                     onOpenInventory={onOpenInventory}
                     onOpenGap={gapTarget ? () => openGapFor(group) : undefined}
                   />
@@ -642,6 +714,7 @@ function MotherEggRow({
   planned,
   onTogglePlan,
   jumpBase,
+  fill,
   onOpenInventory,
   onOpenGap,
 }: {
@@ -654,6 +727,8 @@ function MotherEggRow({
   planned: boolean;
   onTogglePlan: () => void;
   jumpBase: { tags: string[] };
+  /** 这条未收集母本怎么补（本号直配 / 其他号传蛋）；null = 没有过线的线 */
+  fill?: MotherFillRoute | null;
   onOpenInventory?: (jump: MotherInventoryJump) => void;
   /** 未收集的卡点开「怎么补」悬浮窗 */
   onOpenGap?: () => void;
@@ -665,8 +740,17 @@ function MotherEggRow({
     .filter((nature) => collectedNatures.has(nature))
     .map((nature) => `nature:${nature}`);
 
-  /** 三态底色（2026-11-21 用户口径）：未收集白底 / 计划中淡蓝 / 已收集淡绿 */
-  const cardStatus: PetCardStatus = collected ? 'collected' : planned ? 'planned' : 'uncollected';
+  /**
+   * 底色（2026-11-24 用户口径）：未收集白底 / 计划中淡蓝 / 已收集淡绿 /
+   * 可补浅绿（本号或其他号有能补的线）。计划中的卡仍用淡蓝，不抢计划状态。
+   */
+  const cardStatus: PetCardStatus = collected
+    ? 'collected'
+    : planned
+      ? 'planned'
+      : fill
+        ? 'fillable'
+        : 'uncollected';
 
   return (
     <li data-testid="mother-chain-row" data-mother-status={cardStatus} className="min-w-0">

@@ -224,4 +224,22 @@ describe('GapFillDialog', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(3);
   });
+
+  test('母本缺口右上卡改成「加入计划」，不再引导去小组求助（2026-11-24）', () => {
+    const onAddToPlan = vi.fn();
+    render(
+      <GapFillDialog
+        target={target}
+        fill={{ ...emptyFill, self: route() }}
+        onClose={() => {}}
+        onAddToPlan={onAddToPlan}
+      />,
+    );
+    const card = screen.getByTestId('gap-help-card');
+    expect(card).toHaveTextContent('加入计划');
+    expect(card).toHaveTextContent('记到「收集 · 母本」的计划里');
+    expect(within(card).queryByText('小组求助')).toBeNull();
+    fireEvent.click(screen.getByTestId('gap-add-to-plan-card'));
+    expect(onAddToPlan).toHaveBeenCalledTimes(1);
+  });
 });
