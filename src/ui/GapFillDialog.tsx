@@ -49,8 +49,8 @@ export interface GapFillDialogProps {
   collectedGroupIds?: ReadonlySet<number>;
   onClose: () => void;
   onSeekHelp?: () => void;
-  /** 「加入配窝建议」：把这条线记进计划 */
-  onAddToPlan?: (route: GapRoute) => void;
+  /** 「加入配窝建议 / 加入计划」：把这条线记进计划（route 可省，右上卡只记链） */
+  onAddToPlan?: (route?: GapRoute) => void;
   /** 自定义 eyebrow：看板种公推荐写「种公推荐 · 怎么补」 */
   eyebrow?: string;
   /**
@@ -169,12 +169,36 @@ function HelpCard({
   routeCount,
   bestChance,
   onSeekHelp,
+  onAddToPlan,
 }: {
   fill: GapFill;
   routeCount: number;
   bestChance: number | null;
   onSeekHelp?: () => void;
+  /** 母本缺口：右上角卡改成「加入计划」，不再引导去小组求助（2026-11-24 用户口径） */
+  onAddToPlan?: () => void;
 }) {
+  if (onAddToPlan) {
+    return (
+      <div
+        className="flex w-full min-w-0 flex-col justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-1.5"
+        data-testid="gap-help-card"
+      >
+        <span className="text-[10px] font-medium leading-3 text-emerald-700">加入计划</span>
+        <p className="mt-1 text-[10px] leading-4 font-semibold text-emerald-800" data-testid="gap-help-main">
+          记到「收集 · 母本」的计划里
+        </p>
+        <button
+          type="button"
+          onClick={onAddToPlan}
+          data-testid="gap-add-to-plan-card"
+          className="mt-1 min-h-[24px] rounded-lg border border-emerald-300 bg-white px-1.5 text-[11px] font-medium text-emerald-700 active:bg-emerald-100"
+        >
+          加入计划 ›
+        </button>
+      </div>
+    );
+  }
   const main =
     routeCount > 0 && bestChance != null
       ? routeCount === 1
@@ -362,6 +386,7 @@ export function GapFillDialog({
                     routeCount={routes.length}
                     bestChance={bestChance}
                     onSeekHelp={onSeekHelp}
+                    onAddToPlan={onAddToPlan}
                   />
                 }
               />
@@ -377,6 +402,7 @@ export function GapFillDialog({
               routeCount={routes.length}
               bestChance={bestChance}
               onSeekHelp={onSeekHelp}
+              onAddToPlan={onAddToPlan}
             />
           </div>
           )}

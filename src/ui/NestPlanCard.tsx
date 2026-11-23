@@ -773,6 +773,7 @@ function MotherTaskCard({
   onSeekHelp,
   picked = false,
   onTogglePick,
+  readOnly = false,
 }: {
   task: MotherNestTask;
   /** 这一对要传给哪些号（同一对只出现一次，2026-11-20） */
@@ -782,6 +783,8 @@ function MotherTaskCard({
   /** 卡片右上角的占窝圆圈（2026-11-20） */
   picked?: boolean;
   onTogglePick?: () => void;
+  /** 本号缺口卡：别人补我，只读；窝在出蛋号上，不占本号（2026-11-24） */
+  readOnly?: boolean;
 }) {
   const natureChances = motherNatureChances(
     task.mother,
@@ -798,13 +801,16 @@ function MotherTaskCard({
       }`}
       data-testid="mother-task"
       data-picked={picked ? 'true' : undefined}
+      data-readonly={readOnly ? 'true' : undefined}
     >
-      <NestPickButton
-        picked={picked}
-        onToggle={onTogglePick}
-        label={`${picked ? '取消勾选' : '勾选'}：${task.mother.name} × ${task.father.name}`}
-      />
-      <div className="flex items-start gap-1.5 pr-7">
+      {readOnly ? null : (
+        <NestPickButton
+          picked={picked}
+          onToggle={onTogglePick}
+          label={`${picked ? '取消勾选' : '勾选'}：${task.mother.name} × ${task.father.name}`}
+        />
+      )}
+      <div className={`flex items-start gap-1.5 ${readOnly ? 'pr-1' : 'pr-7'}`}>
         <span
           className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-sky-400"
           aria-hidden="true"
@@ -826,8 +832,9 @@ function MotherTaskCard({
           className="min-w-0 truncate text-[11px] font-semibold text-sky-700"
           data-testid="mother-task-flow"
         >
-          传给 {targets.slice(0, 2).join('、')}
-          {targets.length > 2 ? ` 等 ${targets.length} 个号` : ''}
+          {readOnly
+            ? `从 ${task.sourceAccount} 传蛋 · 不占本号窝`
+            : `传给 ${targets.slice(0, 2).join('、')}${targets.length > 2 ? ` 等 ${targets.length} 个号` : ''}`}
         </p>
         <SeekGroupButton onSeekHelp={onSeekHelp} />
       </div>
@@ -1130,7 +1137,13 @@ interface SourceTransfer {
 /** 母本「配窝建议」里的一张卡：本号自己配，或从别的号传蛋过来 */
 type MotherHighItem =
   | { kind: 'local'; pairing: MotherNestPairing }
-  | { kind: 'transfer'; task: MotherNestTask; targets: string[] };
+  | {
+      kind: 'transfer';
+      task: MotherNestTask;
+      targets: string[];
+      /** 本号缺口：别人补我，只读不占本号窝（2026-11-24） */
+      readOnly?: boolean;
+    };
 
 const transferKeyOf = (task: MotherNestTask): string =>
   `${task.eggGameId}|${task.mother.key}|${task.father.key}`;
@@ -1172,6 +1185,8 @@ export function NestPlanCard({
   targetVoiceDb,
   studRecommendationsByAccount,
   studCompleteAccounts,
+  selectedAccounts,
+  accountFilterActive = false,
 }: {
   plans: NestPlan[];
   emptyNote?: string;
@@ -1184,6 +1199,13 @@ export function NestPlanCard({
   studCompleteAccounts?: ReadonlySet<string>;
   /** 每个号已经收齐的蛋组（配窝卡里标绿；没传就全是原来的蓝色） */
   collectedGroupIdsByAccount?: ReadonlyMap<string, ReadonlySet<number>>;
+  /**
+   * 账号筛选里选中的号（2026-11-24）：只有这些号是「本号缺口」的目标；
+   * 其他号仍作为出蛋来源显示。不传 = 不看账号筛选（全选旧行为）。
+   */
+  selectedAccounts?: readonly string[];
+  /** 账号筛选是否真的排除了账号；false = 全选，按出蛋号分组（旧行为） */
+  accountFilterActive?: boolean;
   /** 母本配窝建议（2026-11-18）：本号内母本线 + 跨号传蛋；按账号索引 */
   motherSuggestions?: ReadonlyMap<string, MotherNestAccount>;
   /** 「向小组求助」：去小组发需求（2026-11-19） */
@@ -1315,6 +1337,36 @@ export function NestPlanCard({
     );
   };
 
+  /**
+   * 账号筛选生效时，这个号作为**收蛋方**的跨号线（2026-11-24 用户口径）：
+   * 单选莱茵时，其他号的传蛋线要归到莱茵下面，才看得见、算得进“本号缺口”。
+   */
+  const scoped = accountFilterActive && selectedAccounts != null;
+  const targetAccountSet = scoped ? new Set(selectedAccounts) : null;
+  const isTargetAccount = (account: string): boolean =>
+    scoped && targetAccountSet?.has(account) === true;
+  const incomingTransfersOf = (account: string): SourceTransfer[] => {
+    if (!isTargetAccount(account) || !motherSuggestions) return [];
+    const byEgg = new Map<number, SourceTransfer>();
+    for (const suggestion of motherSuggestions.values()) {
+      for (const task of suggestion.tasks) {
+        if (task.account !== account) continue;
+        const existing = byEgg.get(task.eggGameId);
+        if (existing) {
+          // 同一颗蛋只留概率最高的一对；目标号就是本号
+          if (task.chance > existing.task.chance) existing.task = task;
+        } else {
+          byEgg.set(task.eggGameId, { task, targets: [account] });
+        }
+      }
+    }
+    return [...byEgg.values()].sort(
+      (a, b) =>
+        b.task.chance - a.task.chance ||
+        a.task.eggName.localeCompare(b.task.eggName, 'zh-Hans-CN'),
+    );
+  };
+
   const helpsOf = (account: string): MotherHelpItem[] =>
     motherSuggestions?.get(account)?.helps ?? [];
 
@@ -1350,10 +1402,17 @@ export function NestPlanCard({
     return cards;
   };
 
-  /** 这个号作为出蛋方有几个**正经配窝**（达到门槛的本号内线 + 跨号线；低概率线不算“可配”） */
+  /**
+   * 这个号有几张**正经配窝**卡（达到门槛的本号内线 + 跨号线；低概率线不算“可配”）。
+   * 账号筛选生效时，选中的号把“别人补我”的线也算进来（2026-11-24）。
+   */
   const mainCardCountOf = (account: string): number => {
     const { accepted } = localPairingsOf(account);
-    return accepted.length + sourceTransfersOf(account).length;
+    return (
+      accepted.length +
+      incomingTransfersOf(account).length +
+      sourceTransfersOf(account).length
+    );
   };
 
   /** 这个号一共几张母本卡（含低概率线，用来判断要不要进账号格） */
@@ -1402,6 +1461,7 @@ export function NestPlanCard({
       (showMothers &&
         (localPairingsOf(plan.account).accepted.length > 0 ||
           localPairingsOf(plan.account).low.length > 0 ||
+          incomingTransfersOf(plan.account).length > 0 ||
           sourceTransfersOf(plan.account).length > 0));
     if (!selectable) return '待补';
     return `${picked} 窝`;
@@ -1469,10 +1529,18 @@ export function NestPlanCard({
   /** 当前号已勾选的窝数：种公 + 母本同一份（2026-11-20） */
   const activePicked = pickedNestsOf(activeName);
   const activeLocal = localPairingsOf(activeName);
+  /** 选中号的“别人补我”线（只读）；其他号的出蛋线仍可勾选（2026-11-24） */
+  const activeIncoming = incomingTransfersOf(activeName);
   const activeTransfers = sourceTransfersOf(activeName);
   /** 「配窝建议」卡合成一条列表再分页：本号的线在前，跨号传蛋在后（2026-11-24） */
   const activeMotherHigh: MotherHighItem[] = [
     ...activeLocal.accepted.map((pairing) => ({ kind: 'local' as const, pairing })),
+    ...activeIncoming.map(({ task, targets }) => ({
+      kind: 'transfer' as const,
+      task,
+      targets,
+      readOnly: true,
+    })),
     ...activeTransfers.map(({ task, targets }) => ({ kind: 'transfer' as const, task, targets })),
   ];
   const visibleMotherHigh =
@@ -1493,6 +1561,7 @@ export function NestPlanCard({
   const hasMotherContent =
     activeLocal.accepted.length +
       activeLocal.low.length +
+      activeIncoming.length +
       activeTransfers.length +
       activeHelps.length >
     0;
@@ -1764,6 +1833,14 @@ export function NestPlanCard({
 
               {motherTab === 'high' ? (
                 <div className="space-y-1.5" data-testid="mother-high">
+                  {activeIncoming.length > 0 ? (
+                    <p
+                      className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] leading-4 text-sky-700"
+                      data-testid="mother-incoming-note"
+                    >
+                      本号缺口 {activeIncoming.length} 条：带「从 X 传蛋」的卡在出蛋号出窝，不占本号窝；到出蛋号页签勾选占窝。
+                    </p>
+                  ) : null}
                   {activeMotherHigh.length === 0 ? (
                     <p className="text-[11px] text-slate-400">本号没有配窝建议。</p>
                   ) : null}
@@ -1784,7 +1861,7 @@ export function NestPlanCard({
                       />
                     ) : (
                       <MotherTaskCard
-                        key={transferKeyOf(item.task)}
+                        key={`${item.readOnly ? 'in' : 'out'}:${transferKeyOf(item.task)}`}
                         task={item.task}
                         targets={item.targets}
                         collectedGroupIds={
@@ -1792,9 +1869,15 @@ export function NestPlanCard({
                           NO_COLLECTED_GROUPS
                         }
                         onSeekHelp={onSeekHelp}
-                        picked={isPicked(active.plan.account, transferPickKeyOf(item.task))}
-                        onTogglePick={() =>
-                          togglePick(active.plan.account, transferPickKeyOf(item.task))
+                        readOnly={item.readOnly === true}
+                        picked={
+                          !item.readOnly &&
+                          isPicked(active.plan.account, transferPickKeyOf(item.task))
+                        }
+                        onTogglePick={
+                          item.readOnly
+                            ? undefined
+                            : () => togglePick(active.plan.account, transferPickKeyOf(item.task))
                         }
                       />
                     ),

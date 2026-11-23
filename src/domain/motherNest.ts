@@ -143,7 +143,11 @@ export interface MotherNestInput {
   mode: TargetMode;
   /** 当前目标档位；母本和公都要这个档位（体型 + 声音） */
   grade: PetGrade;
-  /** 母本达标条件（`grades` 应与 grade 一致；推荐性格开关决定本号内能不能配） */
+  /**
+   * 判定「已收集」的母本达标条件，应与母本页同一份（推荐性格开关也在这里）。
+   * 配窝档位由 `grade` 单独决定：页面可能按更宽的达标条件算已收集，
+   * 避免把页面已判为收集的蛋又推成缺口（2026-11-24）。
+   */
   criteria: MotherCriteria;
   naturesOf: (gameId: number) => readonly string[];
   /** 每个号的种公覆盖度（同种双收要找未覆盖的种公格） */
