@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EggMatchingHub } from './EggMatchingHub';
 import { createDemand } from '../../shared/eggMatching';
 import { act } from '@testing-library/react';
@@ -180,4 +180,46 @@ test('retry also retries a failed published-line sync',async()=>{
   await act(async()=>fireEvent.click(screen.getByRole('button',{name:'重试同步'})));
   await waitFor(()=>expect(mutate).toHaveBeenCalledTimes(2));
   view.unmount();data.lines=[];
+});
+
+describe('EggMatchingHub 横屏（2026-11-22 三栏）', () => {
+  const original = window.matchMedia;
+  const setOrientation = (landscape: boolean) => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('landscape') ? landscape : false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+  };
+  afterEach(() => {
+    if (original) window.matchMedia = original;
+    else delete (window as unknown as { matchMedia?: typeof window.matchMedia }).matchMedia;
+    window.localStorage.clear();
+  });
+
+  test('搜索收进右侧折叠栏，视角与页面入口进标题栏，收起后主区加宽', () => {
+    setOrientation(true);
+    render(<EggMatchingHub {...props} />);
+    const rail = screen.getByTestId('egg-hub-rail');
+    expect(within(rail).queryByTestId('egg-hub-rail-title')).toBeNull();
+    expect(within(rail).getByTestId('egg-hub-tab-mine')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(rail).getByTestId('egg-hub-tab-square')).toHaveTextContent('组内广场');
+    const filters = screen.getByTestId('egg-hub-filters');
+    expect(within(filters).getByRole('searchbox')).toBeTruthy();
+    expect(within(filters).queryByText('组内广场')).toBeNull();
+    expect(within(rail).getByTestId('egg-hub-page-stock')).toBeTruthy();
+    expect(within(rail).getByTestId('egg-hub-page-tasks')).toBeTruthy();
+    expect(within(screen.getByTestId('egg-hub-main')).getByText('菊花梨')).toBeTruthy();
+
+    fireEvent.click(within(rail).getByTestId('egg-hub-rail-toggle'));
+    expect(screen.queryByTestId('egg-hub-filters')).toBeNull();
+    expect(screen.getByTestId('egg-hub-scope')).toHaveAttribute('data-collapsed', 'true');
+    expect(window.localStorage.getItem('roco.swapRailCollapsed')).toBe('1');
+
+  });
 });
