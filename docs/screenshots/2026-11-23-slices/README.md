@@ -59,3 +59,16 @@ DETAIL l1120 panel=637x328 scrollH=192 clientH=192
 SWAP l844  rail=39 filters=195 main=477 scrollW=844
 SWAP l1120 rail=39 filters=212 main=733 scrollW=1120
 ```
+
+## review-pr 预检
+
+```text
+A  upstream/test(e0daa5f) ← friend/individual-bonuses-20261123(46bf7f9)
+   8 个文件，+343 / -11；无文本冲突；禁区无；重复补丁无；PASS
+B  upstream/test(e0daa5f) ← friend/swap-landscape-20261123-v2(f662372)
+   5 个文件，+377 / -20；无文本冲突；禁区无；重复补丁无；PASS
+C  upstream/test(e0daa5f) ← friend/egg-detail-20261123-v2(364c60a)
+   3 个文件，+109 / -35；无文本冲突；禁区无；重复补丁无；PASS
+D  friend/swap-landscape-20261123-v2(f662372) ← friend/rail-css-20261123-v2(839807a)
+   3 个文件，+81 / -79；无文本冲突；禁区无；重复补丁无；PASS
+```
