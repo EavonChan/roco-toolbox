@@ -131,4 +131,17 @@ describe('刷新家园状态机', () => {
     expect(result.current.stage).toBe('idle');
     expect(h.stopHomeCapture).toHaveBeenCalled();
   });
+
+  test('关掉提示只清文案，刷新状态不受影响', async () => {
+    const { result } = renderHook(() => useHomeRefresh());
+    await act(async () => {
+      result.current.start();
+    });
+    expect(result.current.message).toContain('已开始刷新');
+
+    act(() => result.current.dismiss());
+    expect(result.current.message).toBe('');
+    // 采集还在等家园：按钮仍是「取消 / 完成刷新」，别把状态一起清掉
+    expect(result.current.stage).toBe('waiting');
+  });
 });

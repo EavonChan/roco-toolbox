@@ -347,6 +347,32 @@ describe('家园页', () => {
     );
   });
 
+  test('刷新提示排在页头下面一行，不挤刷新按钮，也能手动关掉复原', async () => {
+    h.snapshots = [snapshotWithHome()];
+    const bridge = { startCapture: () => '请先允许小布助手使用 VPN' };
+    (window as unknown as { RocoCapture?: unknown }).RocoCapture = bridge;
+    try {
+      render(<HomeLand />);
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('home-refresh-start'));
+      });
+
+      // 2026-11-23 用户报障：文案原来挤在页头「刷新家园」下面，长句把页头撑宽，
+      // 刷新按钮被推到屏幕外、点不回来。现在提示单独一行放在页头下方。
+      const message = screen.getByTestId('home-refresh-message');
+      expect(message).toHaveTextContent('请先允许小布助手使用 VPN');
+      expect(screen.getByTestId('home-header').contains(message)).toBe(false);
+      expect(message.parentElement).toBe(screen.getByTestId('home-page'));
+      expect(message.className).toContain('max-w-full');
+
+      // 关掉提示，页头恢复成一行
+      fireEvent.click(within(message).getByRole('button', { name: '关闭提示' }));
+      expect(screen.queryByTestId('home-refresh-message')).toBeNull();
+    } finally {
+      delete (window as unknown as { RocoCapture?: unknown }).RocoCapture;
+    }
+  });
+
   test('家园分页：默认家园现状，可切到接单上窝并记住选择', () => {
     h.snapshots = [snapshotWithHome()];
     render(<HomeLand />);
