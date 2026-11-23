@@ -62,7 +62,7 @@ export function EggArt({ eggGameId, name, size=43, kind='ordinary', itemConfId }
 export function EggMedals({body,voice}:{body:string;voice:string}) {
   return <span className="inline-flex items-center justify-center gap-0.5">{[[body,bodyMedalIconByLabel(body)],[voice,voiceMedalIconByLabel(voice)]].map(([label,src],i)=>src?<img key={i} src={src} alt={label??''} className="size-4 object-contain"/>:null)}</span>;
 }
-export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRail=false, railBack, character, characters, onCharacterChange }: { eggs:readonly WorkflowEgg[];species:readonly SpeciesEntry[];busy:boolean;mutate:(action:unknown)=>Promise<unknown>;/** 横屏把搜索与条件收进右侧折叠栏（家园页蛋仓屏用） */collapsibleFilterRail?:boolean;/** 横屏标题栏里的返回动作（家园页传入「返回家园」） */railBack?:{onClick:()=>void};/** 游戏角色筛选：'' = 全部角色（家园蛋仓屏传入，组内广场不传就不出这一项） */character?:string;characters?:readonly EggCharacter[];onCharacterChange?:(key:string)=>void }) {
+export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRail=false, railBack, character, characters, onCharacterChange }: { eggs:readonly WorkflowEgg[];species:readonly SpeciesEntry[];busy:boolean;mutate:(action:unknown)=>Promise<unknown>;/** 横屏把搜索与条件收进右侧折叠栏（家园页蛋仓屏用） */collapsibleFilterRail?:boolean;/** 横屏标题栏里的返回动作（家园页传入「返回家园」） */railBack?:{label?:string;onClick:()=>void};/** 游戏角色筛选：'' = 全部角色（家园蛋仓屏传入，组内广场不传就不出这一项） */character?:string;characters?:readonly EggCharacter[];onCharacterChange?:(key:string)=>void }) {
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState<StockFilter>('全部');
   const [selected,setSelected]=useState<string|null>(null);
@@ -178,10 +178,10 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
         {railBack?<button
           type="button"
           onClick={railBack.onClick}
-          title="返回家园"
+          title={railBack.label ?? '返回家园'}
           className="egg-stock-rail-back"
           data-testid="egg-stock-rail-back"
-        >返回家园</button>:null}
+        >{railBack.label ?? '返回家园'}</button>:null}
         <h2 className="egg-stock-rail-title" data-testid="egg-stock-rail-title">我的蛋仓</h2>
         <button
           type="button"
