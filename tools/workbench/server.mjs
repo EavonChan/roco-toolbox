@@ -12,6 +12,9 @@
  *   ③ 追加一行到 docs/进度/审批.jsonl（append-only）
  *   任何一步失败都回滚 md 并报错，不留半截。
  *
+ * 汇报（W4，只读）：GET /api/reports 列 docs/汇报/ 下的 .md，GET /api/reports/<名> 回原文。
+ *   只读这一个目录；`..` / 绝对路径 / 非 .md 一律 400，绝不把别处的文件吐出去。
+ *
  * 用法：
  *   node tools/workbench/server.mjs
  *   → http://127.0.0.1:4320（占用时自动 +1，打印实际地址）
@@ -20,12 +23,13 @@
  *   WORKBENCH_BOARD     看板 md 路径
  *   WORKBENCH_LEDGER    会话台账 md 路径
  *   WORKBENCH_PROGRESS  审批日志与快照目录（内含 审批.jsonl、snapshots/）
+ *   WORKBENCH_REPORTS   汇报 md 目录（默认 docs/汇报，只读）
  *   PORT / HOST         起始端口 / 绑定地址（默认 4320 / 127.0.0.1）
  *
  * 原生 Node，零 npm 依赖。
  */
 import { createServer } from 'node:http';
-import { readFile, writeFile, appendFile, stat, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, appendFile, stat, mkdir, readdir, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -36,6 +40,7 @@ const REPO_ROOT = path.resolve(HERE, '..', '..');
 const DEFAULT_BOARD = path.join(REPO_ROOT, 'docs', '任务看板.md');
 const DEFAULT_LEDGER = path.join(REPO_ROOT, 'docs', '会话台账.md');
 const DEFAULT_PROGRESS = path.join(REPO_ROOT, 'docs', '进度');
+const DEFAULT_REPORTS = path.join(REPO_ROOT, 'docs', '汇报');
 const BOARD_FILE = process.env.WORKBENCH_BOARD
   ? path.resolve(process.env.WORKBENCH_BOARD)
   : DEFAULT_BOARD;
@@ -45,6 +50,9 @@ const LEDGER_FILE = process.env.WORKBENCH_LEDGER
 const PROGRESS_DIR = process.env.WORKBENCH_PROGRESS
   ? path.resolve(process.env.WORKBENCH_PROGRESS)
   : DEFAULT_PROGRESS;
+const REPORTS_DIR = process.env.WORKBENCH_REPORTS
+  ? path.resolve(process.env.WORKBENCH_REPORTS)
+  : DEFAULT_REPORTS;
 const APPROVALS_FILE = path.join(PROGRESS_DIR, '审批.jsonl');
 const SNAPSHOT_DIR = path.join(PROGRESS_DIR, 'snapshots');
 
@@ -629,6 +637,144 @@ async function approvalsTail(limit = 5) {
   }
 }
 
+// ───────────────────────────── 汇报：只读 docs/汇报/ ─────────────────────────────
+
+const REPORT_EXT = '.md';
+const REPORTS_PREFIX = '/api/reports/';
+
+/**
+ * 请求行里的**原始**路径。必须用原串：`new URL()` 会把 `/api/reports/../x` 折叠成 `/api/x`，
+ * 那样就悄悄放过了穿越（验收要求是 400，不是 404）。
+ */
+function rawPathOf(reqUrl) {
+  const q = reqUrl.indexOf('?');
+  const raw = q >= 0 ? reqUrl.slice(0, q) : reqUrl;
+  if (raw.startsWith('/')) return raw;
+  try {
+    return new URL(raw).pathname; // 代理式绝对 URL（极少数客户端）
+  } catch {
+    return raw;
+  }
+}
+
+/** 从 `/api/reports/<名字>` 取文件名；穿越 / 绝对路径 / 非 .md 一律 400。 */
+function reportNameOf(rawPath) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(rawPath);
+  } catch {
+    throw new HttpError(400, 'bad_report_path', '汇报文件名不是合法 URL 编码');
+  }
+  const name = decoded.slice(REPORTS_PREFIX.length);
+  const reasons = [];
+  if (!name) reasons.push('文件名为空');
+  if (name.includes('..')) reasons.push('含 ..');
+  if (name.includes('/') || name.includes('\\')) reasons.push('含路径分隔符');
+  if (/^[A-Za-z]:/.test(name)) reasons.push('像绝对路径');
+  if (/[\u0000-\u001f\u007f]/.test(name)) reasons.push('含控制字符');
+  if (!name.toLowerCase().endsWith(REPORT_EXT)) reasons.push(`不是 ${REPORT_EXT} 文件`);
+  if (reasons.length) {
+    throw new HttpError(400, 'bad_report_path',
+      `拒绝这个汇报路径（${reasons.join('，')}）：只允许 docs/汇报/ 下的单个 .md 文件名`);
+  }
+  return name;
+}
+
+/** 名字 → 磁盘路径；再核一遍“解析后仍在汇报目录里”（防软链接跑出去）。 */
+async function resolveReport(name) {
+  const abs = path.resolve(REPORTS_DIR, name);
+  const rel = path.relative(REPORTS_DIR, abs);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || rel.includes(path.sep)) {
+    throw new HttpError(400, 'bad_report_path', '这个路径不在 docs/汇报/ 里，已拒绝');
+  }
+  const realDir = await realpath(REPORTS_DIR).catch(() => path.resolve(REPORTS_DIR));
+  const realFile = await realpath(abs).catch(() => null);
+  if (realFile && path.dirname(realFile) !== realDir) {
+    throw new HttpError(400, 'bad_report_path', '这个文件指向汇报目录之外，已拒绝');
+  }
+  return abs;
+}
+
+/** 标题 = 正文里第一行 `# ` 之后的内容；没有就退回文件名（不猜、不造标题）。 */
+function reportTitle(text, name) {
+  for (const line of String(text).split(/\r?\n/)) {
+    const m = /^#\s+(.+?)\s*#*\s*$/.exec(line);
+    if (m) return m[1].trim();
+  }
+  return name.replace(/\.md$/i, '');
+}
+
+async function reportsPayload() {
+  let entries;
+  try {
+    entries = await readdir(REPORTS_DIR, { withFileTypes: true });
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      return {
+        schema: 3, ok: true, generatedAt: new Date().toISOString(),
+        dir: relPath(REPORTS_DIR), absoluteDir: REPORTS_DIR,
+        available: false, count: 0, files: [],
+        reason: `还没有 ${relPath(REPORTS_DIR)}/ 目录`,
+        readPolicy: '每次请求重读目录与文件，不缓存',
+      };
+    }
+    throw err;
+  }
+  const files = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || entry.name.startsWith('.') || !entry.name.toLowerCase().endsWith(REPORT_EXT)) continue;
+    const abs = path.join(REPORTS_DIR, entry.name);
+    try {
+      const [info, text] = await Promise.all([stat(abs), readFile(abs, 'utf8')]);
+      files.push({
+        name: entry.name,
+        path: relPath(abs),
+        title: reportTitle(text, entry.name),
+        size: info.size,
+        bytes: info.size,
+        mtime: info.mtime.toISOString(),
+        _mtimeMs: info.mtimeMs,
+      });
+    } catch { /* 单个文件读不了不影响整份清单 */ }
+  }
+  files.sort((a, b) => b._mtimeMs - a._mtimeMs || a.name.localeCompare(b.name, 'zh'));
+  return {
+    schema: 3, ok: true, generatedAt: new Date().toISOString(),
+    dir: relPath(REPORTS_DIR), absoluteDir: REPORTS_DIR,
+    available: true,
+    count: files.length,
+    sort: 'mtime-desc',
+    files: files.map(({ _mtimeMs, ...rest }) => rest),
+    readPolicy: '每次请求重读目录与文件，不缓存',
+  };
+}
+
+/** 返回原文（text/markdown），不是 JSON：页面拿到什么就渲染什么。 */
+async function sendReport(res, rawPath) {
+  const name = reportNameOf(rawPath);
+  const abs = await resolveReport(name);
+  let text;
+  let info;
+  try {
+    [text, info] = await Promise.all([readFile(abs, 'utf8'), stat(abs)]);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      throw new HttpError(404, 'report_not_found', `docs/汇报/ 里没有这个文件：${name}`);
+    }
+    throw err;
+  }
+  const buf = Buffer.from(text, 'utf8');
+  res.writeHead(200, {
+    'Content-Type': 'text/markdown; charset=utf-8',
+    'Content-Length': buf.length,
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'X-Report-Name': encodeURIComponent(name),
+    'X-Report-Mtime': info.mtime.toISOString(),
+    'X-Report-Bytes': String(buf.length),
+  });
+  res.end(buf);
+}
+
 // ───────────────────────────── /api/board ─────────────────────────────
 
 async function boardPayload() {
@@ -1022,6 +1168,7 @@ function errorBody(err, fallbackHint) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || HOST}`);
+  const rawPath = rawPathOf(req.url || '/');
   try {
     if (url.pathname === '/api/approve') {
       if (req.method !== 'POST') {
@@ -1036,6 +1183,14 @@ const server = createServer(async (req, res) => {
       sendText(res, 405, 'method not allowed');
       return;
     }
+    if (rawPath === '/api/reports') {
+      sendJson(res, 200, await reportsPayload());
+      return;
+    }
+    if (rawPath.startsWith(REPORTS_PREFIX)) {
+      await sendReport(res, rawPath);
+      return;
+    }
     if (url.pathname === '/api/board') {
       sendJson(res, 200, await boardPayload());
       return;
@@ -1048,13 +1203,22 @@ const server = createServer(async (req, res) => {
       res.writeHead(204).end();
       return;
     }
+    // 不认识的 /api/ 路径一律 400（不是 404）：有的客户端会把 /api/reports/../x 先归一化成 /api/x，
+    // 那一层归一化服务端看不见；把它当"非法接口路径"挡掉，穿越在任何客户端下都不会变成 200。
+    if (url.pathname.startsWith('/api/')) {
+      throw new HttpError(400, 'bad_api_path',
+        `没有这个接口：${url.pathname}。工作台只认 GET /api/board、GET /api/sessions、` +
+        'GET /api/reports、GET /api/reports/<文件名>、POST /api/approve');
+    }
     await serveStatic(res, url.pathname);
   } catch (err) {
-    const hint = url.pathname === '/api/sessions'
-      ? `无法读取会话台账：${LEDGER_FILE}`
-      : url.pathname === '/api/approve'
-        ? `写看板失败：${BOARD_FILE}`
-        : `无法读取看板：${BOARD_FILE}`;
+    const hint = rawPath.startsWith('/api/reports')
+      ? `无法读取汇报目录：${REPORTS_DIR}`
+      : url.pathname === '/api/sessions'
+        ? `无法读取会话台账：${LEDGER_FILE}`
+        : url.pathname === '/api/approve'
+          ? `写看板失败：${BOARD_FILE}`
+          : `无法读取看板：${BOARD_FILE}`;
     const { status, body } = errorBody(err, hint);
     process.stderr.write(`[workbench] ${url.pathname} → ${status} ${body.error}: ${body.message}\n`);
     sendJson(res, status, body);
@@ -1079,6 +1243,7 @@ function listen(port, attempt) {
     console.log(`  任务看板工作台  ${url}`);
     console.log(`  任务数据源      ${BOARD_FILE}`);
     console.log(`  会话数据源      ${LEDGER_FILE}`);
+    console.log(`  汇报目录        ${REPORTS_DIR}`);
     console.log(`  审批日志/快照   ${APPROVALS_FILE}`);
     console.log(`  写入策略        唯一写操作 POST /api/approve；写前备份、失败回滚`);
     console.log(`  读取策略        每次请求重读（无缓存、只读）`);
@@ -1100,9 +1265,11 @@ boardPayload()
     console.log(`[workbench] 已解析 ${payload.counts.total} 条任务（${line}）`);
     return sessionsPayload();
   })
-  .then((payload) => {
+  .then(async (payload) => {
     const line = payload.stages.map((s) => `${s.label} ${payload.counts.byStage[s.key] || 0}`).join(' / ');
     console.log(`[workbench] 已解析 ${payload.counts.total} 个现役会话（${line}）`);
+    const reports = await reportsPayload().catch(() => null);
+    if (reports) console.log(`[workbench] 汇报 ${reports.count} 份（${reports.dir}${reports.available ? '' : '，目录还没建'}）`);
     listen(START_PORT, 0);
   })
   .catch((err) => {
