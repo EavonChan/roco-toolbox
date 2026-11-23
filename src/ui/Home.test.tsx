@@ -217,6 +217,14 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-account-switcher').parentElement).toBe(
       screen.getByTestId('home-header'),
     );
+    // 2026-11-22 修横向溢出：账号器必须可收缩（flex-1 + min-w-0），不能写死宽度 + shrink-0，
+    // 否则右侧「接单上窝 / 刷新家园 / ?」会把问号挤出屏幕
+    const switcher = screen.getByTestId('home-account-switcher');
+    const cls = switcher.className.split(/\s+/);
+    expect(cls).toContain('flex-1');
+    expect(cls).toContain('min-w-0');
+    expect(cls).not.toContain('shrink-0');
+    expect(cls).not.toContain('w-[14rem]');
     expect(screen.getByTestId('home-account-151910')).toBeTruthy();
     expect(screen.queryByTestId('home-account-151911')).toBeNull();
 
@@ -260,6 +268,9 @@ describe('家园页', () => {
     // 2026-11-22 用户口径：蛋仓是页内一屏，不是悬浮窗
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByTestId('home-title')).toHaveTextContent('我的蛋仓');
+    // 角色筛选紧跟在「我的蛋仓」后面：蛋仓屏把选择器挂进这个插槽（2026-11-23 用户口径）
+    expect(screen.getByTestId('home-title').nextElementSibling)
+      .toBe(screen.getByTestId('home-stock-character-slot'));
     // 横屏把标题让给右侧的蛋仓标题栏（home-stock-title 由 index.css 在横屏隐藏）
     expect(screen.getByTestId('home-title').className).toContain('home-stock-title');
     // 横屏「返回家园」跟着靠右，和右侧标题栏同一列（data-view 供 index.css 用）

@@ -1,0 +1,274 @@
+/* 归档：2026-11-22 之前的一层式 tokens.css（已被 primitive/semantic/component 三层替代，
+ * 仅留作对照，页面与组件**不许**再引用本文件）。 */
+/* =============================================================================
+ * tokens.css — 洛克工具箱设计 token（原型基准重建 · 阶段 0）
+ *
+ * 唯一标准：https://roco-toolbox.pages.dev （2026-11-22 实测）
+ *
+ * 取值方式（不靠记忆、不靠猜）：
+ *   1. `tailwind.config.js` 没有 extend，`src/index.css` 只有 3 条移动端防护，
+ *      所以**代码里没有自定义 token**，视觉全靠 Tailwind 默认调色板 + 工具类；
+ *   2. 因此本文件的值来自两条可复核的证据：
+ *      a) `src` 下所有 tsx/ts 里实际用到的工具类清单（取证命令见 README「token 取证」）；
+ *      b) 线上元素的 `getComputedStyle` 实测（`_shared/measure-shell.mjs`、
+ *         `_baseline/基线信息.json`）。
+ *   3. `_shared/verify-tokens.mjs` 会把这些值反查线上真实 CSS：给探针元素挂上
+ *      对应的 Tailwind 类，比较计算值与本文件是否一致，不一致直接 fail。
+ *
+ * 改造纪律：页面/装订稿只许引用这里的变量，不许再写裸色值；新增颜色先进本文件。
+ * ========================================================================== */
+
+:root {
+  /* ---------------------------------------------------------------------------
+   * 1. 调色板 —— Tailwind v3 原值。只收「线上真的用到」的档位（含出现次数），
+   *    没用到的不搬进来，避免设计稿里出现线上没有的颜色。
+   * ------------------------------------------------------------------------- */
+
+  /* slate：中性阶，全站文字/描边/内嵌底的主力（slate-500 用了 282 次） */
+  --c-slate-50: #f8fafc;
+  --c-slate-100: #f1f5f9;
+  --c-slate-200: #e2e8f0;
+  --c-slate-300: #cbd5e1;
+  --c-slate-400: #94a3b8;
+  --c-slate-500: #64748b;
+  --c-slate-600: #475569;
+  --c-slate-700: #334155;
+  --c-slate-800: #1e293b;
+  --c-slate-900: #0f172a;
+  --c-slate-950: #020617;
+
+  /* emerald：主色。选中态 / 主按钮 / 进度 */
+  --c-emerald-50: #ecfdf5;
+  --c-emerald-100: #d1fae5;
+  --c-emerald-200: #a7f3d0;
+  --c-emerald-300: #6ee7b7;
+  --c-emerald-400: #34d399;
+  --c-emerald-500: #10b981;
+  --c-emerald-600: #059669;
+  --c-emerald-700: #047857;
+  --c-emerald-800: #065f46;
+  --c-emerald-900: #064e3b;
+
+  /* rose：危险 / 未收集 / 红点 */
+  --c-rose-50: #fff1f2;
+  --c-rose-100: #ffe4e6;
+  --c-rose-200: #fecdd3;
+  --c-rose-300: #fda4af;
+  --c-rose-400: #fb7185;
+  --c-rose-500: #f43f5e;
+  --c-rose-600: #e11d48;
+  --c-rose-700: #be123c;
+
+  /* amber：提醒 / 数据过期 / 待办 */
+  --c-amber-50: #fffbeb;
+  --c-amber-100: #fef3c7;
+  --c-amber-200: #fde68a;
+  --c-amber-300: #fcd34d;
+  --c-amber-400: #fbbf24;
+  --c-amber-500: #f59e0b;
+  --c-amber-600: #d97706;
+  --c-amber-700: #b45309;
+  --c-amber-800: #92400e;
+  --c-amber-900: #78350f;
+
+  /* sky：信息 / 采集状态 */
+  --c-sky-50: #f0f9ff;
+  --c-sky-100: #e0f2fe;
+  --c-sky-200: #bae6fd;
+  --c-sky-300: #7dd3fc;
+  --c-sky-400: #38bdf8;
+  --c-sky-500: #0ea5e9;
+  --c-sky-600: #0284c7;
+  --c-sky-700: #0369a1;
+  --c-sky-800: #075985;
+
+  /* 低频：只在个别卡片上出现 */
+  --c-lime-50: #f7fee7;
+  --c-lime-700: #4d7c0f;
+  --c-violet-50: #f5f3ff;
+  --c-violet-300: #c4b5fd;
+  --c-violet-700: #6d28d9;
+  --c-pink-50: #fdf2f8;
+  --c-pink-100: #fce7f3;
+  --c-pink-200: #fbcfe8;
+  --c-pink-500: #ec4899;
+  --c-pink-600: #db2777;
+  --c-pink-700: #be185d;
+  --c-pink-800: #9d174d;
+  --c-red-50: #fef2f2;
+  --c-red-100: #fee2e2;
+  --c-red-200: #fecaca;
+  --c-red-500: #ef4444;
+  --c-red-600: #dc2626;
+  --c-red-700: #b91c1c;
+  --c-orange-50: #fff7ed;
+  --c-orange-200: #fed7aa;
+  --c-orange-600: #ea580c;
+
+  /* 纯色：只用 白 / 黑，透明度按线上实际用到的档位给 */
+  --c-white: #ffffff;
+  --c-black: #000000;
+  --c-white-85: rgb(255 255 255 / 0.85);
+  --c-slate-900-85: rgb(15 23 42 / 0.85); /* 悬浮提示片 bg-slate-900/85 */
+  --c-black-40: rgb(0 0 0 / 0.4); /* 弹层遮罩 */
+
+  /* ---------------------------------------------------------------------------
+   * 2. 语义 token —— 页面只认这一层，不直接引用 --c-*
+   * ------------------------------------------------------------------------- */
+
+  /* 底与面 */
+  --bg-canvas: var(--c-white); /* 页面底色：实测 html/body 都是透明，实际底色是白 */
+  --bg-surface: var(--c-white); /* 卡片 rounded-2xl bg-white */
+  --bg-inset: var(--c-slate-50); /* 卡内嵌块 rounded-xl bg-slate-50 */
+  --bg-muted: var(--c-slate-100); /* 分段控件轨道 */
+  --bg-overlay: var(--c-black-40); /* 弹层遮罩 */
+  --bg-toast: var(--c-slate-900-85);
+
+  /* 文字（四档，只许这四档 + 三个状态色） */
+  --text-strong: var(--c-slate-900); /* 16px 标题 */
+  --text-body: var(--c-slate-700); /* 14px 正文 */
+  --text-muted: var(--c-slate-500); /* 12px 说明 / 未选中页签 */
+  --text-faint: var(--c-slate-400); /* 12px 弱提示 / 占位符 */
+  --text-inverse: var(--c-white);
+
+  /* 线 */
+  --line-subtle: var(--c-slate-100); /* 标题栏/页签下边线 */
+  --line: var(--c-slate-200); /* 输入框、次按钮描边 */
+  --line-strong: var(--c-slate-300);
+
+  /* 主色 */
+  --accent: var(--c-emerald-600); /* 主按钮底、页签下划线 */
+  --accent-text: var(--c-emerald-700); /* 主色文字、选中页签文字 */
+  --accent-line: var(--c-emerald-500); /* 选中 chip 描边 */
+  --accent-soft: var(--c-emerald-50); /* 选中 chip 底 */
+  --accent-softer: var(--c-emerald-100); /* 进度条轨道 / 浅底 */
+
+  /* 状态：危险 */
+  --danger: var(--c-rose-600);
+  --danger-text: var(--c-rose-700);
+  --danger-soft: var(--c-rose-50);
+  --danger-line: var(--c-rose-200);
+
+  /* 状态：提醒 */
+  --warn: var(--c-amber-500);
+  --warn-text: var(--c-amber-800);
+  --warn-soft: var(--c-amber-50);
+  --warn-line: var(--c-amber-200);
+
+  /* 状态：信息 */
+  --info: var(--c-sky-500);
+  --info-text: var(--c-sky-700);
+  --info-soft: var(--c-sky-50);
+  --info-line: var(--c-sky-200);
+
+  /* ---------------------------------------------------------------------------
+   * 3. 字体
+   *    实测线上：ui-sans-serif, system-ui, sans-serif + emoji 兜底（Tailwind 默认栈）
+   *    手机真机会落到系统字体（安卓 Roboto/思源黑、iOS 苹方），设计稿在 Windows 上
+   *    会落到微软雅黑 —— 字宽略有差异，属于已知差异，见 README「已知差异」。
+   * ------------------------------------------------------------------------- */
+  --font-sans: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+
+  /* 字号 / 行高（成对使用，禁止只写字号） */
+  --fs-title: 16px; /* text-base */
+  --lh-title: 24px;
+  --fs-body: 14px; /* text-sm */
+  --lh-body: 20px;
+  --fs-hint: 12px; /* text-xs */
+  --lh-hint: 16px;
+  --fs-meta: 11px; /* text-[11px]，卡片角标行：实测 11/16.5 */
+  --lh-meta: 16.5px;
+  --fs-micro: 10px; /* text-[10px]，页签红点（leading-[16px]） */
+  --lh-micro: 16px;
+  --fs-nano: 9px; /* text-[9px]，仅号码/数量角标 */
+  --lh-nano: 12px;
+  --fs-tiny: 8px; /* text-[8px]，仅图鉴号这类 3~4 字符，禁止承载文案 */
+  --lh-tiny: 12px;
+
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* ---------------------------------------------------------------------------
+   * 4. 间距 —— 4px 栅格。2px 只用于描边内微调（gap-0.5）
+   * ------------------------------------------------------------------------- */
+  --sp-0: 0;
+  --sp-2: 2px;
+  --sp-4: 4px;
+  --sp-6: 6px;
+  --sp-8: 8px;
+  --sp-10: 10px;
+  --sp-12: 12px;
+  --sp-16: 16px;
+  --sp-20: 20px;
+  --sp-24: 24px;
+  --sp-32: 32px;
+  --sp-40: 40px;
+
+  /* ---------------------------------------------------------------------------
+   * 5. 圆角
+   * ------------------------------------------------------------------------- */
+  --r-sm: 4px; /* rounded */
+  --r-md: 6px; /* rounded-md  chip */
+  --r-lg: 8px; /* rounded-lg  按钮/输入框 */
+  --r-xl: 12px; /* rounded-xl  内嵌块/工具卡 */
+  --r-2xl: 16px; /* rounded-2xl 主卡片 */
+  --r-full: 9999px; /* rounded-full 红点/头像 */
+
+  /* ---------------------------------------------------------------------------
+   * 6. 阴影（Tailwind v3 原值）
+   * ------------------------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05); /* 卡片默认 */
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* 弹层 */
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* ---------------------------------------------------------------------------
+   * 7. 控件高度 —— 线上实测的 min-h-* 档位（按出现次数从多到少）
+   *    28 芯片/文字动作 · 32 次按钮 · 36 主按钮与输入 · 44 弹层主操作
+   * ------------------------------------------------------------------------- */
+  --ctl-26: 26px;
+  --ctl-28: 28px; /* chip / 文字动作 / 数量 */
+  --ctl-30: 30px; /* 标题栏次按钮 */
+  --ctl-32: 32px; /* 次按钮 / 紧凑输入 */
+  --ctl-36: 36px; /* 主按钮 / 表单输入 */
+  --ctl-40: 40px; /* 页签 / 导航触区 */
+  --ctl-44: 44px; /* 弹层主操作（导入游戏数据 实测 44） */
+  --ctl-72: 72px; /* 大块可点击卡片 */
+
+  /* 触区下限：页签与弹层主操作实测 40~44，其余可小到 28 */
+  --touch-min: 28px;
+  --touch-comfort: 44px;
+
+  /* ---------------------------------------------------------------------------
+   * 8. 布局与外壳骨架（实测，勿改）
+   * ------------------------------------------------------------------------- */
+  --container-max: 448px; /* max-w-md，六页统一 */
+
+  /* 页面容器：padding / 纵向 gap 每页略有不同，照抄线上 */
+  --page-pad-dashboard: 12px; /* 看板  space-y-2 p-3 */
+  --page-pad-collection: 12px; /* 收集  space-y-2 p-3 */
+  --page-pad-nearby: 12px; /* 附近  space-y-2 p-3 */
+  --page-pad-home: 16px; /* 家园  space-y-3 p-4 */
+  --page-pad-groups: 16px; /* 小组  space-y-2 p-4 */
+  --page-pad-profile: 16px; /* 我的  space-y-3 p-4 */
+  --page-gap-tight: 8px; /* space-y-2 */
+  --page-gap: 12px; /* space-y-3 */
+
+  /* 顶部外壳：标题栏 47px + 页签 41px = 88px，sticky top-0 z-50 */
+  --chrome-header-h: 47px;
+  --chrome-nav-h: 41px;
+  --chrome-h: 88px;
+  --chrome-pad-x: 16px;
+  --chrome-nav-pad-x: 8px;
+  --chrome-z: 50;
+  --chrome-underline: 2px;
+
+  /* 屏宽基准（设计稿只做这两档） */
+  --w-375: 375px;
+  --w-390: 390px;
+
+  /* 安全区：iOS 底部横条 / 安卓手势条 */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}

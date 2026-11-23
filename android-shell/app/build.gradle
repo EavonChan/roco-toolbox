@@ -34,8 +34,8 @@ android {
         targetSdk 34
         // 内测迭代：同一版本名用更高的 versionCode，客户端才会提示更新（2026-11-18 vc42）
         // 2026-11-22 正式发版 1.5.7 / 43（内测 vc42 与正式包不同 applicationId，互不影响）
-        versionCode 43
-        versionName "1.5.7"
+        versionCode 45
+        versionName "1.6.0"
         // 应用名按通道区分，内测包在桌面上能和正式包一眼分开
         manifestPlaceholders = [appLabel: testBuild ? '小布助手·内测' : '小布助手']
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }

@@ -94,7 +94,7 @@ describe('parseBackup', () => {
     expect(snapshot.gameId).toBe(1000001);
     expect(snapshot.exportedAt).toBe('2026-09-25T12:38:43.262Z');
     expect(snapshot.importedAt).toBe('2026-09-26T00:00:00.000Z');
-    expect(snapshot.pets).toHaveLength(4);
+    expect(snapshot.pets).toHaveLength(5);
 
     const first = snapshot.pets[0];
     expect(first.gameId).toBe(3200);
@@ -223,6 +223,7 @@ describe('parseBackup', () => {
       'capture_1000001_716',
       'capture_1000001_717',
       'capture_1000001_718',
+      'capture_1000001_719',
     ]);
 
     const withoutId = JSON.parse(JSON.stringify(fixture));

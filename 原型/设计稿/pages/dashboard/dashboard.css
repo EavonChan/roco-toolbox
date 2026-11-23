@@ -1,0 +1,279 @@
+/* =============================================================================
+ * dashboard.css — 看板页专用（只做页面级组合，组件样式一律来自 components/）
+ *
+ * 结构：账号与目标模式 → 目标奖牌 → 两块进度 → 视角切换 → 配窝建议 → 本次新增
+ * token 只引用 ②③，不出现裸色值。
+ * ========================================================================== */
+
+/* ① 账号 + 目标模式 */
+.dash-target {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+}
+.dash-account {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: var(--ctl-32);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-surface);
+  padding: 0 var(--sp-8);
+  font-family: var(--font-sans);
+  font-size: var(--fs-hint);
+  color: var(--text-body);
+  cursor: pointer;
+}
+.dash-account__names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-account__count,
+.dash-account__caret {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+}
+.dash-target .seg {
+  flex: 0 0 auto;
+  width: auto;
+}
+.dash-help {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--ctl-28);
+  height: var(--ctl-28);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-surface);
+  font-size: var(--fs-hint);
+  color: var(--text-muted);
+}
+
+/* ② 目标奖牌：四列 */
+.dash-medals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-8);
+}
+.dash-medal {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  min-height: var(--ctl-72);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+  padding: var(--sp-4);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+.dash-medal[aria-pressed='true'] {
+  border-color: var(--state-academy-line);
+  background: var(--bg-inset);
+}
+.dash-medal__icons {
+  font-size: var(--fs-body);
+  line-height: var(--lh-hint);
+}
+.dash-medal__label {
+  font-size: var(--fs-meta);
+  line-height: var(--lh-nano);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ③ 进度：两列 */
+.dash-progress {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-8);
+}
+
+/* ④ 视角切换 */
+.dash-switch {
+  display: flex;
+}
+
+/* ⑤ 配窝建议 */
+.dash-nest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+.dash-accounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+}
+.dash-account-chip {
+  min-height: var(--chip-h);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-surface);
+  padding: 0 var(--sp-12);
+  font-family: var(--font-sans);
+  font-size: var(--fs-hint);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.dash-account-chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+.dash-nest__line {
+  margin: 0;
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  color: var(--text-muted);
+}
+.dash-nest__line b {
+  color: var(--danger);
+  font-weight: var(--fw-semibold);
+}
+.dash-nest__sep {
+  margin: 0 var(--sp-4);
+  color: var(--text-faint);
+}
+.dash-nest__tabs {
+  display: flex;
+  gap: var(--sp-8);
+}
+.dash-tab {
+  min-height: var(--chip-h);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--bg-muted);
+  padding: 0 var(--sp-12);
+  font-family: var(--font-sans);
+  font-size: var(--fs-hint);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.dash-tab[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-weight: var(--fw-semibold);
+}
+.dash-tab__n {
+  margin-left: var(--sp-2);
+  font-size: var(--fs-nano);
+  opacity: 0.8;
+}
+
+/* 配对组的卡头（色点 + 性格 + 性别 + dB + 勾选圈） */
+.dash-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-6);
+}
+.dash-dot {
+  width: var(--sp-8);
+  height: var(--sp-8);
+  border-radius: var(--r-full);
+  background: var(--pair-color);
+}
+.dash-head__nature {
+  border-radius: var(--r-full);
+  background: var(--warn-soft);
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--warn-text);
+}
+.dash-head__gender[data-gender='公'] {
+  color: var(--c-sky-500);
+}
+.dash-head__gender[data-gender='母'] {
+  color: var(--c-pink-500);
+}
+.dash-head__db {
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+.dash-head__pick {
+  margin-left: auto;
+  width: var(--ctl-26);
+  height: var(--ctl-26);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  background: var(--bg-surface);
+  cursor: pointer;
+}
+
+/* ⑥ 本次新增 */
+.dash-new {
+  border-radius: var(--r-2xl);
+  background: var(--bg-surface);
+  padding: var(--sp-16);
+  box-shadow: var(--shadow-sm);
+}
+.dash-new__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-8);
+}
+.dash-new__title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+}
+.dash-new__title span {
+  font-size: var(--fs-hint);
+  font-weight: var(--fw-normal);
+  color: var(--text-faint);
+}
+.dash-new__toggle {
+  flex: 0 0 auto;
+  min-height: var(--ctl-26);
+  border: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--fs-hint);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.dash-new__account {
+  margin: var(--sp-8) 0 0;
+  font-size: var(--fs-body);
+  color: var(--text-body);
+}
+.dash-new__account span {
+  font-size: var(--fs-hint);
+  color: var(--text-muted);
+}
+.dash-new__kind {
+  margin: var(--sp-4) 0 0;
+  font-size: var(--fs-hint);
+  color: var(--text-faint);
+}
+.dash-new__list {
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.dash-new__list li {
+  border-radius: var(--r-lg);
+  background: var(--bg-inset);
+  padding: var(--sp-8) var(--sp-10);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-muted);
+}

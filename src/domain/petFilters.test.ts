@@ -67,6 +67,26 @@ describe('buildTagIndex', () => {
     expect(result.index['shiny:异色炫彩']).toEqual([]);
   });
 
+  test('异色炫彩既算炫彩也算异色：单独筛炫彩/异色不能把它排除（2026-11-22 用户口径）', () => {
+    const combo = pet({ gameId: 301, isShiny: true, isColorful: true, account: '账号E' });
+    const colorfulOnly = pet({ gameId: 302, isShiny: false, isColorful: true, account: '账号E' });
+    const shinyOnly = pet({ gameId: 303, isShiny: true, isColorful: false, account: '账号E' });
+    const result = buildTagIndex([combo, colorfulOnly, shinyOnly], speciesByGameId, eggGroupNames);
+
+    // 三只都能被自己的专属标签命中
+    expect(result.index['shiny:异色炫彩']).toEqual([0]);
+    expect(result.index['shiny:炫彩']).toEqual([0, 1]);
+    expect(result.index['shiny:异色']).toEqual([0, 2]);
+
+    // 筛「炫彩」能出异色炫彩那只；筛「异色」也能出
+    expect(filterByTags(result.index, ['shiny:炫彩'])).toEqual([0, 1]);
+    expect(filterByTags(result.index, ['shiny:异色'])).toEqual([0, 2]);
+    // 只筛「异色炫彩」仍然只出它自己
+    expect(filterByTags(result.index, ['shiny:异色炫彩'])).toEqual([0]);
+    expect(result.tagCounts['shiny:炫彩']).toBe(2);
+    expect(result.tagCounts['shiny:异色']).toBe(2);
+  });
+
   test('粗嗓门标签命中 ≤-96 分贝，且 -100 单独成一档（2026-10-05 修正过宽）', () => {
     const rough = pet({ gameId: 101, gender: '公', nature: '固执', voiceDb: -100, medalBody: '大块头', account: '账号C' });
     // -50 不是粗嗓门（旧实现 voiceDb<0 会误标）

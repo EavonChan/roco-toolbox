@@ -307,7 +307,11 @@ describe('analyzeImport（真实抓包 fixture + 真实图鉴）', () => {
     expect(result.mothers).toEqual([
       {
         motherClass: '大婉',
-        pets: [{ label: '机械方方', box: '盒子01', nature: '大胆', voiceDb: 100, gender: '母' }],
+        pets: [
+          { label: '机械方方', box: '盒子01', nature: '大胆', voiceDb: 100, gender: '母' },
+          // 2026-11-22 C1：样本补了一只「推荐性格」的大婉母本，母本口径默认推荐性格后仍有达标样本
+          { label: '恶魔狼', box: '盒子02', nature: '固执', voiceDb: 100, gender: '母' },
+        ],
       },
     ]);
   });

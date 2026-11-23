@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>state-notice · 状态提示规格</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../_doc.css" />
+    <link rel="stylesheet" href="./state-notice.css" />
+  </head>
+  <body>
+    <h1>state-notice</h1>
+    <p>
+      状态提示：告诉用户「现在为什么没有内容 / 为什么不能算 / 算完了」，并且**只陈述事实**，
+      不推断领域结论。空态、错误、完成态都用它。
+    </p>
+    <div class="lede">
+      <span class="tag">4 种语气 × 10 种 kind</span>
+      <span class="tag">标题 14 + 说明 12 + 可选动作</span>
+      <span class="tag">role: status / alert</span>
+    </div>
+
+    <div class="note">
+      <b>别用文案教操作：</b>这里只写「现在是什么状态」和「下一步入口」；教学走 <code>tour.ts</code> 的分段引导。
+    </div>
+
+    <h2>A · 四种语气</h2>
+    <div class="stack">
+      <div>
+        <div class="notice notice--neutral" role="status">
+          <p class="notice__title">还没有数据</p>
+          <p class="notice__desc">先到「我的 · 游戏数据」导入一次抓包数据后，这里就有内容了。</p>
+          <div class="notice__action"><button class="seg__item" type="button" style="background: var(--bg-surface); border-radius: var(--r-md); padding: 0 var(--sp-12); min-height: var(--ctl-32); color: var(--text-body)">去游戏数据导入</button></div>
+        </div>
+        <span class="label">neutral · empty-data</span>
+      </div>
+      <div>
+        <div class="notice notice--warn" role="status">
+          <p class="notice__title">还没设置种公目标</p>
+          <p class="notice__desc">先选目标性格与奖牌，才能算缺口。</p>
+        </div>
+        <span class="label">warn · unset-scope</span>
+      </div>
+      <div>
+        <div class="notice notice--success" role="status">
+          <p class="notice__title">种公目标已全部收集</p>
+          <p class="notice__desc">共 14 / 14 只达标。</p>
+        </div>
+        <span class="label">success · complete</span>
+      </div>
+      <div>
+        <div class="notice notice--error" role="alert">
+          <p class="notice__title">导入失败</p>
+          <p class="notice__desc">文件不是有效的备份 JSON，请重新导出后再试。</p>
+        </div>
+        <span class="label">error · error</span>
+      </div>
+    </div>
+
+    <h2>B · kind → 语气映射</h2>
+    <table>
+      <tr><th>kind</th><th>语气</th><th>用在哪</th></tr>
+      <tr><td><code>loading</code> / <code>empty-data</code> / <code>empty-query</code> / <code>cached</code></td><td>neutral</td><td>读取中、没数据、筛选后为空、缓存数据</td></tr>
+      <tr><td><code>unset-scope</code> / <code>incomparable</code> / <code>unknown</code></td><td>warn</td><td>没设目标、两号不可比、状态未知</td></tr>
+      <tr><td><code>complete</code> / <code>success</code></td><td>success</td><td>全收齐、操作成功</td></tr>
+      <tr><td><code>error</code></td><td>error（role=alert）</td><td>导入/解析/网络失败</td></tr>
+    </table>
+
+    <h2>C · Token 引用（③ 组件层）</h2>
+    <table>
+      <tr><th>用途</th><th>token</th><th>值</th></tr>
+      <tr><td>圆角</td><td><code>--notice-radius</code></td><td>12px</td></tr>
+      <tr><td>内边距</td><td><code>--notice-pad-x</code> / <code>-y</code></td><td>12px / 8px</td></tr>
+      <tr><td>标题 / 说明字号</td><td><code>--notice-title-size</code> / <code>-desc-size</code></td><td>14px / 12px</td></tr>
+      <tr><td>动作间距</td><td><code>--notice-action-gap</code></td><td>8px</td></tr>
+      <tr><td>四语气底色</td><td><code>--bg-inset</code> / <code>--warn-soft</code> / <code>--accent-soft</code> / <code>--danger-soft</code></td><td>见 semantic.css</td></tr>
+    </table>
+  </body>
+</html>

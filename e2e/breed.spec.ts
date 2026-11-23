@@ -17,7 +17,9 @@ test('配窝建议：看板直接给出配对，标题不再叫「补全计划�
   await openDashboardWith(page, 'src/domain/__fixtures__/backup-breed-pair.json');
 
   const card = page.getByTestId('nest-summary');
-  await expect(card.getByRole('heading', { name: '配窝建议' })).toBeVisible();
+  // 2026-11-22：卡里不再有「配窝建议」标题，段落由看板的分段开关（种公推荐 / 母本缺口）标识
+  await expect(card).toBeVisible();
+  await expect(page.getByTestId('dashboard-action-switch')).toBeVisible();
 
   // 2026-11-20 用户口径：摘要行（还差 N 个种公目标 / 能自己迭代 …）与汇总胶囊整段删除
   await expect(page.getByTestId('nest-summary-line')).toHaveCount(0);

@@ -1,0 +1,218 @@
+/* =============================================================================
+ * nest-pair-card.css — 配对卡样式（唯一来源）
+ *
+ * 一张卡 = 一只精灵在一对配窝里的角色（母 / 公），两张并排才是“一对”。
+ * 一对的左侧色条由数据决定（pairingColors.ts 的 12 色），因此色条颜色走内联变量
+ * `--pair-color`，不由本文件写死。
+ *
+ * 尺寸只引用 ③ `--pair-card-*`；颜色只引用 ② `--state-*` / `--text-*` / `--line-*`。
+ * ========================================================================== */
+
+.pair-group {
+  border-left: var(--pair-card-stripe-w) solid var(--pair-color, var(--c-violet-700));
+  border-radius: var(--pair-card-radius);
+  background: var(--bg-inset);
+  padding: var(--sp-4) var(--pair-card-pad);
+}
+
+.pair-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--pair-card-gap);
+}
+
+.pair-card {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--pair-card-radius);
+  background: var(--c-slate-50);
+  padding: var(--pair-card-pad);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-sans);
+}
+.pair-card--full {
+  height: var(--pair-card-height-full);
+}
+.pair-card--home {
+  height: var(--pair-card-height-home);
+}
+
+/* 性别底色 */
+.pair-card[data-gender='母'] {
+  border-color: var(--c-pink-200);
+  background: var(--c-pink-50);
+}
+.pair-card[data-gender='公'] {
+  border-color: var(--c-sky-200);
+  background: var(--c-sky-50);
+}
+/* 学院小窝：整卡绿框 */
+.pair-card[data-academy='true'] {
+  border: 2px solid var(--state-academy-line);
+}
+
+/* 卡头：蛋组（左，可两行）/ 性别+性格+分贝高重（右） */
+.pair-card__head {
+  position: absolute;
+  inset: var(--sp-6) var(--sp-6) auto;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--pair-card-gap);
+  overflow: hidden;
+}
+
+.pair-card__eggs {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.pair-card__egg {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+  background: var(--info-soft);
+  padding: 0 var(--sp-2);
+  font-size: var(--pair-card-chip-size);
+  line-height: var(--pair-card-chip-line);
+  color: var(--c-sky-800);
+}
+.pair-card__egg[data-collected='true'] {
+  background: var(--c-emerald-100);
+  font-weight: var(--fw-medium);
+  color: var(--state-collected-text);
+}
+
+.pair-card__medals {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-2);
+}
+.pair-card__medals img {
+  height: var(--pair-card-medal);
+  width: var(--pair-card-medal);
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.05));
+}
+
+.pair-card__right {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  font-size: var(--pair-card-meta-size);
+  line-height: var(--pair-card-meta-line);
+  color: var(--text-muted);
+}
+.pair-card__line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+.pair-card__gender {
+  font-size: var(--fs-meta);
+  line-height: var(--pair-card-meta-line);
+}
+.pair-card__gender[data-gender='母'] {
+  color: var(--c-pink-500);
+}
+.pair-card__gender[data-gender='公'] {
+  color: var(--c-sky-500);
+}
+.pair-card__nature {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+  background: var(--c-amber-100);
+  padding: 0 var(--sp-4);
+  font-size: var(--pet-card-name-size);
+  line-height: var(--pet-card-name-line);
+  font-weight: var(--fw-medium);
+  color: var(--c-amber-900);
+}
+
+/* 头像 */
+.pair-card__avatar {
+  position: absolute;
+  left: 50%;
+  top: var(--pair-card-avatar-top);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pair-card-avatar);
+  height: var(--pair-card-avatar);
+  transform: translateX(-50%);
+}
+.pair-card__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 名字：目标态统一 10px + 精简形态（现状 src 仍按长度 11/10/9，见 README 第 6 段） */
+.pair-card__name {
+  position: absolute;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--pair-card-name-line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: var(--pair-card-name-size);
+  line-height: var(--pair-card-name-line);
+  font-weight: var(--fw-bold);
+  color: var(--text-strong);
+}
+.pair-card--full .pair-card__name {
+  bottom: var(--pair-card-name-bottom-full);
+}
+.pair-card--home .pair-card__name {
+  bottom: var(--pair-card-name-bottom-home);
+}
+
+/* 盒位底注：只有 full 档有 */
+.pair-card__position {
+  position: absolute;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-faint);
+}
+
+/* spec 用：12 色摆位条演示（颜色是数据，通过 --pair-color 传入） */
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+}
+.palette > i {
+  display: block;
+  width: var(--palette-chip-w);
+  height: var(--palette-chip-h);
+  border-left: var(--pair-card-stripe-w) solid var(--pair-color, var(--c-violet-700));
+  background: var(--bg-inset);
+}

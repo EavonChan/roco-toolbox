@@ -60,12 +60,19 @@ test('导入页不再显示旧的外部文件导入指引', async ({ page }) => 
 test('主导航键盘顺序、弹层焦点循环与 Esc 返焦', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('app-refresh').focus();
-  for (const control of [page.getByTestId('guide-open'), ...['看板', '家园', '收集', '小组', '我的'].map((name) => page.getByRole('button', { name, exact: true }))]) {
+  for (const control of [page.getByTestId('guide-open'), ...['看板', '家园', '收集', '换蛋', '我的'].map((name) => page.getByRole('button', { name, exact: true }))]) {
     await page.keyboard.press('Tab');
     await expect(control).toBeFocused();
   }
-  await page.getByRole('button', { name: '看板', exact: true }).click();
-  const trigger = page.getByRole('button', { name: '调整', exact: true });
+  // 2026-11-22：「调整」入口已从看板移到 收集 · 种公（筛选改动后出现「编辑目标」）
+  // 种公页的筛选栏要有数据才渲染，先导样本
+  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await expect(page.getByText('还没有数据')).toHaveCount(0);
+  await page.getByRole('button', { name: '收集', exact: true }).click();
+  await page.getByTestId('collection-kind-studs').click();
+  await page.getByTestId('coverage-groups-toggle').click();
+  await page.getByTestId('coverage-group-2').click();
+  const trigger = page.getByTestId('coverage-open-target-editor');
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: '调整目标' });
   await expect(dialog).toBeFocused();
@@ -80,8 +87,14 @@ test('主导航键盘顺序、弹层焦点循环与 Esc 返焦', async ({ page }
 
 test('缩短视口后目标弹层正文可滚动，完成按钮留在视口内', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '看板', exact: true }).click();
-  await page.getByRole('button', { name: '调整', exact: true }).click();
+  // 2026-11-22：同上，弹层入口改到 收集 · 种公（先导样本，筛选栏才会渲染）
+  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await expect(page.getByText('还没有数据')).toHaveCount(0);
+  await page.getByRole('button', { name: '收集', exact: true }).click();
+  await page.getByTestId('collection-kind-studs').click();
+  await page.getByTestId('coverage-groups-toggle').click();
+  await page.getByTestId('coverage-group-2').click();
+  await page.getByTestId('coverage-open-target-editor').click();
   await page.setViewportSize({ width: 390, height: 360 });
   const dialog = page.getByRole('dialog', { name: '调整目标' });
   const bounds = await dialog.boundingBox();
@@ -106,7 +119,7 @@ for (const width of [320, 375, 390, 1280]) {
     page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
     await page.goto('/');
     await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-    for (const name of ['看板', '收集', '小组', '我的']) {
+    for (const name of ['看板', '家园', '收集', '换蛋', '我的']) {
       await page.getByRole('button', { name, exact: true }).click();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
     }

@@ -27,6 +27,8 @@ export interface PatrolParent {
   voiceDb: number | null;
   /** home_pets 里的weight（克）换算成 kg；缺了算不出体型档位。 */
   weightKg: number | null;
+  /** 亲本所在小窝的家具配置 id：1001072 = 学院小窝（绿窝）。 */
+  nestConfigId?: number | null;
 }
 export interface PatrolEgg {
   actorId: string;
@@ -34,6 +36,8 @@ export interface PatrolEgg {
   mother: PatrolParent | null;
   fathers: PatrolParent[];
   biologicalParentageConfirmed: boolean;
+  /** 蛋所在小窝的家具配置 id。 */
+  nestConfigId?: number | null;
 }
 /** 家园里已经排上的一对亲本（breeding_pairs）。用于判定「已上窝」。 */
 export interface PatrolPair { mother: PatrolParent; fathers: PatrolParent[] }
@@ -55,6 +59,10 @@ export interface PatrolTaskStatus {
   notification: 'pending' | 'leased' | 'sent' | 'failed' | 'unbound' | null;
 }
 type ObjectValue = Record<string, unknown>;
+
+/** 家园小窝的家具配置 id：1001072 = 学院小窝（绿窝），1001071 = 普通小窝。 */
+export const ACADEMY_NEST_CONFIG_ID = 1001072;
+export const ORDINARY_NEST_CONFIG_ID = 1001071;
 
 function object(value: unknown): ObjectValue {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('家园场景格式无效');
@@ -82,6 +90,14 @@ function optionalNest(value: ObjectValue): string | null {
   if (typeof candidate === 'number' && Number.isFinite(candidate) && !Number.isSafeInteger(candidate)) return null;
   return exactId(candidate);
 }
+function nestConfigIdOf(raw: ObjectValue): number | null {
+  const furniture = raw.furniture;
+  if (furniture && typeof furniture === 'object' && !Array.isArray(furniture)) {
+    const configId = optionalInteger((furniture as ObjectValue).furniture_config_id);
+    if (configId !== null) return configId;
+  }
+  return optionalInteger(raw.furniture_config_id);
+}
 function parent(value: unknown): PatrolParent {
   const raw = object(value);
   const nestId = optionalNest(raw);
@@ -92,6 +108,7 @@ function parent(value: unknown): PatrolParent {
     natureId: optionalInteger(raw.nature),
     voiceDb: optionalNumber(raw.voice),
     weightKg: null,
+    nestConfigId: nestConfigIdOf(raw),
     ...(nestId === null && typeof raw.furniture_guid === 'number' && Number.isFinite(raw.furniture_guid)
       ? { roundedNestId: raw.furniture_guid } : {}),
   };
@@ -137,7 +154,11 @@ export function parsePatrolScene(raw: unknown, now: number): PatrolScene {
     for (const value of mother ? [mother, ...fathers] : fathers) {
       value.weightKg = weightByPetId.get(value.petId) ?? null;
     }
-    return { actorId, nestId, mother, fathers, biologicalParentageConfirmed: rawEgg.biological_parentage_confirmed === true };
+    return {
+      actorId, nestId, mother, fathers,
+      biologicalParentageConfirmed: rawEgg.biological_parentage_confirmed === true,
+      nestConfigId: optionalInteger(rawEgg.nest_furniture_config_id),
+    };
   });
   if (new Set(eggs.map(egg => egg.actorId)).size !== eggs.length) throw new Error('蛋实例重复');
   const pairs: PatrolPair[] = [];

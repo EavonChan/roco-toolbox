@@ -1,0 +1,46 @@
+/* =============================================================================
+ * state-notice.css — 状态提示（唯一来源）
+ * 空数据 / 空结果 / 未设范围 / 完成 / 不可比对 / 缓存 / 失败，统一一种提示条。
+ * ========================================================================== */
+
+.notice {
+  border-radius: var(--notice-radius);
+  padding: var(--notice-pad-y) var(--notice-pad-x);
+  font-family: var(--font-sans);
+}
+
+.notice__title {
+  margin: 0;
+  font-size: var(--notice-title-size);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-medium);
+}
+
+.notice__desc {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--notice-desc-size);
+  line-height: var(--lh-hint);
+  opacity: 0.9;
+}
+
+.notice__action {
+  margin-top: var(--notice-action-gap);
+}
+
+/* ---------------- 四种语气 ---------------- */
+.notice--neutral {
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+.notice--warn {
+  background: var(--warn-soft);
+  color: var(--warn-text);
+}
+.notice--success {
+  background: var(--accent-soft);
+  color: var(--c-emerald-800);
+}
+.notice--error {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}

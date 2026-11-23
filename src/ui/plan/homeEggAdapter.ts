@@ -1,8 +1,8 @@
 import type { AccountSnapshot } from '../../domain/parseBackup';
 import { accountKeyOf } from '../../domain/parseBackup';
 import type { HomeEgg, HomeResident, OwnedPet } from '../../domain/types';
-import { averageVoice } from '../../domain/nestPlan';
 import { bodyGradeOf } from '../../shared/bodySize.js';
+import { averageVoice, voiceLabelOf } from '../../shared/eggLabels';
 import type { EggParentInfo, EggParentsInfo } from '../../shared/eggMatching';
 import cfgPetMap from '../../pcap-decoder/tools/pcap-json-app/src/generated/cfgPetMap.json';
 import type { EggObservation } from './eggStockModel';
@@ -29,15 +29,7 @@ export interface HomeStockResult {
 
 const cfgToPet = cfgPetMap as Record<string, number>;
 
-/** 声音分贝 → 蛋仓现有档位（与 `eggInventory` 的背包蛋口径一致）。 */
-export function voiceLabelOf(db: number | null | undefined): string {
-  if (typeof db !== 'number' || !Number.isFinite(db)) return '';
-  if (db === 100) return '+100';
-  if (db === -100) return '-100';
-  if (db >= 96) return '婉转声';
-  if (db <= -96) return '粗嗓门';
-  return '';
-}
+export { voiceLabelOf };
 
 /** 背包精灵按家园实例 id 建索引：`capture_<uid>_<instanceId>`（与 `Home.tsx` 同口径）。 */
 function petsByInstance(snapshot: AccountSnapshot): Map<string, OwnedPet> {

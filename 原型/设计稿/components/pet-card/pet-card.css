@@ -1,0 +1,346 @@
+/* =============================================================================
+ * pet-card.css — 精灵卡组件样式（唯一来源）
+ *
+ * 规矩：
+ *   - 尺寸只引用 ③ component.css 的 `--pet-card-*`，本文件不写死 px 尺寸；
+ *   - 颜色只引用 ② semantic.css 的 `--state-*` / `--text-*` / `--line-*`；
+ *   - 页面若要放卡，只引本文件，不许复制样式。
+ *
+ * 2026-11-22 收敛：7 个变体压成 1 个组件 × 2 个尺寸（sm 96 / md 104）× 5 个状态。
+ * 变更：母本卡原 106px → 并入 md 104px。
+ * ========================================================================== */
+
+.pc {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--state-default-line);
+  border-radius: var(--pet-card-radius);
+  background: var(--state-default-surface);
+  box-shadow: var(--shadow-sm);
+  padding: var(--pet-card-pad);
+  font-family: var(--font-sans);
+  color: var(--text-strong);
+}
+
+/* ---------------- 尺寸：只有两档 ---------------- */
+.pc--sm {
+  height: var(--pet-card-height-sm);
+}
+.pc--md {
+  height: var(--pet-card-height-md);
+}
+/* 紧凑/堆叠是定宽变体，宽度单独声明，高度仍走 size */
+
+
+/* ---------------- 卡头：蛋组（左）/ 性格（右上） ---------------- */
+.pc__head {
+  position: absolute;
+  inset: var(--sp-4) var(--sp-4) auto;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--pet-card-header-center) minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+  max-height: var(--pet-card-header-max-h);
+  overflow: hidden;
+  font-size: var(--pet-card-meta-size);
+  line-height: var(--pet-card-meta-line);
+}
+
+.pc__left {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.pc__number {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-semibold);
+  color: var(--text-muted);
+}
+
+.pc__chips {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.pc__chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+  background: var(--info-soft);
+  padding: 0 var(--sp-2);
+  color: var(--c-sky-800);
+}
+
+.pc__right {
+  grid-column: 3;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+.pc__natures {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.pc__nature {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  padding: 0 var(--sp-2);
+  font-weight: var(--fw-medium);
+  color: var(--warn-text);
+}
+
+/* 已收集的性格：绿；未达标：灰 */
+.pc__nature[data-collected='true'] {
+  background: var(--c-emerald-100);
+  color: var(--state-collected-text);
+}
+.pc__nature[data-collected='false'] {
+  background: var(--bg-muted);
+  color: var(--text-faint);
+}
+
+/* ---------------- 头像 ---------------- */
+.pc__avatar {
+  position: absolute;
+  left: 50%;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pet-card-avatar);
+  height: var(--pet-card-avatar);
+  transform: translateX(-50%);
+}
+.pc--md.pc--with-footer .pc__avatar {
+  top: var(--pet-card-avatar-top-md-footer);
+}
+.pc--md:not(.pc--with-footer) .pc__avatar {
+  top: var(--pet-card-avatar-top-md-plain);
+}
+.pc--sm.pc--with-footer .pc__avatar {
+  top: var(--pet-card-avatar-top-sm-footer);
+}
+.pc--sm:not(.pc--with-footer) .pc__avatar {
+  top: var(--pet-card-avatar-top-sm-plain);
+}
+.pc__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ---------------- 名字（10px，长名字用精简形态，不缩字号） ---------------- */
+.pc__name {
+  position: absolute;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--pet-card-name-line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: var(--pet-card-name-size);
+  line-height: var(--pet-card-name-line);
+  font-weight: var(--fw-bold);
+  color: var(--text-strong);
+}
+.pc--md.pc--with-footer .pc__name {
+  top: var(--pet-card-name-top-md-footer);
+}
+.pc--md:not(.pc--with-footer) .pc__name {
+  top: var(--pet-card-name-top-md-plain);
+}
+.pc--sm.pc--with-footer .pc__name {
+  top: var(--pet-card-name-top-sm-footer);
+}
+.pc--sm:not(.pc--with-footer) .pc__name {
+  top: var(--pet-card-name-top-sm-plain);
+}
+
+/* ---------------- 细节行（dB / 高 / 重 / 盒子） ---------------- */
+.pc__details {
+  position: absolute;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-align: center;
+  font-size: var(--pet-card-detail-size);
+  line-height: var(--sp-10);
+  color: var(--text-muted);
+}
+.pc--md.pc--with-footer .pc__details {
+  top: var(--pet-card-detail-top-md-footer);
+}
+.pc--md:not(.pc--with-footer) .pc__details {
+  top: var(--pet-card-detail-top-md-plain);
+}
+.pc--sm.pc--with-footer .pc__details {
+  top: var(--pet-card-detail-top-sm-footer);
+}
+.pc--sm:not(.pc--with-footer) .pc__details {
+  top: var(--pet-card-detail-top-sm-plain);
+}
+
+/* 紧凑变体：定宽 160，行位整体上移一档 */
+.pc--compact {
+  width: var(--pet-card-compact-width);
+}
+.pc--compact .pc__avatar {
+  top: var(--pet-card-compact-avatar-top);
+}
+.pc--compact .pc__name {
+  top: var(--pet-card-compact-name-top);
+}
+.pc--compact .pc__details {
+  top: var(--pet-card-compact-detail-top);
+}
+.pc--compact .pc__footer {
+  background: transparent;
+  color: var(--text-faint);
+  font-size: var(--pet-card-meta-size);
+}
+
+/* ---------------- 底栏：满宽融合条 ---------------- */
+.pc__footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  height: var(--pet-card-footer-h);
+  font-size: var(--pet-card-name-size);
+  line-height: var(--pet-card-footer-h);
+  text-align: center;
+}
+
+/* ---------------- 变体：语义色 ---------------- */
+.pc--mother[data-status='planned'] {
+  border-color: var(--state-planned-line);
+  background: var(--state-planned-surface);
+}
+.pc--mother[data-status='collected'] {
+  border-color: var(--state-collected-line);
+  background: var(--state-collected-surface);
+}
+.pc--mother[data-status='planned'] .pc__footer {
+  background: var(--state-planned-surface);
+  color: var(--state-planned-text);
+}
+.pc--mother[data-status='collected'] .pc__footer {
+  background: var(--state-collected-surface);
+  color: var(--state-collected-text);
+}
+.pc--mother[data-status='uncollected'] .pc__footer {
+  background: var(--c-emerald-50);
+  color: var(--state-collected-text);
+}
+
+.pc--inventory[data-gender='母'] {
+  border-color: var(--c-pink-200);
+  background: var(--c-pink-50);
+}
+.pc--inventory[data-gender='公'] {
+  border-color: var(--c-sky-200);
+  background: var(--c-sky-50);
+}
+.pc--inventory .pc__footer {
+  background: transparent;
+  color: var(--text-faint);
+  font-size: var(--pet-card-meta-size);
+  line-height: var(--sp-10);
+}
+
+.pc--academy {
+  border-color: var(--state-academy-line);
+  background: var(--state-academy-surface);
+}
+
+.pc--demand .pc__footer {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* ---------------- 状态 ---------------- */
+.pc--hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--line-strong);
+  cursor: pointer;
+}
+.pc--selected {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.pc--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pc--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: var(--bg-inset);
+  color: var(--text-faint);
+  font-size: var(--pet-card-name-size);
+}
+
+/* ---------------- 堆叠变体（sm 96，最多 3 层） ---------------- */
+.pc-stack {
+  position: relative;
+  width: var(--pet-card-stack-width);
+  height: var(--pet-card-height-sm);
+}
+.pc-stack > .pc {
+  position: absolute;
+  inset: 0;
+}
+.pc-stack > .pc:nth-child(2) {
+  transform: translate(var(--pet-card-stack-shift), calc(-1 * var(--pet-card-stack-shift)))
+    scale(var(--pet-card-stack-scale-2));
+  z-index: -1;
+}
+.pc-stack > .pc:nth-child(3) {
+  transform: translate(
+      calc(2 * var(--pet-card-stack-shift)),
+      calc(-2 * var(--pet-card-stack-shift))
+    )
+    scale(var(--pet-card-stack-scale-3));
+  z-index: -2;
+}

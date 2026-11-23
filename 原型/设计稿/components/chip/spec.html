@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>chip · 筛选 chip 规格</title>
+    <link rel="stylesheet" href="../../_tokens/index.css" />
+    <link rel="stylesheet" href="../_doc.css" />
+    <link rel="stylesheet" href="./chip.css" />
+  </head>
+  <body>
+    <h1>chip</h1>
+    <p>筛选 chip：可多选、可清空的筛选小块（蛋组 / 性格 / 体型 / 声音 / 账号）。</p>
+    <div class="lede">
+      <span class="tag">高 28 / 内联 26</span>
+      <span class="tag">variant: 纯文字 / 计数 / 图标</span>
+      <span class="tag">state: default / selected / disabled</span>
+    </div>
+
+    <div class="note">
+      <b>与分段控件的区别：</b>chip 可多选、可叠加、可全清；分段控件是互斥视角，只能选一个。
+      要「只能选一个」时用分段或单选。
+    </div>
+
+    <h2>A · 形态</h2>
+    <div class="stack">
+      <div>
+        <div style="display: flex; flex-wrap: wrap; gap: var(--sp-8)">
+          <button class="chip" type="button">巨灵组</button>
+          <button class="chip" type="button" aria-pressed="true">妖精组</button>
+          <button class="chip" type="button">海洋组</button>
+          <button class="chip" type="button" disabled>动物组</button>
+        </div>
+        <span class="label">纯文字（未选 / 已选 / 禁用）</span>
+      </div>
+      <div>
+        <div style="display: flex; flex-wrap: wrap; gap: var(--sp-8)">
+          <button class="chip" type="button">巨灵组 <span class="chip__count">12</span></button>
+          <button class="chip" type="button" aria-pressed="true">妖精组 <span class="chip__count">4</span></button>
+        </div>
+        <span class="label">带计数</span>
+      </div>
+      <div>
+        <div style="display: flex; flex-wrap: wrap; gap: var(--sp-8)">
+          <button class="chip" type="button"><img class="chip__icon" src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /> 大块头</button>
+          <button class="chip" type="button" aria-pressed="true"><img class="chip__icon" src="https://game.gtimg.cn/images/rocom/rocodata/jingling/3049/icon.png" alt="" /> 小不点</button>
+        </div>
+        <span class="label">图标 + 文案（体型 / 声音）</span>
+      </div>
+      <div>
+        <div style="display: flex; flex-wrap: wrap; gap: var(--sp-8); align-items: center">
+          <span style="font-size: var(--fs-hint); color: var(--text-muted)">性格：</span>
+          <button class="chip chip--inline" type="button" aria-pressed="true">固执</button>
+          <button class="chip chip--inline" type="button">开朗</button>
+          <button class="chip chip--inline" type="button">不限</button>
+        </div>
+        <span class="label">内联版（26 高、10px）</span>
+      </div>
+    </div>
+
+    <h2>B · 状态</h2>
+    <table>
+      <tr><th>state</th><th>视觉</th><th>说明</th></tr>
+      <tr><td>default</td><td>白底 + <code>--line</code> 描边 + <code>--text-body</code></td><td>可点</td></tr>
+      <tr><td>selected</td><td>主色实底 + 白字 + 阴影</td><td><code>aria-pressed="true"</code></td></tr>
+      <tr><td>pressed</td><td>缩放 0.96</td><td>移动端 <code>:active</code> 反馈</td></tr>
+      <tr><td>disabled</td><td>浅灰字、无边框变化</td><td><code>disabled</code></td></tr>
+    </table>
+
+    <h2>C · Token 引用（③ 组件层）</h2>
+    <table>
+      <tr><th>用途</th><th>token</th><th>值</th></tr>
+      <tr><td>高度 / 内联高</td><td><code>--chip-h</code> / <code>--chip-h-inline</code></td><td>28px / 26px</td></tr>
+      <tr><td>圆角</td><td><code>--chip-radius</code></td><td>6px</td></tr>
+      <tr><td>内边距</td><td><code>--chip-pad-x</code> / <code>-y</code></td><td>8px / 4px</td></tr>
+      <tr><td>字号 / 内联字号 / 计数</td><td><code>--chip-size</code> / <code>-inline</code> / <code>-count-size</code></td><td>12 / 10 / 9</td></tr>
+      <tr><td>选中色</td><td><code>--accent</code> / <code>--text-inverse</code></td><td>见 semantic.css</td></tr>
+    </table>
+
+    <h2>D · 布局约定</h2>
+    <p>
+      chip 容器用 <code>flex-wrap: wrap</code> + <code>gap: var(--sp-8)</code>；
+      一行放不下就换行，<b>不许缩字号或截断</b>。数量超过 12 个时折叠进「更多」。
+    </p>
+  </body>
+</html>

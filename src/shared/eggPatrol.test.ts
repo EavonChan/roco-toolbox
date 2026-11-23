@@ -36,6 +36,33 @@ const task: PatrolTask = {
 const observe = (value: unknown, tasks: PatrolTask[] = [task]) =>
   observeSceneEggs(parsePatrolScene(value, 100), tasks, speciesIndex);
 
+test('nest furniture config id is parsed for egg and parents (academy = 1001072)', () => {
+  const scene = parsePatrolScene({
+    code: 0,
+    data: {
+      home_scene_info: {
+        snapshot_status: 'valid',
+        egg_count: 1,
+        eggs: [{
+          actor_id: 'e1',
+          nest_furniture_guid: 'n1',
+          nest_furniture_config_id: 1001071,
+          mother_candidate: {
+            pet_gid: 'p1', pet_cfg_id: 3810, nature: 2, voice: 100,
+            furniture: { furniture_config_id: 1001072, furniture_guid: 'n2' },
+          },
+          father_candidates: [],
+          biological_parentage_confirmed: false,
+        }],
+        home_pets: [],
+        breeding_pairs: [],
+      },
+    },
+  }, 100);
+  expect(scene.eggs[0].nestConfigId).toBe(1001071);
+  expect(scene.eggs[0].mother?.nestConfigId).toBe(1001072);
+});
+
 test('every scan observes eggs currently on the ground; no first-scan baseline is needed', () => {
   const scene = parsePatrolScene(raw([egg()]), 100);
   expect(scene.eggs[0].actorId).toBe('9511622085513840850');

@@ -1,0 +1,1421 @@
+{
+  "capturedAt": "2026-11-22T13:58:21.877Z",
+  "baseUrl": "https://test.roco-toolbox.pages.dev",
+  "widths": [
+    375,
+    390
+  ],
+  "withSampleData": true,
+  "records": [
+    {
+      "page": {
+        "padding": "12px",
+        "max-width": "448px"
+      },
+      "label": "看板",
+      "width": 375,
+      "file": "原型\\设计稿\\_baseline\\dashboard-375.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(4, 120, 87)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgb(5, 150, 105)",
+        "rect": {
+          "w": 71.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "rect": null,
+        "className": null
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "24px",
+        "line-height": "32px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 812,
+        "docWidth": 375,
+        "innerHeight": 812,
+        "innerWidth": 375,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": null
+    },
+    {
+      "page": null,
+      "label": "家园",
+      "width": 375,
+      "file": "原型\\设计稿\\_baseline\\home-375.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 71.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "rect": null,
+        "className": null
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "font-weight": "400",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 812,
+        "docWidth": 375,
+        "innerHeight": 812,
+        "innerWidth": 375,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": null
+    },
+    {
+      "page": {
+        "padding": "12px",
+        "max-width": "448px"
+      },
+      "label": "收集",
+      "width": 375,
+      "file": "原型\\设计稿\\_baseline\\collection-375.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 71.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "16px",
+        "padding": "0px",
+        "box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 351,
+          "h": 672.5,
+          "x": 12,
+          "y": 408.5
+        },
+        "className": "overflow-hidden rounded-2xl bg-white shadow-sm"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "11px",
+        "line-height": "16.5px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 1710,
+        "docWidth": 375,
+        "innerHeight": 812,
+        "innerWidth": 375,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": null
+    },
+    {
+      "page": null,
+      "label": "换蛋",
+      "width": 375,
+      "file": "原型\\设计稿\\_baseline\\swap-375.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 71.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "16px",
+        "padding": "16px",
+        "box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 343,
+          "h": 116,
+          "x": 16,
+          "y": 104
+        },
+        "className": "rounded-2xl bg-white p-4 shadow-sm"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(30, 41, 59)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 812,
+        "docWidth": 375,
+        "innerHeight": 812,
+        "innerWidth": 375,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": null
+    },
+    {
+      "page": {
+        "padding": "16px",
+        "max-width": "448px"
+      },
+      "label": "我的 · 游戏数据",
+      "width": 375,
+      "file": "原型\\设计稿\\_baseline\\profile-data-375.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 71.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "rect": null,
+        "className": null
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "font-weight": "400",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 1120,
+        "docWidth": 375,
+        "innerHeight": 812,
+        "innerWidth": 375,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": "版本 2026-11-22 21:07"
+    },
+    {
+      "page": {
+        "padding": "16px",
+        "max-width": "448px"
+      },
+      "label": "我的 · 附近",
+      "width": 375,
+      "file": "原型\\设计稿\\_baseline\\profile-nearby-375.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 71.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(248, 250, 252)",
+        "border-radius": "12px",
+        "padding": "8px 12px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 343,
+          "h": 108,
+          "x": 16,
+          "y": 497
+        },
+        "className": "rounded-xl px-3 py-2 bg-slate-50 text-slate-500"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "font-weight": "400",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 812,
+        "docWidth": 375,
+        "innerHeight": 812,
+        "innerWidth": 375,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": "版本 2026-11-22 21:07"
+    },
+    {
+      "page": {
+        "padding": "16px",
+        "max-width": "448px"
+      },
+      "label": "我的 · 我的身份",
+      "width": 375,
+      "file": "原型\\设计稿\\_baseline\\profile-identity-375.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 71.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(255, 251, 235)",
+        "border-radius": "12px",
+        "padding": "8px 12px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 343,
+          "h": 70,
+          "x": 16,
+          "y": 150
+        },
+        "className": "rounded-xl px-3 py-2 bg-amber-50 text-amber-800"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(146, 64, 14)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 812,
+        "docWidth": 375,
+        "innerHeight": 812,
+        "innerWidth": 375,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": "版本 2026-11-22 21:07"
+    },
+    {
+      "page": {
+        "padding": "16px",
+        "max-width": "448px"
+      },
+      "label": "我的 · 小组",
+      "width": 375,
+      "file": "原型\\设计稿\\_baseline\\profile-groups-375.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 71.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "16px",
+        "padding": "12px",
+        "box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 343,
+          "h": 140,
+          "x": 16,
+          "y": 150
+        },
+        "className": "rounded-2xl bg-white p-3 shadow-sm"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "font-weight": "400",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 812,
+        "docWidth": 375,
+        "innerHeight": 812,
+        "innerWidth": 375,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": "版本 2026-11-22 21:07"
+    },
+    {
+      "page": {
+        "padding": "12px",
+        "max-width": "448px"
+      },
+      "label": "看板",
+      "width": 390,
+      "file": "原型\\设计稿\\_baseline\\dashboard-390.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(4, 120, 87)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgb(5, 150, 105)",
+        "rect": {
+          "w": 74.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "rect": null,
+        "className": null
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "24px",
+        "line-height": "32px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 844,
+        "docWidth": 390,
+        "innerHeight": 844,
+        "innerWidth": 390,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": null
+    },
+    {
+      "page": null,
+      "label": "家园",
+      "width": 390,
+      "file": "原型\\设计稿\\_baseline\\home-390.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 74.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "rect": null,
+        "className": null
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "font-weight": "400",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 844,
+        "docWidth": 390,
+        "innerHeight": 844,
+        "innerWidth": 390,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": null
+    },
+    {
+      "page": {
+        "padding": "12px",
+        "max-width": "448px"
+      },
+      "label": "收集",
+      "width": 390,
+      "file": "原型\\设计稿\\_baseline\\collection-390.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 74.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "16px",
+        "padding": "0px",
+        "box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 366,
+          "h": 672.5,
+          "x": 12,
+          "y": 376.5
+        },
+        "className": "overflow-hidden rounded-2xl bg-white shadow-sm"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "11px",
+        "line-height": "16.5px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 1678,
+        "docWidth": 390,
+        "innerHeight": 844,
+        "innerWidth": 390,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": null
+    },
+    {
+      "page": null,
+      "label": "换蛋",
+      "width": 390,
+      "file": "原型\\设计稿\\_baseline\\swap-390.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 74.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "16px",
+        "padding": "16px",
+        "box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 358,
+          "h": 116,
+          "x": 16,
+          "y": 104
+        },
+        "className": "rounded-2xl bg-white p-4 shadow-sm"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(30, 41, 59)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 844,
+        "docWidth": 390,
+        "innerHeight": 844,
+        "innerWidth": 390,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": null
+    },
+    {
+      "page": {
+        "padding": "16px",
+        "max-width": "448px"
+      },
+      "label": "我的 · 游戏数据",
+      "width": 390,
+      "file": "原型\\设计稿\\_baseline\\profile-data-390.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 74.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "rect": null,
+        "className": null
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "font-weight": "400",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 1084,
+        "docWidth": 390,
+        "innerHeight": 844,
+        "innerWidth": 390,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": "版本 2026-11-22 21:07"
+    },
+    {
+      "page": {
+        "padding": "16px",
+        "max-width": "448px"
+      },
+      "label": "我的 · 附近",
+      "width": 390,
+      "file": "原型\\设计稿\\_baseline\\profile-nearby-390.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 74.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(248, 250, 252)",
+        "border-radius": "12px",
+        "padding": "8px 12px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 358,
+          "h": 108,
+          "x": 16,
+          "y": 497
+        },
+        "className": "rounded-xl px-3 py-2 bg-slate-50 text-slate-500"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "font-weight": "400",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 844,
+        "docWidth": 390,
+        "innerHeight": 844,
+        "innerWidth": 390,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": "版本 2026-11-22 21:07"
+    },
+    {
+      "page": {
+        "padding": "16px",
+        "max-width": "448px"
+      },
+      "label": "我的 · 我的身份",
+      "width": 390,
+      "file": "原型\\设计稿\\_baseline\\profile-identity-390.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 74.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(255, 251, 235)",
+        "border-radius": "12px",
+        "padding": "8px 12px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 358,
+          "h": 70,
+          "x": 16,
+          "y": 150
+        },
+        "className": "rounded-xl px-3 py-2 bg-amber-50 text-amber-800"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(146, 64, 14)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 844,
+        "docWidth": 390,
+        "innerHeight": 844,
+        "innerWidth": 390,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": "版本 2026-11-22 21:07"
+    },
+    {
+      "page": {
+        "padding": "16px",
+        "max-width": "448px"
+      },
+      "label": "我的 · 小组",
+      "width": 390,
+      "file": "原型\\设计稿\\_baseline\\profile-groups-390.png",
+      "url": "https://test.roco-toolbox.pages.dev/",
+      "body": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "400",
+        "color": "rgb(0, 0, 0)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px",
+        "box-shadow": "none",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)"
+      },
+      "nav": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 1px",
+        "border-color": "rgb(241, 245, 249)"
+      },
+      "navButton": {
+        "font-size": "14px",
+        "line-height": "20px",
+        "font-weight": "500",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-radius": "0px",
+        "padding": "0px 8px",
+        "box-shadow": "none",
+        "border-width": "0px 0px 2px",
+        "border-color": "rgba(0, 0, 0, 0)",
+        "rect": {
+          "w": 74.8,
+          "h": 40,
+          "x": 8,
+          "y": 47
+        }
+      },
+      "card": {
+        "background-color": "rgb(255, 255, 255)",
+        "border-radius": "16px",
+        "padding": "12px",
+        "box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px",
+        "border-width": "0px",
+        "border-color": "rgb(229, 231, 235)",
+        "rect": {
+          "w": 358,
+          "h": 140,
+          "x": 16,
+          "y": 150
+        },
+        "className": "rounded-2xl bg-white p-3 shadow-sm"
+      },
+      "h1": {
+        "font-size": "16px",
+        "line-height": "24px",
+        "font-weight": "600",
+        "color": "rgb(15, 23, 42)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+        "rect": {
+          "w": 64,
+          "h": 24,
+          "x": 16,
+          "y": 11
+        }
+      },
+      "paragraph": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "font-weight": "400",
+        "color": "rgb(100, 116, 139)",
+        "font-family": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\""
+      },
+      "scroll": {
+        "docHeight": 844,
+        "docWidth": 390,
+        "innerHeight": 844,
+        "innerWidth": 390,
+        "horizontalOverflow": false
+      },
+      "visibleVersion": "版本 2026-11-22 21:07"
+    }
+  ]
+}

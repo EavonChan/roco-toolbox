@@ -1,0 +1,209 @@
+/* =============================================================================
+ * ③ component.css — 组件层（只服务具体组件，值只能引用 ①②）
+ *
+ * 规矩：
+ *   - 组件与 spec.html 只许用这一层；
+ *   - 尺寸只允许出现在这里（spec.html 里不许再写死高度/头像尺寸）；
+ *   - 改一个组件不影响别的组件 = 这一层的意义。
+ * ========================================================================== */
+
+:root {
+  /* ===========================================================================
+   * 精灵卡 pet-card（2026-11-22 收敛：size = sm 96 / md 104）
+   * 变更记录：母本卡原来是 106px，本次并入 md 104px（见 components/pet-card/README.md 第 6 段）。
+   * ======================================================================== */
+  --pet-card-height-sm: 96px;
+  --pet-card-height-md: 104px;
+  /* 兼容旧名：老稿子里引用的 --pet-card-height 一律等价 md */
+  --pet-card-height: var(--pet-card-height-md);
+
+  --pet-card-radius: var(--r-xl);
+  --pet-card-pad: var(--sp-4);
+  --pet-card-gap: var(--sp-4);
+
+  /* 头像：48px，按「尺寸档 + 有无底栏」定位，避免底栏压住名字 */
+  --pet-card-avatar: 48px;
+  --pet-card-avatar-top-md-footer: 18px;
+  --pet-card-avatar-top-md-plain: 24px;
+  --pet-card-avatar-top-sm-footer: 16px;
+  --pet-card-avatar-top-sm-plain: 20px;
+
+  /* 名字：10px / 12px；长名字走「精简形态」，不再缩字号 */
+  --pet-card-name-size: var(--fs-micro);
+  --pet-card-name-line: var(--lh-nano);
+  --pet-card-name-top-md-footer: 66px;
+  --pet-card-name-top-md-plain: 72px;
+  --pet-card-name-top-sm-footer: 62px;
+  --pet-card-name-top-sm-plain: 66px;
+
+  /* 底部控件：满宽融合条 */
+  --pet-card-footer-h: 18px;
+  --pet-card-detail-top-md-footer: 78px;
+  --pet-card-detail-top-md-plain: 84px;
+  --pet-card-detail-top-sm-footer: 74px;
+  --pet-card-detail-top-sm-plain: 78px;
+  --pet-card-detail-size: var(--fs-tiny);
+
+  /* 紧凑变体：定宽 160，行位比四列卡紧一档 */
+  --pet-card-compact-width: 160px;
+  --pet-card-compact-avatar-top: 8px;
+  --pet-card-compact-name-top: 54px;
+  --pet-card-compact-detail-top: 66px;
+
+  /* 堆叠变体：三层错位 */
+  --pet-card-stack-width: 96px;
+  --pet-card-stack-shift: 4px;
+  --pet-card-stack-scale-2: 0.94;
+  --pet-card-stack-scale-3: 0.88;
+
+  /* 历史对照：母本卡 2026-11-22 之前的 106px（仅 spec 对照图使用，生产禁用） */
+  --pet-card-height-legacy-mother: 106px;
+
+  /* 卡头元信息：图鉴号 / 蛋组 / 性格 chip */
+  --pet-card-meta-size: 7px;
+  --pet-card-meta-line: 8px;
+  --pet-card-chip-size: 9px;
+  --pet-card-chip-line: var(--lh-nano);
+  --pet-card-header-max-h: 48px;
+  --pet-card-nature-inset: var(--sp-4);
+  --pet-card-header-center: 44px; /* 中列宽度，保证头像居中两列对称 */
+
+
+  /* ===========================================================================
+   * 配对卡 nest-pair-card（母 + 公成对；两档高度）
+   * 数据侧色条来自 src/ui/pairingColors.ts 的 12 个颜色，属于“数据”不是设计 token。
+   * ======================================================================== */
+  --pair-card-height-full: 86px;   /* 配窝建议：带盒子位置一行 */
+  --pair-card-height-home: 70px;   /* 家园：不带盒子位置 */
+  --pair-card-radius: var(--r-xl);
+  --pair-card-pad: var(--sp-6);
+  --pair-card-gap: var(--sp-2);
+  --pair-card-stripe-w: 4px;       /* 组卡左侧摆位色条 */
+  --pair-card-avatar: 44px;
+  --pair-card-medal: 14px;     /* 卡头奖牌图标 */
+  --pair-card-avatar-top: var(--sp-6);
+  --pair-card-name-size: var(--fs-micro);   /* 目标态 10px；现状按名字长度 11/10/9，见 README */
+  --pair-card-name-line: var(--lh-nano);
+  --pair-card-name-bottom-full: 22px;  /* 上方让出盒位一行 */
+  --pair-card-name-bottom-home: var(--sp-8);
+  --pair-card-chip-size: var(--fs-nano);
+  --pair-card-chip-line: var(--lh-nano);
+  --pair-card-meta-size: var(--fs-micro);
+  --pair-card-meta-line: 13px;
+
+  /* spec 里 12 色摆位条演示块的尺寸（文档用） */
+  --palette-chip-w: 64px;
+  --palette-chip-h: 20px;
+  /* spec 标注（文档用，不进产品） */
+  --doc-pin-size: 14px;
+  --doc-delta-h: 2px;
+  --doc-demo-frame-h: 220px;   /* spec 里的结构示意框 */
+
+  /* ===========================================================================
+   * 分段控件 segmented-control（互斥视角切换）
+   * ======================================================================== */
+  --segmented-track-h: 34px;       /* 轨道：2px 内边距 + 30px 分段 */
+  --segmented-item-h: 30px;
+  --segmented-radius: var(--r-lg);
+  --segmented-item-radius: var(--r-md);
+  --segmented-pad: var(--sp-2);
+  --segmented-gap: var(--sp-2);
+
+
+  /* ===========================================================================
+   * 进度卡 progress-card
+   * ======================================================================== */
+  --progress-card-radius: var(--r-2xl);
+  --progress-card-pad: var(--sp-16);
+  --progress-num-size: 24px;
+  --progress-num-line: 32px;
+  --progress-bar-h: var(--sp-8);
+  --progress-help-size: var(--ctl-20);
+
+  /* ===========================================================================
+   * 状态提示 state-notice（空数据 / 空结果 / 未设范围 / 完成 / 失败 …）
+   * ======================================================================== */
+  --notice-radius: var(--r-xl);
+  --notice-pad-x: var(--sp-12);
+  --notice-pad-y: var(--sp-8);
+  --notice-title-size: var(--fs-body);
+  --notice-desc-size: var(--fs-hint);
+  --notice-action-gap: var(--sp-8);
+
+  /* ===========================================================================
+   * 筛选 chip（蛋组 / 性格 / 体型 / 声音）
+   * ======================================================================== */
+  --chip-h: var(--ctl-28);
+  --chip-h-inline: var(--ctl-26);
+  --chip-radius: var(--r-md);
+  --chip-pad-x: var(--sp-8);
+  --chip-pad-y: var(--sp-4);
+  --chip-size: var(--fs-hint);
+  --chip-size-inline: var(--fs-micro);
+  --chip-count-size: var(--fs-nano);
+
+  /* ===========================================================================
+   * 弹层 modal-surface（sheet / dialog）
+   * ======================================================================== */
+  --modal-max-h: 85vh;
+  --modal-overlay: var(--bg-overlay);
+  --modal-radius: var(--r-2xl);
+  --modal-head-pad-x: var(--sp-16);
+  --modal-head-pad-y: var(--sp-8);
+  --modal-foot-pad: var(--sp-12);
+  --modal-title-size: var(--fs-title);
+  --modal-close-size: var(--ctl-44);
+
+  /* ===========================================================================
+   * 换蛋需求卡 egg-demand-card
+   * ======================================================================== */
+  --demand-card-radius: var(--r-xl);
+  --demand-card-pad: var(--sp-4);
+  --demand-name-size: var(--fs-meta);
+  --demand-meta-size: var(--fs-micro);
+  --demand-medal-size: 16px;
+  --demand-footer-h: var(--sp-20);
+
+  /* ===========================================================================
+   * 控件与触区
+   * ======================================================================== */
+  --ctl-20: 20px;
+  --ctl-26: 26px;
+  --ctl-28: 28px;
+  --ctl-30: 30px;
+  --ctl-32: 32px;
+  --ctl-36: 36px;
+  --ctl-40: 40px;
+  --ctl-44: 44px;
+  --ctl-72: 72px;
+  --touch-min: 28px;
+  --touch-comfort: 44px;
+
+  /* ===========================================================================
+   * 布局与外壳
+   * ======================================================================== */
+  --container-max: 448px;
+
+  --page-pad-dashboard: var(--sp-12);
+  --page-pad-collection: var(--sp-12);
+  --page-pad-nearby: var(--sp-12);
+  --page-pad-home: var(--sp-16);
+  --page-pad-groups: var(--sp-16);
+  --page-pad-profile: var(--sp-16);
+  --page-gap-tight: var(--sp-8);
+  --page-gap: var(--sp-12);
+
+  --chrome-header-h: 47px;
+  --chrome-nav-h: 41px;
+  --chrome-h: 88px;
+  --chrome-pad-x: var(--sp-16);
+  --chrome-nav-pad-x: var(--sp-8);
+  --chrome-z: 50;
+  --chrome-underline: 2px;
+
+  /* 屏宽基准（设计稿只做这两档） */
+  --w-375: 375px;
+  --w-390: 390px;
+
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}

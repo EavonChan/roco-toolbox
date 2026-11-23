@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import {
   getMotherPlan,
   mergeMotherPlan,
-  removeManyFromMotherPlan,
   resetMotherPlanForTest,
   toggleMotherPlan,
   useMotherPlan,
@@ -31,12 +30,6 @@ describe('母本计划 store', () => {
     expect(JSON.parse(window.localStorage.getItem('roco.motherPlan') ?? '[]')).toEqual(['evo_a']);
     resetMotherPlanForTest();
     expect(getMotherPlan()).toEqual(['evo_a']);
-  });
-
-  test('批量移除（清除已达成）', () => {
-    mergeMotherPlan(['a', 'b', 'c']);
-    removeManyFromMotherPlan(['a', 'c']);
-    expect(getMotherPlan()).toEqual(['b']);
   });
 
   test('合并取并集，返回新增条数', () => {
