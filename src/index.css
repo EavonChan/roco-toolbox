@@ -202,16 +202,16 @@ span {
   /* ---- 收集：右侧纵向视图栏（账号 / 精灵背包 / 母本 / 种公）常驻，不参与折叠 ----
      筛选栏在它左边，可单独收起；收起后卡片区一直铺到视图栏边缘（2026-11-21 用户口径）。 */
   .collection-scope { padding-right: 5.6rem; }
-  .collection-rail-toggle {
+  /* 收起筛选贴在「仿真背包」下面，不再绝对定位到栏底 */
+  nav[aria-label="收集视图"] > div > button.collection-rail-toggle {
     display: flex; align-items: center; justify-content: center;
-    /* 在右侧纵向栏里上下居中（2026-11-21 用户口径） */
-    position: absolute; left: 0.3rem; right: 0.3rem; top: 50%;
-    transform: translateY(-50%);
-    width: auto; min-height: 2.6rem;
-    border: 1px solid #e2e8f0; border-radius: 0.6rem; background: #f8fafc;
-    color: #475569; font-size: 0.72rem; line-height: 1;
+    width: 100%; min-height: 2.2rem;
+    margin-top: -0.15rem; padding: 0 0.3rem;
+    border: 1px solid #e2e8f0; border-radius: 0.5rem;
+    background: #f8fafc; color: #475569;
+    font-size: 0.72rem; line-height: 1;
   }
-  .collection-rail-toggle[aria-expanded="false"] {
+  nav[aria-label="收集视图"] > div > button.collection-rail-toggle[aria-expanded="false"] {
     color: #047857; border-color: #a7f3d0; background: #ecfdf5;
   }
   .collection-scope[data-rail-collapsed="true"] .collection-layout {
@@ -343,7 +343,6 @@ span {
   .shared-stud-cards { grid-template-columns: repeat(3, 10rem); }
 }
 
-
 /* 共用种公卡：和家园页一致——横屏三张并排、固定 10rem、不改变卡片比例 */
 @media (orientation: landscape) {
   .shared-stud-cards { align-items: end; }
@@ -461,7 +460,6 @@ span {
    三态底色由卡片组件的 status 传（未收集白底灰边 / 计划中淡蓝 / 已收集淡绿），
    这里不再单独覆盖高度与头像。 */
 
-
 /* 竖屏保留引导卡与档位按钮；横屏空间紧张，按 2026-11-21 用户口径隐藏
    （档位跟全局目标走，矩阵直接铺满）。 */
 @media (orientation: landscape) {
@@ -552,4 +550,454 @@ span {
 @media (orientation: landscape) and (min-width: 1000px) {
   .egg-stock-layout { grid-template-columns: minmax(0, 1fr) 14rem 2.6rem; }
   .egg-stock-layout[data-collapsed="true"] { grid-template-columns: minmax(0, 1fr) 2.6rem; }
+}
+
+/* ==========================================================================
+   仿真背包（2026-11-23 用户口径）
+   入口在收集页右侧视图栏、只在横屏出现；打开后一页 = 一个盒子，
+   6 列 × 5 行 = 30 格，按真实 slotOrder 落位，底部翻盒。
+   ========================================================================== */
+.collection-sim-bag-toggle { display: none; }
+
+@media (orientation: landscape) {
+  nav[aria-label="收集视图"] > div > button.collection-sim-bag-toggle {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 2.6rem; padding: 0.2rem;
+    border: 1px solid #047857; border-radius: 0.6rem;
+    background: #047857; color: #ecfdf5;
+    font-size: 0.8rem; font-weight: 600; line-height: 1.2;
+  }
+  nav[aria-label="收集视图"] > div > button.collection-sim-bag-toggle:active { background: #065f46; }
+  nav[aria-label="收集视图"] > div > button.collection-sim-bag-toggle[aria-pressed="true"] {
+    background: #065f46; border-color: #34d399;
+    box-shadow: inset 0 0 0 2px #6ee7b7;
+  }
+
+}
+
+/* 超矮横屏（如 568×320）：再把左栏按钮收一点，给底部收起筛选留位置 */
+@media (orientation: landscape) and (max-height: 380px) {
+  nav[aria-label="收集视图"] { padding-top: 0.2rem; padding-bottom: 0.25rem; }
+  nav[aria-label="收集视图"] > div { gap: 0.2rem; }
+  nav[aria-label="收集视图"] > div > button { min-height: 2.15rem; font-size: 0.72rem; }
+  nav[aria-label="收集视图"] > div > button.collection-sim-bag-toggle { min-height: 2.15rem; }
+  nav[aria-label="收集视图"] [data-testid="account-filter-summary"] { min-height: 2rem; }
+}
+
+/* 仿真背包页（2026-11-23 用户口径：整页视图，不是悬浮窗）
+   6 列 × 5 行；卡片从上到下 = 头像 / 名字 / 性别+性格 / 奖牌 / 声音 dB。
+   横屏时本页占满内容区高度，格子自己滚，底部翻盒始终在最下方。 */
+/* 仿真背包页（2026-11-23 用户口径：整页视图，不是悬浮窗）
+   只占屏幕左侧 2/3；一页必须放下 6 × 5 = 30 个精灵，不滚动。
+   卡片从上到下 = 头像 / 名字 / 性别+性格 / 奖牌 / 声音 dB。 */
+main.mx-auto.max-w-md.collection-sim-page {
+  background: #f0fdf4;
+}
+
+@media (orientation: landscape) {
+  main.mx-auto.max-w-md.collection-sim-page {
+    width: calc(66.666vw - 7rem);
+    height: 100dvh;
+    margin: 0 0 0 7rem;
+    padding: 0 0.6rem 0 0;
+    max-width: none;
+    display: flex; flex-direction: column; overflow: hidden;
+    flex: 0 0 auto;
+  }
+}
+
+/* 仿真页 = 左侧 2/3 网格 + 右侧 1/3 的精灵背包筛选栏 */
+.sim-shell {
+  display: flex; align-items: stretch;
+  height: 100dvh; min-height: 0; overflow: hidden;
+}
+/* 收起筛选：只把中间卡片换成标准卡，页面用掉原先筛选栏的宽度 */
+.sim-shell.is-expanded main.mx-auto.max-w-md.collection-sim-page {
+  width: calc(100% - 7rem);
+}
+.sim-shell-filters {
+  flex: 1 1 auto; min-width: 0;
+  height: 100dvh; overflow: hidden; background: #fff;
+  border-left: 1px solid #d1fae5;
+  container-type: inline-size;
+}
+
+/* 只渲染筛选栏时的容器：整栏自己滚，去掉原右栏的 sticky / 网格定位 */
+.inventory-filter-only {
+  height: 100%; min-height: 0;
+  overflow-y: auto; background: #fff;
+}
+.inventory-filter-only-rail {
+  position: static; top: auto; max-height: none;
+  height: auto; overflow: visible; padding: 0.4rem;
+}
+.inventory-filter-only [data-testid="card-size-display"],
+.inventory-filter-only [data-testid="card-columns-toggle"] {
+  display: none;
+}
+/* 右侧 1/3 比原背包筛选栏窄：允许主筛选行换行，别把「性格 / 蛋组」截掉 */
+.inventory-filter-only [data-testid="inventory-primary-filters"] { flex-wrap: wrap; }
+/* 性格 / 蛋组单独占一行，两个瓦片各占一半，文字不竖排 */
+.inventory-filter-only [data-testid="inventory-primary-filters"] > div:last-child {
+  flex: 0 0 100%; min-width: 0;
+}
+.inventory-filter-only [data-testid^="filter-tile-"] span { white-space: nowrap; }
+/* 右侧不再显示「体型:」「声音:」字样；身高保留，并去掉身高行额外的左侧留白 */
+.inventory-filter-only [data-testid="height-filter-controls"] { padding-left: 0; }
+.inventory-filter-only [data-testid="filter-row-body"] > span:first-child,
+.inventory-filter-only [data-testid="filter-row-voice"] > span:first-child { display: none; }
+
+/* 体型 / 声音两行不再要「不限」按钮，点已选图标即可取消 */
+.inventory-filter-only [data-testid="filter-unlimited-body"],
+.inventory-filter-only [data-testid="filter-unlimited-voice"] { display: none; }
+
+/* 身高：文本框组、按钮组各自不换行；外层空间不足时整组落到下一行 */
+.inventory-filter-only [data-testid="height-controls-line"] {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  overflow-x: auto;
+}
+.inventory-filter-only [data-testid="height-inputs-group"],
+.inventory-filter-only [data-testid="height-presets-group"] {
+  flex-wrap: nowrap;
+}
+.inventory-filter-only [data-testid="height-filter-controls"] label,
+.inventory-filter-only [data-testid="height-filter-controls"] input,
+.inventory-filter-only [data-testid="height-filter-controls"] button {
+  white-space: nowrap;
+}
+.inventory-filter-only [data-testid="height-filter-controls"] label { width: 62px; }
+@container (max-width: 160px) {
+  .inventory-filter-only [data-testid="height-filter-controls"] label { width: 30px; }
+  .inventory-filter-only [data-testid="height-inputs-group"] { gap: 0.5px; }
+  .inventory-filter-only [data-testid="height-inputs-group"] > span { font-size: 8px; }
+  .inventory-filter-only [data-testid="height-filter-controls"] button { font-size: 8px; padding: 0 2px; }
+}
+
+.sim-page-header {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 0.3rem;
+  min-height: 1.8rem; padding: 0.15rem 0.4rem;
+  border-bottom: 1px solid #d1fae5; background: #fff;
+}
+
+.sim-page-accounts {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center; gap: 0.2rem;
+  overflow-x: auto; scrollbar-width: none;
+}
+.sim-page-accounts::-webkit-scrollbar { display: none; }
+
+.sim-page-account {
+  flex: 1 1 auto; min-width: max-content; min-height: 1.4rem; padding: 0 0.35rem;
+  border: 1px solid #d1fae5; border-radius: 0.35rem;
+  background: #f8fafc; color: #475569;
+  font-size: 0.62rem; line-height: 1.1; white-space: nowrap;
+  text-align: center;
+}
+.sim-page-account[aria-pressed="true"] {
+  border-color: #6ee7b7; background: #d1fae5;
+  color: #065f46; font-weight: 700;
+}
+
+.sim-page-account-single {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.62rem; color: #047857;
+}
+
+.sim-page-box {
+  flex: 0 0 auto;
+  color: #047857; font-size: 0.62rem;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+
+.sim-page-scroll {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+}
+.sim-page-scroll-standard { overflow: hidden; }
+
+/* 收起筛选后的标准信息卡：去名字和背包位置，压缩高度，仍是一行 6 个、5 行 30 格 */
+.sim-standard-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  height: 100%;
+  padding: 0;
+  list-style: none;
+}
+.sim-standard-card {
+  min-width: 0; min-height: 0;
+  display: flex; align-items: stretch; justify-content: center;
+}
+.sim-std-card {
+  position: relative;
+  width: 100%; height: 100%; max-height: 120px;
+  overflow: hidden; border: 1px solid #e2e8f0; border-radius: 0.5rem;
+  background: #fff; box-shadow: 0 1px 1px rgb(15 23 42 / 0.04);
+}
+.sim-std-card.sim-card-female { background: #fdf2f8; border-color: #fbcfe8; }
+.sim-std-card.sim-card-male { background: #f0f9ff; border-color: #bae6fd; }
+.sim-std-card.sim-card-unknown { background: #f8fafc; border-color: #e2e8f0; }
+.sim-std-top, .sim-std-right { display: contents; }
+
+/* 16:9：布局编辑器导出的第一组数值 */
+.sim-std-avatar {
+  position: absolute; left: 50%; top: 6%; transform: translateX(-50%);
+  width: 65px; height: 65px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sim-std-avatar img, .sim-std-avatar > span {
+  width: 65px; height: 65px; max-width: 65px; max-height: 65px; object-fit: contain;
+}
+.sim-std-no {
+  position: absolute; left: 2.5%; top: 4.5%;
+  font-size: 8.97px; line-height: 1; font-weight: 600; color: #475569;
+  white-space: nowrap;
+}
+.sim-std-eggs {
+  position: absolute; left: 3%; top: 19.5%;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0;
+  font-size: 11.33px; line-height: 1;
+}
+.sim-std-eggs > span {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0 1px; border-radius: 2px; background: #e0f2fe; color: #075985;
+}
+.sim-std-nature {
+  position: absolute; right: 1%; top: 2.5%;
+  display: flex; align-items: center; justify-content: flex-end; gap: 1px;
+  font-size: 11.33px; line-height: 1; color: #475569;
+}
+.sim-std-nature-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0 1px; border-radius: 2px; background: #fef3c7; color: #92400e;
+}
+.sim-std-medals {
+  position: absolute; right: 1.5%; top: 21%;
+  display: flex; align-items: center; justify-content: flex-end; gap: 1px;
+  font-size: 11.33px; line-height: 1;
+}
+.sim-std-medals img { width: 1.5em; height: 1.5em; object-fit: contain; }
+.sim-std-db {
+  position: absolute; right: 1.5%; top: 39%;
+  font-size: 11.33px; line-height: 1; color: #64748b;
+  text-align: right; white-space: nowrap;
+}
+.sim-std-name {
+  position: absolute; left: 0; top: 66%; width: 100%;
+  font-size: 12.75px; line-height: 1; font-weight: 600; color: #1e293b;
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sim-std-details {
+  position: absolute; left: 0; top: 83%; width: 100%;
+  font-size: 12.28px; line-height: 1; color: #475569;
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* 19.5:9 和 21:9 共用第二组数值（也覆盖矮屏 568） */
+@media (min-aspect-ratio: 19/9), (max-height: 500px) {
+  .sim-std-avatar { left: 50%; top: 1%; width: 43px; height: 43px; }
+  .sim-std-avatar img, .sim-std-avatar > span {
+    width: 43px; height: 43px; max-width: 43px; max-height: 43px;
+  }
+  .sim-std-no { left: 2.5%; top: 4.5%; font-size: 5.44px; }
+  .sim-std-eggs { left: 3%; top: 19.5%; font-size: 6.87px; }
+  .sim-std-nature { right: 1%; top: 2.5%; font-size: 6.87px; }
+  .sim-std-medals { right: 1.5%; top: 21%; font-size: 6.87px; }
+  .sim-std-db { right: 1.5%; top: 39%; font-size: 6.87px; }
+  .sim-std-name { left: 0; top: 66%; font-size: 7.73px; }
+  .sim-std-details { left: 0; top: 83%; font-size: 7.44px; }
+}
+.sim-standard-empty {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; max-height: 120px;
+  border: 1px dashed #a7f3d0; border-radius: 0.5rem;
+  background: rgb(255 255 255 / 0.35);
+  color: #86efac; font-size: 0.58rem;
+}
+.sim-standard-empty-no { line-height: 1; }
+.sim-page-grid {
+  width: 100%; height: 100%;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  gap: clamp(2px, 0.5vw, 6px);
+  padding: 0.15rem 0.2rem 0.2rem;
+  --sim-name: clamp(8px, 1.7vh, 12px);
+  --sim-nature: clamp(7px, 1.4vh, 10px);
+  --sim-gender: clamp(8px, 1.7vh, 12px);
+  --sim-medal: clamp(8px, 1.7vh, 12px);
+  --sim-db: clamp(6px, 1.2vh, 8px);
+  --sim-gap: clamp(0.5px, 0.2vh, 2px);
+  --sim-pad: clamp(1px, 0.5vh, 4px);
+  --sim-avatar-max: clamp(34px, 9vh, 64px);
+}
+
+.sim-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--sim-gap);
+  height: 100%; min-width: 0; min-height: 0; overflow: hidden;
+  padding: var(--sim-pad) 2px;
+  border: 1px solid #dbe7e2; border-radius: clamp(3px, 0.8vh, 8px);
+  background: #fff; box-shadow: 0 1px 1px rgba(15, 23, 42, 0.06);
+  text-align: center;
+}
+
+/* 卡片底色跟性别走（和精灵背包 / 配窝卡同一套颜色） */
+.sim-card-female { background: #fdf2f8; border-color: #fbcfe8; }
+.sim-card-male { background: #f0f9ff; border-color: #bae6fd; }
+.sim-card-unknown { background: #f8fafc; border-color: #e2e8f0; }
+
+.sim-card-body {
+  display: flex; align-items: center; gap: 2px;
+  width: 100%; min-width: 0;
+}
+
+.sim-card-avatar {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  width: min(55%, var(--sim-avatar-max)); aspect-ratio: 1;
+}
+
+.sim-card-stats {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+  gap: 1px;
+}
+.sim-card-avatar [data-testid="pet-avatar"],
+.sim-card-avatar [data-testid="pet-avatar-fallback"] {
+  width: 100%; height: 100%; font-size: 0.6rem;
+}
+
+.sim-card-name {
+  width: 100%; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #0f172a; font-size: var(--sim-name); font-weight: 700; line-height: 1.05;
+  text-align: center;
+}
+
+.sim-card-nature {
+  display: flex; align-items: center; justify-content: flex-start; gap: 1px;
+  max-width: 100%; color: #475569;
+  font-size: var(--sim-nature); line-height: 1;
+}
+.sim-card-nature > span:first-child {
+  width: var(--sim-gender); height: var(--sim-gender);
+  font-size: calc(var(--sim-gender) * 0.72);
+}
+.sim-card-nature-text {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border-radius: 0.15rem; background: #fef3c7; color: #92400e;
+  padding: 0 0.1rem;
+}
+
+.sim-card-medals {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: flex-start; gap: 1px;
+  min-height: var(--sim-medal);
+}
+.sim-card-medals img {
+  width: var(--sim-medal); height: var(--sim-medal); object-fit: contain;
+}
+
+.sim-card-db {
+  color: #64748b; font-size: var(--sim-db); line-height: 1;
+  white-space: nowrap; font-variant-numeric: tabular-nums; text-align: left;
+}
+
+.sim-card-empty {
+  justify-content: center;
+  border-style: dashed; border-color: #a7f3d0;
+  background: rgba(255, 255, 255, 0.35);
+  color: #86efac; font-size: var(--sim-db);
+}
+
+.sim-page-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; padding: 1rem;
+}
+.sim-page-empty-text { font-size: 0.8rem; color: #64748b; }
+
+.sim-page-footer {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.3rem;
+  min-height: 2rem; padding: 0.2rem 0.4rem;
+  border-top: 1px solid #d1fae5; background: #fff;
+}
+
+.sim-page-pager {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.3rem; min-width: 0; max-width: 100%;
+}
+
+.sim-page-nav {
+  flex: 0 0 auto;
+  width: 1.5rem; height: 1.5rem; border-radius: 0.35rem;
+  border: 1px solid #d1fae5; background: #f0fdf4;
+  color: #047857; font-size: 0.9rem; line-height: 1;
+}
+.sim-page-nav:disabled { opacity: 0.35; }
+
+.sim-page-chips {
+  flex: 0 1 auto; min-width: 0;
+  display: flex; align-items: center; gap: 0.15rem;
+  overflow-x: auto; scrollbar-width: none;
+}
+.sim-page-chips::-webkit-scrollbar { display: none; }
+
+.sim-page-chip {
+  flex: 0 0 auto;
+  min-width: 1.4rem; height: 1.4rem; padding: 0 0.2rem;
+  border: 1px solid #d1fae5; border-radius: 0.3rem;
+  background: #f8fafc; color: #64748b;
+  font-size: 0.58rem; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.sim-page-chip[aria-current="page"] {
+  border-color: #059669; background: #059669; color: #fff; font-weight: 700;
+}
+
+.sim-page-count {
+  position: absolute; right: 0.4rem; top: 50%;
+  transform: translateY(-50%);
+  max-width: 36%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #64748b; font-size: 0.62rem;
+}
+
+@media (orientation: landscape) and (max-height: 480px) {
+  .sim-page-grid {
+    --sim-name: 8px;
+    --sim-nature: 7px;
+    --sim-gender: 8px;
+    --sim-medal: 9px;
+    --sim-db: 7px;
+    --sim-gap: 0.5px;
+    --sim-pad: 1px;
+  }
+}
+
+/* 超矮横屏（如 568×320）：整页再收一档，仍保证 30 个都在一页内 */
+@media (orientation: landscape) and (max-height: 380px) {
+  .sim-page-grid { --sim-avatar-max: 22px; }
+  .sim-page-header { min-height: 1.7rem; padding: 0.1rem 0.3rem; gap: 0.2rem; }
+  .sim-page-footer { min-height: 1.7rem; padding: 0.1rem 0.3rem; }
+  .sim-page-count { display: none; }
+  .sim-page-nav { width: 1.3rem; height: 1.3rem; }
+  .sim-page-chip { min-width: 1.2rem; height: 1.2rem; }
+  .sim-page-grid {
+    --sim-name: 6px;
+    --sim-nature: 5px;
+    --sim-gender: 6px;
+    --sim-medal: 6px;
+    --sim-db: 5px;
+    --sim-gap: 0.5px;
+    --sim-pad: 1px;
+  }
+  .sim-card-body { gap: 1px; }
+  .sim-card-avatar { width: 45%; }
+  .sim-card-stats { gap: 0.5px; }
+  .sim-card-nature-text { padding: 0 0.05rem; }
 }
