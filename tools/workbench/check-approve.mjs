@@ -33,6 +33,8 @@ const LEDGER = path.join(REPO_ROOT, 'docs', '会话台账.md');
 const PROGRESS = path.join(REPO_ROOT, 'docs', '进度');
 const PREVIEW = path.join(REPO_ROOT, 'docs', 'preview');
 const BASE_PORT = Number(process.env.CHECK_APPROVE_PORT || 4481);
+// 页面加载时会打计时器心跳；指到临时目录，绝不碰用户真实的 ~/.workbench/timer/
+process.env.WORKBENCH_TIMER_DIR = path.join(tmpdir(), `wb-timer-check-approve-${process.pid}`);
 const SYMBOL_RE = /[\u{1F7E1}\u{1F535}\u{26AA}\u{1F7E2}\u{1F534}]/u;
 const STAGES = ['待派', '执行中', '已交付', '已验收', '已收口'];
 const COLUMN_HEADS = [
@@ -802,5 +804,6 @@ try {
       }
     }
   }
+  await rm(process.env.WORKBENCH_TIMER_DIR, { recursive: true, force: true }).catch(() => {});
   process.exitCode = failures === 0 ? 0 : 1;
 }

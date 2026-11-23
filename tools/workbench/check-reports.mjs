@@ -30,6 +30,8 @@ const PREVIEW = path.join(REPO_ROOT, 'docs', 'preview');
 const SAMPLE = '2026-11-24.md';
 const PORT_MAIN = Number(process.env.CHECK_REPORTS_PORT || 4480);
 const PORT_TMP = PORT_MAIN + 1;
+// 页面加载时会打计时器心跳；指到临时目录，绝不碰用户真实的 ~/.workbench/timer/
+process.env.WORKBENCH_TIMER_DIR = path.join(tmpdir(), `wb-timer-check-reports-${process.pid}`);
 const SKIP_SHOTS = process.env.SKIP_SHOTS === '1';
 const SHOTS = [
   { width: 375, height: 812, label: '375' },
@@ -327,8 +329,8 @@ try {
   else bad(`375 下正文没排到列表下面：列表底 ${layout.listBottom} / 正文顶 ${layout.bodyTop}`);
   if (!layout.overflow) ok('375 无横向溢出');
   else bad('375 出现横向溢出（页面被撑宽）');
-  if (layout.tabs.length === 3) ok(`顶部三个视图：${layout.tabs.join(' / ')}`);
-  else bad(`顶部视图数 ${layout.tabs.length}，预期 3：${layout.tabs.join(' / ')}`);
+  if (layout.tabs.length === 4) ok(`顶部四个视图：${layout.tabs.join(' / ')}`);
+  else bad(`顶部视图数 ${layout.tabs.length}，预期 4：${layout.tabs.join(' / ')}`);
   await narrow.close();
 
   step(8, 8, SKIP_SHOTS ? '截图（SKIP_SHOTS=1，跳过）' : '375 / 1440 截图落 docs/preview/W4-汇报-*.png');
@@ -363,6 +365,7 @@ try {
   if (tmpDir && path.resolve(tmpDir).startsWith(path.resolve(tmpdir()))) {
     await rm(tmpDir, { recursive: true, force: true });
   }
+  await rm(process.env.WORKBENCH_TIMER_DIR, { recursive: true, force: true }).catch(() => {});
 }
 
 console.log(failures === 0
