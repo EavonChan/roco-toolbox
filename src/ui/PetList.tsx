@@ -7,8 +7,11 @@ export interface PetListProps {
   speciesByGameId: Map<number, SpeciesEntry>;
   eggGroupNames: Record<number, string>;
   showCount?: boolean;
-  /** 卡片网格列数（2026-11-18 用户口径：三列时卡片内容整体放大、一行铺满；宽横屏可到 5/6） */
-  columns?: 3 | 4 | 5 | 6;
+  /**
+   * 卡片网格列数（2026-11-18 用户口径：三列时卡片内容整体放大、一行铺满；宽横屏可到 5/6）。
+   * 收集页收起筛选后由 columnsForCollapsedRail 算出更多列，卡片宽度保持不变（2026-11-23）。
+   */
+  columns?: number;
 }
 
 /**
