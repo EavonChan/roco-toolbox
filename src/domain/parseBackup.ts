@@ -1,6 +1,7 @@
 import type { HomeEgg, HomeNest, HomePair, HomePosition, HomeResident, HomeSnapshot, OwnedPet } from './types';
 import { species } from '../data/catalog';
 import { bodyMedalOf, heightPercentOf } from '../shared/bodySize.js';
+import { individualBonusesOfItem } from './individualBonuses';
 
 const bodySizeByGameId = new Map(species.map((entry) => [entry.gameId, entry.bodySize]));
 const heightSizeByGameId = new Map(species.map((entry) => [entry.gameId, entry.heightSize]));
@@ -260,6 +261,7 @@ export function parseBackup(raw: unknown, importedAt: string): AccountSnapshot {
         asOptionalNumber(item.heightPercent) ??
         heightPercentOf(heightSizeByGameId.get(gameId), asOptionalNumber(item.heightCm)) ??
         undefined,
+      individualBonuses: individualBonusesOfItem(item),
       isShiny: asBoolean(item.isShiny),
       // 炫彩：直接从导入内容读（备份 JSON 里是平铺的 isColorful 字段）——用户拍板不依赖采集器新字段
       isColorful: item.isColorful === true,

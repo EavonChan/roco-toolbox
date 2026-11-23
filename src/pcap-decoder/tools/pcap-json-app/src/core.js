@@ -2731,19 +2731,19 @@ function protocolBaseStats(raw) {
   return values;
 }
 
-function protocolIndividualStats(raw) {
+function protocolIndividualBonuses(raw) {
   const hex = raw && raw.byte_fields && raw.byte_fields["14"] && raw.byte_fields["14"][0];
   if (!hex) return [];
   const top = parseMessage(hexToBytes(hex));
-  const stats = [];
+  const bonuses = [];
   for (let field = 1; field <= INDIVIDUAL_STAT_NAMES.length; field += 1) {
     const nestedBytes = top.get(field) && top.get(field)[0];
     if (!(nestedBytes instanceof Uint8Array)) continue;
     const nested = parseMessage(nestedBytes);
     const bonus = Number(nested.get(7) && nested.get(7)[0] || 0);
-    if (bonus > 0) stats.push(INDIVIDUAL_STAT_NAMES[field - 1]);
+    if (bonus > 0) bonuses.push({ name: INDIVIDUAL_STAT_NAMES[field - 1], value: bonus });
   }
-  return stats.slice(0, 3);
+  return bonuses.slice(0, 3);
 }
 
 function protocolEquippedSkills(raw) {
@@ -3095,7 +3095,7 @@ function buildItem(raw, gameId) {
   const body = bodyMedal(entry, weightKg);
   const voiceDb = firstSignedInt(raw, 93);
   const medalVoice = voiceMedal(voiceDb);
-  const individualStats = protocolIndividualStats(raw);
+  const individualBonuses = protocolIndividualBonuses(raw);
   const baseStats = protocolBaseStats(raw) || [];
   const currentWeightPercent = weightPercent(entry, weightKg);
   const shinyAvailable = Boolean(entry && entry.hasShiny);
@@ -3131,8 +3131,8 @@ function buildItem(raw, gameId) {
     weightKg,
     weightPercent: currentWeightPercent,
     weightPercentText: currentWeightPercent === null ? "" : `${currentWeightPercent}%`,
-    individualStats,
-    individualText: individualStats.join(" · "),
+    individualBonuses,
+    individualText: individualBonuses.map((bonus) => bonus.name).join(" · "),
     medalBody: body.medal,
     medalVoice,
     voiceDb,
@@ -3237,7 +3237,7 @@ export function buildBackpack(records, metadata = {}) {
     colorful: items.filter((item) => item.isColorful).length,
     male: items.filter((item) => item.gender === "公").length,
     female: items.filter((item) => item.gender === "母").length,
-    individualBonuses: items.filter((item) => item.individualStats.length).length,
+    individualBonuses: items.filter((item) => item.individualBonuses.length).length,
     bodyMedals: items.filter((item) => item.medalBody).length,
     voiceMedals: items.filter((item) => item.medalVoice).length,
     bloodline: items.filter((item) => item.bloodline).length,
