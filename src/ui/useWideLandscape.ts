@@ -46,8 +46,9 @@ export function useLandscape(): boolean {
 }
 
 /**
- * 横屏且宽度 ≥1000px：收集页折叠右栏后加列只在这样的屏上生效。
- * 手机横屏（844 等）折叠后宽度仍有限，只加列会把精灵卡压得太窄。
+ * 横屏且宽度 ≥1000px：母本页首屏先铺 6 组蛋组（见 MotherView 的 initialSections）。
+ * 精灵背包收起筛选后的加列不按这个断点，而是按「卡片宽度不变」反推列数
+ * （`petGridColumns.ts`），手机横屏 844 也会加列。
  */
 const TABLET_LANDSCAPE_QUERY = '(orientation: landscape) and (min-width: 1000px)';
 

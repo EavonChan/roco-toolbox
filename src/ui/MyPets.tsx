@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   buildChainSearchIndex,
@@ -43,7 +43,8 @@ import {
   hasChosenColumns,
   useMyPetsFilters,
 } from './myPetsFilterStore';
-import { useWideLandscape } from './useWideLandscape';
+import { useLandscape, useWideLandscape } from './useWideLandscape';
+import { columnsForCollapsedRail } from './petGridColumns';
 import { setPersonalQuery, usePersonalList } from './listViewStore';
 
 /** 筛选维度顺序；稀有度单独占一行。 */
@@ -359,6 +360,8 @@ export interface MyPetsProps {
   /** 空数据时「去导入数据」按钮的跳转 */
   onGoImport?: () => void;
   onTotalCountChange?: (count: number) => void;
+  /** 收集页右栏（搜索 / 筛选）是否收起：收起后卡片区变宽，改成多排几张卡 */
+  railCollapsed?: boolean;
 }
 
 /**
@@ -367,7 +370,7 @@ export interface MyPetsProps {
  * 2026-10-29 用户口径：「合格种公」视图不要了——挑种公去「收集 · 种公」看种公阵列；
  * 母本去看「收集 · 母本」。这里不再有视角切换。
  */
-export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
+export function MyPets({ onGoImport, onTotalCountChange, railCollapsed = false }: MyPetsProps) {
   const { owned, accounts, all } = useOwnedPets();
   // 本机全部精灵（不受账号筛选影响）：用来区分「真没数据」和「筛选后为空」
   const libraryPets = all ?? owned;
@@ -403,6 +406,54 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
     if (wideLandscape && !hasChosenColumns() && columns === 4) setMyPetsColumns(5);
   }, [wideLandscape, columns]);
   const effectiveColumns = wideLandscape ? columns : (Math.min(columns, 4) as 3 | 4);
+
+  /**
+   * 收起筛选右栏（2026-11-23 用户口径）：空出来的宽度用来多排几张卡，
+   * 卡片宽度保持收起前的样子，不再把卡片拉宽；只有横屏才有这条右栏。
+   */
+  const landscape = useLandscape();
+  const mainRef = useRef<HTMLDivElement | null>(null);
+  const [collapsedColumns, setCollapsedColumns] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!railCollapsed || !landscape) {
+      setCollapsedColumns(null);
+      return;
+    }
+    const main = mainRef.current;
+    if (!main) return;
+    const measure = () => {
+      const collapsedWidth = main.clientWidth;
+      if (!(collapsedWidth > 0)) return;
+      const rootFont =
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      // 横屏收集页右栏 22rem + 栏间距 1rem（见 index.css 的 .collection-layout）
+      const expandedWidth = collapsedWidth - rootFont * 23;
+      const list = main.querySelector<HTMLElement>('[data-testid="pet-list-items"]');
+      // 列表还没渲染（数据未到 / 筛选为空）时按 PetList 的 gap-1.5 兜底
+      const gap =
+        (list && Number.parseFloat(getComputedStyle(list).columnGap)) || rootFont * 0.375;
+      const next = columnsForCollapsedRail({
+        baseColumns: effectiveColumns,
+        expandedWidth,
+        collapsedWidth,
+        gap,
+      });
+      setCollapsedColumns(next > effectiveColumns ? next : null);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(main);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+    // accounts 从 0 变成有值时主区才挂上（空数据先渲染空态），要重新量一次
+  }, [railCollapsed, landscape, effectiveColumns, accounts.length]);
   const { tags, index } = useMemo(
     () => buildTagIndex(owned, speciesByGameId, eggGroupNames),
     [owned, speciesByGameId],
@@ -910,7 +961,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
         </div>
       </FilterPanel>
         </div>
-        <div className="collection-main space-y-1">
+        <div className="collection-main space-y-1" ref={mainRef}>
       {visiblePets.length === 0 ? (
         libraryPets.length === 0 ? (
           <EmptyState onGoImport={onGoImport} />
@@ -928,7 +979,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           speciesByGameId={speciesByGameId}
           eggGroupNames={eggGroupNames}
           showCount={false}
-          columns={effectiveColumns}
+          columns={collapsedColumns ?? effectiveColumns}
         />
       )}
         </div>
