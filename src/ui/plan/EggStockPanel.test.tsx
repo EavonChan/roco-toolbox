@@ -152,6 +152,8 @@ test('home eggs show only the self-bred badge, keep confirmation time and parent
   expect(screen.getByText('海豹战士')).toBeTruthy();
   expect(screen.getByText('可能性格：保守 / 胆小（各 30%，其余随机）')).toBeTruthy();
   expect(screen.getByText('满重 约 1/18（收进背包后确定）')).toBeTruthy();
+  // 实际父母用配窝精灵卡渲染，而不是另画一种小卡
+  expect(screen.getByTestId('stock-parents').querySelectorAll('[data-testid="breed-pet-card"]')).toHaveLength(2);
   expect(screen.getByRole('button',{name:'挂出'})).toBeDisabled();
   expect(screen.getByText('在地家园，收进背包后才能挂出')).toBeTruthy();
 });
