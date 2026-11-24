@@ -380,10 +380,12 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     expect(within(cards[0]).getByTestId('breed-pet-stat-1')).toHaveTextContent('物攻+8');
     expect(within(cards[0]).getByTestId('breed-pet-stat-2')).toHaveTextContent('速度+10');
     expect(cards[0].className).toContain('h-[86px]');
-    // 没有三维的那只：行仍在，三格全空
+    // 没有三维的那只：行仍在，三格显示「—」并带「该快照未采集个体三维」提示
+    // （2026-11-24：区分「没采到」与「这三项真的没加成」，三格留白改为破折号）
     expect(cards[1].className).toContain('h-[86px]');
     expect(within(cards[1]).getByTestId('breed-pet-stats').children).toHaveLength(3);
-    expect(within(cards[1]).getByTestId('breed-pet-stat-0').textContent).toBe('');
+    expect(within(cards[1]).getByTestId('breed-pet-stat-0').textContent).toBe('—');
+    expect(within(cards[1]).getByTestId('breed-pet-stats').getAttribute('title')).toBe('该快照未采集个体三维');
   });
 
   test('公母同性格：只写一枚 60%', () => {
