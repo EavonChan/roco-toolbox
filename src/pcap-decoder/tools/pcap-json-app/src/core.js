@@ -3239,7 +3239,7 @@ export function buildBackpack(records, metadata = {}) {
     colorful: items.filter((item) => item.isColorful).length,
     male: items.filter((item) => item.gender === "公").length,
     female: items.filter((item) => item.gender === "母").length,
-    individualBonuses: items.filter((item) => item.individualStats.length).length,
+    individualBonuses: items.filter((item) => item.individualBonuses.length).length,
     bodyMedals: items.filter((item) => item.medalBody).length,
     voiceMedals: items.filter((item) => item.medalVoice).length,
     bloodline: items.filter((item) => item.bloodline).length,

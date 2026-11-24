@@ -4,6 +4,7 @@ import {
   individualBonusesOfItem,
   sanitizeIndividualBonuses,
 } from './individualStats';
+import { parseBackup } from './parseBackup';
 
 /**
  * 手搓 field 14 的 protobuf：
@@ -109,5 +110,39 @@ describe('个体三维（抓包 field 14）', () => {
     ]);
     expect(sanitizeIndividualBonuses(null)).toBeUndefined();
     expect(sanitizeIndividualBonuses([])).toBeUndefined();
+  });
+});
+
+describe('导入链路保留个体三维', () => {
+  test('新抓包读 individualBonuses；旧 JSON 从 rawFields 的 field 14 解出来', () => {
+    const rawHex = '0a023800120238081a023809220238002a0238003202380a';
+    const items = [
+      {
+        speciesPetId: 3200,
+        name: '机械方方',
+        individualBonuses: [
+          { name: '物攻', value: 8 },
+          { name: '生命', value: 9 },
+          { name: '速度', value: 10 },
+        ],
+      },
+      { speciesPetId: 3200, name: '机械方方', rawFields: { bytes: { '14': [rawHex] } } },
+      { speciesPetId: 3200, name: '机械方方' },
+    ];
+    const parsed = parseBackup(
+      { meta: { type: 'hatch-backup', gameId: 1001 }, collections: { petBackpack: { items } } },
+      'now',
+    );
+    expect(parsed.pets[0].individualBonuses).toEqual([
+      { name: '生命', value: 9 },
+      { name: '物攻', value: 8 },
+      { name: '速度', value: 10 },
+    ]);
+    expect(parsed.pets[1].individualBonuses).toEqual([
+      { name: '物攻', value: 8 },
+      { name: '魔攻', value: 9 },
+      { name: '速度', value: 10 },
+    ]);
+    expect(parsed.pets[2].individualBonuses).toBeUndefined();
   });
 });

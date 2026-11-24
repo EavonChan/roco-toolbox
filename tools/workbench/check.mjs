@@ -23,6 +23,8 @@ const SERVER = path.join(HERE, 'server.mjs');
 const REPO_ROOT = path.resolve(HERE, '..', '..');
 const BOARD = path.join(REPO_ROOT, 'docs', '任务看板.md');
 const BASE_PORT = Number(process.env.CHECK_PORT || 4451);
+// 页面加载时会打计时器心跳；指到临时目录，绝不碰用户真实的 ~/.workbench/timer/
+process.env.WORKBENCH_TIMER_DIR = path.join(tmpdir(), `wb-timer-check-${process.pid}`);
 const SYMBOLS = ['🟡', '🔵', '⚪', '🟢', '🔴'];
 const STATUS_BY_KEY = { doing: '🟡', waiting: '🔵', done: '🟢', backlog: '⚪', blocked: '🔴' };
 const COLUMN_HEADS = [
@@ -275,5 +277,6 @@ try {
   if (tmpDir) {
     if (path.resolve(tmpDir).startsWith(path.resolve(tmpdir()))) await rm(tmpDir, { recursive: true, force: true });
   }
+  await rm(process.env.WORKBENCH_TIMER_DIR, { recursive: true, force: true }).catch(() => {});
   process.exitCode = failures === 0 ? 0 : 1;
 }
