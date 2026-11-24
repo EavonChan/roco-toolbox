@@ -40,6 +40,16 @@ describe('egg stock snapshots', () => {
     expect(setEggListed(state, 'me', 'e1', true).eggs[0].listed).toBe(true);
     expect(setEggListed(state, 'me', 'manual', true).eggs[1].listed).toBe(true);
   });
+  test('re-capture keeps earlier annotation: empty capture fields never erase 自产/性格/体型/声音', () => {
+    const initial = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1,
+      bag: part([egg({ confidence: 'manual', labelSource: 'manual', nature: '冷静', body: '大块头', voice: '+100', greenNest: true })]) });
+    const again = reconcileEggStock(initial, { accountId: 'me', capturedAt: 2,
+      bag: part([egg({ provenance: 'unknown', confidence: 'system', labelSource: 'unknown', nature: '', body: 'unknown', voice: 'unknown' })]) });
+    expect(again.eggs[0]).toMatchObject({
+      provenance: 'self-bred', nature: '冷静', body: '大块头', voice: '+100',
+      greenNest: true, labelSource: 'manual', confidence: 'manual',
+    });
+  });
   test('listing is account scoped; source history is factual and no longer blocks circulation', () => {
     const initial = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg()]) });
     expect(() => setEggListed(initial, 'other', 'e1', true)).toThrow(/不存在/);

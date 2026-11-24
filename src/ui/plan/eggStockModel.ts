@@ -101,10 +101,19 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
         }
         continue;
       }
+      /**
+       * 重新采集不能把已有标注冲掉（2026-11-24 用户反馈：自产/性格/体型/声音在再采集后消失）。
+       * 抓包里的蛋本来就没有性格/声音/体型（要等孵化或靠父母推算），空值只表示「这次没采到」，
+       * 不是「用户没标过」。所以空值一律回落到上一次的记录；手动标注永远优先。
+       * 服务端也会回填，但线上旧版本未必有这层保护，前端自己先保住。
+       */
       const egg: StockEgg = { id: observation.id, accountId: snapshot.accountId, eggGameId: observation.eggGameId,
-        nature: observation.nature, body: observation.body, voice: observation.voice,
-        provenance, confidence: observation.confidence ?? 'unknown',
-        labelSource: observation.labelSource ?? (observation.confidence === 'system' ? 'system' : 'unknown'),
+        nature: observation.nature || old?.nature || '',
+        body: observation.body && observation.body !== 'unknown' ? observation.body : old?.body ?? 'unknown',
+        voice: observation.voice && observation.voice !== 'unknown' ? observation.voice : old?.voice ?? 'unknown',
+        provenance, confidence: old?.labelSource === 'manual' ? 'manual' : observation.confidence ?? old?.confidence ?? 'unknown',
+        labelSource: old?.labelSource === 'manual' ? 'manual'
+          : observation.labelSource ?? old?.labelSource ?? (observation.confidence === 'system' ? 'system' : 'unknown'),
         parents: observation.parents ?? old?.parents,
         kind: observation.kind ?? old?.kind ?? 'ordinary',
         specialCategory: observation.specialCategory ?? old?.specialCategory,
