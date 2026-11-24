@@ -358,3 +358,81 @@ test('manual labels survive later home captures and stay manual', () => {
     homeComplete: true, eggs: [homeEgg({ nature: '' })] }, 3);
   expect(state.eggs[0]).toMatchObject({ nature: '保守', labelSource: 'manual', confidence: 'manual' });
 });
+
+const measured = (id: string, over: Record<string, unknown> = {}) => ({
+  ...stock(id, 3227), location: 'bag', weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00', ...over,
+});
+const bagSync = (state: EggWorkflowState, actor: string, capturedAt: number, eggs: unknown[]) =>
+  applyEggAction(state, 'g', actor, { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt, complete: true, eggs }, capturedAt);
+
+test('a bag egg with weight height and obtained time is listed automatically', () => {
+  const state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('bag1')]);
+  expect(state.eggs[0]).toMatchObject({ location: 'bag', listed: true, weightGrams: 2320, heightCm: 34,
+    obtainedAt: '2026-11-17T22:31:00' });
+});
+
+test('a home egg is never listed automatically even with full measurements', () => {
+  const state = applyEggAction(emptyEggWorkflow(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1,
+    complete: false, homeComplete: true,
+    eggs: [homeEgg({ weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00' })] }, 1);
+  expect(state.eggs[0]).toMatchObject({ location: 'home', listed: false, weightGrams: 2320, heightCm: 34,
+    obtainedAt: '2026-11-17T22:31:00' });
+});
+
+test('a bag egg missing weight height or obtained time is not listed automatically', () => {
+  const state = bagSync(emptyEggWorkflow(), 'a', 1, [
+    measured('no-time', { obtainedAt: undefined }),
+    measured('no-height', { heightCm: undefined }),
+    measured('no-weight', { weightGrams: undefined }),
+  ]);
+  expect(state.eggs.map(e => e.listed)).toEqual([false, false, false]);
+});
+
+test('a manual unlist is remembered and survives later captures', () => {
+  let state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('bag1')]);
+  expect(state.eggs[0].listed).toBe(true);
+  state = applyEggAction(state, 'g', 'a', { type: 'list', id: 'bag1', listed: false }, 2);
+  expect(state.eggs[0]).toMatchObject({ listed: false, listingOptOut: true });
+  state = bagSync(state, 'a', 3, [measured('bag1')]);
+  expect(state.eggs[0].listed).toBe(false);
+  // 之后哪怕抓到缺字段的同一颗蛋，也不该把它挂回去。
+  state = bagSync(state, 'a', 4, [{ ...stock('bag1', 3227), location: 'bag' }]);
+  expect(state.eggs[0].listed).toBe(false);
+});
+
+test('manually listing an egg again clears the opt-out', () => {
+  let state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('bag1')]);
+  state = applyEggAction(state, 'g', 'a', { type: 'list', id: 'bag1', listed: false }, 2);
+  state = applyEggAction(state, 'g', 'a', { type: 'list', id: 'bag1', listed: true }, 3);
+  expect(state.eggs[0]).toMatchObject({ listed: true });
+  expect(state.eggs[0].listingOptOut).toBeUndefined();
+  state = bagSync(state, 'a', 4, [measured('bag1')]);
+  expect(state.eggs[0].listed).toBe(true);
+});
+
+test('syncing the same payload twice changes no listing state', () => {
+  const payload = [measured('bag1')];
+  let state = bagSync(emptyEggWorkflow(), 'a', 1, payload);
+  const first = state.eggs.map(e => ({ id: e.id, listed: e.listed, optOut: e.listingOptOut }));
+  state = bagSync(state, 'a', 2, payload);
+  expect(state.eggs.map(e => ({ id: e.id, listed: e.listed, optOut: e.listingOptOut }))).toEqual(first);
+});
+
+test('an accepted egg becomes reserved and is never auto-listed again', () => {
+  let state = applyEggAction(initial(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1,
+    complete: true, eggs: [measured('back', { eggGameId: 3436 })] }, 1);
+  expect(state.eggs.find(e => e.id === 'back')?.listed).toBe(true);
+  state = bagSync(state, 'b', 1, [stock('give', 3227)]);
+  state = applyEggAction(state, 'g', 'b', { type: 'propose', id: 't', demandId: 'd', giveId: 'give', receiveId: 'back' }, 3);
+  state = applyEggAction(state, 'g', 'a', { type: 'accept', id: 't' }, 4);
+  expect(state.eggs.find(e => e.id === 'back')).toMatchObject({ status: 'reserved', listed: false });
+  state = bagSync(state, 'a', 5, [measured('back', { eggGameId: 3436 })]);
+  expect(state.eggs.find(e => e.id === 'back')).toMatchObject({ status: 'reserved', listed: false });
+});
+
+test('stock captured before the measurements existed is listed once the fields arrive', () => {
+  let state = bagSync(emptyEggWorkflow(), 'a', 1, [{ ...stock('bag1', 3227), location: 'bag' }]);
+  expect(state.eggs[0].listed).toBe(false);
+  state = bagSync(state, 'a', 2, [measured('bag1')]);
+  expect(state.eggs[0]).toMatchObject({ listed: true, obtainedAt: '2026-11-17T22:31:00', weightGrams: 2320, heightCm: 34 });
+});

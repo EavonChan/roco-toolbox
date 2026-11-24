@@ -11,6 +11,8 @@ export interface WorkflowEgg extends EggRecord {
   obtainedAt?: string;
   /** 家园蛋收进背包后对应的抓包实例 ID；用于后续同步继续合并，避免刷新后丢自产。 */
   capturedEggId?: string;
+  /** 用户手动下架过这颗蛋；自动挂出必须尊重它。旧数据没有该字段 = 未下架。 */
+  listingOptOut?: boolean;
   /** Last complete capture no longer contains this reserved instance. */
   missingFromCapture?: boolean;
 }
@@ -111,9 +113,36 @@ function normalizeEgg(value: unknown, accountId: string, gameAccountKey: string,
     heightCm: typeof raw.heightCm === 'number' && Number.isFinite(raw.heightCm) ? raw.heightCm : undefined,
     obtainedAt: obtainedAtOf(raw.obtainedAt),
     capturedEggId: typeof raw.capturedEggId === 'string' && raw.capturedEggId.length > 0 && raw.capturedEggId.length <= 512
-      ? raw.capturedEggId : undefined };
+      ? raw.capturedEggId : undefined,
+    // 只认显式 true：旧数据 / 老客户端没这个字段时保持 undefined（= 未下架）。
+    listingOptOut: raw.listingOptOut === true ? true : undefined };
 }
 const active = (trade: WorkflowTrade) => trade.status === 'accepted';
+
+const hasMeasure = (value: number | undefined): boolean => typeof value === 'number' && Number.isFinite(value);
+
+/**
+ * 自动挂出：蛋在背包 **且** 信息完整（蛋重 / 蛋高 / 获得时间三项都有）。
+ *
+ * 口径（用户 2026-11-24 定，别扩条件）：
+ * - 家园蛋一律不挂：蛋重要收进背包才知道，满重蛋挂出去会亏；
+ * - 只置 true，**永不置 false**——取消挂出只由用户手动下架或 reserved/transferred 状态机负责；
+ * - 尊重 `listingOptOut`（用户手动下架过）；旧数据没有该字段 = 未下架；
+ * - 已换出 / 不可交换按现有 `canCirculateEgg`（status available 且非异色/特殊）排除。
+ */
+export function autoListStock(state: EggWorkflowState, accountId: string, gameAccountKey: string): EggWorkflowState {
+  let changed = false;
+  const eggs = state.eggs.map(egg => {
+    if (egg.accountId !== accountId || egg.gameAccountKey !== gameAccountKey) return egg;
+    if (egg.listed || egg.listingOptOut || egg.missingFromCapture) return egg;
+    if ((egg.location ?? 'bag') !== 'bag') return egg;
+    if (!egg.obtainedAt || !hasMeasure(egg.weightGrams) || !hasMeasure(egg.heightCm)) return egg;
+    if (!canCirculateEgg(egg)) return egg;
+    changed = true;
+    return { ...egg, listed: true };
+  });
+  return changed ? { ...state, eggs } : state;
+}
 const ownEgg = (state: EggWorkflowState, accountId: string, id: string) => {
   const egg = state.eggs.find(e => e.accountId === accountId && e.id === id);
   if (!egg) throw new Error('蛋不存在或不属于当前账号');
@@ -237,6 +266,7 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         // 新抓包偶尔缺时间时，保留已经记录过的获得时间。
         if (!egg.obtainedAt) egg.obtainedAt = before.obtainedAt;
         if (!egg.capturedEggId) egg.capturedEggId = before.capturedEggId;
+        if (egg.listingOptOut === undefined && before.listingOptOut === true) egg.listingOptOut = true;
         if (!egg.parents) egg.parents = before.parents;
         if (egg.heightCm === undefined) egg.heightCm = before.heightCm;
         if (egg.weightGrams === undefined) egg.weightGrams = before.weightGrams;
@@ -261,7 +291,8 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
     state.eggs.push(...accepted);
     if (appliedBag) state.watermarks[sideKey('bag')] = timestamp;
     if (appliedHome) state.watermarks[sideKey('home')] = timestamp;
-    return state;
+    // 合并/状态继承之后才自动挂出：保留 reserved/transferred 的 listed=false，也只补 true。
+    return autoListStock(state, actor, key);
   }
   if (action.type === 'list' || action.type === 'label' || action.type === 'label-many') {
     if (action.type === 'list') {
@@ -269,6 +300,9 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
       if (typeof action.listed !== 'boolean') throw new Error('挂出状态无效');
       if (action.listed) available(egg);
       egg.listed = action.listed;
+      // 手动下架 = 明确表达「别再自动挂上」；手动挂出 = 收回这条表达。
+      if (action.listed) delete egg.listingOptOut;
+      else egg.listingOptOut = true;
     } else {
       if (typeof action.nature !== 'string' || action.nature.length > 32 || !isDemandBody(action.body) || !isDemandVoice(action.voice)) throw new Error('标注无效');
       if (action.greenNest !== undefined && typeof action.greenNest !== 'boolean') throw new Error('绿窝标注无效');

@@ -1,6 +1,7 @@
 import type { DemandBody, DemandVoice } from './collectionGroups';
 import type { EggParentInfo, EggParentsInfo } from './eggMatching';
 import type { EggWorkflowState, WorkflowEgg } from './eggWorkflow';
+import { autoListStock } from './eggWorkflow';
 import type { BodySize } from './bodySize.js';
 import type { PatrolEgg, PatrolObservation, PatrolParent, PatrolTask } from './eggPatrol';
 import { ACADEMY_NEST_CONFIG_ID, ORDINARY_NEST_CONFIG_ID } from './eggPatrol';
@@ -136,7 +137,7 @@ export function recordPatrolProducedEgg(
       lastConfirmedAt: now,
       ...(parents ? { parents } : {}),
     };
-    return { ...previous, eggs: [...previous.eggs, next] };
+    return autoListStock({ ...previous, eggs: [...previous.eggs, next] }, accountId, gameAccountKey);
   }
 
   const next: WorkflowEgg = {
@@ -146,10 +147,10 @@ export function recordPatrolProducedEgg(
     ...(existing.provenance === 'unknown' ? { provenance: 'self-bred' as const } : {}),
     ...(!existing.parents && parents ? { parents } : {}),
   };
-  return {
+  return autoListStock({
     ...previous,
     eggs: previous.eggs.map(value => value.accountId === accountId && value.id === id ? next : value),
-  };
+  }, accountId, gameAccountKey);
 }
 
 function fillParents(existing: EggParentsInfo, incoming: EggParentsInfo): EggParentsInfo {
@@ -282,8 +283,11 @@ export function recordIngestedHomeEggs(
     if (next !== existing) nextEggs[position] = next;
   }
 
+  // 入库完成后再走自动挂出；家园蛋不满足「在背包」，这里只会补到已合并成背包的行。
+  // autoListStock 无变化时返回原对象，保持「没变化就返回同一个 state」的契约。
+  const state = changed ? { ...previous, eggs: nextEggs } : previous;
   return {
-    state: changed ? { ...previous, eggs: nextEggs } : previous,
+    state: autoListStock(state, accountId, gameAccountKey),
     written,
     labeled,
   };
