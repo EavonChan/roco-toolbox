@@ -110,19 +110,28 @@ function StockBody({ groupId, me, snapshots, onBack, headerSlot }: {
   const api = useEggMatching(groupId, me);
   const sync = useEggStockSync({ api, groupId, me, snapshots });
   const landscape = useLandscape();
-  /** '' = 全部角色；同一账号下多个游戏号时才有意义（2026-11-23 用户口径）。 */
+  /**
+   * 一次只显示一个角色（2026-11-24 用户口径）：默认账号角色列表的第一个（一般是主号），
+   * 有多个角色时标题行/筛选栏可切换，没有「全部角色」。
+   */
   const [character, setCharacter] = useState('');
   const myEggs = useMemo(
     () => (api.data?.state.eggs ?? []).filter((egg) => egg.accountId === me && egg.status !== 'transferred'),
     [api.data, me],
   );
   const characters = useMemo(() => eggCharactersOf(myEggs, snapshots), [myEggs, snapshots]);
+  /** 首帧就按第一个角色渲染，别先闪一下「全部」再跳过去。 */
+  const activeCharacter = character || characters[0]?.key || '';
   useEffect(() => {
-    // 换组 / 蛋换走了：选中的角色不在蛋仓里了就回到「全部角色」，别让屏幕空着。
-    if (character && !characters.some((item) => item.key === character)) setCharacter('');
+    if (!characters.length) {
+      if (character) setCharacter('');
+      return;
+    }
+    // 换号 / 角色数据变了：选中的角色不在列表里了就回到第一个（主号）
+    if (!characters.some((item) => item.key === character)) setCharacter(characters[0].key);
   }, [character, characters]);
   const characterSelect = characters.length > 1
-    ? <EggCharacterSelect value={character} characters={characters} onChange={setCharacter} />
+    ? <EggCharacterSelect value={activeCharacter} characters={characters} onChange={setCharacter} />
     : null;
   return (
     <div className="flex flex-col gap-2" data-testid="egg-stock-body">
@@ -149,7 +158,7 @@ function StockBody({ groupId, me, snapshots, onBack, headerSlot }: {
           mutate={api.mutate}
           collapsibleFilterRail
           railBack={onBack?{onClick:onBack}:undefined}
-          character={character}
+          character={activeCharacter}
           characters={characters}
           onCharacterChange={setCharacter}
         />

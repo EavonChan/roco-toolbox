@@ -152,25 +152,41 @@ test('没登录时提示先登录，不渲染蛋仓列表', async () => {
   expect(screen.queryByTestId('egg-stock-need-group')).toBeNull();
 });
 
-test('角色筛选：标题行列出本账号的游戏角色，选中后只留这个角色的蛋', async () => {
+test('角色切换：一次只显示一个角色，选项带蛋数，默认第一个', async () => {
   h.eggs = [eggOf('a1', 'uid:1', '阿甲'), eggOf('a2', 'uid:1', '阿甲'), eggOf('b1', 'uid:2', '阿乙')];
   render(<SlotHarness />);
-  expect(await screen.findAllByTestId('stock-card')).toHaveLength(3);
+  // 默认落在第一个角色（阿甲）的蛋上，不再有「全部角色」
+  expect(await screen.findAllByTestId('stock-card')).toHaveLength(2);
   const slot = screen.getByTestId('header-slot');
-  const select = within(slot).getByRole('combobox', { name: '按游戏角色筛选' });
+  const select = within(slot).getByRole('combobox', { name: '按游戏角色筛选' }) as HTMLSelectElement;
+  expect(select.value).toBe('uid:1');
   expect(within(select).getAllByRole('option').map((option) => option.textContent))
-    .toEqual(['全部角色', '阿甲', '阿乙']);
+    .toEqual(['阿甲（2）', '阿乙（1）']);
+  expect(within(select).queryByRole('option', { name: '全部角色' })).toBeNull();
   fireEvent.change(select, { target: { value: 'uid:2' } });
   expect(screen.getAllByTestId('stock-card')).toHaveLength(1);
 });
 
-test('蛋上没带角色名：用本机快照里的账号名顶上', async () => {
+test('默认展示账号角色列表的第一个（主号）：主号没蛋也不落到别的角色', async () => {
+  h.eggs = [eggOf('b1', 'uid:2', '阿乙')];
+  render(<SlotHarness snapshots={[snapshotOf(1, '阿甲'), snapshotOf(2, '阿乙')]} />);
+  // 主号阿甲没有蛋：屏幕应停在他身上并说明，不是自动跳到有蛋的阿乙
+  expect(await screen.findByText('这个角色还没有蛋')).toBeTruthy();
+  expect(screen.queryAllByTestId('stock-card')).toHaveLength(0);
+  const select = within(screen.getByTestId('header-slot')).getByRole('combobox', { name: '按游戏角色筛选' }) as HTMLSelectElement;
+  expect(select.value).toBe('uid:1');
+  expect(within(select).getAllByRole('option').map((option) => option.textContent))
+    .toEqual(['阿甲（0）', '阿乙（1）']);
+});
+
+test('蛋上没带角色名：用本机快照里的账号名顶上，顺序仍按账号列表', async () => {
   h.eggs = [eggOf('a1', 'uid:1', '阿甲'), eggOf('b1', 'uid:2')];
   render(<SlotHarness snapshots={[snapshotOf(2, '阿乙')]} />);
-  expect(await screen.findAllByTestId('stock-card')).toHaveLength(2);
-  const select = within(screen.getByTestId('header-slot')).getByRole('combobox', { name: '按游戏角色筛选' });
+  expect(await screen.findAllByTestId('stock-card')).toHaveLength(1);
+  const select = within(screen.getByTestId('header-slot')).getByRole('combobox', { name: '按游戏角色筛选' }) as HTMLSelectElement;
+  expect(select.value).toBe('uid:2');
   expect(within(select).getAllByRole('option').map((option) => option.textContent))
-    .toEqual(['全部角色', '阿甲', '阿乙']);
+    .toEqual(['阿乙（1）', '阿甲（1）']);
 });
 
 test('只有一个游戏角色：不出现角色筛选，别白占标题行', async () => {

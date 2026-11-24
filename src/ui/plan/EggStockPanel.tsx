@@ -100,15 +100,20 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
     if(!entry||typeof entry.big!=='number')return ''; const total=Math.round(entry.max*1000)-Math.round(entry.big*1000)+1;
     return total>0&&total<1000?`约 1/${total}`:''; };
   const special=(e:WorkflowEgg)=>e.kind==='special'||e.kind==='shiny';
+  /**
+   * 自产 = 自己孵出来的：带 self-bred 来源，或**目前还躺在家园地上**（2026-11-24 用户口径）。
+   * 「在地家园」这个说法不再出现；家园状态只在机器人取蛋那边有用，界面上一律按自产算。
+   */
+  const selfProduced=(e:WorkflowEgg)=>e.provenance==='self-bred'||e.location==='home';
   const annotated=(e:WorkflowEgg)=>!!formatEggNature(e.nature)&&
     ['大块头','小不点','满体重','零体重'].includes(e.body)&&
     ['+100','-100','婉转声','粗嗓门'].includes(e.voice);
   const unavailableLabel=(e:WorkflowEgg)=>SPECIAL_CATEGORY_LABELS[e.specialCategory??'special'];
   const status=(e:WorkflowEgg)=>special(e)?unavailableLabel(e):e.location==='home'?'':e.status==='reserved'?'换蛋中':e.listed?'已挂出':'未挂出';
   const matchesFilter=(e:WorkflowEgg)=>filter==='不可交换'?special(e):!special(e)&&(
-    filter==='全部'||filter==='已标注'&&annotated(e)||filter==='未标注'&&!annotated(e)||filter==='自产'&&e.provenance==='self-bred');
+    filter==='全部'||filter==='已标注'&&annotated(e)||filter==='未标注'&&!annotated(e)||filter==='自产'&&selfProduced(e));
   const visible=eggs.filter(e=>e.status!=='transferred'&&(!character||e.gameAccountKey===character)&&(!query||name(e.eggGameId).includes(query))&&matchesFilter(e))
-    .sort((a,b)=>Number(b.provenance==='self-bred')-Number(a.provenance==='self-bred')||Number(Boolean(b.greenNest))-Number(Boolean(a.greenNest)));
+    .sort((a,b)=>Number(selfProduced(b))-Number(selfProduced(a))||Number(Boolean(b.greenNest))-Number(Boolean(a.greenNest)));
   const egg=eggs.find(e=>e.id===selected);
   const selectedExtraNatures=natures.filter(value=>!targetNatureNames.includes(value));
   const visibleNatures=moreNatures?allNatureNames:targetNatureNames;
@@ -160,7 +165,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
             {e.greenNest?<img data-testid="stock-green-nest" src={GREEN_NEST_ICON} alt="绿窝" className="size-3.5 shrink-0 object-contain"/>:null}
           </span>
           <span className="flex min-w-0 items-center justify-end">
-            {e.provenance==='self-bred'?<span data-testid="stock-self-badge" className="truncate rounded bg-emerald-50 px-1 py-px text-[8.5px] font-semibold leading-none text-emerald-700">自产</span>:null}
+            {selfProduced(e)?<span data-testid="stock-self-badge" className="truncate rounded bg-emerald-50 px-1 py-px text-[8.5px] font-semibold leading-none text-emerald-700">自产</span>:null}
           </span>
         </div>
         <div data-testid="stock-card-body" className="flex w-full min-w-0 flex-col items-center px-0.5 pb-0.5">
@@ -172,7 +177,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
           {status(e)?<span className={'mt-0.5 w-full text-center text-[10px] leading-5 '+(special(e)?'bg-slate-100 text-slate-500':e.provenance==='self-bred'?'bg-emerald-50 text-emerald-700':e.listed?'bg-emerald-50 text-emerald-700':'bg-slate-50 text-slate-500')}>{status(e)}</span>:null}
         </div>
       </button>;
-    })}</div>:<div className="py-6 text-center text-xs text-slate-500">{eggs.length?'没有符合的蛋':'暂无已采集的蛋'}</div>;
+    })}</div>:<div className="py-6 text-center text-xs text-slate-500">{eggs.length?(character&&!eggs.some(e=>e.gameAccountKey===character)?'这个角色还没有蛋':'没有符合的蛋'):'暂无已采集的蛋'}</div>;
   return <div
     className={'flex flex-col gap-2'+(rail?' egg-stock-scope':'')}
     data-rail-collapsed={rail?(railCollapsed?'true':'false'):undefined}
@@ -214,7 +219,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
       <Button variant="secondary" size="sm" busy={busy} onClick={()=>labeling?run({type:'label',id:egg.id,...labelValues(egg)},()=>setLabeling(false)):beginLabeling(egg)}>标注此蛋</Button>
       <Button variant="secondary" size="sm" busy={busy} onClick={()=>run({type:'label-many',eggGameId:egg.eggGameId,...labelValues(egg)},()=>setLabeling(false))}>标注所有同类蛋</Button>
       <Button size="sm" busy={busy} disabled={egg.location==='home'} title={egg.location==='home'?'收进背包后才能挂出':undefined} onClick={()=>run({type:'list',id:egg.id,listed:!egg.listed})}>{egg.listed?'取消挂出':'挂出'}</Button>
-    </div>{egg.location==='home'?<p className="mt-1 text-center text-[11px] text-slate-500">在地家园，收进背包后才能挂出</p>:null}
+    </div>{egg.location==='home'?<p className="mt-1 text-center text-[11px] text-slate-500">收进背包后才能挂出</p>:null}
     </>:<span className="text-sm text-slate-500">{status(egg)}</span>}</div>}>
       <div className={`grid gap-1.5 p-2.5 text-sm ${landscape ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] items-start' : 'grid-cols-1'}`}>
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -232,7 +237,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
               <EggMedals body={egg.body} voice={egg.voice}/>
             </div>
             <div className="truncate text-[10px] leading-4 text-slate-400">
-              {egg.accountName||egg.gameAccountKey} · {egg.provenance==='self-bred'?'自产':egg.provenance==='external'?'外部':'来源未知'}
+              {egg.accountName||egg.gameAccountKey} · {selfProduced(egg)?'自产':egg.provenance==='external'?'外部':'来源未知'}
             </div>
           </div>
         </div>
