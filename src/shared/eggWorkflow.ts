@@ -126,6 +126,20 @@ const hasVoice = (egg: WorkflowEgg): boolean => !!egg.voice && egg.voice !== 'un
 const hasNature = (egg: WorkflowEgg): boolean => !!egg.nature && !!egg.nature.trim();
 
 /**
+ * 父母里住在学院小窝（绿窝）的那只。
+ *
+ * 绿窝是「父母中只要有一只在学院小窝」就成立的事实（2026-11-25 用户截图：母本学院小窝 +
+ * 父本普通小窝，列表徽标没出来）。以前抓包入口把它绑在「恰好一只且它有性格」上，
+ * 入库漏写时也没有回填，所以这里给展示与合并回填共用一份判定。
+ */
+export function academyParentsOf(parents: EggParentsInfo | undefined): EggParentInfo[] {
+  return [parents?.mother, ...(parents?.fathers ?? [])]
+    .filter((parent): parent is EggParentInfo => !!parent && parent.academy === true);
+}
+export const hasAcademyParent = (parents: EggParentsInfo | undefined): boolean =>
+  academyParentsOf(parents).length > 0;
+
+/**
  * 自动挂出：蛋在背包 **且** 信息完整（获得时间 / 蛋重 / 蛋高 / 声音 / 性格 五项都有）。
  *
  * 口径（用户 2026-11-24 定，别扩条件）：
@@ -281,6 +295,11 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         if (confirmed > 0) egg.lastConfirmedAt = confirmed;
         egg.listed = before.listed && canCirculateEgg(egg);
       }
+    }
+    // 历史蛋可能只写了父母、漏了绿窝标记（rc 入库早期 / 抓包把绿窝绑在性格上）：
+    // 按父母回填 true；已有值（含用户手动取消的 false）一律不动。
+    for (const egg of accepted) {
+      if (egg.greenNest === undefined && hasAcademyParent(egg.parents)) egg.greenNest = true;
     }
     for (const egg of old) {
       if (sideApplied(egg) && sideComplete(egg) && !accepted.some(n => n.id === egg.id)) {

@@ -1,4 +1,5 @@
 import { canCirculateEgg, type EggRecord } from '../../shared/eggMatching';
+import { hasAcademyParent } from '../../shared/eggWorkflow';
 
 /** Normalized trusted-adapter input, not raw capture JSON or user-edited form data. */
 export type EggObservation = Pick<EggRecord, 'id' | 'eggGameId' | 'nature' | 'body' | 'voice'> &
@@ -177,6 +178,11 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
       egg.listed = !!old?.listed && canCirculateEgg(egg);
       next.set(egg.id, egg);
     }
+  }
+  // 历史蛋可能只写了父母、漏了绿窝标记：按父母回填 true；显式 false（用户手动取消）与普通小窝不动。
+  // copy-on-write：`next` 里可能有直接引用旧 state 的行，不能原地改。
+  for (const [id, egg] of next) {
+    if (egg.greenNest === undefined && hasAcademyParent(egg.parents)) next.set(id, { ...egg, greenNest: true });
   }
   return { eggs: [...state.eggs.filter(e => e.accountId !== snapshot.accountId), ...next.values()],
     captureWatermarks: { ...state.captureWatermarks, [accountKey]: snapshot.capturedAt }, provenanceHistory: history };

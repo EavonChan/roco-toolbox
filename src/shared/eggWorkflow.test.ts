@@ -152,6 +152,31 @@ test('stock sync cannot erase self-bred provenance or concrete egg labels', () =
   expect(state.eggs[0]).toMatchObject({ provenance: 'self-bred', greenNest: true });
 });
 
+test('stock sync backfills green nest from parents without overriding manual opt-out', () => {
+  const parents = {
+    mother: { id: 'm', gameId: 3124, name: '脆筒甜甜', nature: '胆小', body: '大块头', voice: '+100', nestName: '学院小窝', academy: true },
+    fathers: [{ id: 'f', gameId: 3124, name: '脆筒甜甜', nature: '胆小', body: '大块头', voice: '婉转声', nestName: '普通小窝' }],
+    confirmed: false,
+  };
+  const syncEgg = (at: number) => applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: at, complete: true,
+    eggs: [{ ...stock('e', 3124), parents }],
+  }, at);
+  // 历史蛋：父母里有学院小窝、蛋上没 greenNest → 回填
+  let state = syncEgg(1);
+  expect(state.eggs[0].greenNest).toBe(true);
+  // 走一遍手动取消，再同步（父母仍是学院小窝）→ 保持 false
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'label', id: 'e', nature: '胆小', body: '大块头', voice: '婉转声', greenNest: false,
+  }, 2);
+  expect(state.eggs[0].greenNest).toBe(false);
+  const resynced = applyEggAction(state, 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 3, complete: true,
+    eggs: [{ ...stock('e', 3124), parents }],
+  }, 3);
+  expect(resynced.eggs[0].greenNest).toBe(false);
+}, 10_000);
+
 test('manual labels include green nest and preserve concrete unavailable category', () => {
   let state = applyEggAction(initial(), 'g', 'a', {
     type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,

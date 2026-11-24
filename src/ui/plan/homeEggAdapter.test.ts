@@ -57,6 +57,39 @@ describe('home egg adapter', () => {
     expect(homeStockFromSnapshot(base)!.eggs[0].nature).toBe('胆小');
   });
 
+  /**
+   * 绿窝标记只看「父母里有没有那只住学院小窝的」，不绑性格、也不要求恰好一只：
+   * 用户截图就是母本学院小窝 + 父本普通小窝，列表徽标没出来。
+   */
+  test('green nest flag follows any academy parent, not exactly one and not the nature', () => {
+    const greenOf = (residents: ReturnType<typeof resident>[], nests: ReturnType<typeof nest>[]) =>
+      homeStockFromSnapshot(snapshot({}, { residents, nests }))!.eggs[0].greenNest;
+    const motherAcademy = resident({ nest: { furnitureGuid: 'nest1', configId: 1, nestType: 'academy', nestName: '学院小窝' } });
+    const fatherOrdinary = resident({ instanceId: '22', actorId: 'a2', name: '海豹战士', gender: '公', furnitureGuid: 'nest2',
+      nest: { furnitureGuid: 'nest2', configId: 2, nestType: 'ordinary', nestName: '普通小窝' } });
+    // 脆筒甜甜组合：母本在学院小窝、父本普通小窝
+    expect(greenOf([motherAcademy, fatherOrdinary], [nest('nest1', 'academy', '学院小窝'), nest('nest2', 'ordinary', '普通小窝')])).toBe(true);
+    // 双亲都在学院小窝
+    expect(greenOf([motherAcademy, { ...fatherOrdinary, nest: { furnitureGuid: 'nest2', configId: 2, nestType: 'academy', nestName: '学院小窝' } }],
+      [nest('nest1', 'academy', '学院小窝'), nest('nest2', 'academy', '学院小窝')])).toBe(true);
+    // 双亲都普通小窝
+    expect(greenOf([{ ...motherAcademy, nest: null }, fatherOrdinary], [nest('nest1', 'ordinary', '普通小窝'), nest('nest2', 'ordinary', '普通小窝')])).toBe(false);
+    // 学院那只是父本、且它的性格没采到 → 绿窝仍要算
+    const unknownNatureFather = snapshot({
+      pets: [pet({}), pet({ gameId: 3215, name: '海豹战士', captureId: 'capture_1001_22', gender: '公', nature: '', voiceDb: 96 })],
+    }, {
+      residents: [
+        resident({}),
+        resident({ instanceId: '22', actorId: 'a2', name: '海豹战士', gender: '公', furnitureGuid: 'nest2',
+          nest: { furnitureGuid: 'nest2', configId: 2, nestType: 'academy', nestName: '学院小窝' } }),
+      ],
+      nests: [nest('nest1', 'ordinary', '普通小窝'), nest('nest2', 'academy', '学院小窝')],
+    });
+    const unknown = homeStockFromSnapshot(unknownNatureFather)!.eggs[0];
+    expect(unknown.greenNest).toBe(true);
+    expect(unknown.nature).toBe('');
+  });
+
   test('same-nature parents give a 60% nature; voice averages toward zero', () => {
     const base = snapshot({
       pets: [pet({ voiceDb: 99 }), pet({ gameId: 3215, name: '海豹战士', captureId: 'capture_1001_22', gender: '公', nature: '保守', voiceDb: 100 })],

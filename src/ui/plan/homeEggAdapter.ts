@@ -29,6 +29,7 @@ export interface HomeStockResult {
 
 const cfgToPet = cfgPetMap as Record<string, number>;
 
+/** 声音分贝 → 蛋仓现有档位（与 `eggInventory` 的背包蛋口径一致）。 */
 export { voiceLabelOf };
 
 /** 背包精灵按家园实例 id 建索引：`capture_<uid>_<instanceId>`（与 `Home.tsx` 同口径）。 */
@@ -138,9 +139,15 @@ export function homeStockFromSnapshot(snapshot: AccountSnapshot, _accountId?: st
     if (!eggGameId) { unresolvedCount++; continue; }
     const motherInfo = parents?.mother;
     const fatherInfos = parents?.fathers ?? [];
-    // 绿窝：学院小窝那只自己的性格 100% 遗传（§8.3）。
-    const academy = [motherInfo, ...fatherInfos].filter((item): item is EggParentInfo => !!item && item.academy === true && !!item.nature);
-    const nature = academy.length === 1 ? academy[0].nature
+    /**
+     * 绿窝（学院小窝）：父母里**只要有一只**住在学院小窝就是绿窝蛋，不要求恰好一只、也不要求它有性格
+     * （2026-11-25 用户截图：母本学院小窝 + 父本普通小窝，旧代码 `academy.length === 1` 把标记丢了）。
+     */
+    const academyParents = [motherInfo, ...fatherInfos].filter((item): item is EggParentInfo => !!item && item.academy === true);
+    // 性格：学院小窝那只 100% 遗传（§8.3）；有学院亲本但性格缺失/互相冲突时留空，不拿普通亲本顶替。
+    const academyNatures = [...new Set(academyParents.map((item) => item.nature).filter((value): value is string => !!value))];
+    const nature = academyParents.length > 0
+      ? (academyNatures.length === 1 ? academyNatures[0] : '')
       : motherInfo?.nature && fatherInfos.length && fatherInfos.every((father) => father.nature === motherInfo.nature)
         ? motherInfo.nature : '';
     // 声音：(父 + 母) / 2 向零取整；多父本必须推出同一个档位。
@@ -167,7 +174,8 @@ export function homeStockFromSnapshot(snapshot: AccountSnapshot, _accountId?: st
       body,
       voice: (voiceValue || 'unknown') as EggObservation['voice'],
       provenance: 'self-bred',
-      ...(academy.length === 1 ? { greenNest: true } : {}),
+      // 蛋在家园里就能判定窝类型：学院小窝 → true，普通小窝 → false（不是缺失）。
+      greenNest: academyParents.length > 0,
       confidence: labeled ? 'system' : 'unknown',
       labelSource: labeled ? 'system' : 'unknown',
       kind: 'ordinary',

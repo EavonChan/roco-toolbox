@@ -156,6 +156,26 @@ describe('egg stock snapshots', () => {
     expect(homeRefresh.eggs[0]).toMatchObject({ greenNest: true });
   });
 
+  test('历史蛋缺绿窝标记时按父母回填：显式 false（手动取消）与普通小窝都不动', () => {
+    const parents = {
+      mother: { id: 'm', gameId: 3124, name: '脆筒甜甜', nature: '胆小', body: '大块头', voice: '+100', nestName: '学院小窝', academy: true },
+      fathers: [{ id: 'f', gameId: 3124, name: '脆筒甜甜', nature: '胆小', body: '大块头', voice: '婉转声', nestName: '普通小窝' }],
+      confirmed: false,
+    };
+    const backfilled = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'h1', location: 'home', nature: '胆小', parents })]) });
+    expect(backfilled.eggs[0].greenNest).toBe(true);
+    const manualOptOut = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'h2', location: 'home', nature: '胆小', greenNest: false, parents })]) });
+    expect(manualOptOut.eggs[0].greenNest).toBe(false);
+    const ordinaryParents = { ...parents,
+      mother: { ...parents.mother, nestName: '普通小窝', academy: undefined },
+      fathers: [{ ...parents.fathers[0] }] };
+    const ordinary = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'h3', location: 'home', nature: '胆小', parents: ordinaryParents })]) });
+    expect(ordinary.eggs[0].greenNest).toBeUndefined();
+  });
+
   test('a captured bag egg fills the unique self-bred home egg instead of replacing it', () => {
     const home = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'home1', location: 'home' })]) });

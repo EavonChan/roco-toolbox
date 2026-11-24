@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SpeciesEntry } from '../../domain/types';
-import type { WorkflowEgg } from '../../shared/eggWorkflow';
+import { academyParentsOf, hasAcademyParent, type WorkflowEgg } from '../../shared/eggWorkflow';
 import { canCirculateEgg, type EggParentInfo } from '../../shared/eggMatching';
 import { eggWeightOf } from '../../domain/eggWeight';
 import { DEMAND_NATURE_MAX, type DemandBody, type DemandVoice } from '../../shared/collectionGroups';
@@ -47,7 +47,7 @@ function eggNatureNames(value:string):string[] {
  */
 function possibleEggNatures(e:WorkflowEgg):string[] {
   const parents=[e.parents?.mother,...(e.parents?.fathers??[])].filter((p):p is EggParentInfo=>!!p);
-  const academy=parents.filter(p=>p.academy===true);
+  const academy=academyParentsOf(e.parents);
   if(academy.length===1)return academy[0].nature?[academy[0].nature]:[];
   return [...new Set(parents.map(p=>p.nature).filter((nature):nature is string=>!!nature))];
 }
@@ -63,7 +63,7 @@ function eggNatureText(e:WorkflowEgg):string {
  */
 function isGreenNestEgg(e:WorkflowEgg):boolean {
   if(e.greenNest!==undefined)return e.greenNest;
-  return [e.parents?.mother,...(e.parents?.fathers??[])].some(p=>p?.academy===true);
+  return hasAcademyParent(e.parents);
 }
 function formatEggHeight(heightCm?:number):string {
   if(typeof heightCm!=='number'||!Number.isFinite(heightCm)||heightCm<=0)return '未采集';
