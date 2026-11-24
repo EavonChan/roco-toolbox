@@ -64,12 +64,14 @@ export interface RailAsideProps {
   back?: { label: string; onClick: () => void };
   /** 标题下方追加的内容（分区导航等） */
   children?: ReactNode;
+  /** 新手引导锚点（data-tour）：横屏把顶栏收进标题栏的页，锚点跟着搬过来 */
+  tour?: string;
   testIds?: RailTestIds;
 }
 
-export function RailAside({ title, hideTitle = false, collapse, back, children, testIds }: RailAsideProps) {
+export function RailAside({ title, hideTitle = false, collapse, back, children, tour, testIds }: RailAsideProps) {
   return (
-    <aside className="rail-aside" data-testid={testIds?.aside} aria-label={`${title}标题栏`}>
+    <aside className="rail-aside" data-testid={testIds?.aside} data-tour={tour} aria-label={`${title}标题栏`}>
       {back ? (
         <button
           type="button"
