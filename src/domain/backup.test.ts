@@ -7,7 +7,7 @@ import {
   parseToolboxBackup,
 } from './backup';
 import type { AccountSnapshot } from './parseBackup';
-import type { HomeSnapshot } from './types';
+import type { HomeSnapshot, OwnedPet } from './types';
 
 /** 账号名 → 稳定的假 UID（真实场景 UID 唯一；测试里按名字派生，保证不同账号不同主键） */
 const gameIdOf = (name: string): number =>
@@ -336,5 +336,147 @@ describe('mergeSnapshots 多设备合并', () => {
     // 主键从 name: 升级成 uid:，只留一份
     expect(result.snapshots).toHaveLength(1);
     expect(result.snapshots[0].gameId).toBe(gameIdOf('测试甲'));
+  });
+});
+
+/**
+ * 三维（`individualBonuses` / `rawFields`）跨快照保留（2026-11-24）：
+ * 整份快照仍按「数据时刻」取较新，但三维这两个字段要按宠物身份做字段级保留——
+ * 正式版客户端上传的快照不带三维，不能因为时间更新就把本机已有的三维抹掉。
+ */
+describe('三维字段跨快照保留', () => {
+  /** 一只带身份（captureId）的宠物；三维按需给，用来区分「新客户端 / 旧客户端」两份快照 */
+  const ownedPet = (captureId: string, name: string, extra: Partial<OwnedPet> = {}): OwnedPet => ({
+    gameId: 3001,
+    name,
+    captureId,
+    gender: '母',
+    nature: '固执',
+    voiceDb: 100,
+    medalBody: '',
+    isShiny: false,
+    account: '测试甲',
+    ...extra,
+  });
+
+  const snapshotOfPets = (when: string, pets: OwnedPet[]): AccountSnapshot => ({
+    ...at('测试甲', when, 0),
+    pets,
+  });
+
+  const withBonuses = (): Partial<OwnedPet> => ({
+    individualBonuses: [
+      { name: '物攻', value: 8 },
+      { name: '速度', value: 10 },
+    ],
+    rawFields: { bytes: { '14': ['0a023800120238081a023809220238002a0238003202380a'] } },
+  });
+
+  test('旧快照（无三维）+ 新快照（有三维）→ 合并结果保留三维', () => {
+    const old = snapshotOfPets('2026-11-22T00:00:00.000Z', [ownedPet('c1', '甲兽')]);
+    const fresh = snapshotOfPets('2026-11-23T00:00:00.000Z', [ownedPet('c1', '甲兽', withBonuses())]);
+
+    const merged = mergeSnapshots([old], [fresh], { tieBreak: 'incoming' });
+    expect(merged.updated).toEqual(['测试甲']);
+    expect(merged.snapshots[0].pets[0].individualBonuses).toEqual([
+      { name: '物攻', value: 8 },
+      { name: '速度', value: 10 },
+    ]);
+    expect(merged.snapshots[0].pets[0].rawFields).toEqual(withBonuses().rawFields);
+  });
+
+  test('新快照（无三维）覆盖旧快照（有三维）→ 三维不被抹掉', () => {
+    // 云同步：平局取云端（tieBreak: 'incoming'），云端是正式版上传的、不带三维的那份
+    const cloud = snapshotOfPets('2026-11-23T00:00:00.000Z', [ownedPet('c1', '甲兽')]);
+    const local = snapshotOfPets('2026-11-22T00:00:00.000Z', [ownedPet('c1', '甲兽', withBonuses())]);
+
+    const synced = mergeSnapshots([local], [cloud], { tieBreak: 'incoming' });
+    expect(synced.updated).toEqual(['测试甲']);
+    const syncedPet = synced.snapshots[0].pets[0];
+    expect(syncedPet.individualBonuses).toEqual([
+      { name: '物攻', value: 8 },
+      { name: '速度', value: 10 },
+    ]);
+    expect(syncedPet.rawFields).toEqual(withBonuses().rawFields);
+    // 整份快照仍是「新的那份」，三维只是被字段级补回
+    expect(synced.snapshots[0].exportedAt).toBe('2026-11-23T00:00:00.000Z');
+
+    // 备份导入：默认平局保留本机，但新快照更新时同样不能把三维抹掉
+    const imported = mergeSnapshots([local], [cloud]);
+    expect(imported.updated).toEqual(['测试甲']);
+    expect(imported.snapshots[0].pets[0].individualBonuses).toEqual([
+      { name: '物攻', value: 8 },
+      { name: '速度', value: 10 },
+    ]);
+    expect(imported.snapshots[0].exportedAt).toBe('2026-11-23T00:00:00.000Z');
+  });
+
+  test('只补字段不增删宠物：旧快照独有的精灵不会被带回来（放生不复活）', () => {
+    const local = snapshotOfPets('2026-11-22T00:00:00.000Z', [
+      ownedPet('c1', '甲兽', withBonuses()),
+      ownedPet('c2', '已放生', withBonuses()),
+    ]);
+    const incoming = snapshotOfPets('2026-11-23T00:00:00.000Z', [ownedPet('c1', '甲兽')]);
+
+    const merged = mergeSnapshots([local], [incoming], { tieBreak: 'incoming' });
+    expect(merged.snapshots[0].pets.map((pet) => pet.name)).toEqual(['甲兽']);
+    expect(merged.snapshots[0].pets[0].individualBonuses).toEqual([
+      { name: '物攻', value: 8 },
+      { name: '速度', value: 10 },
+    ]);
+  });
+
+  test('备份清洗后三维仍在；rawFields 只白名单保留 bytes["14"]', () => {
+    const parsed = parseToolboxBackup({
+      type: BACKUP_TYPE,
+      accounts: [
+        {
+          accountName: '测试甲',
+          gameId: 1001,
+          exportedAt: '2026-11-24T00:00:00.000Z',
+          importedAt: '2026-11-24T00:00:00.000Z',
+          eggs: [],
+          pets: [
+            {
+              gameId: 1,
+              name: '甲兽',
+              individualBonuses: [{ name: '物攻', value: 8 }],
+              // 全量协议字段不能原样存（体积）：只留三维用到的 bytes["14"]，其余键丢掉
+              rawFields: {
+                int: { '1': [42] },
+                bytes: { '1': ['aabb'], '14': ['0a023800120238081a023809220238002a0238003202380a'] },
+                fieldCount: 3,
+                occurrences: 1,
+                source: { from: 'pcap' },
+              },
+            },
+            {
+              gameId: 2,
+              name: '乙兽',
+              rawFields: { bytes: { '14': ['0a023800120238081a023809220238002a0238003202380a'] } },
+            },
+            { gameId: 3, name: '丙兽' },
+          ],
+        },
+      ],
+    });
+
+    const [first, second, third] = parsed.accounts[0].pets;
+    expect(first.individualBonuses).toEqual([{ name: '物攻', value: 8 }]);
+    expect(first.rawFields).toEqual({
+      bytes: { '14': ['0a023800120238081a023809220238002a0238003202380a'] },
+    });
+    // 只有 rawFields、没有 individualBonuses 的老备份 → 从 field 14 解出数值
+    expect(second.individualBonuses).toEqual([
+      { name: '物攻', value: 8 },
+      { name: '魔攻', value: 9 },
+      { name: '速度', value: 10 },
+    ]);
+    expect(second.rawFields).toEqual({
+      bytes: { '14': ['0a023800120238081a023809220238002a0238003202380a'] },
+    });
+    // 两个字段都没有 → 不伪造
+    expect(third.individualBonuses).toBeUndefined();
+    expect(third.rawFields).toBeUndefined();
   });
 });

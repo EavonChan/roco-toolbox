@@ -353,8 +353,12 @@ export function PairingPetCard({
   /**
    * 家园卡底部的个体三维（2026-11-22 用户口径）：固定三格一行，
    * 按抓包里的实际三维填，缺的那格留空（没有三维数据时整行留空）。
+   *
+   * 2026-11-24：区分「这份快照没采到三维」与「这三项真的没加成」——
+   * 一项都没有时三格写「—」并给 tooltip，用户能看出是没采到，而不是这版没这功能。
    */
   const bonuses = home ? sortIndividualBonuses(pet.individualBonuses ?? []).slice(0, 3) : [];
+  const bonusesMissing = home && bonuses.length === 0;
 
   return (
     <article
@@ -450,6 +454,7 @@ export function PairingPetCard({
         <div
           className="absolute inset-x-0 bottom-0 flex h-4 divide-x divide-slate-300/70 border-t border-slate-300/60 text-center text-[8px] leading-none text-slate-600"
           data-testid="breed-pet-stats"
+          title={bonusesMissing ? '该快照未采集个体三维' : undefined}
         >
           {[0, 1, 2].map((index) => {
             const bonus = bonuses[index];
@@ -459,7 +464,7 @@ export function PairingPetCard({
                 className="flex w-1/3 min-w-0 items-center justify-center"
                 data-testid={`breed-pet-stat-${index}`}
               >
-                {bonus ? `${bonus.name}+${bonus.value}` : ''}
+                {bonus ? `${bonus.name}+${bonus.value}` : bonusesMissing ? '—' : ''}
               </span>
             );
           })}

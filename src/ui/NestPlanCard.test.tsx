@@ -7,7 +7,7 @@ import {
   type NestTier,
 } from '../domain/nestPlan';
 import type { MotherNestPairing, MotherNestTask } from '../domain/motherNest';
-import { NestPlanCard } from './NestPlanCard';
+import { NestPlanCard, PairingPetCard, type PairCardPet } from './NestPlanCard';
 import { resetNestPicksForTest } from './nestPicksStore';
 
 /** 勾选占窝是模块级 store + localStorage：每个用例从 0 开始，避免串味 */
@@ -1405,5 +1405,46 @@ describe('单选账号时把“别人补我”的线算进本号（2026-11-24）
     // 回到本号：仍然 0 窝，跨号卡不占本号
     fireEvent.click(screen.getByRole('button', { name: /账号甲/ }));
     expect(screen.getByTestId('breed-account-name')).toHaveTextContent('用 0/11 个窝');
+  });
+});
+
+/** 家园卡底部的个体三维（2026-11-24）：缺数据要能看出来，不能静默留白 */
+describe('家园卡三维渲染兜底', () => {
+  const homePet = (extra: Partial<PairCardPet> = {}): PairCardPet => ({
+    key: 'home-1',
+    gameId: 3001,
+    name: '甲兽',
+    gender: '公',
+    nature: '固执',
+    ...extra,
+  });
+
+  test('没有三维数据时三格显示「—」，行上带「未采集」说明', () => {
+    render(<PairingPetCard pet={homePet()} collectedGroupIds={new Set()} home />);
+
+    const texts = [0, 1, 2].map((index) => screen.getByTestId(`breed-pet-stat-${index}`).textContent);
+    expect(texts).toEqual(['—', '—', '—']);
+    // 用户能分清「没采到」和「这版没这功能」
+    expect(screen.getByTestId('breed-pet-stats').getAttribute('title')).toContain('未采集');
+  });
+
+  test('有三维时照常显示，缺的那一项才算「真的没加成」（留白，不写「—」）', () => {
+    render(
+      <PairingPetCard
+        pet={homePet({
+          individualBonuses: [
+            { name: '物攻', value: 8 },
+            { name: '速度', value: 10 },
+          ],
+        })}
+        collectedGroupIds={new Set()}
+        home
+      />,
+    );
+
+    expect(screen.getByTestId('breed-pet-stat-0')).toHaveTextContent('物攻+8');
+    expect(screen.getByTestId('breed-pet-stat-1')).toHaveTextContent('速度+10');
+    expect(screen.getByTestId('breed-pet-stat-2').textContent).toBe('');
+    expect(screen.getByTestId('breed-pet-stats').getAttribute('title')).toBeNull();
   });
 });
