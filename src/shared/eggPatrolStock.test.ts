@@ -224,9 +224,9 @@ describe('recordIngestedHomeEggs', () => {
     };
     const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', [{ egg: academyEgg, eggGameId: 3062 }], 1000, index);
     expect(first.state.eggs[0]).toMatchObject({ nature: '固执', greenNest: true });
-    // 双亲都在学院小窝
-    const bothAcademy = { ...academyEgg, fathers: [{ ...academyEgg.fathers[0], nestConfigId: 1001072 }] };
-    expect(recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', [{ egg: bothAcademy, eggGameId: 3062 }], 1000, index)
+    // 反向：父本在学院小窝、母本普通小窝 → 仍算绿窝（学院小窝一个家园只有一个，双亲同在一个不可能出现）
+    const fatherAcademy = { ...academyEgg, mother: { ...academyEgg.mother!, nestConfigId: 1001071 }, fathers: [{ ...academyEgg.fathers[0], nestConfigId: 1001072 }] };
+    expect(recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', [{ egg: fatherAcademy, eggGameId: 3062 }], 1000, index)
       .state.eggs[0].greenNest).toBe(true);
     // 双亲都普通小窝 → 不许误标
     const ordinary = { ...academyEgg, mother: { ...academyEgg.mother!, nestConfigId: 1001071 } };
