@@ -51,12 +51,6 @@ span {
 .dashboard-left-tools { display: none; }
 .collection-rail-toggle { display: none; }
 
-/* 家园竖屏：一张卡里三只（学院 1:2）改成两列排，保持和普通配窝卡一样的宽高比；
-   三列会把卡片压成 107px 宽、子代性格那行换行（2026-11-21 用户口径）。 */
-@media (orientation: portrait) {
-  [data-testid="home-pair-triple"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
 /* ==========================================================================
    横屏 / 平板适配（2026-11-21）
    竖屏完全不受影响：所有规则都包在 (orientation: landscape) 里。
@@ -222,13 +216,9 @@ span {
   /* ---- 家园：标题上方不留白；「按游戏实际配对」对齐第一张配窝卡右缘 ---- */
   div.mx-auto.max-w-md { padding-top: 0; }
   header[data-testid="home-header"] { margin-bottom: 0.4rem; }
-  /* 精灵卡：宽度固定、比例不变；三只一组就并排三张（不压扁卡片） */
-  [data-testid="home-pair-triple"] { grid-template-columns: repeat(3, 10rem); align-items: end; }
+  /* 精灵卡：宽度固定、比例不变；三只一组横排一行（2026-11-22 用户口径） */
   [data-testid="home-pair-card"] > div.grid.grid-cols-2 {
     grid-template-columns: repeat(2, 10rem); align-items: start;
-  }
-  [data-testid="home-pair-card"] .grid.grid-cols-3 {
-    grid-template-columns: repeat(3, 10rem); align-items: end;
   }
   /* 卡头标签换行时自动缩字号，避免把卡顶撑高（2026-11-21 用户口径） */
   [data-testid="home-pair-head"],
@@ -380,18 +370,46 @@ span {
    手机横屏高度只有 360~540，一行两列少滚动；宽屏高度 720 以上空间够，保持单列。
    宽度不到 760 时两列会横向溢出（每只卡 10rem 不压缩），所以仍回退单列。 */
 @media (orientation: landscape) and (max-height: 600px) and (min-width: 760px) {
+  /* 配窝卡按内容宽自动换行：三只一组的卡独占一行，两只一组的卡一行两列（2026-11-22 用户口径）。
+     外层容器要占满内容宽，否则 fit-content 会被最宽的三只卡撑成单列，两只的卡挤不到同一行。 */
+  [data-testid="home-pair-cards"] { width: 100%; max-width: 100%; }
   [data-testid="home-pair-card-list"] {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 0.75rem;
+    row-gap: 0.35rem;
+    width: 100%;
+    max-width: 100%;
+  }
+  /* space-y 的 margin 在横排里会把下一行整体压低，这里交回 row-gap 控制 */
+  [data-testid="home-pair-card-list"] > * { margin-top: 0 !important; }
+}
+
+/* ---- 两列三只 + 右侧竖排两只（2026-11-22 用户口径） ----
+   手机横屏放不下两个三只组（473×2 > 714），但放得下「三只 + 竖排两只」（约 650）。
+   左侧正常往下排，竖排那只固定到第二列并跨前两行；更宽的屏走上面的自动换行。 */
+@media (orientation: landscape) and (max-height: 600px) and (min-width: 800px) and (max-width: 1080px) {
+  [data-testid="home-pair-card-list"][data-layout="split"] {
     display: grid;
-    grid-template-columns: repeat(2, max-content);
+    grid-template-columns: max-content max-content;
     column-gap: 0.75rem;
     row-gap: 0.35rem;
     align-items: start;
-    justify-content: start;
-    width: max-content;
+    align-content: start;
+    width: 100%;
     max-width: 100%;
   }
-  /* space-y 的 margin 在网格里会把第二列整体压低，这里交回 row-gap 控制 */
-  [data-testid="home-pair-card-list"] > * { margin-top: 0 !important; }
+  [data-testid="home-pair-card-list"][data-layout="split"] > li {
+    grid-column: 1;
+    margin-top: 0 !important;
+  }
+  [data-testid="home-pair-card-list"][data-layout="split"] > li[data-layout="vertical"] {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+  }
 }
 
 /* ---- 收集 · 母本：蛋组一行两个分组，卡片缩小（2026-11-21 用户口径） ----
