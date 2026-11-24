@@ -136,7 +136,8 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
     for (const row of rows.results) {
       if (typeof input.groupId === 'string' && row.group_id !== input.groupId) continue;
       if (typeof input.bindingVersion === 'string' && row.binding_version !== input.bindingVersion) continue;
-      if ((row.side === 'reminder' || row.side.startsWith('exchange-')) && row.status !== 'pending') continue;
+      // 过期的租约（消息没发出去 / ack 丢了）必须能重新领走；bot 侧按 event_id 去重，
+      // 不会重复发。租约 2 分钟，这里只处理 lease_until 已过期的行。
       if (!(await currentNotification(env.DB, row, tasks))) continue;
       const lease = newToken();
       const result = await env.DB.prepare(`UPDATE egg_patrol_notifications SET status='leased',lease_token=?,lease_until=?
