@@ -83,7 +83,7 @@ function MothersBranch({
   const accountNames = accounts.filter((name) => !excluded.has(name));
   /** 悬浮窗与看板共用同一份母本建议（2026-11-19） */
   const { suggestions, targetLabel, bodyMedal, voiceTarget, voiceDb, weightPercent } =
-    useMotherSuggestions(summary);
+    useMotherSuggestions(summary, accountNames);
 
   return (
     <main className="mx-auto max-w-md space-y-2 p-3">

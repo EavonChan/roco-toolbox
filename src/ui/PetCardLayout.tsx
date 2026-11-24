@@ -47,7 +47,7 @@ export interface PetCardLayoutProps {
 export type PetCardSize = 'default' | 'tall' | 'gap' | 'suggest' | 'compact';
 
 /** 收集页母本卡的收集状态：未收集 / 计划中 / 已收集（2026-11-21 用户口径）。 */
-export type PetCardStatus = 'uncollected' | 'planned' | 'collected';
+export type PetCardStatus = 'uncollected' | 'planned' | 'collected' | 'fillable';
 
 /** Shared card frame for pet displays across the app. */
 export function PetCardLayout({
@@ -92,13 +92,14 @@ export function PetCardLayout({
    */
   const compact = size === 'compact';
   /** 与配窝卡（NestPlanCard）同一套性别色：母粉、公蓝、未知灰；
-   *  收集页母本卡传 status 时按收集状态上色（未收集白底 / 计划中淡蓝 / 已收集淡绿） */
+   *  收集页母本卡传 status 时按收集状态上色（未收集白底 / 计划中淡蓝 / 已收集淡绿 /
+   *  可补浅绿，2026-11-24） */
   const statusTone =
     status === 'uncollected'
       ? 'border-slate-200 bg-white'
       : status === 'planned'
         ? 'border-sky-200 bg-sky-50'
-        : status === 'collected'
+        : status === 'collected' || status === 'fillable'
           ? 'border-emerald-200 bg-emerald-50'
           : null;
   const genderTone = academy

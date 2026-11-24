@@ -146,6 +146,60 @@ describe('母本配窝建议', () => {
     expect(task.chance).toBeCloseTo(0.3);
   });
 
+  test('跨号传蛋不再在数据层截成 5 条（2026-11-24 用户口径）', () => {
+    // 6 颗蛋各有一对能到 30% 的源号：数据层要把 6 条都给界面，
+    // 界面再按「默认 5 条 + 显示更多」分页；否则界面想展开也没有第 6 条。
+    const eggs: SpeciesEntry[] = Array.from({ length: 6 }, (_, index) => ({
+      key: `many-${index}`,
+      gameId: 820 + index,
+      name: `多蛋${index}`,
+      number: `${820 + index}`,
+      eggGameId: 820 + index,
+      eggGroups: [6],
+      maleCapable: true,
+      genderRatio: { male: 5, female: 5 },
+    }));
+    const petOf = (
+      gameId: number,
+      gender: '公' | '母',
+      account: string,
+    ): OwnedPet => ({
+      gameId,
+      name: eggs.find((egg) => egg.gameId === gameId)!.name,
+      gender,
+      nature: '固执',
+      voiceDb: 100,
+      medalBody: '大块头',
+      account,
+      isShiny: false,
+    });
+    const result = buildMotherNestSuggestions({
+      species: eggs,
+      owned: [
+        petOf(820, '公', '甲'),
+        ...eggs.flatMap((egg) => [
+          petOf(egg.gameId, '母', '乙'),
+          petOf(egg.gameId, '公', '乙'),
+        ]),
+      ],
+      mode: 'perfect',
+      grade: '大婉',
+      criteria,
+      naturesOf: (gameId) =>
+        eggs.some((egg) => egg.gameId === gameId) ? ['固执'] : [],
+      coverageByAccount: new Map([
+        ['甲', coverage(...eggs.map(() => cell(6, '固执')))],
+        ['乙', coverage()],
+      ]),
+      plans: [plan('甲'), plan('乙')],
+    });
+    const tasks = result.get('甲')!.tasks;
+    expect(tasks).toHaveLength(6);
+    expect(new Set(tasks.map((task) => task.eggGameId))).toEqual(
+      new Set(eggs.map((egg) => egg.gameId)),
+    );
+  });
+
   test('2:8 的蛋：性格 60% 也只有 12%（× 出母 20%）→ 不给传蛋，改求助', () => {
     const receiver = mk(802, '公', '固执', '甲');
     const donorMother = mk(802, '母', '固执', '乙');

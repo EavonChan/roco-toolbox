@@ -570,3 +570,93 @@ describe('母本页奖牌显示与判定同源（R2-P1-01）', () => {
 
 
 
+
+describe('单选账号时其他号能补的母本', () => {
+  test('未收集卡显示“其他号可补”统计与角标，弹窗给出来源号', () => {
+    const group: MotherGroup = {
+      chainKey: 'egg:3003',
+      eggGameId: 3003,
+      collected: false,
+      quality: false,
+      motherClass: null,
+      formLabel: '火花',
+      number: '005',
+      eggGroups: [1],
+      memberIndexes: [],
+    };
+    const mother = {
+      key: '洛丝（5号）#1',
+      gameId: 3003,
+      name: '火花',
+      account: '洛丝（5号）',
+      gender: '母' as const,
+      nature: '固执',
+      voiceDb: 100,
+      medalBody: '大块头',
+      box: '盒子1 第1位',
+    };
+    const father = {
+      ...mother,
+      key: '洛丝（5号）#2',
+      gender: '公' as const,
+      box: '盒子1 第2位',
+    };
+    const motherSuggestions = new Map([
+      [
+        '莱茵',
+        {
+          gapCount: 1,
+          pairings: [],
+          tasks: [
+            {
+              account: '莱茵',
+              grade: '大婉' as const,
+              eggGameId: 3003,
+              eggName: '火花',
+              groupIds: [1],
+              recommendedNatures: ['固执'],
+              sourceAccount: '洛丝（5号）',
+              mother,
+              father,
+              natureChance: 0.6,
+              femaleChance: 0.5,
+              chance: 0.3,
+              sameSpecies: true,
+            },
+          ],
+          helps: [],
+          lowPairings: [],
+          nestsUsed: 0,
+        },
+      ],
+    ]);
+
+    render(
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={{ 1: '巨灵组' }}
+        motherGroups={[group]}
+        mode="perfect"
+        status="missing"
+        motherSuggestions={motherSuggestions}
+        accountNames={['莱茵']}
+        gapTarget={{ label: '目标 满分大婉', bodyMedal: '大块头', voiceDb: 100, weightPercent: 100 }}
+      />,
+    );
+
+    expect(screen.getByTestId('mother-fill-summary')).toHaveTextContent('未收集 1');
+    expect(screen.getByTestId('mother-fill-summary')).toHaveTextContent('其他号可补 1');
+    // 2026-11-24 用户口径：不再在右下角塞「可补 30%」，可补卡整卡浅绿，计划条保持原位
+    const row = screen.getByTestId('mother-chain-row');
+    expect(row).toHaveAttribute('data-mother-status', 'fillable');
+    expect(row.querySelector('article')).toHaveClass('bg-emerald-50');
+    expect(within(row).getByTestId('mother-plan-toggle')).toHaveTextContent('计划');
+    expect(within(row).queryByTestId('mother-fill-badge')).toBeNull();
+
+    fireEvent.click(within(row).getAllByRole('button')[0]);
+    const transfer = screen.getByTestId('gap-route-transfer');
+    expect(transfer).toHaveTextContent('洛丝（5号）');
+    expect(transfer).toHaveTextContent('30%');
+  });
+});
