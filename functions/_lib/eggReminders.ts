@@ -1,9 +1,50 @@
 import type { EggWorkflowState, WorkflowTrade } from '../../src/shared/eggWorkflow';
 import catalog from '../../src/data/catalog.gen.json';
 
+/** 档位前缀：体型 + 声音 → 大婉 / 大粗 / 小婉 / 小粗。 */
+const TIER_BODY: Record<string, string> = { 大块头: '大', 满体重: '大', 小不点: '小', 零体重: '小' };
+const TIER_VOICE: Record<string, string> = { 婉转声: '婉', '+100': '婉', 粗嗓门: '粗', '-100': '粗' };
+
+interface EggSide {
+  eggGameId: number;
+  nature: string;
+  body: string;
+  voice: string;
+}
+
+/** 单侧描述：🟢绿窝 + 档位 + 满分/满重 + 性格 + 精灵名。 */
+export function reminderSideText(line: { eggGameId?: number; nature?: string; body?: string; voice?: string; greenParentId?: string } | undefined, egg: EggSide | null | undefined): string {
+  const eggGameId = line?.eggGameId ?? egg?.eggGameId ?? 0;
+  const body = line?.body || egg?.body || '';
+  const voice = line?.voice || egg?.voice || '';
+  const nature = line?.nature || egg?.nature || '';
+  const species = catalog.species.find((entry) => entry.gameId === eggGameId)?.name ?? '精灵';
+  const tier = `${TIER_BODY[body] ?? ''}${TIER_VOICE[voice] ?? ''}` || [body, voice].filter(Boolean).join('+');
+  const perfect = voice === '+100' || voice === '-100' ? '满分' : '';
+  const heavy = body === '满体重' || body === '零体重' ? '满重' : '';
+  const green = line?.greenParentId ? '🟢绿窝' : '';
+  return `${green}${tier}${perfect}${heavy}${nature}${species}`;
+}
+
+/** 我催对方时的提醒正文：发起人本人排前面，两边都描述。 */
+export function reminderText(input: {
+  requesterName: string;
+  targetName: string;
+  requesterLine?: Parameters<typeof reminderSideText>[0];
+  requesterEgg?: EggSide | null;
+  targetLine?: Parameters<typeof reminderSideText>[0];
+  targetEgg?: EggSide | null;
+}): string {
+  const mine = reminderSideText(input.requesterLine, input.requesterEgg);
+  const theirs = reminderSideText(input.targetLine, input.targetEgg);
+  return `${mine}（${input.requesterName}）换${theirs}（${input.targetName}）的换蛋进度，请查看任务。`;
+}
+
 export interface ReminderPayload {
   kind: 'reminder'; uid: string; uids: string[]; eggName: string; recipientName: string;
   requesterName: string; requesterAccountId: string; targetAccountId: string; reminderAt: number;
+  /** 完整提醒文案（含双方精灵与档位）；老客户端没有这个字段时走旧模板。 */
+  message?: string;
 }
 interface Member { account_id: string; display_name: string }
 
@@ -31,9 +72,21 @@ export async function prepareReminder(db: D1Database, groupId: string, state: Eg
   if (members.results.length !== 2) throw new Error('换蛋成员已退出小组');
   const uids = await targetUidsForTrade(db, groupId, trade, target, state);
   if (!uids.length) throw new Error('对方尚未发布可关联QQ的游戏UID');
+  const actorName = members.results.find(m => m.account_id === actor)!.display_name;
+  const targetName = members.results.find(m => m.account_id === target)!.display_name;
+  // 发起人本人排前面；两边各用自己的产线（含绿窝标记）描述
+  const actorIsSupplier = actor === trade.supplierAccountId;
+  const message = reminderText({
+    requesterName: actorName,
+    targetName,
+    requesterLine: actorIsSupplier ? trade.line : trade.returnLine,
+    requesterEgg: actorIsSupplier ? trade.give : trade.receive,
+    targetLine: actorIsSupplier ? trade.returnLine : trade.line,
+    targetEgg: actorIsSupplier ? trade.receive : trade.give,
+  });
   const payload: ReminderPayload = { kind: 'reminder', uid: uids[0], uids, eggName: catalog.species.find(s => s.gameId === trade.give.eggGameId)?.name ?? '任务精灵',
-    recipientName: '', requesterName: members.results.find(m => m.account_id === actor)!.display_name,
-    requesterAccountId: actor, targetAccountId: target, reminderAt: trade.reminderAt! };
+    recipientName: '', requesterName: actorName,
+    requesterAccountId: actor, targetAccountId: target, reminderAt: trade.reminderAt!, message };
   const id = JSON.stringify(['reminder', groupId, trade.id, trade.reminderAt, mutation]);
   return db.prepare(`INSERT INTO egg_patrol_notifications(id,group_id,binding_version,trade_id,side,uid,actor_id,payload_json,next_at,created_at)
     SELECT ?,?,?,?,'reminder',?,?,?,?,? WHERE EXISTS(SELECT 1 FROM egg_matching_groups WHERE group_id=? AND mutation_id=?)
