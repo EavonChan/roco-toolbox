@@ -4,6 +4,7 @@ import type { HomeEgg, HomeResident, OwnedPet } from '../../domain/types';
 import { bodyGradeOf } from '../../shared/bodySize.js';
 import { averageVoice, voiceLabelOf } from '../../shared/eggLabels';
 import type { EggParentInfo, EggParentsInfo } from '../../shared/eggMatching';
+import { academyParentsOf } from '../../shared/eggWorkflow';
 import cfgPetMap from '../../pcap-decoder/tools/pcap-json-app/src/generated/cfgPetMap.json';
 import type { EggObservation } from './eggStockModel';
 
@@ -143,7 +144,7 @@ export function homeStockFromSnapshot(snapshot: AccountSnapshot, _accountId?: st
      * 绿窝（学院小窝）：父母里**只要有一只**住在学院小窝就是绿窝蛋，不要求恰好一只、也不要求它有性格
      * （2026-11-25 用户截图：母本学院小窝 + 父本普通小窝，旧代码 `academy.length === 1` 把标记丢了）。
      */
-    const academyParents = [motherInfo, ...fatherInfos].filter((item): item is EggParentInfo => !!item && item.academy === true);
+    const academyParents = academyParentsOf(parents);
     // 性格：学院小窝那只 100% 遗传（§8.3）；有学院亲本但性格缺失/互相冲突时留空，不拿普通亲本顶替。
     const academyNatures = [...new Set(academyParents.map((item) => item.nature).filter((value): value is string => !!value))];
     const nature = academyParents.length > 0
