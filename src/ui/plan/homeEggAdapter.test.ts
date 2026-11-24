@@ -70,8 +70,8 @@ describe('home egg adapter', () => {
     // 脆筒甜甜组合：母本在学院小窝、父本普通小窝
     expect(greenOf([motherAcademy, fatherOrdinary], [nest('nest1', 'academy', '学院小窝'), nest('nest2', 'ordinary', '普通小窝')])).toBe(true);
     // 反向：父本在学院小窝、母本普通小窝（学院小窝一个家园只有一个，双亲同在一个不可能出现）
-    const fatherAcademy = { ...fatherOrdinary, nest: { furnitureGuid: 'nest2', configId: 2, nestType: 'academy', nestName: '学院小窝' } };
-    expect(greenOf([{ ...motherAcademy, nest: { furnitureGuid: 'nest1', configId: 1, nestType: 'ordinary', nestName: '普通小窝' } }, fatherAcademy],
+    const fatherAcademy = { ...fatherOrdinary, nest: { furnitureGuid: 'nest2', configId: 2, nestType: 'academy' as const, nestName: '学院小窝' } };
+    expect(greenOf([{ ...motherAcademy, nest: { furnitureGuid: 'nest1', configId: 1, nestType: 'ordinary' as const, nestName: '普通小窝' } }, fatherAcademy],
       [nest('nest1', 'ordinary', '普通小窝'), nest('nest2', 'academy', '学院小窝')])).toBe(true);
     // 双亲都普通小窝
     expect(greenOf([{ ...motherAcademy, nest: null }, fatherOrdinary], [nest('nest1', 'ordinary', '普通小窝'), nest('nest2', 'ordinary', '普通小窝')])).toBe(false);
