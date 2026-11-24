@@ -40,19 +40,30 @@ function eggNatureNames(value:string):string[] {
     .filter(Boolean);
 }
 /**
- * 父母能给出的性格（2026-11-25）：绿窝里那只 100% 遗传，优先按它；否则取双亲去重后的可能值。
+ * 父母能给出的性格（2026-11-25）：绿窝只遗传学院小窝那只，优先按它（它没采到性格就留空，
+ * 不能拿另一只亲本的性格顶替）；普通窝取双亲去重后的可能值。
  * 抓包入口（`homeEggAdapter`）只在「绿窝一只」或「双亲同性格」时把性格落库，
  * 父母性格不一致的普通窝蛋 `nature` 是空串——展示层要自己按父母补上，不能显示成「—」。
  */
 function possibleEggNatures(e:WorkflowEgg):string[] {
   const parents=[e.parents?.mother,...(e.parents?.fathers??[])].filter((p):p is EggParentInfo=>!!p);
-  const academy=parents.filter(p=>p.academy===true&&!!p.nature);
-  if(academy.length===1)return [academy[0].nature];
+  const academy=parents.filter(p=>p.academy===true);
+  if(academy.length===1)return academy[0].nature?[academy[0].nature]:[];
   return [...new Set(parents.map(p=>p.nature).filter((nature):nature is string=>!!nature))];
 }
 /** 蛋的性格展示值：已落库的具体值优先；没有就按父母拼成 `冷静/平和`（再由 formatEggNature 拆成 `冷静 / 平和`）。 */
 function eggNatureText(e:WorkflowEgg):string {
   return formatEggNature(e.nature)||formatEggNature(possibleEggNatures(e).join('/'));
+}
+/**
+ * 绿窝标记（2026-11-25）：蛋自己标了绿窝，或任一亲本住在学院小窝。
+ * 抓包入口把绿窝和「学院那只的性格」绑在一起、机器人入库又漏写 `greenNest`，
+ * 所以只要父母里有一只 `academy`，展示与标注都按绿窝算，不能只认 `e.greenNest`。
+ * 显式 `false`（用户手动取消过）优先，不拿父母覆盖人的判断。
+ */
+function isGreenNestEgg(e:WorkflowEgg):boolean {
+  if(e.greenNest!==undefined)return e.greenNest;
+  return [e.parents?.mother,...(e.parents?.fathers??[])].some(p=>p?.academy===true);
 }
 function formatEggHeight(heightCm?:number):string {
   if(typeof heightCm!=='number'||!Number.isFinite(heightCm)||heightCm<=0)return '未采集';
@@ -127,7 +138,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const matchesFilter=(e:WorkflowEgg)=>filter==='不可交换'?special(e):!special(e)&&(
     filter==='全部'||filter==='已标注'&&annotated(e)||filter==='未标注'&&!annotated(e)||filter==='自产'&&selfProduced(e));
   const visible=eggs.filter(e=>e.status!=='transferred'&&(!character||e.gameAccountKey===character)&&(!query||name(e.eggGameId).includes(query))&&matchesFilter(e))
-    .sort((a,b)=>Number(selfProduced(b))-Number(selfProduced(a))||Number(Boolean(b.greenNest))-Number(Boolean(a.greenNest)));
+    .sort((a,b)=>Number(selfProduced(b))-Number(selfProduced(a))||Number(isGreenNestEgg(b))-Number(isGreenNestEgg(a)));
   const egg=eggs.find(e=>e.id===selected);
   const selectedExtraNatures=natures.filter(value=>!targetNatureNames.includes(value));
   const visibleNatures=moreNatures?allNatureNames:targetNatureNames;
@@ -156,7 +167,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
     setMoreNatures(false);
     setBody(target.body==='unknown'||!target.body?'大块头':target.body);
     setVoice(target.voice==='unknown'||!target.voice?'婉转声':target.voice);
-    setGreenNest(target.greenNest===true);
+    setGreenNest(isGreenNestEgg(target));
     setLabeling(true);
   };
   const labelValues=(target:WorkflowEgg)=>labeling
@@ -165,7 +176,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
         nature:eggNatureText(target),
         body:(target.body==='unknown'||!target.body?'大块头':target.body),
         voice:(target.voice==='unknown'||!target.voice?'婉转声':target.voice),
-        greenNest:target.greenNest===true,
+        greenNest:isGreenNestEgg(target),
       };
   const characterBlock=characters&&characters.length>1&&onCharacterChange
     ? <EggCharacterSelect compact testId="egg-stock-character-rail" value={character??''} characters={characters} onChange={onCharacterChange}/>
@@ -173,11 +184,11 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const searchBlock=<SearchField label="搜索蛋名" value={query} onValueChange={setQuery} placeholder="搜索蛋名" className="[&_input]:text-left"/>;
   const filterBlock=<div className="flex flex-wrap gap-1" data-testid="egg-stock-filter-chips">{(['全部','已标注','未标注','自产','不可交换'] as const).map(f=><button key={f} type="button" aria-pressed={filter===f} onClick={()=>setFilter(f)} className={'min-h-7 rounded-md px-2 text-[11px] '+(filter===f?'bg-emerald-50 font-semibold text-emerald-700':'text-slate-500')}>{f}</button>)}</div>;
   const cards=visible.length?<div className="egg-stock-grid grid grid-cols-4 gap-1.5" data-testid="egg-stock-grid">{visible.map(e=>{
-      const border=e.greenNest?'border-emerald-500':'border-slate-200';
+      const border=isGreenNestEgg(e)?'border-emerald-500':'border-slate-200';
       return <button data-testid="stock-card" data-egg-id={e.id} key={e.id} type="button" onClick={()=>{setSelected(e.id);setLabeling(false);setError('');}} className={`relative flex min-w-0 flex-col items-center overflow-hidden rounded-lg border bg-white ${border}`}>
         <div data-testid="stock-card-labels" className="flex h-4 w-full shrink-0 items-center justify-between gap-1 px-1">
           <span className="flex min-w-0 items-center gap-0.5">
-            {e.greenNest?<img data-testid="stock-green-nest" src={GREEN_NEST_ICON} alt="绿窝" className="size-3.5 shrink-0 object-contain"/>:null}
+            {isGreenNestEgg(e)?<img data-testid="stock-green-nest" src={GREEN_NEST_ICON} alt="绿窝" className="size-3.5 shrink-0 object-contain"/>:null}
           </span>
           <span className="flex min-w-0 items-center justify-end">
             {selfProduced(e)?<span data-testid="stock-self-badge" className="truncate rounded bg-emerald-50 px-1 py-px text-[8.5px] font-semibold leading-none text-emerald-700">自产</span>:null}
@@ -244,7 +255,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1">
               <strong className="truncate text-sm leading-5">{name(egg.eggGameId)}的蛋</strong>
-              {egg.greenNest?<img src={GREEN_NEST_ICON} alt="绿窝" className="size-3.5 shrink-0 object-contain"/>:null}
+              {isGreenNestEgg(egg)?<img src={GREEN_NEST_ICON} alt="绿窝" className="size-3.5 shrink-0 object-contain"/>:null}
               {status(egg)?<span className="ml-auto shrink-0 rounded bg-slate-100 px-1 text-[9px] leading-4 text-slate-500">{status(egg)}</span>:null}
             </div>
             <div className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-slate-600">

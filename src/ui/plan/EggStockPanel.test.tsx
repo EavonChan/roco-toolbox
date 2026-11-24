@@ -189,6 +189,51 @@ test('普通窝父母性格不一致的家园蛋，性格显示两个可能值�
   expect(within(dialog).getByRole('button',{name:'冷静'})).toHaveAttribute('aria-pressed','true');
 });
 
+/**
+ * 2026-11-25 回归二：自动采集的绿窝蛋 `greenNest` 没落库（入库只写了父母 `academy`），
+ * 蛋仓仍要显示绿窝标记——不能只认 `e.greenNest`，否则徽标/绿框/标注勾选全丢。
+ */
+test('亲本在学院小窝的蛋，即使 greenNest 没落库也显示绿窝标记',async()=>{
+  const greenParent={...ordinary,id:'green-parent',eggGameId:3124,nature:'胆小',
+    body:'大块头' as const,voice:'婉转声' as const,provenance:'self-bred' as const,location:'home' as const,
+    greenNest:undefined,lastConfirmedAt:Date.parse('2026-11-24T20:30:00+08:00'),
+    parents:{mother:{id:'m',gameId:3124,name:'脆筒甜甜',nature:'胆小',body:'大块头',voice:'+100',nestName:'普通小窝'},
+      fathers:[{id:'f',gameId:3436,name:'柴渣虫',nature:'胆小',body:'大块头',voice:'婉转声',nestName:'学院小窝',academy:true}],confirmed:false}};
+  const mutate=vi.fn().mockResolvedValue(undefined);
+  render(<EggStockPanel eggs={[greenParent]} species={[
+    {gameId:3124,key:'c',name:'脆筒甜甜',number:'234',eggGroups:[10,12]},
+    {gameId:3436,key:'bug',name:'柴渣虫',number:'325',eggGroups:[4,8]},
+  ]} busy={false} mutate={mutate}/>);
+  const card=screen.getByTestId('stock-card');
+  expect(within(card).getByTestId('stock-green-nest')).toBeTruthy();
+  expect(card.className).toContain('border-emerald-500');
+  fireEvent.click(card);
+  const dialog=screen.getByRole('dialog',{name:'蛋详情'});
+  fireEvent.click(within(dialog).getByRole('button',{name:'标注此蛋'}));
+  expect(screen.getByRole('checkbox',{name:'绿窝蛋'})).toBeChecked();
+  // 保存标注时要把绿窝写回数据，而不是用「没落库 = 不是绿窝」覆盖成 false
+  fireEvent.click(within(dialog).getByRole('button',{name:'标注所有同类蛋'}));
+  await waitFor(()=>expect(mutate).toHaveBeenCalledWith(expect.objectContaining({type:'label-many',eggGameId:3124,greenNest:true})));
+  // 用户手动取消过（greenNest:false）时按显式值来，不被父母的 academy 覆盖
+  cleanup();
+  render(<EggStockPanel eggs={[{...greenParent,greenNest:false}]} species={[
+    {gameId:3124,key:'c',name:'脆筒甜甜',number:'234',eggGroups:[10,12]},
+    {gameId:3436,key:'bug',name:'柴渣虫',number:'325',eggGroups:[4,8]},
+  ]} busy={false} mutate={vi.fn()}/>);
+  expect(screen.queryByTestId('stock-green-nest')).toBeNull();
+  // 绿窝只认学院那只的性格：它没采到性格时留空，不能拿另一只亲本的性格顶替，但绿窝标记仍要在
+  cleanup();
+  const unknownAcademy={...greenParent,nature:'',parents:{mother:{id:'m',gameId:3124,name:'脆筒甜甜',nature:'胆小',body:'大块头',voice:'+100',nestName:'普通小窝'},
+    fathers:[{id:'f',gameId:3436,name:'柴渣虫',nature:'',body:'大块头',voice:'婉转声',nestName:'学院小窝',academy:true}],confirmed:false}};
+  render(<EggStockPanel eggs={[unknownAcademy]} species={[
+    {gameId:3124,key:'c',name:'脆筒甜甜',number:'234',eggGroups:[10,12]},
+    {gameId:3436,key:'bug',name:'柴渣虫',number:'325',eggGroups:[4,8]},
+  ]} busy={false} mutate={vi.fn()}/>);
+  const unknownCard=screen.getByTestId('stock-card');
+  expect(within(unknownCard).getByTestId('stock-green-nest')).toBeTruthy();
+  expect(unknownCard.textContent).toContain('—');
+});
+
 test('没有父母性格可推的蛋仍显示「—」，不凭空补性格',()=>{
   render(<EggStockPanel eggs={[{...ordinary,id:'blank',nature:''}]} species={[{gameId:3227,key:'p',name:'菊花梨',number:'1',eggGroups:[2]}]} busy={false} mutate={vi.fn()}/>);
   expect(screen.getByTestId('stock-card').textContent).toContain('—');

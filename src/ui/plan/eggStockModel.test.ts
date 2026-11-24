@@ -135,6 +135,27 @@ describe('egg stock snapshots', () => {
     expect(later.eggs[0]).toMatchObject({ obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
   });
 
+  test('采集进来的绿窝标记在合并进背包、再次同步后仍然保留', () => {
+    const homeGreen = egg({ id: 'home-green', location: 'home', greenNest: true });
+    const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([homeGreen]) });
+    expect(state.eggs[0]).toMatchObject({ location: 'home', greenNest: true });
+    // 蛋收进背包：背包观测按唯一同种家园行合并（capturedEggId），绿窝不能掉
+    const bagGreen = egg({ id: 'bag-green', provenance: 'unknown', obtainedAt: '2026-11-24T20:00:00Z' });
+    const merged = reconcileEggStock(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+      bag: part([bagGreen]) });
+    expect(merged.eggs).toHaveLength(1);
+    expect(merged.eggs[0]).toMatchObject({ id: 'home-green', location: 'bag', greenNest: true, capturedEggId: 'bag-green' });
+    // 再同步一次（背包观测再次到达）：标记还在
+    const resynced = reconcileEggStock(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
+      bag: part([bagGreen]) });
+    expect(resynced.eggs[0]).toMatchObject({ greenNest: true, capturedEggId: 'bag-green' });
+    // 家园快照完整更新时，绿窝标记也不能被空观测冲掉
+    const homeRefresh = reconcileEggStock(resynced, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 40,
+      home: part([egg({ id: 'home-green', location: 'home' })]) });
+    expect(homeRefresh.eggs[0]).toMatchObject({ greenNest: true });
+  });
+
   test('a captured bag egg fills the unique self-bred home egg instead of replacing it', () => {
     const home = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'home1', location: 'home' })]) });
