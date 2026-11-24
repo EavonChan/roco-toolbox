@@ -127,8 +127,8 @@ test('eggs without a captured time omit the card row and say so in the detail',(
   expect(screen.getByTestId('detail-obtained-at').textContent).toBe('采集数据里没有获得时间');
 });
 
-test('home eggs show only the self-bred badge, keep confirmation time and parents, and disable listing',()=>{
-  const home={...ordinary,id:'h',provenance:'self-bred' as const,location:'home' as const,greenNest:true,lastConfirmedAt:Date.parse('2026-11-17T23:02:00+08:00'),
+test('目前还在家园的蛋也标自产，不再出现「在地家园」说法',()=>{
+  const home={...ordinary,id:'h',provenance:'unknown' as const,location:'home' as const,greenNest:true,lastConfirmedAt:Date.parse('2026-11-17T23:02:00+08:00'),
     nature:'',confidence:'system' as const,labelSource:'system' as const,
     parents:{mother:{id:'m',gameId:3227,name:'菊花梨',nature:'保守',body:'大块头',voice:'+100',nestName:'普通小窝'},
       fathers:[{id:'f',gameId:3215,name:'海豹战士',nature:'胆小',body:'大块头',voice:'婉转声'}],confirmed:false}};
@@ -145,8 +145,12 @@ test('home eggs show only the self-bred badge, keep confirmation time and parent
   expect(labels.lastElementChild).toContainElement(selfBadge);
   expect(labels.firstElementChild).not.toContainElement(selfBadge);
   expect(screen.queryByTestId('stock-home-badge')).toBeNull();
-  expect(screen.queryByText('在地家园')).toBeNull();
+  expect(screen.queryByText(/在地家园/)).toBeNull();
   expect(screen.getByTestId('stock-confirmed').textContent).toBe('11-17 23:02');
+  // 「自产」筛选也要把还在家园的蛋算进去
+  fireEvent.click(screen.getByRole('button',{name:'自产'}));
+  expect(screen.getByTestId('stock-card')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'全部'}));
   fireEvent.click(screen.getByTestId('stock-card'));
   expect(screen.getByTestId('detail-confirmed-at').textContent).toBe('2026-11-17 23:02');
   expect(screen.getByText('海豹战士')).toBeTruthy();
@@ -155,7 +159,7 @@ test('home eggs show only the self-bred badge, keep confirmation time and parent
   // 实际父母用配窝精灵卡渲染，而不是另画一种小卡
   expect(screen.getByTestId('stock-parents').querySelectorAll('[data-testid="breed-pet-card"]')).toHaveLength(2);
   expect(screen.getByRole('button',{name:'挂出'})).toBeDisabled();
-  expect(screen.getByText('在地家园，收进背包后才能挂出')).toBeTruthy();
+  expect(screen.getByText('收进背包后才能挂出')).toBeTruthy();
 });
 
 test('ordinary self-bred eggs have no green frame while green-nest eggs do',()=>{
@@ -218,21 +222,26 @@ test('横屏蛋仓：搜索与条件在右侧折叠栏，收起后蛋卡加列',
   expect(screen.getByTestId('egg-stock-scope')).toHaveAttribute('data-rail-collapsed', 'true');
 });
 
-test('横屏：右侧筛选栏能按游戏角色筛选，选中后只留该角色的蛋', () => {
+test('横屏：右侧筛选栏能切换游戏角色，选项带蛋数、一次只留一个角色', () => {
   setOrientation(true);
   window.localStorage.clear();
   const onCharacterChange = vi.fn();
-  const characters = [{ key: 'uid:1', name: '阿甲' }, { key: 'uid:2', name: '阿乙' }];
+  const characters = [
+    { key: 'uid:1', name: '阿甲', count: 2 },
+    { key: 'uid:2', name: '阿乙', count: 1 },
+  ];
   const props = { eggs: [
     { ...ordinary, id: 'a1', gameAccountKey: 'uid:1', accountName: '阿甲' },
     { ...ordinary, id: 'a2', gameAccountKey: 'uid:1', accountName: '阿甲' },
     { ...ordinary, id: 'b1', gameAccountKey: 'uid:2', accountName: '阿乙' },
   ], species: stockSpecies, busy: false, mutate: vi.fn(), collapsibleFilterRail: true, characters, onCharacterChange };
-  const view = render(<EggStockPanel {...props} character="" />);
+  const view = render(<EggStockPanel {...props} character="uid:1" />);
+  expect(screen.getAllByTestId('stock-card')).toHaveLength(2);
   const filters = screen.getByTestId('egg-stock-filters');
   const select = within(filters).getByRole('combobox', { name: '按游戏角色筛选' });
   expect(within(select).getAllByRole('option').map((option) => option.textContent))
-    .toEqual(['全部角色', '阿甲', '阿乙']);
+    .toEqual(['阿甲（2）', '阿乙（1）']);
+  expect(within(select).queryByRole('option', { name: '全部角色' })).toBeNull();
   fireEvent.change(select, { target: { value: 'uid:2' } });
   expect(onCharacterChange).toHaveBeenCalledWith('uid:2');
   view.rerender(<EggStockPanel {...props} character="uid:2" />);
