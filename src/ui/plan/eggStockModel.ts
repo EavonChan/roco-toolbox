@@ -5,6 +5,10 @@ export type EggObservation = Pick<EggRecord, 'id' | 'eggGameId' | 'nature' | 'bo
   Partial<Pick<EggRecord, 'provenance' | 'confidence' | 'kind' | 'labelSource' | 'parents' |
     'specialCategory' | 'greenNest' | 'heightCm' | 'weightGrams' | 'itemConfId' | 'location'>> & {
     gameAccountKey?: string;
+    /** 抓包里的获得时间；家园蛋没有，合并时以背包观测为准。 */
+    obtainedAt?: string;
+    /** 家园行链接到的背包实例 ID（`EggObservation.id`）；用于跨 id 去重。 */
+    capturedEggId?: string;
   };
 export interface StockEgg extends EggRecord {
   location: 'bag' | 'home';
@@ -12,6 +16,10 @@ export interface StockEgg extends EggRecord {
   lastConfirmedAt: number;
   /** 游戏账号（uid:...）；同一工具箱账号可能导入多个游戏账号。 */
   gameAccountKey?: string;
+  /** 游戏蛋数据里的获得时间（ISO 8601）；家园蛋与更新前的旧记录没有。 */
+  obtainedAt?: string;
+  /** 家园蛋收进背包后链接到的背包实例 ID；有它才能在后续同步里继续合并。 */
+  capturedEggId?: string;
 }
 interface SnapshotPart {
   eggs: readonly EggObservation[];
@@ -37,6 +45,10 @@ export interface EggStockState {
 
 export const emptyEggStock = (): EggStockState => ({ eggs: [], captureWatermarks: {}, provenanceHistory: {} });
 const instanceKey = (accountId: string, id: string): string => JSON.stringify([accountId, id]);
+
+/** 来源冲突口径：external > self-bred > unknown；unknown 永远不能清掉已有的自产/外来标记。 */
+const provenanceOf = (...values: (EggRecord['provenance'] | undefined)[]): EggRecord['provenance'] =>
+  values.includes('external') ? 'external' : values.includes('self-bred') ? 'self-bred' : 'unknown';
 
 function validatePart(part: SnapshotPart | undefined): void {
   if (!part) return;
@@ -65,11 +77,57 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
   const gameKey = snapshot.gameAccountKey ?? '';
   const sameGame = (egg: StockEgg): boolean =>
     egg.accountId === snapshot.accountId && (egg.gameAccountKey ?? '') === gameKey;
+  /**
+   * 背包观测补进它对应的家园行，不产生第二行：保留家园 id 与自产标记，只把新值填进去。
+   * 新值非空才覆盖旧值（时间/重量/身高/自产标记同一口径）。
+   */
+  const mergeCaptured = (home: StockEgg, observation: EggObservation): StockEgg => {
+    const egg: StockEgg = {
+      ...home,
+      nature: observation.nature || home.nature,
+      body: observation.body !== 'unknown' ? observation.body : home.body,
+      voice: observation.voice !== 'unknown' ? observation.voice : home.voice,
+      provenance: provenanceOf(home.provenance, observation.provenance),
+      confidence: home.labelSource === 'manual' ? 'manual' : observation.confidence ?? home.confidence,
+      labelSource: home.labelSource === 'manual' ? 'manual' : observation.labelSource ?? home.labelSource,
+      kind: observation.kind ?? home.kind,
+      parents: home.parents ?? observation.parents,
+      location: 'bag',
+      obtainedAt: observation.obtainedAt ?? home.obtainedAt,
+      heightCm: observation.heightCm ?? home.heightCm,
+      weightGrams: observation.weightGrams ?? home.weightGrams,
+      itemConfId: observation.itemConfId ?? home.itemConfId,
+      capturedEggId: observation.id,
+      lastConfirmedAt: Math.max(home.lastConfirmedAt, snapshot.bag?.capturedAt ?? snapshot.capturedAt),
+    };
+    egg.listed = home.listed && canCirculateEgg(egg);
+    return egg;
+  };
+  const mergedBagIds = new Set<string>();
+  for (const observation of snapshot.bag?.eggs ?? []) {
+    // 只有一颗、且没有获得时间与链接的家园行才能认；多颗同种时宁可先并存，不猜。
+    const linked = [...next.values()].find(egg => sameGame(egg) && egg.capturedEggId === observation.id);
+    if (linked) {
+      next.set(linked.id, mergeCaptured(linked, observation));
+      mergedBagIds.add(observation.id);
+      continue;
+    }
+    if (next.has(observation.id)) continue;
+    const candidates = [...next.values()].filter(egg => sameGame(egg) && egg.location === 'home' &&
+      egg.eggGameId === observation.eggGameId && !egg.obtainedAt && !egg.capturedEggId);
+    if (candidates.length !== 1) continue;
+    next.set(candidates[0].id, mergeCaptured(candidates[0], observation));
+    mergedBagIds.add(observation.id);
+  }
   for (const location of ['bag', 'home'] as const) {
     const part = snapshot[location];
-    if (part?.complete) {
-      const currentIds = new Set(part.eggs.map(e => e.id));
-      for (const [id, egg] of next) if (sameGame(egg) && egg.location === location && !currentIds.has(id)) next.delete(id);
+    if (!part?.complete) continue;
+    const currentIds = new Set(part.eggs.map(e => e.id));
+    for (const [id, egg] of next) {
+      if (!sameGame(egg) || egg.location !== location || currentIds.has(id)) continue;
+      // 已链接到本次背包快照的家园行：背包里那颗才是它的新身份，不算在家园快照里消失。
+      if (location === 'bag' && egg.capturedEggId && currentIds.has(egg.capturedEggId)) continue;
+      next.delete(id);
     }
   }
   const history = { ...state.provenanceHistory };
@@ -77,11 +135,10 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
   // Process home first, then let actual bag entries take precedence.
   for (const location of ['home', 'bag'] as const) {
     for (const observation of snapshot[location]?.eggs ?? []) {
+      if (location === 'bag' && mergedBagIds.has(observation.id)) continue;
       const old = previous.get(observation.id);
       const key = instanceKey(snapshot.accountId, observation.id);
-      const known = [observation.provenance, history[key], old?.provenance];
-      const provenance: EggRecord['provenance'] = known.includes('external') ? 'external'
-        : known.includes('self-bred') ? 'self-bred' : 'unknown';
+      const provenance = provenanceOf(observation.provenance, history[key], old?.provenance);
       history[key] = provenance;
       if (location === 'home' && (currentBag.has(observation.id) || next.get(observation.id)?.location === 'bag')) {
         // Keep bag location, but retain restrictive classification from either observation.
@@ -94,6 +151,7 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
             heightCm: observation.heightCm ?? current.heightCm,
             weightGrams: observation.weightGrams ?? current.weightGrams,
             itemConfId: observation.itemConfId ?? current.itemConfId,
+            obtainedAt: observation.obtainedAt ?? current.obtainedAt,
             lastConfirmedAt: Math.max(current.lastConfirmedAt, snapshot[location]?.capturedAt ?? snapshot.capturedAt) };
           if (observation.parents) updated.parents = observation.parents;
           if (observation.labelSource === 'system' && updated.labelSource !== 'manual') updated.labelSource = 'system';
@@ -112,6 +170,8 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
         heightCm: observation.heightCm ?? old?.heightCm,
         weightGrams: observation.weightGrams ?? old?.weightGrams,
         itemConfId: observation.itemConfId ?? old?.itemConfId,
+        obtainedAt: observation.obtainedAt ?? old?.obtainedAt,
+        capturedEggId: observation.capturedEggId ?? old?.capturedEggId,
         gameAccountKey: observation.gameAccountKey ?? old?.gameAccountKey ?? snapshot.gameAccountKey,
         status: old?.status ?? 'available', location, lastConfirmedAt: snapshot[location]?.capturedAt ?? snapshot.capturedAt, listed: false };
       egg.listed = !!old?.listed && canCirculateEgg(egg);

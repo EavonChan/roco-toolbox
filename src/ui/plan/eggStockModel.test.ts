@@ -126,6 +126,56 @@ describe('egg stock snapshots', () => {
     expect(state.eggs[0]).toMatchObject({ location: 'home', labelSource: 'system', parents });
   });
 
+  test('captured obtained time height and weight reach the stock and are never cleared later', () => {
+    const captured = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      bag: part([egg({ provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 })]) });
+    expect(captured.eggs[0]).toMatchObject({ obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
+    const later = reconcileEggStock(captured, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+      bag: part([egg({ provenance: 'unknown' })]) });
+    expect(later.eggs[0]).toMatchObject({ obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
+  });
+
+  test('a captured bag egg fills the unique self-bred home egg instead of replacing it', () => {
+    const home = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'home1', location: 'home' })]) });
+    expect(home.eggs[0]).toMatchObject({ location: 'home', provenance: 'self-bred' });
+    const bag = egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
+    const merged = reconcileEggStock(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, bag: part([bag]) });
+    expect(merged.eggs).toHaveLength(1);
+    expect(merged.eggs[0]).toMatchObject({ id: 'home1', location: 'bag', capturedEggId: 'bag1',
+      provenance: 'self-bred', obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
+    expect(reconcileEggStock(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30, bag: part([bag]) }).eggs)
+      .toHaveLength(1);
+  });
+
+  test('a complete capture adds its new egg without dropping the already merged stock', () => {
+    const home = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'home1', location: 'home' })]) });
+    const bag = egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z' });
+    const merged = reconcileEggStock(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, bag: part([bag]) });
+    // 家园那边已经空了（蛋收进背包），完整快照里多出一颗新蛋：旧合并行要留，新蛋要进来。
+    const next = reconcileEggStock(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30, home: part([]),
+      bag: part([bag, egg({ id: 'bag2', provenance: 'unknown', obtainedAt: '2026-11-18T09:00:00Z' })]) });
+    expect(next.eggs.map(e => e.id).sort()).toEqual(['bag2', 'home1']);
+    expect(next.eggs.find(e => e.id === 'home1')).toMatchObject({ capturedEggId: 'bag1', provenance: 'self-bred' });
+  });
+
+  test('an incomplete capture only adds stock and never deletes', () => {
+    const kept = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      bag: part([egg({ id: 'kept', provenance: 'unknown' })]) });
+    const next = reconcileEggStock(kept, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+      bag: part([egg({ id: 'added', provenance: 'unknown', obtainedAt: '2026-11-18T09:00:00Z' })], false) });
+    expect(next.eggs.map(e => e.id).sort()).toEqual(['added', 'kept']);
+  });
+
+  test('identical home eggs are not guessed when the capture has no stable link', () => {
+    const home = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'home1', location: 'home' }), egg({ id: 'home2', location: 'home' })]) });
+    const next = reconcileEggStock(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+      bag: part([egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z' })]) });
+    expect(next.eggs).toHaveLength(3);
+  });
+
   test('concrete non-exchangeable category and egg measurements survive re-sync', () => {
     const state = reconcileEggStock(emptyEggStock(), {
       accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 1,

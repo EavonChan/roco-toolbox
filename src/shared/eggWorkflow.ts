@@ -9,6 +9,8 @@ export interface WorkflowEgg extends EggRecord {
   listed: boolean;
   /** 游戏蛋数据里的获得时间（ISO 8601）。家园蛋与更新前的旧记录没有这个字段。 */
   obtainedAt?: string;
+  /** 家园蛋收进背包后对应的抓包实例 ID；用于后续同步继续合并，避免刷新后丢自产。 */
+  capturedEggId?: string;
   /** Last complete capture no longer contains this reserved instance. */
   missingFromCapture?: boolean;
 }
@@ -107,7 +109,9 @@ function normalizeEgg(value: unknown, accountId: string, gameAccountKey: string,
     itemConfId: Number.isSafeInteger(raw.itemConfId) ? Number(raw.itemConfId) : undefined,
     weightGrams: typeof raw.weightGrams === 'number' && Number.isFinite(raw.weightGrams) ? raw.weightGrams : undefined,
     heightCm: typeof raw.heightCm === 'number' && Number.isFinite(raw.heightCm) ? raw.heightCm : undefined,
-    obtainedAt: obtainedAtOf(raw.obtainedAt) };
+    obtainedAt: obtainedAtOf(raw.obtainedAt),
+    capturedEggId: typeof raw.capturedEggId === 'string' && raw.capturedEggId.length > 0 && raw.capturedEggId.length <= 512
+      ? raw.capturedEggId : undefined };
 }
 const active = (trade: WorkflowTrade) => trade.status === 'accepted';
 const ownEgg = (state: EggWorkflowState, accountId: string, id: string) => {
@@ -232,6 +236,7 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         }
         // 新抓包偶尔缺时间时，保留已经记录过的获得时间。
         if (!egg.obtainedAt) egg.obtainedAt = before.obtainedAt;
+        if (!egg.capturedEggId) egg.capturedEggId = before.capturedEggId;
         if (!egg.parents) egg.parents = before.parents;
         if (egg.heightCm === undefined) egg.heightCm = before.heightCm;
         if (egg.weightGrams === undefined) egg.weightGrams = before.weightGrams;
@@ -246,8 +251,13 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         egg.missingFromCapture = true; egg.listed = false;
       }
     }
-    state.eggs = state.eggs.filter(e => !(e.accountId === actor && e.gameAccountKey === key) || !sideApplied(e) ||
-      (!accepted.some(n => n.id === e.id) && (!sideComplete(e) || e.status === 'reserved' || e.status === 'transferred')));
+    state.eggs = state.eggs.filter(e => {
+      if (!(e.accountId === actor && e.gameAccountKey === key)) return true;
+      // 同一实例被本次快照明确接手（家园蛋收进背包后仍用原 id）：旧行不能再留第二份。
+      if (accepted.some(n => n.id === e.id)) return false;
+      if (!sideApplied(e)) return true;
+      return !sideComplete(e) || e.status === 'reserved' || e.status === 'transferred';
+    });
     state.eggs.push(...accepted);
     if (appliedBag) state.watermarks[sideKey('bag')] = timestamp;
     if (appliedHome) state.watermarks[sideKey('home')] = timestamp;

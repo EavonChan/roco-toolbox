@@ -293,6 +293,27 @@ test('captured obtained time is kept by stock sync and survives a later capture 
   expect(state.eggs[0].obtainedAt).toBe('2026-11-17T22:31:00');
 });
 
+test('a merged home egg moves to the bag without leaving a second row under the same id', () => {
+  let state = applyEggAction(emptyEggWorkflow(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1,
+    complete: false, homeComplete: true, eggs: [{ ...stock('home1', 3227), location: 'home', provenance: 'self-bred' }] }, 1);
+  state = applyEggAction(state, 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 2,
+    complete: true, homeComplete: false,
+    eggs: [{ ...stock('home1', 3227), location: 'bag', provenance: 'unknown', capturedEggId: 'bag1', obtainedAt: '2026-11-17T22:31:00' }] }, 2);
+  expect(state.eggs).toHaveLength(1);
+  expect(state.eggs[0]).toMatchObject({ id: 'home1', location: 'bag', provenance: 'self-bred',
+    capturedEggId: 'bag1', obtainedAt: '2026-11-17T22:31:00' });
+});
+
+test('a home egg keeps its bag merge link through stock sync even when a later capture omits it', () => {
+  let state = applyEggAction(emptyEggWorkflow(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1,
+    complete: true, eggs: [{ ...stock('home1', 3227), location: 'bag', capturedEggId: 'bag1' }] }, 1);
+  expect(state.eggs[0]).toMatchObject({ id: 'home1', capturedEggId: 'bag1' });
+  state = applyEggAction(state, 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 2,
+    complete: true, eggs: [{ ...stock('home1', 3227), location: 'bag' }] }, 2);
+  expect(state.eggs).toHaveLength(1);
+  expect(state.eggs[0].capturedEggId).toBe('bag1');
+});
+
 test('old records without obtained time stay valid and unusable values are dropped', () => {
   const old = applyEggAction(emptyEggWorkflow(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true, eggs: [stock('e', 3227)] }, 1);
   expect(old.eggs[0].obtainedAt).toBeUndefined();
