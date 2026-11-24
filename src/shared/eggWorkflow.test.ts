@@ -380,20 +380,25 @@ test('a home egg is never listed automatically even with full measurements', () 
     obtainedAt: '2026-11-17T22:31:00' });
 });
 
-test('a bag egg without voice is not listed until the voice arrives', () => {
+test('a bag egg without voice is not listed', () => {
   let state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('empty-voice', { voice: '' })]);
   expect(state.eggs[0].listed).toBe(false);
   state = bagSync(state, 'a', 2, [measured('empty-voice', { voice: 'unknown' })]);
   expect(state.eggs[0].listed).toBe(false);
-  state = bagSync(state, 'a', 3, [measured('empty-voice', { voice: '婉转声' })]);
-  expect(state.eggs[0]).toMatchObject({ listed: true, voice: '婉转声' });
 });
 
-test('a bag egg without nature is not listed until the nature arrives', () => {
+test('a bag egg without nature is not listed', () => {
   let state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('empty-nature', { nature: '' })]);
   expect(state.eggs[0].listed).toBe(false);
-  state = bagSync(state, 'a', 2, [measured('empty-nature', { nature: '固执' })]);
-  expect(state.eggs[0]).toMatchObject({ listed: true, nature: '固执' });
+  state = bagSync(state, 'a', 2, [measured('empty-nature', { nature: '   ' })]);
+  expect(state.eggs[0].listed).toBe(false);
+});
+
+test('a bag egg is listed once voice and nature arrive', () => {
+  let state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('later', { voice: '', nature: '' })]);
+  expect(state.eggs[0].listed).toBe(false);
+  state = bagSync(state, 'a', 2, [measured('later', { voice: '婉转声', nature: '固执' })]);
+  expect(state.eggs[0]).toMatchObject({ listed: true, voice: '婉转声', nature: '固执' });
 });
 
 test('a bag egg missing weight height or obtained time is not listed automatically', () => {
