@@ -389,6 +389,13 @@ test('a bag egg without voice is not listed until the voice arrives', () => {
   expect(state.eggs[0]).toMatchObject({ listed: true, voice: '婉转声' });
 });
 
+test('a bag egg without nature is not listed until the nature arrives', () => {
+  let state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('empty-nature', { nature: '' })]);
+  expect(state.eggs[0].listed).toBe(false);
+  state = bagSync(state, 'a', 2, [measured('empty-nature', { nature: '固执' })]);
+  expect(state.eggs[0]).toMatchObject({ listed: true, nature: '固执' });
+});
+
 test('a bag egg missing weight height or obtained time is not listed automatically', () => {
   const state = bagSync(emptyEggWorkflow(), 'a', 1, [
     measured('no-time', { obtainedAt: undefined }),
