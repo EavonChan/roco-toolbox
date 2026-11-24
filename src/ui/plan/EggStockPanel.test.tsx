@@ -162,6 +162,38 @@ test('目前还在家园的蛋也标自产，不再出现「在地家园」说�
   expect(screen.getByText('收进背包后才能挂出')).toBeTruthy();
 });
 
+/**
+ * 2026-11-25 回归：普通窝、父母性格不一致的家园蛋，性格原本应显示两个可能值（`冷静 / 平和`），
+ * 现在显示成「—」。抓包入口（homeEggAdapter）对这种蛋只留空 `nature`（双亲不同 → 30%+30%），
+ * 展示层必须自己按父母推可能性格，不能把「没确定」当成「没标注」。
+ */
+test('普通窝父母性格不一致的家园蛋，性格显示两个可能值而不是「—」',()=>{
+  const pair={...ordinary,id:'pair',eggGameId:3436,nature:'',provenance:'self-bred' as const,location:'home' as const,
+    body:'大块头' as const,voice:'婉转声' as const,
+    lastConfirmedAt:Date.parse('2026-11-24T20:10:00+08:00'),
+    parents:{mother:{id:'m',gameId:3436,name:'柴渣虫',nature:'冷静',body:'大块头',voice:'+100',nestName:'普通小窝'},
+      fathers:[{id:'f',gameId:3436,name:'柴渣虫',nature:'平和',body:'大块头',voice:'婉转声',nestName:'普通小窝'}],confirmed:false}};
+  render(<EggStockPanel eggs={[pair]} species={[{gameId:3436,key:'bug',name:'柴渣虫',number:'325',eggGroups:[4,8]}]} busy={false} mutate={vi.fn()}/>);
+  const card=screen.getByTestId('stock-card');
+  expect(card.textContent).toContain('冷静 / 平和');
+  expect(card.textContent).not.toContain('—');
+  fireEvent.click(card);
+  const dialog=screen.getByRole('dialog',{name:'蛋详情'});
+  expect(within(dialog).getByText('冷静 / 平和')).toBeTruthy();
+  // 打开标注编辑器时，两个可能性格要预选上：保存体型/声音时不能把性格又写回空
+  fireEvent.click(within(dialog).getByRole('button',{name:'标注此蛋'}));
+  expect(within(dialog).getByRole('button',{name:'平和'})).toHaveAttribute('aria-pressed','true');
+  const more=within(dialog).getByRole('button',{name:/^更多 \+\d+$/});
+  expect(more).toHaveAttribute('aria-pressed','true');
+  fireEvent.click(more);
+  expect(within(dialog).getByRole('button',{name:'冷静'})).toHaveAttribute('aria-pressed','true');
+});
+
+test('没有父母性格可推的蛋仍显示「—」，不凭空补性格',()=>{
+  render(<EggStockPanel eggs={[{...ordinary,id:'blank',nature:''}]} species={[{gameId:3227,key:'p',name:'菊花梨',number:'1',eggGroups:[2]}]} busy={false} mutate={vi.fn()}/>);
+  expect(screen.getByTestId('stock-card').textContent).toContain('—');
+});
+
 test('ordinary self-bred eggs have no green frame while green-nest eggs do',()=>{
   render(<EggStockPanel eggs={[
     {...ordinary,id:'ordinary',provenance:'self-bred'},

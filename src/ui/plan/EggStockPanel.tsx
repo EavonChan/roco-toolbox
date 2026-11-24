@@ -39,6 +39,21 @@ function eggNatureNames(value:string):string[] {
     .map(part=>part.replace(/^\s*\d+(?:\.\d+)?%\s*/,'').trim())
     .filter(Boolean);
 }
+/**
+ * 父母能给出的性格（2026-11-25）：绿窝里那只 100% 遗传，优先按它；否则取双亲去重后的可能值。
+ * 抓包入口（`homeEggAdapter`）只在「绿窝一只」或「双亲同性格」时把性格落库，
+ * 父母性格不一致的普通窝蛋 `nature` 是空串——展示层要自己按父母补上，不能显示成「—」。
+ */
+function possibleEggNatures(e:WorkflowEgg):string[] {
+  const parents=[e.parents?.mother,...(e.parents?.fathers??[])].filter((p):p is EggParentInfo=>!!p);
+  const academy=parents.filter(p=>p.academy===true&&!!p.nature);
+  if(academy.length===1)return [academy[0].nature];
+  return [...new Set(parents.map(p=>p.nature).filter((nature):nature is string=>!!nature))];
+}
+/** 蛋的性格展示值：已落库的具体值优先；没有就按父母拼成 `冷静/平和`（再由 formatEggNature 拆成 `冷静 / 平和`）。 */
+function eggNatureText(e:WorkflowEgg):string {
+  return formatEggNature(e.nature)||formatEggNature(possibleEggNatures(e).join('/'));
+}
 function formatEggHeight(heightCm?:number):string {
   if(typeof heightCm!=='number'||!Number.isFinite(heightCm)||heightCm<=0)return '未采集';
   return `${Number((heightCm/100).toFixed(3))} m`;
@@ -95,7 +110,6 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
     // 学院小窝 100% 传性格：文字补回卡底，不能只靠绿框暗示
     box: `${p.nestName || '窝未知'}${p.academy ? ' · 100%性格' : ''}`,
   });
-  const parentNatures=(e:WorkflowEgg)=>[...new Set([e.parents?.mother?.nature,...(e.parents?.fathers??[]).map(f=>f.nature)].filter((n):n is string=>!!n))];
   const fullness=(e:WorkflowEgg)=>{ if(e.location!=='home'||e.body!=='大块头')return ''; const entry=eggWeightOf(name(e.eggGameId));
     if(!entry||typeof entry.big!=='number')return ''; const total=Math.round(entry.max*1000)-Math.round(entry.big*1000)+1;
     return total>0&&total<1000?`约 1/${total}`:''; };
@@ -105,7 +119,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
    * 「在地家园」这个说法不再出现；家园状态只在机器人取蛋那边有用，界面上一律按自产算。
    */
   const selfProduced=(e:WorkflowEgg)=>e.provenance==='self-bred'||e.location==='home';
-  const annotated=(e:WorkflowEgg)=>!!formatEggNature(e.nature)&&
+  const annotated=(e:WorkflowEgg)=>!!eggNatureText(e)&&
     ['大块头','小不点','满体重','零体重'].includes(e.body)&&
     ['+100','-100','婉转声','粗嗓门'].includes(e.voice);
   const unavailableLabel=(e:WorkflowEgg)=>SPECIAL_CATEGORY_LABELS[e.specialCategory??'special'];
@@ -137,7 +151,8 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   },[labeling,selected]);
   const run=(action:unknown,done?:()=>void)=>{setError('');void mutate(action).then(done).catch(e=>setError(e instanceof Error?e.message:'操作失败'));};
   const beginLabeling=(target:WorkflowEgg)=>{
-    setNatures(eggNatureNames(target.nature));
+    const stored=eggNatureNames(target.nature);
+    setNatures(stored.length?stored:possibleEggNatures(target));
     setMoreNatures(false);
     setBody(target.body==='unknown'||!target.body?'大块头':target.body);
     setVoice(target.voice==='unknown'||!target.voice?'婉转声':target.voice);
@@ -147,7 +162,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const labelValues=(target:WorkflowEgg)=>labeling
     ? {nature:natures.join(' / '),body,voice,greenNest}
     : {
-        nature:formatEggNature(target.nature),
+        nature:eggNatureText(target),
         body:(target.body==='unknown'||!target.body?'大块头':target.body),
         voice:(target.voice==='unknown'||!target.voice?'婉转声':target.voice),
         greenNest:target.greenNest===true,
@@ -171,7 +186,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
         <div data-testid="stock-card-body" className="flex w-full min-w-0 flex-col items-center px-0.5 pb-0.5">
           <EggArt eggGameId={e.eggGameId} name={name(e.eggGameId)} kind={e.kind} itemConfId={e.itemConfId}/>
           <strong className="w-full truncate px-0.5 text-[10.5px]">{name(e.eggGameId)}</strong>
-          <span className="min-h-4 text-[10px] leading-4 text-slate-500">{formatEggNature(e.nature)||'—'}</span>
+          <span className="min-h-4 text-[10px] leading-4 text-slate-500">{eggNatureText(e)||'—'}</span>
           <span className="h-5"><EggMedals body={e.body} voice={e.voice}/></span>
           {e.location==='home'&&e.lastConfirmedAt?<span data-testid="stock-confirmed" className="text-[10px] leading-4 tabular-nums text-emerald-700">{formatEggObtainedAt(new Date(e.lastConfirmedAt).toISOString())}</span>:formatEggObtainedAt(e.obtainedAt)?<span data-testid="stock-time" className="text-[10px] leading-4 tabular-nums text-slate-400">{formatEggObtainedAt(e.obtainedAt)}</span>:null}
           {status(e)?<span className={'mt-0.5 w-full text-center text-[10px] leading-5 '+(special(e)?'bg-slate-100 text-slate-500':e.provenance==='self-bred'?'bg-emerald-50 text-emerald-700':e.listed?'bg-emerald-50 text-emerald-700':'bg-slate-50 text-slate-500')}>{status(e)}</span>:null}
@@ -233,7 +248,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
               {status(egg)?<span className="ml-auto shrink-0 rounded bg-slate-100 px-1 text-[9px] leading-4 text-slate-500">{status(egg)}</span>:null}
             </div>
             <div className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-slate-600">
-              <span className="truncate">{formatEggNature(egg.nature)||'性格未标注'}</span>
+              <span className="truncate">{eggNatureText(egg)||'性格未标注'}</span>
               <EggMedals body={egg.body} voice={egg.voice}/>
             </div>
             <div className="truncate text-[10px] leading-4 text-slate-400">
@@ -279,7 +294,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
               {[egg.parents.mother, ...(egg.parents.fathers ?? [])].filter((parent): parent is EggParentInfo => Boolean(parent))
                 .map((parent) => <PairingPetCard key={pairCardOf(parent, parent === egg.parents?.mother ? '母' : '公').key} pet={pairCardOf(parent, parent === egg.parents?.mother ? '母' : '公')} collectedGroupIds={NO_GROUPS} academy={parent.academy} hideMeasurements />)}
             </div>
-            {!egg.nature&&parentNatures(egg).length?<p className="mt-1 text-[10px] leading-4 text-slate-500">可能性格：{parentNatures(egg).join(' / ')}（各 30%，其余随机）</p>:null}
+            {!egg.nature&&possibleEggNatures(egg).length?<p className="mt-1 text-[10px] leading-4 text-slate-500">可能性格：{possibleEggNatures(egg).join(' / ')}（各 30%，其余随机）</p>:null}
             {fullness(egg)?<p className="mt-0.5 text-[10px] leading-4 text-slate-500">满重 {fullness(egg)}（收进背包后确定）</p>:null}
           </>:<p className="text-[10px] text-slate-400">暂无亲本记录</p>}
         </div>
