@@ -51,6 +51,68 @@ function validatePart(part: SnapshotPart | undefined): void {
   }
 }
 
+
+/**
+ * 家园地上的蛋被捡进背包后实例号换体系（`[uid,'home',actorId]` → `[uid,背包实例号]`），
+ * 两边的记录对不上，自产与父母推算的标注就跟着断了（2026-11-25 用户反馈）。
+ *
+ * 只在「这一轮抓包的家园快照是完整的、这些蛋真的从地上消失」时交接：
+ * - 同物种的每颗新背包蛋都能拿回「自产」（地上那几颗都是自己孵的，这条不会指错）；
+ * - 父母与性格/体型/声音只在 1 对 1 时抄过去；同物种多颗不猜，别把别的蛋的爹妈安上去。
+ */
+function carryOverPickedUpEggs(
+  next: Map<string, StockEgg>,
+  previous: Map<string, StockEgg>,
+  snapshot: EggStockSnapshot,
+  history: Record<string, EggRecord['provenance']>,
+): void {
+  const homePart = snapshot.home;
+  if (!homePart?.complete) return;
+  const sameGame = (egg: StockEgg): boolean =>
+    egg.accountId === snapshot.accountId && (egg.gameAccountKey ?? '') === (snapshot.gameAccountKey ?? '');
+  const homeNow = new Set(homePart.eggs.map((egg) => egg.id));
+  const vanished = [...previous.values()].filter((egg) => egg.location === 'home' && sameGame(egg) && !homeNow.has(egg.id));
+  if (vanished.length === 0) return;
+  const groupBySpecies = <T extends { eggGameId: number }>(items: readonly T[]): Map<number, T[]> => {
+    const map = new Map<number, T[]>();
+    for (const item of items) map.set(item.eggGameId, [...(map.get(item.eggGameId) ?? []), item]);
+    return map;
+  };
+  const vanishedBy = groupBySpecies(vanished);
+  const arrivedBy = groupBySpecies([...next.values()].filter((egg) =>
+    egg.location === 'bag' && sameGame(egg) && !previous.has(egg.id)));
+  for (const [species, arrived] of arrivedBy) {
+    const gone = vanishedBy.get(species) ?? [];
+    if (gone.length === 0) continue;
+    if (gone.every((egg) => egg.provenance === 'self-bred')) {
+      for (const egg of arrived.filter((item) => item.provenance === 'unknown')) {
+        egg.provenance = 'self-bred';
+        history[instanceKey(snapshot.accountId, egg.id)] = 'self-bred';
+      }
+    }
+    // 多颗同物种分不清谁是谁，只保留不会指错的那部分。
+    if (gone.length !== 1 || arrived.length !== 1) continue;
+    const [from] = gone;
+    const [to] = arrived;
+    if (from.provenance !== 'unknown') {
+      to.provenance = from.provenance;
+      history[instanceKey(snapshot.accountId, to.id)] = from.provenance;
+    }
+    if (!to.parents && from.parents) to.parents = from.parents;
+    if (!to.nature && from.nature) to.nature = from.nature;
+    if ((to.body === 'unknown' || !to.body) && from.body) to.body = from.body;
+    if ((to.voice === 'unknown' || !to.voice) && from.voice) to.voice = from.voice;
+    if (to.greenNest === undefined && from.greenNest !== undefined) to.greenNest = from.greenNest;
+    if (from.labelSource === 'manual') {
+      to.labelSource = 'manual';
+      to.confidence = 'manual';
+    } else if (from.labelSource === 'system' && to.labelSource !== 'manual') {
+      to.labelSource = 'system';
+      if (to.confidence === 'unknown') to.confidence = 'system';
+    }
+  }
+}
+
 export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapshot): EggStockState {
   if (typeof snapshot.accountId !== 'string' || !snapshot.accountId.trim() ||
       !Number.isFinite(snapshot.capturedAt) || snapshot.capturedAt < 0) throw new Error('账号或采集时间无效');
@@ -127,6 +189,7 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
       next.set(egg.id, egg);
     }
   }
+  carryOverPickedUpEggs(next, previous, snapshot, history);
   return { eggs: [...state.eggs.filter(e => e.accountId !== snapshot.accountId), ...next.values()],
     captureWatermarks: { ...state.captureWatermarks, [accountKey]: snapshot.capturedAt }, provenanceHistory: history };
 }
