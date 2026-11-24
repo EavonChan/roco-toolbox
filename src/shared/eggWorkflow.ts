@@ -120,14 +120,17 @@ function normalizeEgg(value: unknown, accountId: string, gameAccountKey: string,
 const active = (trade: WorkflowTrade) => trade.status === 'accepted';
 
 const hasMeasure = (value: number | undefined): boolean => typeof value === 'number' && Number.isFinite(value);
+/** 声音非空：`''`（未标）与 `'unknown'`（没解析出来）都算缺。 */
+const hasVoice = (egg: WorkflowEgg): boolean => !!egg.voice && egg.voice !== 'unknown';
 
 /**
- * 自动挂出：蛋在背包 **且** 信息完整（蛋重 / 蛋高 / 获得时间三项都有）。
+ * 自动挂出：蛋在背包 **且** 信息完整（获得时间 / 蛋重 / 蛋高 / 声音 四项都有）。
  *
  * 口径（用户 2026-11-24 定，别扩条件）：
  * - 家园蛋一律不挂：蛋重要收进背包才知道，满重蛋挂出去会亏；
  * - 只置 true，**永不置 false**——取消挂出只由用户手动下架或 reserved/transferred 状态机负责；
- * - 尊重 `listingOptOut`（用户手动下架过）；旧数据没有该字段 = 未下架；
+ * - 尊重 `listingOptOut`（用户手动下架过，例如满重蛋、绿窝蛋要收藏）；旧数据没有该字段 = 未下架；
+ * - 父母本与性格/体型都**不是**门槛（标注后续支持用户自填）；
  * - 已换出 / 不可交换按现有 `canCirculateEgg`（status available 且非异色/特殊）排除。
  */
 export function autoListStock(state: EggWorkflowState, accountId: string, gameAccountKey: string): EggWorkflowState {
@@ -136,7 +139,7 @@ export function autoListStock(state: EggWorkflowState, accountId: string, gameAc
     if (egg.accountId !== accountId || egg.gameAccountKey !== gameAccountKey) return egg;
     if (egg.listed || egg.listingOptOut || egg.missingFromCapture) return egg;
     if ((egg.location ?? 'bag') !== 'bag') return egg;
-    if (!egg.obtainedAt || !hasMeasure(egg.weightGrams) || !hasMeasure(egg.heightCm)) return egg;
+    if (!egg.obtainedAt || !hasMeasure(egg.weightGrams) || !hasMeasure(egg.heightCm) || !hasVoice(egg)) return egg;
     if (!canCirculateEgg(egg)) return egg;
     changed = true;
     return { ...egg, listed: true };

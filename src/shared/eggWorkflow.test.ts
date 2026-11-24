@@ -360,7 +360,8 @@ test('manual labels survive later home captures and stay manual', () => {
 });
 
 const measured = (id: string, over: Record<string, unknown> = {}) => ({
-  ...stock(id, 3227), location: 'bag', weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00', ...over,
+  ...stock(id, 3227), location: 'bag', weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00',
+  voice: '婉转声', ...over,
 });
 const bagSync = (state: EggWorkflowState, actor: string, capturedAt: number, eggs: unknown[]) =>
   applyEggAction(state, 'g', actor, { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt, complete: true, eggs }, capturedAt);
@@ -374,9 +375,18 @@ test('a bag egg with weight height and obtained time is listed automatically', (
 test('a home egg is never listed automatically even with full measurements', () => {
   const state = applyEggAction(emptyEggWorkflow(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1,
     complete: false, homeComplete: true,
-    eggs: [homeEgg({ weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00' })] }, 1);
-  expect(state.eggs[0]).toMatchObject({ location: 'home', listed: false, weightGrams: 2320, heightCm: 34,
+    eggs: [homeEgg({ voice: '婉转声', weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00' })] }, 1);
+  expect(state.eggs[0]).toMatchObject({ location: 'home', listed: false, voice: '婉转声', weightGrams: 2320, heightCm: 34,
     obtainedAt: '2026-11-17T22:31:00' });
+});
+
+test('a bag egg without voice is not listed until the voice arrives', () => {
+  let state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('empty-voice', { voice: '' })]);
+  expect(state.eggs[0].listed).toBe(false);
+  state = bagSync(state, 'a', 2, [measured('empty-voice', { voice: 'unknown' })]);
+  expect(state.eggs[0].listed).toBe(false);
+  state = bagSync(state, 'a', 3, [measured('empty-voice', { voice: '婉转声' })]);
+  expect(state.eggs[0]).toMatchObject({ listed: true, voice: '婉转声' });
 });
 
 test('a bag egg missing weight height or obtained time is not listed automatically', () => {

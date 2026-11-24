@@ -240,19 +240,21 @@ describe('recordIngestedHomeEggs', () => {
     expect(new Set(state.eggs.map(value => value.id)).size).toBe(2);
   });
 
-  test('a home egg is never auto-listed even with weight height and obtained time', () => {
+  test('a home egg is never auto-listed even with weight height voice and obtained time', () => {
     const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000, index);
-    const measured = { ...first.state.eggs[0], weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00' };
+    const measured = { ...first.state.eggs[0], weightGrams: 2320, heightCm: 34, voice: '婉转声' as const,
+      obtainedAt: '2026-11-17T22:31:00' };
     const later = recordIngestedHomeEggs({ ...first.state, eggs: [measured] }, 'b', '293143', ingested, 1000 + 60 * 60_000, index);
     expect(later.state.eggs[0]).toMatchObject({
-      location: 'home', listed: false, weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00',
+      location: 'home', listed: false, weightGrams: 2320, heightCm: 34, voice: '婉转声',
+      obtainedAt: '2026-11-17T22:31:00',
     });
   });
 
   test('a merged home row that already sits in the bag is auto-listed on ingest', () => {
     const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000, index);
     const merged = { ...first.state.eggs[0], location: 'bag' as const, weightGrams: 2320, heightCm: 34,
-      obtainedAt: '2026-11-17T22:31:00' };
+      voice: '婉转声' as const, obtainedAt: '2026-11-17T22:31:00' };
     const later = recordIngestedHomeEggs({ ...first.state, eggs: [merged] }, 'b', '293143', ingested, 1000 + 60 * 60_000, index);
     expect(later.state.eggs[0]).toMatchObject({ location: 'bag', listed: true });
   });
