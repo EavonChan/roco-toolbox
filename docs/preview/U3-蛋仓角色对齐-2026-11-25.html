@@ -13160,7 +13160,7 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
   });
 
   // tools/preview/u3/main.tsx
-  var import_react11 = __toESM(require_react(), 1);
+  var import_react12 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
 
   // src/data/catalog.gen.json
@@ -15678,8 +15678,301 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
     return groups.sort((a, b) => Number(b.selfProduced > 0) - Number(a.selfProduced > 0) || Number(b.greenNest > 0) - Number(a.greenNest > 0) || (firstIndex.get(a.key) ?? 0) - (firstIndex.get(b.key) ?? 0));
   }
 
-  // tools/preview/u3/main.tsx
+  // src/ui/PetCardLayout.tsx
+  var import_react11 = __toESM(require_react(), 1);
+
+  // src/ui/petNameLabel.ts
+  var FORM_TAILS = ["\u7684\u6837\u5B50", "\u5F62\u6001", "\u7684\u6A21\u6837"];
+  function compactPetName(fullName, maxLength = 7) {
+    const raw = (fullName ?? "").trim();
+    if (!raw) return "";
+    const [baseRaw, ...rest] = raw.split("_");
+    const base2 = baseRaw.trim();
+    const form = rest.join("_").trim();
+    if (!form) return base2;
+    let short = form;
+    for (const tail of FORM_TAILS) {
+      if (short.endsWith(tail)) {
+        short = short.slice(0, -tail.length);
+        break;
+      }
+    }
+    short = short.trim();
+    if (!short) return base2;
+    const compact = `${base2}\xB7${short}`;
+    return compact.length > maxLength ? base2 : compact;
+  }
+
+  // src/ui/fitCardName.ts
+  function fitFontSize(natural, available, base2, min) {
+    if (!(natural > 0) || !(available > 0) || natural <= available) return base2;
+    return Math.max(min, Math.floor(base2 * available / natural * 2) / 2);
+  }
+  var measurerOverride = null;
+  var canvasContext = null;
+  var canvasUnavailable = false;
+  var fontFamily = "";
+  var fontWeight = "";
+  var widthCache = /* @__PURE__ */ new Map();
+  var MAX_CACHE_ENTRIES = 2e3;
+  var tasks = /* @__PURE__ */ new Set();
+  var knownWidths = /* @__PURE__ */ new Map();
+  var flushScheduled = false;
+  var sharedObserver2 = null;
+  function getCanvasContext() {
+    if (canvasUnavailable) return null;
+    if (canvasContext) return canvasContext;
+    try {
+      if (typeof document === "undefined" || typeof HTMLCanvasElement === "undefined" || typeof CanvasRenderingContext2D === "undefined") {
+        canvasUnavailable = true;
+        return null;
+      }
+      const canvas = document.createElement("canvas");
+      canvasContext = canvas.getContext("2d");
+    } catch {
+      canvasContext = null;
+    }
+    if (!canvasContext) canvasUnavailable = true;
+    return canvasContext;
+  }
+  function fontOf(element) {
+    if (fontFamily && fontWeight) return { family: fontFamily, weight: fontWeight };
+    try {
+      const computed = window.getComputedStyle(element);
+      fontFamily = computed.fontFamily || "sans-serif";
+      fontWeight = computed.fontWeight || "400";
+    } catch {
+      fontFamily = "sans-serif";
+      fontWeight = "400";
+    }
+    return { family: fontFamily, weight: fontWeight };
+  }
+  function naturalWidth(text, fontSize, sample) {
+    if (measurerOverride) return measurerOverride(text, fontSize);
+    const { family, weight } = fontOf(sample);
+    const key = `${fontSize}|${weight}|${family}|${text}`;
+    const cached = widthCache.get(key);
+    if (cached !== void 0) return cached;
+    const context = getCanvasContext();
+    if (!context) return 0;
+    try {
+      context.font = `${weight} ${fontSize}px ${family}`;
+    } catch {
+      return 0;
+    }
+    const width = context.measureText(text).width;
+    if (!Number.isFinite(width)) return 0;
+    if (widthCache.size >= MAX_CACHE_ENTRIES) widthCache.clear();
+    widthCache.set(key, width);
+    return width;
+  }
+  function flushCardNameFit() {
+    if (tasks.size === 0) return;
+    const list = [...tasks];
+    const available = list.map((task) => task.heading.clientWidth);
+    for (let index = 0; index < list.length; index += 1) {
+      const task = list[index];
+      knownWidths.set(task.heading, available[index]);
+      const natural = naturalWidth(task.text.textContent ?? "", task.base, task.text);
+      const size = fitFontSize(natural, available[index], task.base, task.min);
+      const css = `${size}px`;
+      if (task.text.style.fontSize !== css) task.text.style.fontSize = css;
+    }
+  }
+  function scheduleFlush() {
+    if (flushScheduled) return;
+    flushScheduled = true;
+    queueMicrotask(() => {
+      flushScheduled = false;
+      flushCardNameFit();
+    });
+  }
+  function ensureObserver() {
+    if (typeof ResizeObserver === "undefined") return null;
+    if (!sharedObserver2) {
+      sharedObserver2 = new ResizeObserver((entries) => {
+        let changed = false;
+        for (const entry of entries) {
+          const known = knownWidths.get(entry.target);
+          if (known === void 0 || Math.abs(entry.contentRect.width - known) > 0.5) {
+            changed = true;
+            break;
+          }
+        }
+        if (changed) scheduleFlush();
+      });
+    }
+    return sharedObserver2;
+  }
+  function scheduleCardNameFit(task) {
+    tasks.add(task);
+    ensureObserver()?.observe(task.heading);
+    scheduleFlush();
+    return () => {
+      tasks.delete(task);
+      knownWidths.delete(task.heading);
+      sharedObserver2?.unobserve(task.heading);
+    };
+  }
+
+  // src/ui/PetCardLayout.tsx
   var import_jsx_runtime12 = __toESM(require_jsx_runtime(), 1);
+  function PetCardLayout({
+    name,
+    number,
+    eggGroups = [],
+    natures = [],
+    natureCollected,
+    naturePrefix,
+    natureAdornment,
+    badge: badge2,
+    avatar,
+    details,
+    footer,
+    testId,
+    eggGroupsTestId = "pet-card-egg-groups",
+    naturesTestId = "pet-card-natures",
+    title,
+    ariaLabel,
+    className = "",
+    academy,
+    size = "default",
+    status,
+    fitName = false,
+    fitNameBase,
+    fitNameMin,
+    gender,
+    onClick,
+    ariaPressed
+  }) {
+    const handleKeyDown = (event) => {
+      if (!onClick || event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      onClick();
+    };
+    const showDetails = details != null && details !== false;
+    const showFooter = footer != null && footer !== false;
+    const compact = size === "compact";
+    const statusTone = status === "uncollected" ? "border-slate-200 bg-white" : status === "planned" ? "border-sky-200 bg-sky-50" : status === "collected" || status === "fillable" ? "border-emerald-200 bg-emerald-50" : null;
+    const genderTone = academy ? (
+      /* 学院小窝：整卡变绿，和普通窝区分（2026-11-21 用户口径） */
+      "border-emerald-300 bg-emerald-50/60"
+    ) : gender === "\u6BCD" ? "border-pink-200 bg-pink-50" : gender === "\u516C" ? "border-sky-200 bg-sky-50" : gender === "\u672A\u77E5" ? "border-slate-200 bg-slate-50" : (
+      /* 2026-11-22 用户口径：看板四列卡不再用绿底，统一白底 */
+      "border-slate-200 bg-white"
+    );
+    const tone = statusTone ?? genderTone;
+    const hoverBorder = status === "uncollected" ? "hover:border-slate-400" : status === "planned" ? "hover:border-sky-400" : "hover:border-emerald-500";
+    const displayName = compactPetName(name);
+    const nameRef = (0, import_react11.useRef)(null);
+    const nameTextRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useLayoutEffect)(() => {
+      if (!fitName) return;
+      const heading = nameRef.current;
+      const text = nameTextRef.current;
+      if (!heading || !text) return;
+      return scheduleCardNameFit({
+        heading,
+        text,
+        base: fitNameBase ?? 10,
+        min: fitNameMin ?? 10
+      });
+    }, [fitName, name, size, fitNameBase, fitNameMin]);
+    return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(
+      "article",
+      {
+        className: `relative h-[104px] min-w-0 overflow-hidden rounded-xl border ${tone} p-1 shadow-sm ${onClick ? `cursor-pointer ${hoverBorder} focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500` : ""} ${className}`,
+        "data-testid": testId,
+        "data-academy": academy ? "true" : void 0,
+        title,
+        "aria-label": ariaLabel,
+        role: onClick ? "button" : void 0,
+        tabIndex: onClick ? 0 : void 0,
+        "aria-pressed": onClick ? ariaPressed : void 0,
+        onClick,
+        onKeyDown: onClick ? handleKeyDown : void 0,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("header", { className: "absolute inset-x-1 top-1 z-10 grid max-h-[48px] grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)] items-start overflow-hidden text-[7px] leading-[8px]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex min-w-0 flex-col items-start gap-px", children: [
+              number ? /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "truncate font-semibold text-slate-500", children: [
+                "No.",
+                number
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "h-2", "aria-hidden": true }),
+              /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "flex min-w-0 flex-col items-start gap-px", "data-testid": eggGroupsTestId, children: eggGroups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+                "span",
+                {
+                  className: "max-w-full truncate rounded bg-sky-100 px-0.5 py-0 text-sky-800",
+                  title: group,
+                  children: group
+                },
+                group
+              )) }),
+              badge2 ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "flex min-w-0 items-start", children: badge2 }) : null
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "col-start-3 row-start-1 flex min-w-0 flex-col items-end gap-px", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex min-w-0 items-center justify-end gap-px", children: [
+                naturePrefix,
+                /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "flex min-w-0 flex-col items-end gap-px", "data-testid": naturesTestId, children: natures.map((nature) => /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+                  "span",
+                  {
+                    className: `inline-flex h-3 max-w-full items-center truncate rounded px-0.5 py-0 font-medium ${natureCollected ? natureCollected(nature) ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400" : "bg-amber-100 text-amber-900"}`,
+                    "data-nature-collected": natureCollected ? natureCollected(nature) ? "true" : "false" : void 0,
+                    title: nature,
+                    children: nature
+                  },
+                  nature
+                )) })
+              ] }),
+              natureAdornment
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+            "div",
+            {
+              className: `absolute left-1/2 z-0 flex h-12 w-12 -translate-x-1/2 items-center justify-center ${showFooter ? "top-[18px]" : "top-[24px]"}`,
+              "data-testid": "pet-card-avatar",
+              children: avatar
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+            "h3",
+            {
+              ref: nameRef,
+              className: `absolute inset-x-1 flex items-center justify-center truncate text-center text-[10px] font-bold leading-3 text-slate-900 ${showFooter ? "top-[66px] h-3" : "top-[72px] h-3"}`,
+              title: title ?? name,
+              children: fitName ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+                "span",
+                {
+                  ref: nameTextRef,
+                  className: "inline-block max-w-full truncate whitespace-nowrap",
+                  "data-testid": "pet-card-name",
+                  children: displayName
+                }
+              ) : displayName
+            }
+          ),
+          showDetails ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+            "div",
+            {
+              className: `absolute inset-x-1 flex items-center justify-center overflow-hidden text-center ${showFooter ? "top-[78px] h-2" : "top-[84px] h-2"}`,
+              children: details
+            }
+          ) : null,
+          showFooter ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+            "div",
+            {
+              className: `absolute flex items-center justify-center overflow-hidden ${compact ? "inset-x-1 bottom-1 h-1.5" : "inset-x-0 bottom-0 h-[18px]"}`,
+              "data-testid": "pet-card-footer",
+              children: footer
+            }
+          ) : null
+        ]
+      }
+    );
+  }
+
+  // tools/preview/u3/main.tsx
+  var import_jsx_runtime13 = __toESM(require_jsx_runtime(), 1);
   var ME = "acct-demo";
   var HOUR = 36e5;
   var ago = (hours) => Date.now() - hours * HOUR;
@@ -15802,18 +16095,18 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
   var MY_EGGS = EGGS.filter((egg) => egg.accountId === ME && egg.status !== "transferred");
   var noop = async () => void 0;
   function Shell({ tab, pageView, children }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "min-h-screen bg-slate-50", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "sticky top-0 z-50 bg-white", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("header", { className: "flex items-center justify-between gap-2 border-b border-slate-100 bg-white px-4 py-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("h1", { className: "text-base font-semibold text-slate-900", children: "\u5C0F\u5E03\u52A9\u624B" }),
-          /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex shrink-0 items-center gap-1.5", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { type: "button", className: "min-h-[30px] rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500", children: "\u5237\u65B0" }),
-            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { type: "button", className: "min-h-[30px] rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500", children: "\u6559\u7A0B" })
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "min-h-screen bg-slate-50", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "sticky top-0 z-50 bg-white", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("header", { className: "flex items-center justify-between gap-2 border-b border-slate-100 bg-white px-4 py-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("h1", { className: "text-base font-semibold text-slate-900", children: "\u5C0F\u5E03\u52A9\u624B" }),
+          /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex shrink-0 items-center gap-1.5", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("button", { type: "button", className: "min-h-[30px] rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500", children: "\u5237\u65B0" }),
+            /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("button", { type: "button", className: "min-h-[30px] rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500", children: "\u6559\u7A0B" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(TabNav, { active: tab, onChange: () => void 0 })
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(TabNav, { active: tab, onChange: () => void 0 })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
         "div",
         {
           className: PAGE,
@@ -15825,30 +16118,30 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
     ] });
   }
   function HomeStock({ initialChar, back = "header-right" }) {
-    const [character, setCharacter] = (0, import_react11.useState)(initialChar ?? "");
-    const characters = (0, import_react11.useMemo)(() => eggCharactersOf(MY_EGGS, SNAPSHOTS), []);
+    const [character, setCharacter] = (0, import_react12.useState)(initialChar ?? "");
+    const characters = (0, import_react12.useMemo)(() => eggCharactersOf(MY_EGGS, SNAPSHOTS), []);
     const active = character || characters[0]?.key || "";
-    const select = characters.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(EggCharacterSelect, { value: active, characters, onChange: setCharacter }) : null;
-    const backText = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { type: "button", className: "min-h-[28px] shrink-0 px-1 text-xs text-slate-500", children: "\u2039 \u8FD4\u56DE" });
-    const title = /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex min-w-0 flex-1 items-center gap-1.5", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("h2", { className: `${TITLE} min-w-0 shrink-0`, children: "\u6211\u7684\u86CB\u4ED3" }),
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "flex min-w-0 items-center", "data-testid": "home-stock-character-slot", children: select })
+    const select = characters.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(EggCharacterSelect, { value: active, characters, onChange: setCharacter }) : null;
+    const backText = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("button", { type: "button", className: "min-h-[28px] shrink-0 px-1 text-xs text-slate-500", children: "\u2039 \u8FD4\u56DE" });
+    const title = /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex min-w-0 flex-1 items-center gap-1.5", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("h2", { className: `${TITLE} min-w-0 shrink-0`, children: "\u6211\u7684\u86CB\u4ED3" }),
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("span", { className: "flex min-w-0 items-center", "data-testid": "home-stock-character-slot", children: select })
     ] });
-    const header = back === "content-row" ? null : back === "header-left" ? /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex items-center gap-2", children: [
+    const header = back === "content-row" ? null : back === "header-left" ? /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex items-center gap-2", children: [
       backText,
       title
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex items-center gap-2", children: [
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex items-center gap-2", children: [
       title,
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { type: "button", className: "min-h-[28px] shrink-0 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-600", children: "\u8FD4\u56DE\u5BB6\u56ED" })
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("button", { type: "button", className: "min-h-[28px] shrink-0 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-600", children: "\u8FD4\u56DE\u5BB6\u56ED" })
     ] });
-    const contentRow = back === "content-row" ? /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex items-center gap-2", children: [
+    const contentRow = back === "content-row" ? /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex items-center gap-2", children: [
       backText,
       title
     ] }) : null;
-    return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(Shell, { tab: "home", pageView: "stock", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)(Shell, { tab: "home", pageView: "stock", children: [
       header,
       contentRow,
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("section", { className: CARD, "data-testid": "home-egg-stock-view", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "flex flex-col gap-2", "data-testid": "egg-stock-body", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("section", { className: CARD, "data-testid": "home-egg-stock-view", children: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "flex flex-col gap-2", "data-testid": "egg-stock-body", children: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
         EggStockPanel,
         {
           eggs: MY_EGGS,
@@ -15865,19 +16158,19 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
     ] });
   }
   function PlazaStock({ withCharacter = false, initialChar, back = "left", card = false }) {
-    const [character, setCharacter] = (0, import_react11.useState)(initialChar ?? "");
-    const characters = (0, import_react11.useMemo)(() => eggCharactersOf(MY_EGGS, SNAPSHOTS), []);
+    const [character, setCharacter] = (0, import_react12.useState)(initialChar ?? "");
+    const characters = (0, import_react12.useMemo)(() => eggCharactersOf(MY_EGGS, SNAPSHOTS), []);
     const active = character || characters[0]?.key || "";
-    const select = withCharacter && characters.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(EggCharacterSelect, { value: active, characters, onChange: setCharacter, testId: "egg-stock-character-plaza" }) : null;
-    return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(Shell, { tab: "groups", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex min-w-0 flex-col gap-2", "data-testid": "egg-matching-hub", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex items-center gap-2", children: [
-        back === "left" ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { type: "button", className: "min-h-[28px] shrink-0 px-1 text-xs text-slate-500", children: "\u2039 \u8FD4\u56DE" }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("h3", { className: "min-w-0 shrink-0 text-sm font-semibold", children: "\u6211\u7684\u86CB\u4ED3" }),
+    const select = withCharacter && characters.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(EggCharacterSelect, { value: active, characters, onChange: setCharacter, testId: "egg-stock-character-plaza" }) : null;
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(Shell, { tab: "groups", children: /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex min-w-0 flex-col gap-2", "data-testid": "egg-matching-hub", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex items-center gap-2", children: [
+        back === "left" ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("button", { type: "button", className: "min-h-[28px] shrink-0 px-1 text-xs text-slate-500", children: "\u2039 \u8FD4\u56DE" }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("h3", { className: "min-w-0 shrink-0 text-sm font-semibold", children: "\u6211\u7684\u86CB\u4ED3" }),
         select,
-        back === "right" ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { type: "button", className: "ml-auto min-h-[28px] shrink-0 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-600", children: "\u8FD4\u56DE\u6362\u86CB" }) : null
+        back === "right" ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("button", { type: "button", className: "ml-auto min-h-[28px] shrink-0 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-600", children: "\u8FD4\u56DE\u6362\u86CB" }) : null
       ] }),
       (() => {
-        const panel = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+        const panel = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
           EggStockPanel,
           {
             eggs: MY_EGGS,
@@ -15889,7 +16182,7 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
             ...withCharacter ? { character: active, characters, onCharacterChange: setCharacter } : {}
           }
         );
-        return card ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("section", { className: CARD, "data-testid": "egg-stock-card", children: panel }) : panel;
+        return card ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("section", { className: CARD, "data-testid": "egg-stock-card", children: panel }) : panel;
       })()
     ] }) });
   }
@@ -15903,7 +16196,8 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
     "plaza-card": "\u767D\u5361 \xB7 \u5E7F\u573A\u86CB\u4ED3\u5957\u767D\u5361\uFF08\u65B9\u6848 1 \u7684\u6837\u5B50\uFF09",
     "group-2": "\u5206\u7EC4 \xB7 \u65B9\u6848 2\uFF1A\u4E00\u4E2A\u89D2\u8272\u4E00\u6BB5\uFF08\u6BB5\u5934\u5E26\u86CB\u6570\uFF09",
     "group-2b": "\u5206\u7EC4 \xB7 \u65B9\u6848 2 + \u540C\u7C7B\u86CB\u805A\u5408\uFF08\u6BB5\u5185 \xD7N \u805A\u5408\u5361\uFF09",
-    "group-3": "\u5206\u7EC4 \xB7 \u65B9\u6848 3\uFF1A\u9ED8\u8BA4\u5206\u7EC4 + \u9876\u90E8\u89D2\u8272\u82AF\u7247"
+    "group-3": "\u5206\u7EC4 \xB7 \u65B9\u6848 3\uFF1A\u9ED8\u8BA4\u5206\u7EC4 + \u9876\u90E8\u89D2\u8272\u82AF\u7247",
+    "fit-name": "\u5B57\u53F7\u5BF9\u6BD4\uFF1AA \u73B0\u72B6 10px / B \u6062\u590D 12\u21929"
   };
   var EGG_FACTS = {
     natureText: (egg) => egg.nature || "\u672A\u6807\u6CE8",
@@ -15913,26 +16207,60 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
     isSpecial: (egg) => egg.kind === "special" || egg.kind === "shiny"
   };
   var speciesName = (id) => species.find((entry) => entry.gameId === id)?.name ?? "\u672A\u6536\u5F55\u7CBE\u7075";
+  var FIT_CASES = [
+    { gameId: 3746, name: "\u7761\u94C3\u96EA\u5F71\u5A03\u5A03" },
+    { gameId: 3027, name: "\u84B2\u516C\u82F1\u5A03\u5A03" },
+    { gameId: 3063, name: "\u767D\u91D1\u72EC\u89D2\u517D" },
+    { gameId: 3001, name: "\u55B5\u55B5" }
+  ];
+  function NameRow({ base: base2, min, label }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "grid grid-cols-4 gap-1.5", "data-testid": `fit-row-${label}`, children: FIT_CASES.map((item) => /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
+      PetCardLayout,
+      {
+        name: item.name,
+        number: "001",
+        avatar: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PetAvatar, { gameId: item.gameId, name: item.name, size: 48 }),
+        fitName: true,
+        fitNameBase: base2,
+        fitNameMin: min,
+        size: "tall",
+        testId: "fit-demo-card"
+      },
+      `${label}-${item.gameId}`
+    )) });
+  }
+  function FitNameCompare() {
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(Shell, { tab: "collection", children: /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex flex-col gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("section", { className: "flex flex-col gap-1.5", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("h2", { className: "text-xs font-semibold text-slate-900", children: "A \xB7 \u73B0\u72B6\uFF1A\u540D\u5B57\u4E00\u5F8B 10px\uFF08\u8D85\u5BBD\u5C31\u622A\u65AD\uFF09" }),
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(NameRow, { base: 10, min: 10, label: "a" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("section", { className: "flex flex-col gap-1.5", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("h2", { className: "text-xs font-semibold text-slate-900", children: "B \xB7 \u6062\u590D\uFF1A\u57FA\u51C6 12px\uFF0C\u8D85\u5BBD\u6309\u6BD4\u4F8B\u7F29\u5230 9px" }),
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(NameRow, { base: 12, min: 9, label: "b" })
+      ] })
+    ] }) });
+  }
   function GroupedStock({ mode }) {
-    const [query, setQuery] = (0, import_react11.useState)("");
-    const [only, setOnly] = (0, import_react11.useState)("");
+    const [query, setQuery] = (0, import_react12.useState)("");
+    const [only, setOnly] = (0, import_react12.useState)("");
     const visible = MY_EGGS.filter((egg) => !query || speciesName(egg.eggGameId).includes(query));
     const characters = eggCharactersOf(visible, SNAPSHOTS);
     const shown = mode === "chips" && only ? characters.filter((item) => item.key === only) : characters;
     const chips = [{ key: "", name: "\u5168\u90E8", count: visible.length }, ...characters];
-    return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(Shell, { tab: "groups", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex min-w-0 flex-col gap-2", "data-testid": "egg-matching-hub", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex items-center gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { type: "button", className: "min-h-[28px] shrink-0 px-1 text-xs text-slate-500", children: "\u2039 \u8FD4\u56DE" }),
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("h3", { className: "min-w-0 shrink-0 text-sm font-semibold", children: "\u6211\u7684\u86CB\u4ED3" }),
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "ml-auto shrink-0 text-[10px] text-slate-400", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(Shell, { tab: "groups", children: /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex min-w-0 flex-col gap-2", "data-testid": "egg-matching-hub", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("button", { type: "button", className: "min-h-[28px] shrink-0 px-1 text-xs text-slate-500", children: "\u2039 \u8FD4\u56DE" }),
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("h3", { className: "min-w-0 shrink-0 text-sm font-semibold", children: "\u6211\u7684\u86CB\u4ED3" }),
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("span", { className: "ml-auto shrink-0 text-[10px] text-slate-400", children: [
           "\u5171 ",
           visible.length,
           " \u9897"
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("section", { className: CARD, "data-testid": "egg-stock-card", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "flex flex-col gap-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(SearchField, { label: "\u641C\u7D22\u86CB\u540D", value: query, onValueChange: setQuery, placeholder: "\u641C\u7D22\u86CB\u540D", className: "[&_input]:text-left" }),
-        mode === "chips" ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "flex flex-wrap gap-1", "data-testid": "stock-role-chips", children: chips.map((chip) => /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("section", { className: CARD, "data-testid": "egg-stock-card", children: /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "flex flex-col gap-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(SearchField, { label: "\u641C\u7D22\u86CB\u540D", value: query, onValueChange: setQuery, placeholder: "\u641C\u7D22\u86CB\u540D", className: "[&_input]:text-left" }),
+        mode === "chips" ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "flex flex-wrap gap-1", "data-testid": "stock-role-chips", children: chips.map((chip) => /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)(
           "button",
           {
             type: "button",
@@ -15951,16 +16279,16 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
         shown.map((character) => {
           const roleEggs = MY_EGGS.filter((egg) => egg.gameAccountKey === character.key);
           const groups = groupEggStock(roleEggs, EGG_FACTS);
-          return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("section", { className: "flex flex-col gap-1.5", "data-testid": "stock-role-section", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("header", { className: "flex items-center gap-1.5", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("h4", { className: "text-xs font-semibold text-slate-900", children: character.name }),
-              /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "text-[10px] text-slate-400", children: [
+          return /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("section", { className: "flex flex-col gap-1.5", "data-testid": "stock-role-section", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("header", { className: "flex items-center gap-1.5", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("h4", { className: "text-xs font-semibold text-slate-900", children: character.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("span", { className: "text-[10px] text-slate-400", children: [
                 character.count,
                 " \u9897"
               ] }),
-              character.key === characters[0]?.key ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "rounded bg-emerald-50 px-1 text-[9px] leading-4 text-emerald-700", children: "\u4E3B\u53F7" }) : null
+              character.key === characters[0]?.key ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("span", { className: "rounded bg-emerald-50 px-1 text-[9px] leading-4 text-emerald-700", children: "\u4E3B\u53F7" }) : null
             ] }),
-            character.count === 0 ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("p", { className: "text-[10px] text-slate-400", children: "\u8FD9\u4E2A\u89D2\u8272\u8FD8\u6CA1\u6709\u86CB" }) : mode === "aggregate" ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "egg-stock-grid grid grid-cols-4 gap-1.5", children: groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+            character.count === 0 ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("p", { className: "text-[10px] text-slate-400", children: "\u8FD9\u4E2A\u89D2\u8272\u8FD8\u6CA1\u6709\u86CB" }) : mode === "aggregate" ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "egg-stock-grid grid grid-cols-4 gap-1.5", children: groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
               EggGroupCard,
               {
                 group,
@@ -15972,7 +16300,7 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
               group.key
             )) }) : (
               // 段内直接复用真实面板的蛋卡：只保留网格，把搜索与筛选条件藏掉
-              /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "u3-section", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(EggStockPanel, { eggs: roleEggs, species, busy: false, mutate: noop, character: character.key }) })
+              /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "u3-section", children: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(EggStockPanel, { eggs: roleEggs, species, busy: false, mutate: noop, character: character.key }) })
             )
           ] }, character.key);
         })
@@ -15980,16 +16308,17 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
     ] }) });
   }
   function renderScreen(screen, initialChar) {
-    if (screen === "home") return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(HomeStock, { initialChar });
-    if (screen === "return-a-home") return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(HomeStock, { initialChar, back: "header-left" });
-    if (screen === "return-c-home") return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(HomeStock, { initialChar, back: "content-row" });
-    if (screen === "group-2") return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(GroupedStock, { mode: "plain" });
-    if (screen === "group-2b") return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(GroupedStock, { mode: "aggregate" });
-    if (screen === "group-3") return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(GroupedStock, { mode: "chips" });
+    if (screen === "home") return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(HomeStock, { initialChar });
+    if (screen === "return-a-home") return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(HomeStock, { initialChar, back: "header-left" });
+    if (screen === "return-c-home") return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(HomeStock, { initialChar, back: "content-row" });
+    if (screen === "group-2") return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(GroupedStock, { mode: "plain" });
+    if (screen === "group-2b") return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(GroupedStock, { mode: "aggregate" });
+    if (screen === "group-3") return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(GroupedStock, { mode: "chips" });
+    if (screen === "fit-name") return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(FitNameCompare, {});
     if (screen === "plaza-card") {
-      return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PlazaStock, { withCharacter: true, card: true, initialChar }, "plaza-card");
+      return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PlazaStock, { withCharacter: true, card: true, initialChar }, "plaza-card");
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
       PlazaStock,
       {
         withCharacter: screen !== "plaza",
@@ -16001,12 +16330,12 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
   function App() {
     const params = new URLSearchParams(window.location.search);
     const bare = params.get("bare") === "1";
-    const [screen, setScreen] = (0, import_react11.useState)(params.get("screen") ?? "home");
+    const [screen, setScreen] = (0, import_react12.useState)(params.get("screen") ?? "home");
     const initialChar = params.get("char") ?? void 0;
     if (bare) return renderScreen(screen, initialChar);
-    return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { "data-toolbar": true, className: "flex flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-3 py-2 text-xs", children: [
-        Object.entries(SCREENS).map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { "data-toolbar": true, className: "flex flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-3 py-2 text-xs", children: [
+        Object.entries(SCREENS).map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
           "button",
           {
             type: "button",
@@ -16017,12 +16346,12 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
           },
           key
         )),
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "ml-1 text-slate-400", children: "\u5047\u6570\u636E\uFF1A\u963F\u7532 5 \u9897 / \u963F\u4E59 3 \u9897 / \u963F\u4E19 0 \u9897\uFF1B\u7EC4\u4EF6\u662F\u4ED3\u5E93\u91CC\u7684\u771F\u5B9E\u7EC4\u4EF6" })
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("span", { className: "ml-1 text-slate-400", children: "\u5047\u6570\u636E\uFF1A\u963F\u7532 5 \u9897 / \u963F\u4E59 3 \u9897 / \u963F\u4E19 0 \u9897\uFF1B\u7EC4\u4EF6\u662F\u4ED3\u5E93\u91CC\u7684\u771F\u5B9E\u7EC4\u4EF6" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "mx-auto max-w-[420px] border-x border-slate-200", children: renderScreen(screen, initialChar) })
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "mx-auto max-w-[420px] border-x border-slate-200", children: renderScreen(screen, initialChar) })
     ] });
   }
-  (0, import_client.createRoot)(document.getElementById("root")).render(/* @__PURE__ */ (0, import_jsx_runtime12.jsx)(App, {}));
+  (0, import_client.createRoot)(document.getElementById("root")).render(/* @__PURE__ */ (0, import_jsx_runtime13.jsx)(App, {}));
 })();
 /*! Bundled license information:
 

@@ -20,6 +20,8 @@ import { EggGroupCard } from '../../../src/ui/plan/EggGroupCard';
 import { EggStockPanel } from '../../../src/ui/plan/EggStockPanel';
 import { eggCharactersOf } from '../../../src/ui/plan/eggCharacter';
 import { groupEggStock, type EggGroupFacts } from '../../../src/ui/plan/eggStockGroups';
+import { PetAvatar } from '../../../src/ui/PetAvatar';
+import { PetCardLayout } from '../../../src/ui/PetCardLayout';
 import type { AccountSnapshot } from '../../../src/domain/parseBackup';
 import type { WorkflowEgg } from '../../../src/shared/eggWorkflow';
 
@@ -214,6 +216,7 @@ const SCREENS = {
   'group-2': '分组 · 方案 2：一个角色一段（段头带蛋数）',
   'group-2b': '分组 · 方案 2 + 同类蛋聚合（段内 ×N 聚合卡）',
   'group-3': '分组 · 方案 3：默认分组 + 顶部角色芯片',
+  'fit-name': '字号对比：A 现状 10px / B 恢复 12→9',
 } as const;
 type ScreenKey = keyof typeof SCREENS;
 
@@ -233,6 +236,56 @@ const speciesName = (id: number) => species.find((entry) => entry.gameId === id)
  * - `aggregate`：同上，但段内换成 U5 的「物种聚合卡 ×N」（分组 × 聚合两层嵌套）
  * - `chips`：默认分组 + 顶部角色芯片，只留某个角色（方案 3）
  */
+/**
+ * 卡名字号对比（2026-11-26 用户口径）：同一批卡、同一排版，只改字号策略。
+ * - A 现状：`fitName` 但 base = min = 10（`466351b` 之后），名字一律 10px，超宽靠 truncate。
+ * - B 恢复：朋友的参数化口径 base 12 / min 9（`56f23cd`），超宽按实测宽度缩到 9px。
+ * 名字取图鉴里最长的几个：睡铃雪影娃娃(6 字)、蒲公英娃娃/白金独角兽(5 字)，喵喵(2 字) 作对照。
+ */
+const FIT_CASES = [
+  { gameId: 3746, name: '睡铃雪影娃娃' },
+  { gameId: 3027, name: '蒲公英娃娃' },
+  { gameId: 3063, name: '白金独角兽' },
+  { gameId: 3001, name: '喵喵' },
+];
+
+function NameRow({ base, min, label }: { base: number; min: number; label: string }) {
+  return (
+    <div className="grid grid-cols-4 gap-1.5" data-testid={`fit-row-${label}`}>
+      {FIT_CASES.map((item) => (
+        <PetCardLayout
+          key={`${label}-${item.gameId}`}
+          name={item.name}
+          number="001"
+          avatar={<PetAvatar gameId={item.gameId} name={item.name} size={48} />}
+          fitName
+          fitNameBase={base}
+          fitNameMin={min}
+          size="tall"
+          testId="fit-demo-card"
+        />
+      ))}
+    </div>
+  );
+}
+
+function FitNameCompare() {
+  return (
+    <Shell tab="collection">
+      <div className="flex flex-col gap-3">
+        <section className="flex flex-col gap-1.5">
+          <h2 className="text-xs font-semibold text-slate-900">A · 现状：名字一律 10px（超宽就截断）</h2>
+          <NameRow base={10} min={10} label="a" />
+        </section>
+        <section className="flex flex-col gap-1.5">
+          <h2 className="text-xs font-semibold text-slate-900">B · 恢复：基准 12px，超宽按比例缩到 9px</h2>
+          <NameRow base={12} min={9} label="b" />
+        </section>
+      </div>
+    </Shell>
+  );
+}
+
 function GroupedStock({ mode }: { mode: 'plain' | 'aggregate' | 'chips' }) {
   const [query, setQuery] = useState('');
   const [only, setOnly] = useState('');
@@ -314,6 +367,7 @@ function renderScreen(screen: ScreenKey, initialChar?: string) {
   if (screen === 'group-2') return <GroupedStock mode="plain" />;
   if (screen === 'group-2b') return <GroupedStock mode="aggregate" />;
   if (screen === 'group-3') return <GroupedStock mode="chips" />;
+  if (screen === 'fit-name') return <FitNameCompare />;
   if (screen === 'plaza-card') {
     return <PlazaStock withCharacter key="plaza-card" card initialChar={initialChar} />;
   }
