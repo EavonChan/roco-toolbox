@@ -30,8 +30,14 @@ interface SnapshotPart {
 }
 export interface EggStockSnapshot {
   accountId: string;
-  /** 游戏账号（uid:...）；同一工具箱账号可能导入多个游戏账号，水位按它分开。 */
-  gameAccountKey?: string;
+  /**
+   * 游戏账号（uid:...）；同一工具箱账号可能导入多个游戏账号，水位按它分开。
+   *
+   * **必填**：缺失时 `sameGame` 会把所有行判成别的账号，合并不上、删除也跳过的
+   * 「静默降级」不会报错，只会悄悄多出幽灵家蛋行（2026-11-25 实测 122 行）。
+   * 类型上要求必填，运行时再兜一次（外部 JSON / 旧调用方）。
+   */
+  gameAccountKey: string;
   /** One coherent capture cycle; pass its bag/home parts together. */
   capturedAt: number;
   bag?: SnapshotPart;
@@ -67,6 +73,10 @@ function validatePart(part: SnapshotPart | undefined): void {
 export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapshot): EggStockState {
   if (typeof snapshot.accountId !== 'string' || !snapshot.accountId.trim() ||
       !Number.isFinite(snapshot.capturedAt) || snapshot.capturedAt < 0) throw new Error('账号或采集时间无效');
+  // 没有游戏账号标识就不能做「同一账号 / 同一游戏账号」判定：宁可报错，也不静默降级成多出来的幽灵行。
+  if (typeof snapshot.gameAccountKey !== 'string' || !snapshot.gameAccountKey.trim()) {
+    throw new Error('库存快照缺少游戏账号标识（gameAccountKey）');
+  }
   validatePart(snapshot.bag);
   validatePart(snapshot.home);
   if (!snapshot.bag && !snapshot.home) return state;
@@ -75,7 +85,7 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
 
   const previous = new Map(state.eggs.filter(e => e.accountId === snapshot.accountId).map(e => [e.id, e]));
   const next = new Map(previous);
-  const gameKey = snapshot.gameAccountKey ?? '';
+  const gameKey = snapshot.gameAccountKey;
   const sameGame = (egg: StockEgg): boolean =>
     egg.accountId === snapshot.accountId && (egg.gameAccountKey ?? '') === gameKey;
   /**

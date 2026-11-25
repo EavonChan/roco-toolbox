@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { emptyEggStock, reconcileEggStock, setEggListed, sortEggStock, type EggObservation } from './eggStockModel';
+import { emptyEggStock, reconcileEggStock as reconcileBase, setEggListed, sortEggStock,
+  type EggObservation, type EggStockSnapshot, type EggStockState } from './eggStockModel';
 
 const egg = (over: Partial<EggObservation> = {}): EggObservation => ({
   id: 'e1', eggGameId: 3227, nature: '固执', body: '大块头', voice: '婉转声',
@@ -7,114 +8,123 @@ const egg = (over: Partial<EggObservation> = {}): EggObservation => ({
 });
 const part = (eggs: EggObservation[], complete = true) => ({ eggs, complete });
 
+/**
+ * 绝大多数用例只关心合并/删除，不关心具体游戏账号：默认补 `uid:1`。
+ * 账号相关用例可以自己传 `gameAccountKey` 覆盖；缺字段的负例直接调 `reconcileBase`。
+ */
+const reconcile = (
+  state: EggStockState,
+  snapshot: Omit<EggStockSnapshot, 'gameAccountKey'> & { gameAccountKey?: string },
+): EggStockState => reconcileBase(state, { gameAccountKey: 'uid:1', ...snapshot });
+
 describe('egg stock snapshots', () => {
   test('merges bag and home once by actual instance; bag wins', () => {
-    const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 10,
+    const state = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 10,
       bag: part([egg()]), home: part([egg({ nature: '开朗' }), egg({ id: 'e2' })]) });
     expect(state.eggs).toHaveLength(2);
     expect(state.eggs.find(e => e.id === 'e1')).toMatchObject({ nature: '固执', location: 'bag' });
     expect(state.eggs.find(e => e.id === 'e2')?.location).toBe('home');
   });
   test('complete empty snapshot removes stock; partial or absent source never deletes', () => {
-    const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 10,
+    const state = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 10,
       bag: part([egg()]), home: part([egg({ id: 'h1' })]) });
-    const partial = reconcileEggStock(state, { accountId: 'me', capturedAt: 11, bag: part([], false) });
+    const partial = reconcile(state, { accountId: 'me', capturedAt: 11, bag: part([], false) });
     expect(partial.eggs).toHaveLength(2);
-    const bagOnly = reconcileEggStock(partial, { accountId: 'me', capturedAt: 12, bag: part([]) });
+    const bagOnly = reconcile(partial, { accountId: 'me', capturedAt: 12, bag: part([]) });
     expect(bagOnly.eggs.map(e => e.id)).toEqual(['h1']);
-    const empty = reconcileEggStock(bagOnly, { accountId: 'me', capturedAt: 13, bag: part([]), home: part([]) });
+    const empty = reconcile(bagOnly, { accountId: 'me', capturedAt: 13, bag: part([]), home: part([]) });
     expect(empty.eggs).toEqual([]);
   });
   test('accounts and capture time are isolated; old data cannot resurrect removed eggs', () => {
-    const one = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 20, bag: part([egg()]) });
-    const two = reconcileEggStock(one, { accountId: 'other', capturedAt: 10, bag: part([egg()]) });
+    const one = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 20, bag: part([egg()]) });
+    const two = reconcile(one, { accountId: 'other', capturedAt: 10, bag: part([egg()]) });
     expect(two.eggs).toHaveLength(2);
-    const removed = reconcileEggStock(two, { accountId: 'me', capturedAt: 30, bag: part([]) });
-    expect(reconcileEggStock(removed, { accountId: 'me', capturedAt: 25, bag: part([egg()]) })).toBe(removed);
+    const removed = reconcile(two, { accountId: 'me', capturedAt: 30, bag: part([]) });
+    expect(reconcile(removed, { accountId: 'me', capturedAt: 25, bag: part([egg()]) })).toBe(removed);
     expect(removed.eggs.map(e => e.accountId)).toEqual(['other']);
   });
   test('unknown provenance is retained without blocking normal eggs from listing', () => {
-    const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1,
+    const state = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 1,
       bag: part([egg({ provenance: undefined, confidence: undefined }), egg({ id: 'manual', confidence: 'manual' })]) });
     expect(state.eggs[0].provenance).toBe('unknown');
     expect(setEggListed(state, 'me', 'e1', true).eggs[0].listed).toBe(true);
     expect(setEggListed(state, 'me', 'manual', true).eggs[1].listed).toBe(true);
   });
   test('listing is account scoped; source history is factual and no longer blocks circulation', () => {
-    const initial = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg()]) });
+    const initial = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg()]) });
     expect(() => setEggListed(initial, 'other', 'e1', true)).toThrow(/不存在/);
     const listed = setEggListed(initial, 'me', 'e1', true);
     expect(initial.eggs[0].listed).toBe(false);
     expect(listed.eggs[0].listed).toBe(true);
-    const external = reconcileEggStock(listed, { accountId: 'me', capturedAt: 2, bag: part([egg({ provenance: 'external' })]) });
+    const external = reconcile(listed, { accountId: 'me', capturedAt: 2, bag: part([egg({ provenance: 'external' })]) });
     expect(external.eggs[0]).toMatchObject({ provenance: 'external', listed: true });
-    const later = reconcileEggStock(external, { accountId: 'me', capturedAt: 3, bag: part([egg()]) });
+    const later = reconcile(external, { accountId: 'me', capturedAt: 3, bag: part([egg()]) });
     expect(later.eggs[0].provenance).toBe('external');
   });
   test('special and shiny eggs are sorted last and cannot be listed, including reclassification', () => {
-    const initial = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1,
+    const initial = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 1,
       bag: part([egg({ id: 'special', kind: 'special' }), egg(), egg({ id: 'shiny', kind: 'shiny' }), egg({ id: 'external', provenance: 'external' })]) });
     expect(sortEggStock(initial.eggs).map(e => e.id)).toEqual(['e1', 'external', 'special', 'shiny']);
     expect(initial.eggs[0].id).toBe('special');
     expect(() => setEggListed(initial, 'me', 'special', true)).toThrow(/特殊|交换/);
     expect(() => setEggListed(initial, 'me', 'shiny', true)).toThrow(/异色|交换/);
     const listed = setEggListed(initial, 'me', 'e1', true);
-    const refreshed = reconcileEggStock(listed, { accountId: 'me', capturedAt: 2, bag: part([egg({ kind: 'special' })], false) });
+    const refreshed = reconcile(listed, { accountId: 'me', capturedAt: 2, bag: part([egg({ kind: 'special' })], false) });
     expect(refreshed.eggs.find(e => e.id === 'e1')).toMatchObject({ kind: 'special', listed: false });
   });
   test('received source history survives an absent snapshot without showing ghost inventory', () => {
-    const external = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg({ provenance: 'external' })]) });
-    const empty = reconcileEggStock(external, { accountId: 'me', capturedAt: 2, bag: part([]) });
+    const external = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg({ provenance: 'external' })]) });
+    const empty = reconcile(external, { accountId: 'me', capturedAt: 2, bag: part([]) });
     expect(empty.eggs).toEqual([]);
-    expect(reconcileEggStock(empty, { accountId: 'me', capturedAt: 3, bag: part([egg()]) }).eggs[0].provenance).toBe('external');
+    expect(reconcile(empty, { accountId: 'me', capturedAt: 3, bag: part([egg()]) }).eggs[0].provenance).toBe('external');
   });
   test('self-bred provenance survives later bag snapshots that cannot identify the source', () => {
     const home = egg({ id: 'home1', provenance: 'self-bred', location: 'home' });
-    const state = reconcileEggStock(emptyEggStock(), {
+    const state = reconcile(emptyEggStock(), {
       accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([home]),
     });
     const bag = egg({ id: 'home1', provenance: 'unknown' });
-    const next = reconcileEggStock(state, {
+    const next = reconcile(state, {
       accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
       bag: part([bag]),
     });
     expect(next.eggs[0]).toMatchObject({ location: 'bag', provenance: 'self-bred' });
   });
   test('a partial home refresh cannot move an existing bag egg back to home', () => {
-    const bag = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg()]) });
-    const home = reconcileEggStock(bag, { accountId: 'me', capturedAt: 2, home: part([egg()]) });
+    const bag = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg()]) });
+    const home = reconcile(bag, { accountId: 'me', capturedAt: 2, home: part([egg()]) });
     expect(home.eggs[0].location).toBe('bag');
   });
   test('rejects invalid snapshots atomically rather than deleting current data', () => {
-    const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg()]) });
-    expect(() => reconcileEggStock(state, { accountId: 'me', capturedAt: NaN, bag: part([]) })).toThrow();
-    expect(() => reconcileEggStock(state, { accountId: 'me', capturedAt: 2, bag: part([egg({ id: '' })]) })).toThrow(/实例/);
-    expect(() => reconcileEggStock(state, { accountId: 'me', capturedAt: 2, bag: part([egg(), egg()]) })).toThrow(/重复/);
+    const state = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 1, bag: part([egg()]) });
+    expect(() => reconcile(state, { accountId: 'me', capturedAt: NaN, bag: part([]) })).toThrow();
+    expect(() => reconcile(state, { accountId: 'me', capturedAt: 2, bag: part([egg({ id: '' })]) })).toThrow(/实例/);
+    expect(() => reconcile(state, { accountId: 'me', capturedAt: 2, bag: part([egg(), egg()]) })).toThrow(/重复/);
     expect(state.eggs).toHaveLength(1);
   });
 
   test('bag and home keep their own capture time; complete removes only its own location', () => {
-    const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+    const state = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
       bag: { eggs: [egg({ gameAccountKey: 'uid:1' })], complete: true, capturedAt: 10 },
       home: { eggs: [egg({ id: 'h1', gameAccountKey: 'uid:1' })], complete: true, capturedAt: 20 } });
     expect(state.eggs.find(e => e.id === 'e1')?.lastConfirmedAt).toBe(10);
     expect(state.eggs.find(e => e.id === 'h1')?.lastConfirmedAt).toBe(20);
-    const next = reconcileEggStock(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
+    const next = reconcile(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
       home: { eggs: [], complete: true, capturedAt: 30 } });
     expect(next.eggs.map(e => e.id)).toEqual(['e1']);
-    const kept = reconcileEggStock(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 31,
+    const kept = reconcile(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 31,
       bag: { eggs: [], complete: true, capturedAt: 31 } });
     expect(kept.eggs.map(e => e.id)).toEqual(['h1']);
   });
 
   test('different game accounts keep separate watermarks and never delete each other', () => {
-    const one = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const one = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       bag: part([egg({ gameAccountKey: 'uid:1' })]) });
-    const two = reconcileEggStock(one, { accountId: 'me', gameAccountKey: 'uid:2', capturedAt: 5,
+    const two = reconcile(one, { accountId: 'me', gameAccountKey: 'uid:2', capturedAt: 5,
       bag: part([egg({ id: 'b', gameAccountKey: 'uid:2' })]) });
     expect(two.eggs).toHaveLength(2);
-    const cleared = reconcileEggStock(two, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 11, bag: part([]) });
+    const cleared = reconcile(two, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 11, bag: part([]) });
     expect(cleared.eggs.map(e => e.id)).toEqual(['b']);
   });
 
@@ -122,36 +132,36 @@ describe('egg stock snapshots', () => {
     const parents = { mother: { id: 'm', gameId: 3227, name: '菊花梨', nature: '保守', body: '大块头', voice: '+100', nestName: '普通小窝' },
       fathers: [{ id: 'f', gameId: 3215, name: '海豹战士', nature: '胆小', body: '大块头', voice: '婉转声' }], confirmed: false };
     const home = egg({ id: 'h1', nature: '', labelSource: 'system', parents });
-    const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 1, home: part([home]) });
+    const state = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 1, home: part([home]) });
     expect(state.eggs[0]).toMatchObject({ location: 'home', labelSource: 'system', parents });
   });
 
   test('captured obtained time height and weight reach the stock and are never cleared later', () => {
-    const captured = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const captured = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       bag: part([egg({ provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 })]) });
     expect(captured.eggs[0]).toMatchObject({ obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
-    const later = reconcileEggStock(captured, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+    const later = reconcile(captured, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
       bag: part([egg({ provenance: 'unknown' })]) });
     expect(later.eggs[0]).toMatchObject({ obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
   });
 
   test('采集进来的绿窝标记在合并进背包、再次同步后仍然保留', () => {
     const homeGreen = egg({ id: 'home-green', location: 'home', greenNest: true });
-    const state = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const state = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([homeGreen]) });
     expect(state.eggs[0]).toMatchObject({ location: 'home', greenNest: true });
     // 蛋收进背包：背包观测按唯一同种家园行合并（capturedEggId），绿窝不能掉
     const bagGreen = egg({ id: 'bag-green', provenance: 'unknown', obtainedAt: '2026-11-24T20:00:00Z' });
-    const merged = reconcileEggStock(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+    const merged = reconcile(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
       bag: part([bagGreen]) });
     expect(merged.eggs).toHaveLength(1);
     expect(merged.eggs[0]).toMatchObject({ id: 'home-green', location: 'bag', greenNest: true, capturedEggId: 'bag-green' });
     // 再同步一次（背包观测再次到达）：标记还在
-    const resynced = reconcileEggStock(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
+    const resynced = reconcile(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
       bag: part([bagGreen]) });
     expect(resynced.eggs[0]).toMatchObject({ greenNest: true, capturedEggId: 'bag-green' });
     // 家园快照完整更新时，绿窝标记也不能被空观测冲掉
-    const homeRefresh = reconcileEggStock(resynced, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 40,
+    const homeRefresh = reconcile(resynced, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 40,
       home: part([egg({ id: 'home-green', location: 'home' })]) });
     expect(homeRefresh.eggs[0]).toMatchObject({ greenNest: true });
   });
@@ -162,66 +172,113 @@ describe('egg stock snapshots', () => {
       fathers: [{ id: 'f', gameId: 3124, name: '脆筒甜甜', nature: '胆小', body: '大块头', voice: '婉转声', nestName: '普通小窝' }],
       confirmed: false,
     };
-    const backfilled = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const backfilled = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'h1', location: 'home', nature: '胆小', parents })]) });
     expect(backfilled.eggs[0].greenNest).toBe(true);
-    const manualOptOut = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const manualOptOut = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'h2', location: 'home', nature: '胆小', greenNest: false, parents })]) });
     expect(manualOptOut.eggs[0].greenNest).toBe(false);
     const ordinaryParents = { ...parents,
       mother: { ...parents.mother, nestName: '普通小窝', academy: undefined },
       fathers: [{ ...parents.fathers[0] }] };
-    const ordinary = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const ordinary = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'h3', location: 'home', nature: '胆小', parents: ordinaryParents })]) });
     expect(ordinary.eggs[0].greenNest).toBeUndefined();
   });
 
   test('a captured bag egg fills the unique self-bred home egg instead of replacing it', () => {
-    const home = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const home = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'home1', location: 'home' })]) });
     expect(home.eggs[0]).toMatchObject({ location: 'home', provenance: 'self-bred' });
     const bag = egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
-    const merged = reconcileEggStock(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, bag: part([bag]) });
+    const merged = reconcile(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, bag: part([bag]) });
     expect(merged.eggs).toHaveLength(1);
     expect(merged.eggs[0]).toMatchObject({ id: 'home1', location: 'bag', capturedEggId: 'bag1',
       provenance: 'self-bred', obtainedAt: '2026-11-17T22:31:00Z', heightCm: 34, weightGrams: 2320 });
-    expect(reconcileEggStock(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30, bag: part([bag]) }).eggs)
+    expect(reconcile(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30, bag: part([bag]) }).eggs)
       .toHaveLength(1);
   });
 
   test('a complete capture adds its new egg without dropping the already merged stock', () => {
-    const home = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const home = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'home1', location: 'home' })]) });
     const bag = egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z' });
-    const merged = reconcileEggStock(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, bag: part([bag]) });
+    const merged = reconcile(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, bag: part([bag]) });
     // 家园那边已经空了（蛋收进背包），完整快照里多出一颗新蛋：旧合并行要留，新蛋要进来。
-    const next = reconcileEggStock(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30, home: part([]),
+    const next = reconcile(merged, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30, home: part([]),
       bag: part([bag, egg({ id: 'bag2', provenance: 'unknown', obtainedAt: '2026-11-18T09:00:00Z' })]) });
     expect(next.eggs.map(e => e.id).sort()).toEqual(['bag2', 'home1']);
     expect(next.eggs.find(e => e.id === 'home1')).toMatchObject({ capturedEggId: 'bag1', provenance: 'self-bred' });
   });
 
   test('an incomplete capture only adds stock and never deletes', () => {
-    const kept = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const kept = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       bag: part([egg({ id: 'kept', provenance: 'unknown' })]) });
-    const next = reconcileEggStock(kept, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+    const next = reconcile(kept, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
       bag: part([egg({ id: 'added', provenance: 'unknown', obtainedAt: '2026-11-18T09:00:00Z' })], false) });
     expect(next.eggs.map(e => e.id).sort()).toEqual(['added', 'kept']);
   });
 
   test('identical home eggs are not guessed when the capture has no stable link', () => {
-    const home = reconcileEggStock(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+    const home = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'home1', location: 'home' }), egg({ id: 'home2', location: 'home' })]) });
-    const next = reconcileEggStock(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+    const next = reconcile(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
       bag: part([egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z' })]) });
     expect(next.eggs).toHaveLength(3);
   });
 
   test('concrete non-exchangeable category and egg measurements survive re-sync', () => {
-    const state = reconcileEggStock(emptyEggStock(), {
+    const state = reconcile(emptyEggStock(), {
       accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 1,
       bag: part([egg({ id: 'special', kind: 'special', specialCategory: 'activity' })]),
     });
     expect(state.eggs[0].specialCategory).toBe('activity');
+  });
+
+  test('missing or blank game account key fails loudly instead of silently keeping ghost rows', () => {
+    const state = reconcileBase(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 1,
+      bag: part([egg({ id: 'bag1', gameAccountKey: 'uid:1' })]),
+      home: part([egg({ id: 'home1', location: 'home', gameAccountKey: 'uid:1' })]) });
+    expect(state.eggs).toHaveLength(2);
+    // 缺字段：以前这一步会返回 2 行家蛋幽灵行 / 122 行那样的「静默降级」，现在必须报错。
+    expect(() => reconcileBase(state, {
+      accountId: 'me', capturedAt: 2, bag: part([], true),
+    } as unknown as EggStockSnapshot)).toThrow(/gameAccountKey|游戏账号/);
+    // 空串与纯空白同样不算有效账号。
+    expect(() => reconcileBase(state, { accountId: 'me', gameAccountKey: '', capturedAt: 2, bag: part([]) }))
+      .toThrow(/gameAccountKey|游戏账号/);
+    expect(() => reconcileBase(state, { accountId: 'me', gameAccountKey: '   ', capturedAt: 2, bag: part([]) }))
+      .toThrow(/gameAccountKey|游戏账号/);
+    // 报错不能动已有库存。
+    expect(state.eggs.map(e => e.id).sort()).toEqual(['bag1', 'home1']);
+  });
+
+  test('金标准形状：2 颗不同种的家蛋收进背包后仍是 2 行，并带上获得时间', () => {
+    // 第一次：118 颗背包 + 2 颗不同物种的家蛋；第二次：120 颗背包 + 0 颗家蛋（2026-11-25 真实抓包）。
+    const bagEgg = (id: string, eggGameId: number): EggObservation =>
+      egg({ id, eggGameId, provenance: 'unknown', obtainedAt: '2026-11-17T22:31:00Z' });
+    const oldBag = Array.from({ length: 118 }, (_, index) => bagEgg(`bag${index}`, 3000 + index));
+    const homeEggs: EggObservation[] = [
+      egg({ id: 'home3103', eggGameId: 3103, provenance: 'self-bred', location: 'home' }),
+      egg({ id: 'home3436', eggGameId: 3436, provenance: 'self-bred', location: 'home' }),
+    ];
+    const first = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      bag: part(oldBag), home: part(homeEggs) });
+    expect(first.eggs).toHaveLength(120);
+    expect(first.eggs.filter(e => e.obtainedAt)).toHaveLength(118);
+
+    const second = reconcile(first, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+      bag: part([...oldBag, bagEgg('bag118', 3103), bagEgg('bag119', 3436)]), home: part([]) });
+    // 2 行（不是 4 行）：家蛋行改成背包行，不产生第二份。
+    expect(second.eggs).toHaveLength(120);
+    expect(second.eggs.filter(e => e.location === 'home')).toHaveLength(0);
+    expect(second.eggs.filter(e => !e.obtainedAt)).toHaveLength(0);
+    expect(second.eggs.find(e => e.id === 'home3103')).toMatchObject({
+      location: 'bag', capturedEggId: 'bag118', provenance: 'self-bred', obtainedAt: '2026-11-17T22:31:00Z' });
+    expect(second.eggs.find(e => e.id === 'home3436')).toMatchObject({
+      location: 'bag', capturedEggId: 'bag119', provenance: 'self-bred', obtainedAt: '2026-11-17T22:31:00Z' });
+    // 再同步一次同一份背包：capturedEggId 链接生效，仍然 120 行。
+    expect(reconcile(second, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
+      bag: part([...oldBag, bagEgg('bag118', 3103), bagEgg('bag119', 3436)]), home: part([]) }).eggs).toHaveLength(120);
   });
 });
