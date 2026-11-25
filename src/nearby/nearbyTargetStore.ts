@@ -76,15 +76,14 @@ export function nearbyTargetAllows(
 /**
  * 地图 / 列表 / 悬浮窗的统一放行口径。
  *
- * `filter === 'target'` 时只看名单（需求命中也不放行，否则蹲守时还是会被别的精灵打断）；
- * 其它档位原样交给 {@link nearbyFilterAllows}，三档与战斗维度的既有语义不变。
+ * `filter === 'target'` 时只看名单；其它档位原样交给 {@link nearbyFilterAllows}，
+ * 三档与战斗维度的既有语义不变。
  */
 export function nearbyRangeAllows(
   filter: NearbyFilter,
   pet: Pick<LiveNearbyPet, 'petId' | 'rare'>,
-  demandHits: number,
   targets: readonly number[] = getNearbyTargets(),
 ): boolean {
   if (filter === 'target') return nearbyTargetAllows(targets, pet);
-  return nearbyFilterAllows(filter, pet, demandHits);
+  return nearbyFilterAllows(filter, pet);
 }

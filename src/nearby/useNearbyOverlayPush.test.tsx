@@ -2,20 +2,9 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { NearbySnapshot } from '../collector/nearbyStore';
 import { resetNearbyStoreForTest, writeNearbySnapshot } from '../collector/nearbyStore';
-import { useDemandCenter } from '../ui/useDemandCenter';
 import { resetNearbyOverlayBridgeForTest } from './overlayBridge';
 import { resetNearbyOverlayPanelsForTest, setNearbyOverlayPanel } from './overlayPanels';
 import { useNearbyOverlayPush } from './useNearbyOverlayPush';
-
-vi.mock('../ui/useDemandCenter', () => ({ useDemandCenter: vi.fn() }));
-
-const noDemands = {
-  accountId: null,
-  items: [],
-  loading: false,
-  error: '',
-  reload: () => {},
-};
 
 function Harness() {
   useNearbyOverlayPush();
@@ -59,7 +48,6 @@ describe('useNearbyOverlayPush（应用级悬浮面板推送）', () => {
     resetNearbyStoreForTest();
     resetNearbyOverlayBridgeForTest();
     resetNearbyOverlayPanelsForTest();
-    vi.mocked(useDemandCenter).mockReturnValue(noDemands);
     delete (window as unknown as { RocoCapture?: unknown }).RocoCapture;
   });
   afterEach(() => {
@@ -143,47 +131,12 @@ describe('useNearbyOverlayPush（应用级悬浮面板推送）', () => {
     expect(lastPayload(update).self).toEqual({ x: 100, y: 200 });
   });
 
-  test('采集中每 60 秒刷新一次需求中心，停止采集后不再刷新', async () => {
-    vi.useFakeTimers();
-    const reload = vi.fn();
-    vi.mocked(useDemandCenter).mockReturnValue({ ...noDemands, reload });
-    let phase: Phase = 'capturing';
-    installShell(() => phase);
-    writeNearbySnapshot(snapshot);
-    render(<Harness />);
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    expect(reload).not.toHaveBeenCalled();
-
-    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-    expect(reload).toHaveBeenCalled();
-
-    phase = 'stopping';
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
-    const calls = reload.mock.calls.length;
-    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
-    expect(reload).toHaveBeenCalledTimes(calls);
-  });
-
-  test('需求中心命中的精灵排在列表最前（全部档下普通精灵也进列表）', async () => {
+  test('需求下线后普通精灵不再被标成 demand，reason 只按提醒 / 稀有', async () => {
     const update = installShell(() => 'capturing');
-    vi.mocked(useDemandCenter).mockReturnValue({
-      ...noDemands,
-      accountId: 'u1',
-      items: [{
-        groupId: 'g1', demanderAccountId: 'u1', eggGameId: 3002,
-        nature: '', gender: '', body: '', voice: '', status: 'open',
-        claimerAccountId: null, version: 1, createdAt: 0, updatedAt: 0,
-        groupName: '测试小组',
-      }],
-    });
     writeNearbySnapshot({
       ...snapshot,
       pets: [
-        {
-          key: 'demand', cfgId: 10002, petId: 3002, name: '水蓝蓝', level: 12, voiceDb: 0,
-          weightPct: 50, kinds: [], rare: false, alertReason: null,
-          distanceM: null, pos: { x: 100, y: 0, z: 0 },
-        },
+        ...snapshot.pets,
         {
           key: 'plain', cfgId: 10003, petId: 99999, name: '普通精灵', level: 6, voiceDb: 0,
           weightPct: 50, kinds: [], rare: false, alertReason: null,
@@ -197,10 +150,10 @@ describe('useNearbyOverlayPush（应用级悬浮面板推送）', () => {
 
     await waitFor(() => expect(update).toHaveBeenCalled());
     const sent = lastPayload(update);
-    expect(sent.pets.map((item: { key: string }) => item.key)).toEqual(['demand', 'plain']);
-    expect(sent.pets[0].reason).toBe('demand');
+    expect(sent.pets.map((item: { key: string }) => item.key)).toEqual(['rare', 'plain']);
+    expect(sent.pets.map((item: { reason: string | null }) => item.reason)).toEqual(['alert', null]);
+    expect(sent.pets.some((item: { reason: string | null }) => item.reason === 'demand')).toBe(false);
     expect(sent.matched).toBe(2);
     expect(sent.total).toBe(2);
-    expect(sent.mapPets.map((item: { key: string }) => item.key)).toEqual(['demand', 'plain']);
   });
 });

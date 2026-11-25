@@ -137,14 +137,14 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
     {
       id: 'nearby-radar',
       title: '附近雷达',
-      body: '采集时把视野内的野生精灵画成雷达：圆点是精灵，越靠外越远。橙色/紫/粉色点代表稀有，红圈代表可主动提醒。',
+      body: '采集时把视野内的野生精灵画成雷达：圆点是精灵，越靠外越远。橙色/紫/粉色点代表稀有，红圈代表目标出现。',
       page: 'nearby',
       anchor: 'nearby-radar',
     },
     {
       id: 'nearby-filters',
       title: '只看你要找的',
-      body: '顶部「稀有」只看稀有精灵，「需求」只看需求中心在找的种族，「目标」只蹲你点名勾选的那几只。普通精灵离开视野即清理，高价值会保留 10 分钟。',
+      body: '顶部「稀有」只看稀有精灵，「目标」只蹲你点名勾选的那几只。普通精灵离开视野即清理，高价值会保留 10 分钟。',
       anchor: 'nearby-filters',
     },
   ],

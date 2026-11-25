@@ -49,18 +49,15 @@ describe('目标精灵（蹲守名单）store', () => {
     expect(nearbyTargetAllows([3001], pet({ petId: null }))).toBe(false);
   });
 
-  test('目标档是替换语义：需求命中也不放行', () => {
-    expect(nearbyRangeAllows('target', pet({ petId: 3001 }), 3, [3001])).toBe(true);
-    expect(nearbyRangeAllows('target', pet({ petId: 3002 }), 0, [3001])).toBe(false);
-    expect(nearbyRangeAllows('target', pet({ petId: 3002 }), 2, [3001])).toBe(false);
-    expect(nearbyRangeAllows('target', pet({ petId: 3001 }), 0, [])).toBe(false);
+  test('目标档是替换语义：名单外的精灵不放行', () => {
+    expect(nearbyRangeAllows('target', pet({ petId: 3001 }), [3001])).toBe(true);
+    expect(nearbyRangeAllows('target', pet({ petId: 3002 }), [3001])).toBe(false);
+    expect(nearbyRangeAllows('target', pet({ petId: 3001 }), [])).toBe(false);
   });
 
   test('其它档位照旧走三档口径（三档语义不变）', () => {
-    expect(nearbyRangeAllows('all', pet(), 0, [3001])).toBe(true);
-    expect(nearbyRangeAllows('rare', pet({ rare: true }), 0, [])).toBe(true);
-    expect(nearbyRangeAllows('rare', pet({ rare: false }), 0, [])).toBe(false);
-    expect(nearbyRangeAllows('demand', pet({ rare: false }), 1, [])).toBe(true);
-    expect(nearbyRangeAllows('demand', pet({ rare: false }), 0, [])).toBe(false);
+    expect(nearbyRangeAllows('all', pet(), [3001])).toBe(true);
+    expect(nearbyRangeAllows('rare', pet({ rare: true }), [])).toBe(true);
+    expect(nearbyRangeAllows('rare', pet({ rare: false }), [])).toBe(false);
   });
 });

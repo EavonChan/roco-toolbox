@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import type { LiveNearbyPet } from '../collector/captureProgress';
 import type { BattleTarget } from '../collector/battleTargetStore';
 import type { NearbySnapshot } from '../collector/nearbyStore';
-import type { DemandHit } from '../pcap/demandMatch';
 import type { NearbyFilter } from './nearbyFilterStore';
 import {
   buildNearbyOverlayPayload,
@@ -34,7 +33,6 @@ const build = (
     filter?: NearbyFilter;
     target?: BattleTarget;
     targets?: readonly number[];
-    demandHits?: Map<string, DemandHit[]>;
   } = {},
 ) =>
   buildNearbyOverlayPayload({
@@ -43,26 +41,6 @@ const build = (
     snapshot: snapshot({ pets, ...extra }),
     ...options,
   });
-
-const demandHit = (eggGameId = 101): DemandHit => ({
-  demand: {
-    eggGameId,
-    nature: '',
-    gender: '',
-    body: '',
-    voice: '',
-    groupId: 'g1',
-    demanderAccountId: 'u1',
-    status: 'open',
-    claimerAccountId: null,
-    version: 1,
-    createdAt: 0,
-    updatedAt: 0,
-  },
-  groupName: '测试小组',
-  known: [],
-  unverified: [],
-});
 
 describe('buildNearbyOverlayPayload 基础字段', () => {
   test('采集中才可见，停止采集收起隐藏', () => {
@@ -227,16 +205,6 @@ describe('列表口径：总范围 × 战斗目标维度筛选', () => {
     expect(payload.mapPets.map((item) => item.key).sort()).toEqual(['plain', 'rare']);
   });
 
-  test('需求档：除命中需求外一律不进列表', () => {
-    const demandHits = new Map<string, DemandHit[]>([['hit', [demandHit()]]]);
-    const payload = build([
-      pet({ key: 'hit', pos: { x: 100, y: 0, z: 0 } }),
-      pet({ key: 'rare', rare: true, pos: { x: 200, y: 0, z: 0 } }),
-      pet({ key: 'plain', pos: { x: 300, y: 0, z: 0 } }),
-    ], { self: { x: 0, y: 0 } }, { filter: 'demand', demandHits });
-    expect(payload.pets.map((item) => item.key)).toEqual(['hit']);
-  });
-
   test('单维度勾选：只放行命中项，其他维度不设限', () => {
     const payload = build([
       pet({ key: 'big', weightPct: 99 }),
@@ -292,19 +260,6 @@ describe('列表口径：总范围 × 战斗目标维度筛选', () => {
     expect(payload.pets.map((item) => item.key)).toEqual(['both']);
   });
 
-  test('命中需求恒放行：总范围与维度筛选都挡不住', () => {
-    const demandHits = new Map<string, DemandHit[]>([['wanted', [demandHit()]]]);
-    const payload = build([
-      pet({ key: 'wanted', gender: '公', weightPct: 50, pos: { x: 900, y: 0, z: 0 } }),
-      pet({ key: 'rare', rare: true, gender: '公', pos: { x: 100, y: 0, z: 0 } }),
-    ], { self: { x: 0, y: 0 } }, {
-      filter: 'rare',
-      target: target({ gender: '母' }),
-      demandHits,
-    });
-    expect(payload.pets.map((item) => item.key)).toEqual(['wanted']);
-  });
-
   test('可提醒不能绕过筛选：未命中维度就不进列表，但仍在 mapPets', () => {
     const payload = build([
       pet({ key: 'alert', alertReason: '±100dB', weightPct: 50, pos: { x: 100, y: 0, z: 0 } }),
@@ -314,50 +269,15 @@ describe('列表口径：总范围 × 战斗目标维度筛选', () => {
   });
 });
 
-describe('需求中心命中', () => {
-  test('命中需求的普通精灵进列表，reason 为 demand', () => {
-    const demandHits = new Map<string, DemandHit[]>([['plain', [demandHit()]]]);
-    const payload = buildNearbyOverlayPayload({
-      capturing: true,
-      hasKey: true,
-      snapshot: snapshot({
-        pets: [pet({ key: 'plain', pos: { x: 100, y: 0, z: 0 } })],
-        self: { x: 0, y: 0 },
-      }),
-      demandHits,
-    });
-    expect(payload.pets.map((item) => item.key)).toEqual(['plain']);
-    expect(payload.pets[0].reason).toBe('demand');
-    expect(payload.matched).toBe(1);
-    expect(payload.mapPets[0].reason).toBe('demand');
-  });
-
-  test('reason 优先级：需求 > 可提醒 > 稀有 > 炫彩·异色·污染', () => {
+describe('命中原因与总范围', () => {
+  test('reason 优先级：可提醒 > 稀有 > 炫彩·异色·污染', () => {
     const all = pet({ key: 'a', alertReason: '±100dB', rare: true, kinds: ['shiny'] });
-    expect(overlayHitReason(all, [demandHit()])).toBe('demand');
     expect(overlayHitReason(all)).toBe('alert');
     expect(overlayHitReason(pet({ key: 'a', rare: true, kinds: ['shiny'] }))).toBe('rare');
     expect(overlayHitReason(pet({ key: 'a', kinds: ['colorful', 'pollution'] }))).toBe('colorful');
     expect(overlayHitReason(pet({ key: 'a', kinds: ['big'] }))).toBeNull();
-    expect(isOverlayTarget(all, [demandHit()], 'rare')).toBe(true);
-    expect(isOverlayTarget(pet({ key: 'a', kinds: ['big'] }), [], 'rare')).toBe(false);
-  });
-
-  test('命中需求的精灵排在可提醒 / 稀有之前（即使更远）', () => {
-    const demandHits = new Map<string, DemandHit[]>([['demand-far', [demandHit()]]]);
-    const payload = buildNearbyOverlayPayload({
-      capturing: true,
-      hasKey: true,
-      snapshot: snapshot({
-        pets: [
-          pet({ key: 'alert-near', alertReason: '±100dB', pos: { x: 100, y: 0, z: 0 } }),
-          pet({ key: 'demand-far', pos: { x: 10000, y: 0, z: 0 } }),
-        ],
-        self: { x: 0, y: 0 },
-      }),
-      demandHits,
-    });
-    expect(payload.pets.map((item) => item.key)).toEqual(['demand-far', 'alert-near']);
+    expect(isOverlayTarget(all, 'rare')).toBe(true);
+    expect(isOverlayTarget(pet({ key: 'a', kinds: ['big'] }), 'rare')).toBe(false);
   });
 });
 
@@ -515,13 +435,12 @@ describe('自身坐标缺失时的估算中心', () => {
 });
 
 describe('目标精灵（蹲守名单）', () => {
-  test('目标档：列表与地图都只留蹲守的目标，需求命中也不放行', () => {
-    const demandHits = new Map<string, DemandHit[]>([['wanted', [demandHit()]]]);
+  test('目标档：列表与地图都只留蹲守的目标，名单外一律不放行', () => {
     const payload = build([
       pet({ key: 'target', petId: 3001, pos: { x: 0, y: 0, z: 0 } }),
       pet({ key: 'rare', petId: 3002, rare: true, pos: { x: 100, y: 0, z: 0 } }),
-      pet({ key: 'wanted', petId: 3003, pos: { x: 200, y: 0, z: 0 } }),
-    ], { self: { x: 0, y: 0 } }, { filter: 'target', targets: [3001], demandHits });
+      pet({ key: 'plain', petId: 3003, pos: { x: 200, y: 0, z: 0 } }),
+    ], { self: { x: 0, y: 0 } }, { filter: 'target', targets: [3001] });
 
     expect(payload.pets.map((item) => item.key)).toEqual(['target']);
     expect(payload.mapPets.map((item) => item.key)).toEqual(['target']);

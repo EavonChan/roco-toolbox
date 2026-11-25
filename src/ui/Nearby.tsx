@@ -13,7 +13,6 @@ import { hasNearbyOverlayShell } from '../nearby/overlayBridge';
 import { isLastEnabledNearbyOverlayPanel, setNearbyOverlayPanel, useNearbyOverlayPanels } from '../nearby/overlayPanels';
 import { buildNearbyOverlayPayload } from '../nearby/overlayPayload';
 import { species, eggGroupNames } from '../data/catalog';
-import { demandHitsForPet, demandSpeciesIndex, type DemandHit } from '../pcap/demandMatch';
 import { buildRadar, DEFAULT_RADAR_RADIUS_M, type RadarData } from '../pcap/nearbyRadar';
 import { worldMapForScene } from '../pcap/worldMap';
 import { createSelfEstimate, updateSelfEstimate } from '../pcap/selfOdometry';
@@ -28,7 +27,6 @@ import { ModalSurface } from './primitives/ModalSurface';
 import { SearchField } from './primitives/SearchField';
 import { SegmentedControl } from './primitives/SegmentedControl';
 import { StateNotice } from './primitives/StateNotice';
-import { useDemandCenter } from './useDemandCenter';
 import { setNearbyFilter, useNearbyFilter, type NearbyFilter } from '../nearby/nearbyFilterStore';
 import {
   clearNearbyTargets,
@@ -46,8 +44,6 @@ export interface NearbyProps {
   embedded?: boolean;
 }
 
-const DEMAND_INDEX = demandSpeciesIndex(species);
-
 /** 目标精灵名单 / 选择面板用的图鉴名（gameId → 名称）。 */
 const SPECIES_NAME = new Map(species.map((entry) => [entry.gameId, entry.name]));
 /** 搜索结果上限：图鉴 600+ 条，全量渲染在手机上太卡，超过就提示继续输入。 */
@@ -64,29 +60,12 @@ const mmss = (totalSeconds: number): string => {
  */
 const OVERLAY_PUSH_INTERVAL_MS = 250;
 
-/** 需求中心条目在 UI 上的一句话说明：蛋 / 蛋组 + 已选条件 + 待确认项。 */
-export function demandHitLabel(hit: DemandHit): string {
-  const demand = hit.demand;
-  const target = demand.eggGameId > 0
-    ? DEMAND_INDEX.byGameId.get(demand.eggGameId)?.name ?? `蛋 #${demand.eggGameId}`
-    : `蛋组 ${eggGroupNames[-demand.eggGameId] ?? `#${-demand.eggGameId}`}`;
-  const criteria = [
-    demand.nature || '不挑性格',
-    demand.gender || '不限性别',
-    demand.body || '不限体型',
-    demand.voice || '不限声音',
-  ].join(' / ');
-  return `${target} · ${criteria}${hit.unverified.length ? `（${hit.unverified.join('、')}需确认）` : ''}`;
-}
-
-/** 常驻列表排序：仍在视野内 → 命中需求 → 可提醒 → 稀有牌子多 → 距离近。 */
+/** 常驻列表排序：仍在视野内 → 目标出现 → 稀有牌子多 → 距离近。 */
 function sortRows(rows: readonly RetainedEntry[], radar: RadarData): RetainedEntry[] {
   const distanceOf = new Map(radar.points.map((point) => [point.key, point.distanceM]));
   return [...rows].sort((left, right) => {
     const present = Number(right.present) - Number(left.present);
     if (present !== 0) return present;
-    const demand = Number(right.demandHits.length > 0) - Number(left.demandHits.length > 0);
-    if (demand !== 0) return demand;
     const alert = Number(Boolean(right.pet.alertReason)) - Number(Boolean(left.pet.alertReason));
     if (alert !== 0) return alert;
     if (left.pet.kinds.length !== right.pet.kinds.length) return right.pet.kinds.length - left.pet.kinds.length;
@@ -99,10 +78,9 @@ function sortRows(rows: readonly RetainedEntry[], radar: RadarData): RetainedEnt
 
 const MUTATION_KINDS = new Set(['colorful', 'shiny', 'pollution']);
 
-/** 全屏列表的价值分：需求命中 > 可提醒 > 炫彩/异色/污染 > 其它牌子 > 仍在视野。 */
+/** 全屏列表的价值分：目标出现 > 炫彩/异色/污染 > 其它牌子 > 仍在视野。 */
 export function valueScoreOf(row: RetainedEntry): number {
   let score = 0;
-  if (row.demandHits.length > 0) score += 100;
   if (row.pet.alertReason) score += 50;
   for (const kind of row.pet.kinds) score += MUTATION_KINDS.has(kind) ? 20 : 5;
   if (row.present) score += 3;
@@ -126,56 +104,134 @@ function sortRowsByValue(rows: readonly RetainedEntry[], radar: RadarData): Reta
 const timeText = (value: number) =>
   new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+/** 百分位文案：截断一位小数（不四舍五入），整数去掉 `.0`，缺失给 `—`。 */
+const formatPct = (value: number | null | undefined): string => {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const truncated = Math.trunc(value * 10) / 10;
+  return `${Number.isInteger(truncated) ? truncated : truncated.toFixed(1)}%`;
+};
+const isHotPct = (value: number | null | undefined): boolean =>
+  value != null && Number.isFinite(value) && (value >= 98 || value <= 2);
+const voiceTextOf = (value: number | null | undefined): string =>
+  value == null || !Number.isFinite(value) ? '—' : `${value > 0 ? '+' : ''}${Math.round(value)}dB`;
+const isHotVoice = (value: number | null | undefined): boolean =>
+  value != null && Number.isFinite(value) && Math.abs(value) >= 96;
+
 /** 附近精灵行：页面列表与全屏列表共用，避免两套渲染漂移。 */
 function NearbyRowItem({
   row,
   point,
   dark = false,
+  open = false,
+  onToggle,
 }: {
   row: RetainedEntry;
   point: { distanceM: number; bearingLabel: string } | undefined;
   dark?: boolean;
+  open?: boolean;
+  onToggle?: () => void;
 }) {
-  const demandLabel = row.demandHits[0] ? demandHitLabel(row.demandHits[0]) : '';
+  const pet = row.pet;
+  const valueCls = (hot: boolean, missing = false) =>
+    hot ? 'font-semibold text-amber-700 dark:text-amber-300'
+      : missing ? 'text-slate-300 dark:text-slate-600' : 'text-slate-600 dark:text-slate-300';
+  const visibleKinds = pet.kinds.filter((kind) => kind !== 'high' && kind !== 'low');
+  const details: Array<[string, string]> = [
+    ['身高', formatPct(pet.heightPct)],
+    ['体重', formatPct(pet.weightPct)],
+    ['声音', voiceTextOf(pet.voiceDb)],
+    ['性别', pet.gender || '未知'],
+    ['性格', pet.nature || '未知'],
+    ['稀有', pet.rare ? '是' : '否'],
+    ['目标', pet.alertReason ? '出现' : '否'],
+    ['首次', timeText(row.firstSeenAt)],
+    ['最近', timeText(row.lastSeenAt)],
+    ['坐标', pet.pos ? `${Math.round(pet.pos.x)}, ${Math.round(pet.pos.y)}` : '—'],
+    ['距离', point ? `${point.distanceM.toFixed(1)}m ${point.bearingLabel}` : '—'],
+    ['状态', row.present ? '仍在视野' : '已离开'],
+    ['编号', pet.petId != null ? `#${pet.petId}` : '—'],
+  ];
   return (
     <div
       data-testid="nearby-row"
-      className={`rounded-xl px-3 py-2 ${dark ? 'bg-slate-900 text-slate-100' : 'bg-white shadow-sm'} ${
-        row.demandHits.length > 0 ? 'ring-1 ring-amber-300'
-          : row.pet.alertReason ? 'ring-1 ring-rose-200' : ''
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onToggle?.();
+        }
+      }}
+      className={`cursor-pointer rounded-xl px-3 py-2 ${dark ? 'bg-slate-900 text-slate-100' : 'bg-white shadow-sm'} ${
+        pet.alertReason ? 'ring-1 ring-rose-200' : ''
       } ${row.present ? '' : 'opacity-70'}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className={`text-sm ${row.pet.rare ? `font-semibold ${dark ? 'text-white' : 'text-slate-800'}` : dark ? 'text-slate-200' : 'text-slate-700'}`}>
-          {row.pet.name} <span className="text-xs text-slate-400">{row.pet.level}级</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className={`truncate text-sm ${pet.rare ? `font-semibold ${dark ? 'text-white' : 'text-slate-800'}` : dark ? 'text-slate-200' : 'text-slate-700'}`}>
+            {pet.name}
+          </span>
+          <span className="shrink-0 text-xs text-slate-400">Lv{pet.level}</span>
+          {pet.gender ? (
+            <span className={`shrink-0 rounded-full px-1.5 text-[10px] font-semibold ${
+              pet.gender === '公' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300'
+                : 'bg-pink-50 text-pink-600 dark:bg-pink-950/50 dark:text-pink-300'
+            }`}>{pet.gender}</span>
+          ) : null}
         </span>
         <span className="shrink-0 text-xs text-slate-400">
           {point ? `${point.distanceM.toFixed(1)}m ${point.bearingLabel}` : '—'}
         </span>
       </div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px]">
-        {!row.present ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">已离开视野</span> : null}
-        {row.demandHits.length > 0 ? (
-          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">需求中心</span>
-        ) : null}
-        {row.pet.nature ? (
-          <span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">{`性格 ${row.pet.nature}`}</span>
-        ) : null}
-        {row.pet.gender ? (
-          <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">{row.pet.gender}</span>
-        ) : null}
-        {row.pet.kinds.filter((kind) => kind !== 'high' && kind !== 'low').map((kind) => (
-          <span key={kind} className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
-            {KIND_LABELS[kind as keyof typeof KIND_LABELS] || kind}
-          </span>
-        ))}
-        {/* 声音只显示具体分贝，不再显示「婉转声 / 粗嗓门」分类词（2026-11-10） */}
-        {row.pet.voiceDb != null ? (
-          <span className="text-slate-400">{row.pet.voiceDb > 0 ? '+' : ''}{row.pet.voiceDb}dB</span>
-        ) : null}
-        {row.pet.alertReason ? <span className="text-rose-500">可提醒 · {row.pet.alertReason}</span> : null}
+      <div className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs ${dark ? 'text-slate-300' : 'text-slate-600'}`}>
+        <span>{pet.nature ? `性格 ${pet.nature}` : '性格 未知'}</span>
+        <span className="text-slate-300">·</span>
+        <span className={`tabular-nums ${valueCls(isHotPct(pet.heightPct), pet.heightPct == null)}`}>
+          {`高${formatPct(pet.heightPct)}`}
+        </span>
+        <span className={`tabular-nums ${valueCls(isHotPct(pet.weightPct), pet.weightPct == null)}`}>
+          {`重${formatPct(pet.weightPct)}`}
+        </span>
+        <span className="text-slate-300">·</span>
+        <span className={`tabular-nums ${valueCls(isHotVoice(pet.voiceDb), pet.voiceDb == null)}`}>
+          {voiceTextOf(pet.voiceDb)}
+        </span>
       </div>
-      {demandLabel ? <p className="mt-1 text-[11px] text-amber-600">{`需求:${demandLabel} · 可叫发需求的人来抓`}</p> : null}
+      {pet.alertReason || visibleKinds.length > 0 || !row.present ? (
+        <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
+          {visibleKinds.map((kind) => (
+            <span key={kind} className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+              {KIND_LABELS[kind as keyof typeof KIND_LABELS] || kind}
+            </span>
+          ))}
+          {pet.alertReason ? (
+            <span className="rounded bg-rose-50 px-1.5 py-0.5 font-medium text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">目标出现！</span>
+          ) : null}
+          {!row.present ? (
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500 dark:bg-slate-800 dark:text-slate-400">已离开视野</span>
+          ) : null}
+        </div>
+      ) : null}
+      {open ? (
+        <dl className={`mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-dashed pt-1.5 text-[11px] ${
+          dark ? 'border-slate-700' : 'border-slate-200'
+        }`}>
+          {details.map(([label, value]) => (
+            <div key={label} className="flex min-w-0 gap-1">
+              <dt className="shrink-0 text-slate-400">{label}</dt>
+              <dd className={`m-0 truncate ${dark ? 'text-slate-200' : 'text-slate-700'}`}>{value}</dd>
+            </div>
+          ))}
+          <div className="col-span-2 flex min-w-0 gap-1">
+            <dt className="shrink-0 text-slate-400">牌子</dt>
+            <dd className={`m-0 truncate ${dark ? 'text-slate-200' : 'text-slate-700'}`}>
+              {pet.kinds.length > 0 ? pet.kinds.map((kind) => KIND_LABELS[kind as keyof typeof KIND_LABELS] || kind).join(' · ') : '无'}
+            </dd>
+          </div>
+        </dl>
+      ) : null}
     </div>
   );
 }
@@ -183,15 +239,14 @@ function NearbyRowItem({
 /**
  * 附近页（2026-11-06）：雷达 / 列表两种视图，共用筛选。
  *
- * - 雷达画「当前还在视野内」的精灵；列表是常驻列表，高价值（稀有 / 命中需求中心）
+ * - 雷达画「当前还在视野内」的精灵；列表是常驻列表，高价值（稀有 / 目标出现）
  *   离开视野后仍保留 10 分钟，普通精灵离开即清理。
- * - 命中需求中心时走系统通知 + 页内强提示；性格 / 性别野生实体读不到，标记「需确认」。
+ * - 目标出现时走系统通知 + 页内强提示；性格 / 性别野生实体读不到，标记「需确认」。
  * - 雷达中心是附近精灵坐标的几何中位数（真实抓包里没有自身坐标帧），只作估算。
  */
 export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   const { state, snapshot, error, refresh, progress, checked } = useNearbyFeed();
   const flow = useAutoImport();
-  const { items: demands } = useDemandCenter();
   const rareAlertOn = useRareAlert();
   /** 手机悬浮球展开后显示哪些面板（本机记忆，只影响安卓壳，不重排本页） */
   const overlayPanels = useNearbyOverlayPanels();
@@ -211,6 +266,8 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenView, setFullscreenView] = useState<NearbyView>('map');
   const [rows, setRows] = useState<RetainedEntry[]>(() => readNearbyRetained());
+  /** 当前展开详情的那一行（同一时间只开一条；全屏列表共用） */
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   /** 本页采集开关的操作中标志与行内错误（开始 / 停止失败时提示） */
   const [captureToggling, setCaptureToggling] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
@@ -225,21 +282,12 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   const [self, setSelf] = useState<{ x: number; y: number } | null>(null);
   const [alert, setAlert] = useState<{ title: string; lines: string[] } | null>(null);
 
-  const hitByKey = useMemo(() => {
-    const map = new Map<string, DemandHit[]>();
-    for (const pet of snapshot?.pets ?? []) {
-      map.set(pet.key, demandHitsForPet(pet, demands, DEMAND_INDEX));
-    }
-    return map;
-  }, [snapshot, demands]);
-
   const classify = useMemo(
-    () => (pet: LiveNearbyPet) => {
-      const hits = demandHitsForPet(pet, demands, DEMAND_INDEX);
+    () => (pet: LiveNearbyPet) => ({
       // 蹲守目标也算高价值：离开视野后按同样 10 分钟保留在常驻列表里
-      return { highValue: isHighValuePet(pet, hits) || nearbyTargetAllows(targets, pet), demandHits: hits };
-    },
-    [demands, targets],
+      highValue: isHighValuePet(pet) || nearbyTargetAllows(targets, pet),
+    }),
+    [targets],
   );
 
   // 名单被清空（如面板里「清除全部」）时，范围不能停在目标档：退回「全部」
@@ -263,6 +311,7 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
     if (sessionRef.current !== snapshot.session) {
       sessionRef.current = snapshot.session;
       nearbyAlertGate.reset();
+      setExpandedKey(null);
       base = [];
     }
     const next = pruneRetained(
@@ -290,36 +339,28 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
     return () => window.clearInterval(timer);
   }, [classify]);
 
-  // 强提示：稀有（±100dB / 体重牌+声音牌）或命中需求中心；同一只只响一次。
+  // 强提示：稀有（±100dB / 体重牌+声音牌）；同一只只响一次。
   // 目标档下只看蹲守的那几只，别的精灵不打扰（2026-11-13）
   useEffect(() => {
     if (!rareAlertOn || !snapshot) return;
-    const hitOf = (pet: LiveNearbyPet) => hitByKey.get(pet.key) ?? [];
     const candidates = filter === 'target'
       ? snapshot.pets.filter((pet) => nearbyTargetAllows(targets, pet))
       : snapshot.pets;
     const fresh = nearbyAlertGate.scan(
       candidates,
       (pet) => pet.key,
-      (pet) => Boolean(pet.alertReason) || hitOf(pet).length > 0,
+      (pet) => Boolean(pet.alertReason),
     );
     if (fresh.length === 0) return;
-    const demandLines = fresh.flatMap((pet) =>
-      hitOf(pet).slice(0, 1).map((hit) => {
-        const caller = hit.groupName ? `可叫「${hit.groupName}」发需求的人来抓` : '可叫发需求的人来抓';
-        return `${pet.name} ${pet.level}级${pet.nature ? ` · 性格 ${pet.nature}` : ''}${pet.gender ? ` · ${pet.gender}` : ''} · 需求：${demandHitLabel(hit)} · ${caller}`;
-      }));
-    const rareLines = fresh
+    const lines = fresh
       .filter((pet) => pet.alertReason)
-      .map((pet) => `${pet.name} ${pet.level}级 · ${pet.alertReason}`);
-    const lines = [...demandLines, ...rareLines].slice(0, 3);
+      .map((pet) => `${pet.name} ${pet.level}级 · ${pet.alertReason}`)
+      .slice(0, 3);
     if (fresh.length > 3) lines.push(`…另有 ${fresh.length - 3} 只`);
-    const title = demandLines.length > 0
-      ? (demandLines.length === 1 ? '需求中心精灵出现！' : `需求中心精灵 ×${demandLines.length}`)
-      : rareAlertTitle(rareLines.length);
+    const title = rareAlertTitle(lines.length);
     setAlert({ title, lines });
     void notifyRareAlert(title, lines.join('\n')).catch(() => {});
-  }, [snapshot, hitByKey, rareAlertOn, filter, targets]);
+  }, [snapshot, rareAlertOn, filter, targets]);
 
   const pets = snapshot?.pets ?? [];
   // 最近一次赛季奇遇战（龙棋士 → 蛋包蛋），战斗中已带真实性格
@@ -343,7 +384,6 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
     [pets, estimatedSelf, captureSelf, snapshot?.selfHeading],
   );
   const rareCount = pets.filter((pet) => pet.rare).length;
-  const demandCount = [...hitByKey.values()].filter((hits) => hits.length > 0).length;
   /** 目标档下：当前视野内的目标数量（决定要不要显示「都不在视野内」） */
   const targetPresent = pets.filter((pet) => nearbyTargetAllows(targets, pet)).length;
   const targetWaiting = filter === 'target' && targets.length > 0 && targetPresent === 0;
@@ -478,15 +518,13 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   const radarKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const pet of pets) {
-      const hits = hitByKey.get(pet.key) ?? [];
-      if (nearbyRangeAllows(filter, pet, hits.length, targets)) keys.add(pet.key);
+      if (nearbyRangeAllows(filter, pet, targets)) keys.add(pet.key);
     }
     return keys;
-  }, [pets, hitByKey, filter, targets]);
+  }, [pets, filter, targets]);
 
   const filtered = useMemo(() => {
-    const allowed = (row: RetainedEntry) =>
-      nearbyRangeAllows(filter, row.pet, row.demandHits.length, targets);
+    const allowed = (row: RetainedEntry) => nearbyRangeAllows(filter, row.pet, targets);
     return sortRows(rows.filter(allowed), radar);
   }, [rows, radar, filter, targets]);
 
@@ -509,7 +547,7 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   const mapPets = useMemo(() => {
     const list = pets.filter((pet) => pet.pos && radarKeys.has(pet.key));
     if (list.length <= 40) return list;
-    // 实体堆积时不再全量画点：需求/稀有优先，最多 40 个（2026-11-12）
+    // 实体堆积时不再全量画点：目标出现/稀有优先，最多 40 个（2026-11-12）
     const score = (pet: (typeof list)[number]) => (pet.alertReason ? 2 : pet.rare ? 1 : 0);
     return [...list].sort((a, b) => score(b) - score(a)).slice(0, 40);
   }, [pets, radarKeys]);
@@ -526,8 +564,8 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   /** 尾随补发的定时器：同一时刻只排一个（与手机悬浮窗推送同一套 2026-11-10 口径） */
   const overlayPending = useRef<number | null>(null);
   /** 补发读的都是 ref：定时器触发时推的一定是最新一帧，而不是排期那一刻的旧数据 */
-  const overlaySource = useRef({ snapshot, hasKey: false, hitByKey });
-  overlaySource.current = { snapshot, hasKey: Boolean(progress?.analysis.hasKey), hitByKey };
+  const overlaySource = useRef({ snapshot, hasKey: false });
+  overlaySource.current = { snapshot, hasKey: Boolean(progress?.analysis.hasKey) };
 
   const pushOverlay = () => {
     const latest = overlaySource.current;
@@ -536,7 +574,6 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
       capturing: true,
       hasKey: latest.hasKey,
       snapshot: latest.snapshot,
-      demandHits: latest.hitByKey,
     }));
     if (!overlayShown.current) {
       overlayShown.current = true;
@@ -602,7 +639,7 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [fullscreen]);
 
-  const summary = `场景 ${snapshot?.scene ?? '—'} · 附近 ${pets.length} 只 · 稀有 ${rareCount} 只 · 需求命中 ${demandCount} 只`;
+  const summary = `场景 ${snapshot?.scene ?? '—'} · 附近 ${pets.length} 只 · 稀有 ${rareCount} 只`;
 
   return (
     <div
@@ -715,9 +752,6 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
             这里开始的采集只刷新地图与列表，不会自动停止 / 导入；要入库请到「我的 · 游戏数据」。
           </p>
         ) : null}
-        {demands.length > 0 ? (
-          <p className="text-[11px] text-slate-400">{`需求中心共 ${demands.length} 条未完成需求参与匹配`}</p>
-        ) : null}
         {error ? <p className="mt-1 text-xs text-rose-600" role="alert">{error}</p> : null}
         {captureError ? <p className="mt-1 text-xs text-rose-600" role="alert">{captureError}</p> : null}
         {flow.error ? <p className="mt-1 text-xs text-rose-600" role="alert">{flow.error}</p> : null}
@@ -761,7 +795,6 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
               options={[
                 { value: 'all', label: '全部' },
                 { value: 'rare', label: '稀有' },
-                { value: 'demand', label: '需求' },
                 { value: 'target', label: targets.length > 0 ? `目标 · ${targets.length}` : '目标' },
               ]}
               onValueChange={(value) => {
@@ -894,7 +927,7 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
             <StateNotice
               kind="empty-data"
               title="还没有高价值精灵"
-              description="地图仍显示当前普通精灵；常驻列表只保留可提醒、炫彩 / 异色 / 污染或命中需求中心的精灵。"
+              description="地图仍显示当前普通精灵；常驻列表只保留目标出现、炫彩 / 异色 / 污染的精灵。"
             />
           ) : filtered.length === 0 ? (
             <StateNotice
@@ -907,13 +940,15 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
               <p className="px-1 text-[11px] text-slate-400">
                 {filter === 'target'
                   ? `蹲守 ${targets.length} 只 · 离开视野后保留 10 分钟`
-                  : `常驻 ${rows.length} 只 · 仅高价值（可提醒 / 炫彩异色污染 / 需求命中），离开后保留 10 分钟`}
+                  : `常驻 ${rows.length} 只 · 仅高价值（目标出现 / 炫彩异色污染），离开后保留 10 分钟`}
               </p>
               {filtered.map((row) => (
                 <NearbyRowItem
                   key={row.key}
                   row={row}
                   point={radar.points.find((item) => item.key === row.key)}
+                  open={expandedKey === row.key}
+                  onToggle={() => setExpandedKey((current) => current === row.key ? null : row.key)}
                 />
               ))}
             </section>
@@ -1012,6 +1047,8 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
                   row={row}
                   dark
                   point={radar.points.find((item) => item.key === row.key)}
+                  open={expandedKey === row.key}
+                  onToggle={() => setExpandedKey((current) => current === row.key ? null : row.key)}
                 />
               ))}
             </div>

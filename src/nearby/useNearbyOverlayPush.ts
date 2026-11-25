@@ -1,13 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CollectorState } from '../collector/nativeCollector';
 import { readCollectorState } from '../collector/nativeCollector';
 import { useBattleTarget } from '../collector/battleTargetStore';
 import { freshNearbySnapshot, useNearbySnapshot } from '../collector/nearbyStore';
 import { registerLiveTick } from '../collector/useCaptureProgress';
-import { species } from '../data/catalog';
-import { demandHitsForPet, demandSpeciesIndex, type DemandHit } from '../pcap/demandMatch';
-import { demandKeyOf } from '../shared/collectionGroups';
-import { useDemandCenter } from '../ui/useDemandCenter';
 import { useNearbyFilter } from './nearbyFilterStore';
 import { useNearbyTargets } from './nearbyTargetStore';
 import { hasNearbyOverlayShell, pushNearbyOverlayToShell } from './overlayBridge';
@@ -24,8 +20,6 @@ import { useNearbyOverlayPanels } from './overlayPanels';
 const PUSH_INTERVAL_MS = 250;
 /** 采集状态轮询间隔（页面可见时；不可见时由安卓壳的心跳唤醒）；解码是增量的，实测解析 <1ms */
 const STATE_POLL_MS = 800;
-
-const DEMAND_INDEX = demandSpeciesIndex(species);
 
 /**
  * 安卓壳悬浮面板的推送生命周期（2026-11-08，应用级）。
@@ -44,30 +38,10 @@ export function useNearbyOverlayPush(): void {
   // 换局后旧会话的附近数据不再推给壳（O-9），停止采集仍保留同一 session 的最后一帧
   const snapshot = freshNearbySnapshot(useNearbySnapshot(), state?.fileId);
   const panels = useNearbyOverlayPanels();
-  const { items: demands, reload: reloadDemands } = useDemandCenter(supported);
   // 列表口径与附近页共用同一份状态：顶部三档（含目标档）+ 战斗目标的维度筛选 + 蹲守名单
   const filter = useNearbyFilter();
   const target = useBattleTarget();
   const targets = useNearbyTargets();
-
-  /**
-   * 需求中心签名：只取影响匹配的条件，避免每次刷新都拿到新数组身份把推送打成每秒一次。
-   * 需求没变就不重推，变了才推。
-   */
-  const demandSignature = useMemo(
-    () => [...new Set(demands.map((demand) => demandKeyOf(demand)))].sort().join('|'),
-    [demands],
-  );
-  /** 与「附近」页同一口径：命中需求中心的精灵才进面板列表 */
-  const hitByKey = useMemo(() => {
-    const map = new Map<string, DemandHit[]>();
-    for (const pet of snapshot?.pets ?? []) {
-      map.set(pet.key, demandHitsForPet(pet, demands, DEMAND_INDEX));
-    }
-    return map;
-  }, [snapshot, demands]);
-  const hitByKeyRef = useRef(hitByKey);
-  hitByKeyRef.current = hitByKey;
 
   // 轮询采集状态：可见时定时读；不可见时挂在壳的心跳上（定时器会被 WebView 节流）
   useEffect(() => {
@@ -99,24 +73,6 @@ export function useNearbyOverlayPush(): void {
 
   const capturing = state?.phase === 'capturing';
 
-  /**
-   * 采集期间定期刷新需求命中（R9-2b-M01）。
-   *
-   * 只在页面上挂一次 60 秒缓存，采集可能持续很久；发布方中途改条件 / 新需求时，
-   * 悬浮窗的命中列表不该等到重进页面才更新。页面重新可见时也补拉一次。
-   */
-  useEffect(() => {
-    if (!supported || !capturing) return;
-    const refresh = () => {
-      if (!document.hidden) reloadDemands();
-    };
-    const timer = window.setInterval(refresh, 60_000);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', refresh);
-    };
-  }, [supported, capturing, reloadDemands]);
   const latest = useRef({ snapshot, hasKey: Boolean(snapshot?.hasKey) });
   latest.current = { snapshot, hasKey: Boolean(snapshot?.hasKey) };
   /** 尾随补发读的都是 ref：定时器触发时补推的一定是最新一帧，而不是排期那一刻的旧数据。 */
@@ -155,7 +111,6 @@ export function useNearbyOverlayPush(): void {
         capturing: visible,
         hasKey: latest.current.hasKey,
         snapshot: latest.current.snapshot,
-        demandHits: hitByKeyRef.current,
         filter: filterRef.current,
         target: targetRef.current,
         targets: targetsRef.current,
@@ -199,7 +154,7 @@ export function useNearbyOverlayPush(): void {
       }
     }
     push(true);
-  }, [supported, capturing, snapshot, panels, demandSignature, filter, target, targets]);
+  }, [supported, capturing, snapshot, panels, filter, target, targets]);
 
   // 页面卸载 / 重载兜底收起，避免壳停在最后一帧
   useEffect(() => {
@@ -211,7 +166,6 @@ export function useNearbyOverlayPush(): void {
         capturing: false,
         hasKey: latest.current.hasKey,
         snapshot: latest.current.snapshot,
-        demandHits: hitByKeyRef.current,
       }));
     };
     window.addEventListener('pagehide', hide);

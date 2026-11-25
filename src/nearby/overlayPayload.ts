@@ -1,6 +1,5 @@
 import type { DesktopOverlayPet, DesktopOverlayPayload } from '../collector/desktopOverlay';
 import type { LiveNearbyPet } from '../collector/captureProgress';
-import type { DemandHit } from '../pcap/demandMatch';
 import type { NearbySnapshot } from '../collector/nearbyStore';
 import { battleTargetAllows, getBattleTarget, type BattleTarget } from '../collector/battleTargetStore';
 import { buildRadar } from '../pcap/nearbyRadar';
@@ -13,7 +12,7 @@ import { countPayloadBuild, capturePerfSummary } from '../collector/perfProbe';
  *
  * 只做「附近快照 → 悬浮面板要显示的数据」这一段纯函数，不碰页面与原生。
  * 列表口径（悬浮窗专用，App 内附近页与地图不受影响）：
- * - 总范围沿用附近页顶部三档：全部 / 稀有 / 需求（`nearbyFilterStore`，与页面共用同一份状态与判定）；
+ * - 总范围沿用附近页顶部档位：全部 / 稀有（`nearbyFilterStore`，与页面共用同一份状态）；
  * - 再叠加战斗目标那组维度筛选（性格 / 公母 / 声音 / 体型，`battleTargetStore`）：
  *   某维度没勾 = 该维度全部档位通过，勾了只放行命中项，维度之间按目标的 any / all 叠加；
  * - 命中需求中心恒放行，不受上面两层影响；
@@ -40,20 +39,18 @@ export const OVERLAY_MAP_POINT_LIMIT = 24;
 const TARGET_KINDS = new Set(['colorful', 'shiny', 'pollution']);
 
 /**
- * 精灵是否进悬浮窗列表（2026-11-09 新口径；2026-11-13 加目标档）：
- * 目标档只看蹲守名单；其余档命中需求中心恒放行，否则先过附近页总范围（全部 / 稀有 / 需求），
+ * 精灵是否进悬浮窗列表（2026-11-09；2026-11-13 加目标档；2026-11-25 需求下线）：
+ * 目标档只看蹲守名单；其余档先过附近页总范围（全部 / 稀有），
  * 再过战斗目标那组维度筛选（没设维度 = 全部通过）。
  */
 export function isOverlayTarget(
   pet: LiveNearbyPet,
-  demandHits: readonly DemandHit[] = [],
   filter: NearbyFilter = getNearbyFilter(),
   target: BattleTarget = getBattleTarget(),
   targets: readonly number[] = getNearbyTargets(),
 ): boolean {
-  if (filter === 'target') return nearbyRangeAllows(filter, pet, demandHits.length, targets);
-  if (demandHits.length > 0) return true;
-  if (!nearbyFilterAllows(filter, pet, 0)) return false;
+  if (filter === 'target') return nearbyRangeAllows(filter, pet, targets);
+  if (!nearbyFilterAllows(filter, pet)) return false;
   return battleTargetAllows(target, {
     nature: pet.nature || null,
     gender: pet.gender || null,
@@ -62,9 +59,8 @@ export function isOverlayTarget(
   });
 }
 
-/** 命中原因（列表只显示最短标识）：需求 > 可提醒 > 稀有 > 炫彩 / 异色 / 污染。 */
-export function overlayHitReason(pet: LiveNearbyPet, demandHits: readonly DemandHit[] = []): string | null {
-  if (demandHits.length > 0) return 'demand';
+/** 命中原因（列表只显示最短标识）：可提醒 > 稀有 > 炫彩 / 异色 / 污染。 */
+export function overlayHitReason(pet: LiveNearbyPet): string | null {
   if (pet.alertReason != null) return 'alert';
   if (pet.rare) return 'rare';
   for (const kind of pet.kinds) {
@@ -162,11 +158,6 @@ export interface NearbyOverlaySource {
   snapshot: NearbySnapshot | null;
   /** 推送时间；不传时用快照的更新时间 */
   now?: number;
-  /**
-   * 需求中心命中（精灵 key → 命中的需求），由页面用与 PC 相同的 `demandHitsForPet` 算好。
-   * 命中需求的精灵恒进悬浮窗列表。
-   */
-  demandHits?: ReadonlyMap<string, DemandHit[]> | null;
   /** 附近页顶部总范围档位；不传时读共享状态（与页面同一份） */
   filter?: NearbyFilter;
   /** 战斗目标维度筛选（性格 / 公母 / 声音 / 体型）；不传时读共享状态 */
@@ -175,10 +166,8 @@ export interface NearbyOverlaySource {
   targets?: readonly number[];
 }
 
-/** 命中需求 > 提醒 > 稀有 > 距离近 > key 稳定排序。 */
+/** 提醒 > 稀有 > 距离近 > key 稳定排序。 */
 function comparePets(left: DesktopOverlayPet, right: DesktopOverlayPet): number {
-  const demand = Number(right.reason === 'demand') - Number(left.reason === 'demand');
-  if (demand !== 0) return demand;
   const alert = Number(right.alert) - Number(left.alert);
   if (alert !== 0) return alert;
   const rare = Number(right.rare) - Number(left.rare);
@@ -191,14 +180,13 @@ function comparePets(left: DesktopOverlayPet, right: DesktopOverlayPet): number 
 
 export function buildNearbyOverlayPayload(source: NearbyOverlaySource): NearbyOverlayPayload {
   countPayloadBuild();
-  const { capturing, hasKey, snapshot, demandHits } = source;
+  const { capturing, hasKey, snapshot } = source;
   const filter = source.filter ?? getNearbyFilter();
   const target = source.target ?? getBattleTarget();
   const targets = source.targets ?? getNearbyTargets();
   const pets = snapshot?.pets ?? [];
-  const hitsOf = (pet: LiveNearbyPet): readonly DemandHit[] => demandHits?.get(pet.key) ?? [];
   // 地图默认画全部附近精灵；目标档下与列表一致，只留蹲守名单
-  const listed = pets.filter((pet) => isOverlayTarget(pet, hitsOf(pet), filter, target, targets));
+  const listed = pets.filter((pet) => isOverlayTarget(pet, filter, target, targets));
   // 307 是稀疏帧：真实坐标缺失时用里程计估算，保证地图 / 雷达随走动更新（2026-11-10）
   const rawSelf = snapshot?.self ?? null;
   const self = rawSelf ?? snapshot?.estimatedSelf ?? null;
@@ -235,7 +223,7 @@ export function buildNearbyOverlayPayload(source: NearbyOverlaySource): NearbyOv
         kinds: pet.kinds,
         rare: pet.rare,
         alert: pet.alertReason != null,
-        reason: overlayHitReason(pet, hitsOf(pet)),
+        reason: overlayHitReason(pet),
         x: pos.x,
         y: pos.y,
         distanceM: Number.isFinite(distanceOf(pet)) ? Math.round(distanceOf(pet) * 10) / 10 : null,
@@ -253,7 +241,7 @@ export function buildNearbyOverlayPayload(source: NearbyOverlaySource): NearbyOv
       kinds: item.kinds,
       rare: item.rare,
       alert: item.alertReason != null,
-      reason: overlayHitReason(item, hitsOf(item)),
+      reason: overlayHitReason(item),
       nature: item.nature || null,
       gender: item.gender || null,
       distanceM,

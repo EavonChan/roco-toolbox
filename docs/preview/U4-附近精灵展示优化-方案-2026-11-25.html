@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>U4 附近精灵展示优化（可交互方案稿，2026-11-25）</title>
+<style>
+  /* ==========================================================================
+     U4「附近精灵展示」方案稿（2026-11-25）
+     - 本轮只出方案：没有改 src/、没有打包。
+     - 「现状」按 src/ui/Nearby.tsx 的 Tailwind class 逐项复刻（不是真机截图）：
+       rounded-xl / px-3 / py-2 / text-sm / text-xs / text-[11px] / gap-1 /
+       bg-sky-50 / text-sky-700 / ring-1 ring-amber-300 等，数值取 Tailwind 默认表。
+     - 「改进后」是同宽同字体的方案稿，可点行展开。
+     - 悬浮窗按 android-shell 的 dp/sp 与 docs/手机悬浮窗-面板规格.md 复刻：
+       面板 214dp、列表 102dp、行内左右 padding 6dp、第二行 7.5sp、单行省略。
+     ========================================================================== */
+  :root{
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155;
+    --slate-800:#1e293b; --slate-900:#0f172a;
+    --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-200:#a7f3d0; --emerald-500:#10b981;
+    --emerald-600:#059669; --emerald-700:#047857;
+    --amber-50:#fffbeb; --amber-100:#fef3c7; --amber-200:#fde68a; --amber-300:#fcd34d;
+    --amber-500:#f59e0b; --amber-600:#d97706; --amber-700:#b45309; --amber-800:#92400e;
+    --rose-50:#fff1f2; --rose-200:#fecdd3; --rose-500:#f43f5e; --rose-600:#e11d48; --rose-700:#be123c;
+    --sky-50:#f0f9ff; --sky-700:#0369a1;
+    --violet-50:#f5f3ff; --violet-700:#6d28d9;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:22px 22px 64px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+    background:#eef2f7; color:var(--slate-700);
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+  }
+  h1{font-size:18px; margin:0 0 6px; color:var(--slate-800);}
+  h2{font-size:14px; margin:30px 0 4px; color:var(--slate-800);}
+  .lead{font-size:12px; line-height:1.75; color:var(--slate-500); margin:0 0 8px; max-width:1100px;}
+  .lead b{color:var(--slate-700);}
+  code{font-family:ui-monospace,Consolas,monospace; font-size:11px; background:var(--slate-200); padding:0 3px; border-radius:3px;}
+  .note{font-size:11.5px; color:var(--slate-500); margin:4px 0 12px;}
+
+  .stage{display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; margin:14px 0 10px;}
+  .device{flex:none; display:flex; flex-direction:column; gap:8px;}
+  .device > .cap{font-size:11.5px; color:var(--slate-500);}
+  .device > .cap b{color:var(--slate-700);}
+  .frame{
+    position:relative; background:#fff; overflow:hidden;
+    border-radius:22px;
+    box-shadow:0 0 0 1px var(--slate-300), 0 12px 30px rgba(15,23,42,.10);
+  }
+  .frame[data-w="375"]{width:375px;}
+  .frame[data-w="390"]{width:390px;}
+  .frame[data-w="768"]{width:768px;}
+  .frame .screen{height:100%; overflow:hidden; background:#fff; display:flex; flex-direction:column;}
+  .phone-area{flex:1; min-height:0; overflow:hidden; padding:14px 16px 18px;}
+  .frame[data-w="768"] .phone-area{padding:16px; display:flex; justify-content:center;}
+  .tablet-col{width:416px; max-width:100%;}
+
+  .crumb{font-size:10.5px; color:var(--slate-400); margin:0 0 8px;}
+  .list-cap{font-size:11px; color:var(--slate-400); margin:0 0 4px;}
+
+  /* ---------- 现状：逐项复刻 NearbyRowItem ---------- */
+  .now-list{display:flex; flex-direction:column; gap:4px;}
+  .now-row{
+    border-radius:12px; padding:8px 12px; background:#fff;
+    box-shadow:0 1px 2px 0 rgba(0,0,0,.05);
+    opacity:1;
+  }
+  .now-row.ring-demand{box-shadow:0 0 0 1px var(--amber-300),0 1px 2px 0 rgba(0,0,0,.05);}
+  .now-row.ring-alert{box-shadow:0 0 0 1px var(--rose-200),0 1px 2px 0 rgba(0,0,0,.05);}
+  .now-row.absent{opacity:.7;}
+  .now-head{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+  .now-name{font-size:14px; line-height:20px; color:var(--slate-700);}
+  .now-name.rare{font-weight:600; color:var(--slate-800);}
+  .now-lv{font-size:12px; line-height:16px; color:var(--slate-400);}
+  .now-dist{flex:none; font-size:12px; line-height:16px; color:var(--slate-400);}
+  .now-chips{margin-top:2px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:11px; line-height:1.5;}
+  .now-chip{border-radius:4px; padding:2px 6px; white-space:nowrap;}
+  .c-slate{background:var(--slate-100); color:var(--slate-500);}
+  .c-amber{background:var(--amber-50); color:var(--amber-700);}
+  .c-sky{background:var(--sky-50); color:var(--sky-700);}
+  .c-violet{background:var(--violet-50); color:var(--violet-700);}
+  .c-emerald{background:var(--emerald-50); color:var(--emerald-700);}
+  .now-voice{color:var(--slate-400);}
+  .now-alert{color:var(--rose-500);}
+  .now-demand{margin:4px 0 0; font-size:11px; line-height:1.5; color:var(--amber-600);}
+
+  /* ---------- 改进后：方案 A（推荐） ---------- */
+  .u4-list{display:flex; flex-direction:column; gap:6px;}
+  .u4-row{
+    position:relative; border-radius:12px; background:#fff; padding:8px 12px 8px;
+    box-shadow:0 1px 2px 0 rgba(0,0,0,.05);
+    cursor:pointer; outline:none;
+  }
+  .u4-row[data-demand="1"]{box-shadow:0 0 0 1px var(--amber-300),0 1px 2px 0 rgba(0,0,0,.05);}
+  .u4-row[data-alert="1"]:not([data-demand="1"]){box-shadow:0 0 0 1px var(--rose-200),0 1px 2px 0 rgba(0,0,0,.05);}
+  .u4-row.absent{opacity:.72;}
+  .u4-row:focus-visible{box-shadow:0 0 0 2px var(--emerald-500);}
+  .u4-r1{display:flex; align-items:center; gap:6px; min-width:0;}
+  .u4-name{font-size:14px; line-height:20px; font-weight:600; color:var(--slate-800); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .u4-row:not([data-rare="1"]) .u4-name{font-weight:500; color:var(--slate-700);}
+  .u4-lv{font-size:11px; line-height:16px; color:var(--slate-400); flex:none;}
+  .u4-sex{flex:none; width:16px; height:16px; border-radius:99px; font-size:10px; line-height:16px; text-align:center; font-weight:600;}
+  .u4-sex.male{background:#eef2ff; color:#4f46e5;}
+  .u4-sex.female{background:#fdf2f8; color:#db2777;}
+  .u4-dist{margin-left:auto; flex:none; font-size:11px; color:var(--slate-400); white-space:nowrap; font-variant-numeric:tabular-nums;}
+  .u4-chev{flex:none; color:var(--slate-400); font-size:11px; transition:transform .15s;}
+  .u4-row.open .u4-chev{transform:rotate(180deg);}
+  .u4-r2{display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; margin-top:3px; font-size:12px; line-height:18px; color:var(--slate-600);}
+  .u4-nature{color:var(--slate-600); white-space:nowrap;}
+  .u4-dot{color:var(--slate-300);}
+  .u4-metric{white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--slate-600);}
+  .u4-metric.miss{color:var(--slate-300);}
+  .u4-metric.hot{color:var(--amber-700); font-weight:600;}
+  .u4-voice{white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--slate-500);}
+  .u4-voice.hot{color:var(--amber-700); font-weight:600;}
+  .u4-r3{display:flex; align-items:center; gap:6px; margin-top:5px; min-height:18px;}
+  .u4-chips{display:flex; flex-wrap:wrap; align-items:center; gap:4px; min-width:0;}
+  .u4-chip{border-radius:4px; padding:1px 5px; font-size:10.5px; line-height:16px; white-space:nowrap;}
+  .u4-chip.demand{background:var(--amber-50); color:var(--amber-700);}
+  .u4-chip.rare{background:var(--emerald-50); color:var(--emerald-700);}
+  .u4-chip.alert{background:var(--rose-50); color:var(--rose-600);}
+  .u4-chip.left{background:var(--slate-100); color:var(--slate-500);}
+
+  /* 展开详情 */
+  .u4-detail{display:none; margin:8px -4px 0; padding:10px 8px 6px; border-top:1px dashed var(--slate-200); background:var(--slate-50); border-radius:0 0 8px 8px;}
+  .u4-row.open .u4-detail{display:block;}
+  .u4-grid{display:grid; grid-template-columns:1fr 1fr; gap:2px 10px;}
+  .u4-cell{display:flex; align-items:baseline; gap:5px; font-size:11px; line-height:17px; min-width:0;}
+  .u4-cell dt{flex:none; color:var(--slate-400);}
+  .u4-cell dd{margin:0; color:var(--slate-700); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .u4-cell.wide{grid-column:1 / -1;}
+  .u4-cell dd.amber{color:var(--amber-700);}
+  .u4-cell dd.rose{color:var(--rose-600);}
+
+  /* ---------- 方案 B（全常显，不展开） ---------- */
+  .b-row{border-radius:12px; background:#fff; padding:8px 12px; box-shadow:0 1px 2px 0 rgba(0,0,0,.05);}
+  .b-row + .b-row{margin-top:6px;}
+  .b-r3{display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:4px; font-size:11px; line-height:17px; color:var(--slate-500);}
+  .b-r4{display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:3px; font-size:10.5px; line-height:16px; color:var(--slate-400);}
+
+  /* ---------- 悬浮窗（安卓壳 214dp） ---------- */
+  .panel-stage{display:flex; gap:30px; align-items:flex-start; flex-wrap:wrap; margin-top:14px;}
+  .panel-fig{display:flex; flex-direction:column; gap:10px; width:320px; flex:none;}
+  .panel-fig .cap{font-size:11.5px; color:var(--slate-500); padding-left:3px;}
+  .panel-fig .cap b{color:var(--slate-700);}
+  .panel-anno{max-width:300px; font-size:11px; line-height:1.7; color:var(--slate-500); background:#fff; border:1px solid var(--slate-200); border-radius:8px; padding:8px 10px;}
+  .panel-anno b{color:var(--slate-700);}
+  .panel-anno .num{font-family:ui-monospace,Consolas,monospace; font-size:10.5px; color:var(--slate-800);}
+
+  .p{
+    width:214px; flex:none; position:relative;
+    border-radius:12px; overflow:hidden;
+    background:rgba(17,28,51,.94); color:#e2e8f0;
+    box-shadow:0 0 0 1px #1e293b, 0 14px 36px rgba(0,0,0,.45);
+    font-family:Roboto,"Noto Sans SC","Noto Sans CJK SC","Microsoft YaHei UI","Segoe UI",sans-serif;
+    padding-top:4px;
+  }
+  .p-title{height:24px; padding:0 8px; display:flex; align-items:center; justify-content:space-between; gap:6px; font-size:11px; font-weight:600; line-height:14px;}
+  .p-title .badge{font-size:8px; font-weight:500; color:#94a3b8; border:1px solid #334155; border-radius:4px; padding:1px 3px;}
+  .p-body{display:flex; gap:6px; padding:0 8px 8px;}
+  .p-map{width:90px; height:90px; border-radius:8px; overflow:hidden; flex:0 0 auto; background:#0d1a26;}
+  .p-map img{display:block; width:100%; height:100%; object-fit:cover;}
+  .p-list{width:102px; display:flex; flex-direction:column; gap:3px; flex:0 0 auto;}
+  .p-row{position:relative; height:28px; border-radius:6px; background:#111c33; padding:0 6px; overflow:hidden;
+    box-shadow:inset 0 0 0 1px #1e293b;}
+  .p-row.demand{background:#2a1220; box-shadow:inset 0 0 0 1px #be123c;}
+  .p-row.rare{box-shadow:inset 0 0 0 1px #b45309;}
+  .p-row.demand.rare{box-shadow:inset 0 0 0 1px #be123c;}
+  .p-row .bar{position:absolute; left:0; top:4px; bottom:4px; width:3px; border-radius:1.5px; background:#f43f5e;}
+  .p-row.tall{height:40px;}
+  .p-head{height:16px; display:flex; align-items:center; gap:4px;}
+  .p-name{min-width:0; flex:1; font-size:10px; line-height:16px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .p-lv{font-size:8px; line-height:16px; font-weight:400; color:rgba(226,232,240,.82); flex:none;}
+  .p-dist{font-size:8px; line-height:16px; color:rgba(226,232,240,.82); white-space:nowrap; flex:none;}
+  .p-line2{height:12px; font-size:7.5px; line-height:12px; color:rgba(226,232,240,.72); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%;}
+  .p-line3{height:12px; font-size:7.5px; line-height:12px; color:rgba(226,232,240,.72); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .p-foot{height:12px; padding:0 8px 6px; font-size:9px; line-height:12px; color:#94a3b8;}
+  .p-check{position:absolute; right:2px; bottom:2px; width:7px; height:7px; border-radius:99px; background:#059669; color:#fff; font-size:5px; line-height:7px; text-align:center; font-weight:700;}
+
+  /* 标注线 */
+  .line-zoom{width:300px; margin-top:6px; padding:10px 12px; background:#0f172a; border-radius:8px; color:#cbd5e1;}
+  .line-zoom .t{font-family:Roboto,"Noto Sans SC","Microsoft YaHei UI",sans-serif; font-size:7.5px; line-height:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:var(--avail,90px);}
+  .line-zoom .m{display:flex; justify-content:space-between; margin-top:6px; font-size:9px; color:#94a3b8;}
+  .line-zoom .m b{color:#fbbf24; font-weight:600;}
+  .ruler{height:14px; margin-top:6px; position:relative; border-left:1px solid #64748b; border-right:1px solid #64748b; border-bottom:1px solid #64748b; width:var(--avail,90px);}
+  .ruler span{position:absolute; left:50%; top:1px; transform:translateX(-50%); font-family:ui-monospace,Consolas,monospace; font-size:9px; color:#cbd5e1;}
+
+  /* 字段表 */
+  table.fields{width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--slate-200); border-radius:10px; overflow:hidden; font-size:11.5px;}
+  table.fields th, table.fields td{border-bottom:1px solid var(--slate-100); padding:6px 8px; text-align:left; vertical-align:top; line-height:1.55;}
+  table.fields th{background:var(--slate-50); font-weight:600; color:var(--slate-600); font-size:11px;}
+  table.fields tr:last-child td{border-bottom:0;}
+  table.fields .yes{color:var(--emerald-700); font-weight:600;}
+  table.fields .no{color:var(--rose-600);}
+  table.fields .todo{color:var(--amber-700); font-weight:600;}
+  table.fields td.src{color:var(--slate-500); font-size:10.5px;}
+
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--slate-500); margin:2px 0 8px;}
+  .legend i{display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px;}
+</style>
+</head>
+<body>
+
+<h1>U4 · 附近精灵展示优化（2026-11-25 方案稿）</h1>
+<p class="lead">
+  两个问题：<b>①列表信息不全（没有身高 / 体重百分比）</b>；<b>②地图采集悬浮窗里「高100% 重100%」时声音被截断</b>。
+  本页是 <b>375 / 390 / 平板</b> 与悬浮窗的复刻稿，可点列表行展开；配套文档
+  <code>docs/方案-附近精灵展示优化-2026-11-25.md</code>。本页是方案稿与布局复刻；Web 端已按批准落地（实现记录见文档 §5），Java 悬浮窗改动待壳发布轮。
+</p>
+<p class="note">
+  2026-11-25 口径：<b>需求功能下线</b>，列表不再出现需求 chip / 「可叫发需求的人来抓」；<b>身高、体重百分比一律显示</b>，不再等大块头 / 小不点牌子；原先重复的「可提醒 +100dB」改为 <b>目标出现！</b>。
+</p>
+
+<h2>一、现在列表展示了什么（现状）</h2>
+<p class="note">
+  按 <code>src/ui/Nearby.tsx</code> 的 <code>NearbyRowItem</code>（129–181 行）逐 class 复刻（需求 UI 已按新口径去掉）。
+  4 条样例分别覆盖：目标出现 + 双满分、缺身高、普通精灵、已离开视野的异色。
+</p>
+
+<div class="stage">
+  <div class="device">
+    <div class="frame" data-w="375" id="shot-now-375" style="height:480px">
+      <div class="screen">
+        <div class="phone-area">
+          <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+          <p class="list-cap">常驻 4 只 · 仅高价值，离开后保留 10 分钟</p>
+          <div class="now-list" id="now-list-375"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>375</b> · 现状（列表区）</div>
+  </div>
+
+  <div class="device">
+    <div class="frame" data-w="390" id="shot-now-390" style="height:500px">
+      <div class="screen">
+        <div class="phone-area">
+          <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+          <p class="list-cap">常驻 4 只 · 仅高价值，离开后保留 10 分钟</p>
+          <div class="now-list" id="now-list-390"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>390</b> · 现状（列表区）</div>
+  </div>
+
+  <div class="device">
+    <div class="frame" data-w="768" id="shot-now-768" style="height:520px">
+      <div class="screen">
+        <div class="phone-area">
+          <div class="tablet-col">
+            <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+            <p class="list-cap">常驻 4 只 · 仅高价值，离开后保留 10 分钟</p>
+            <div class="now-list" id="now-list-768"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>平板 768</b> · 现状：内容仍限宽 416（容器 448 − 左右 16，<code>Profile.tsx:122</code>）</div>
+  </div>
+</div>
+
+<h2>二、改进后 · 方案 A（推荐：主行 + 指标行 + 标签行 + 点开详情）</h2>
+<div class="legend">
+  <span><i style="background:#4f46e5"></i>性别</span>
+  <span><i style="background:#f43f5e"></i>目标出现！</span>
+  <span><i style="background:#b45309"></i>满分 / 达标（体重 ≥98 或 ≤2、声音 ±96）</span>
+</div>
+<p class="note">点任意一行展开 / 收起详情。常显只放扫读需要的 6 项，其余进详情，避免一行堆十几个字段。</p>
+
+<div class="stage">
+  <div class="device">
+    <div class="frame" data-w="375" id="shot-a-375" style="height:480px">
+      <div class="screen">
+        <div class="phone-area">
+          <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+          <p class="list-cap">常驻 4 只 · 仅高价值（目标出现 / 炫彩异色污染），离开后保留 10 分钟</p>
+          <div class="u4-list" id="a-list-375"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>375</b> · 方案 A（收起）</div>
+  </div>
+
+  <div class="device">
+    <div class="frame" data-w="390" id="shot-a-390" style="height:500px">
+      <div class="screen">
+        <div class="phone-area">
+          <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+          <p class="list-cap">常驻 4 只 · 仅高价值（目标出现 / 炫彩异色污染），离开后保留 10 分钟</p>
+          <div class="u4-list" id="a-list-390"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>390</b> · 方案 A（收起）</div>
+  </div>
+
+  <div class="device">
+    <div class="frame" data-w="768" id="shot-a-768" style="height:520px">
+      <div class="screen">
+        <div class="phone-area">
+          <div class="tablet-col">
+            <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+            <p class="list-cap">常驻 4 只 · 仅高价值（目标出现 / 炫彩异色污染），离开后保留 10 分钟</p>
+            <div class="u4-list" id="a-list-768"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>平板 768</b> · 方案 A：416 列内一行仍放得下 6 项</div>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="device">
+    <div class="frame" data-w="375" id="shot-a-open-375" style="height:660px">
+      <div class="screen">
+        <div class="phone-area">
+          <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+          <p class="list-cap">常驻 4 只 · 第 1 条已展开</p>
+          <div class="u4-list" id="a-open-list-375"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>375</b> · 方案 A（展开第 1 条：全部字段）</div>
+  </div>
+
+  <div class="device">
+    <div class="frame" data-w="375" id="shot-b-375" style="height:560px">
+      <div class="screen">
+        <div class="phone-area">
+          <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+          <p class="list-cap">方案 B · 全部常显、不做展开</p>
+          <div id="b-list-375"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>375</b> · 方案 B（四行常显，字段全但行高 97）</div>
+  </div>
+
+  <div class="device">
+    <div class="frame" data-w="375" id="shot-c-375" style="height:480px">
+      <div class="screen">
+        <div class="phone-area">
+          <p class="crumb">我的 · 游戏数据 · 附近精灵</p>
+          <p class="list-cap">方案 C · 只在现有 chips 行补「高 / 重」</p>
+          <div class="now-list" id="c-list-375"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>375</b> · 方案 C（最小改动，仍拥挤且不展示时间 / 坐标）</div>
+  </div>
+</div>
+
+<h2>三、悬浮窗「高100% 重100%」截断复现</h2>
+<p class="note">
+  按安卓壳实测几何复刻：面板 214dp、列表 102dp、行内左右 padding 6dp（可用 <b>90dp</b>）、第二行 7.5sp 单行 + <code>ellipsize=END</code>
+  （<code>NearbyPanelController.java:844–848</code>）。每张图按 3× 输出，标注里的宽度是浏览器实测（与真机字形宽度约 ±5%）。
+</p>
+
+<div class="panel-stage">
+  <div class="panel-fig">
+    <div class="p" id="panel-current">
+      <div class="p-title"><span>附近 3 · 稀有 2</span><span class="badge">中心为估算</span></div>
+      <div class="p-body">
+        <div class="p-map"><img src="../../public/maps/10003.webp" alt="" /></div>
+        <div class="p-list">
+          <div class="p-row rare">
+            <div class="p-head"><span class="p-name">护主犬 <span class="p-lv">Lv37</span></span><span class="p-dist">↗ 12m</span></div>
+            <div class="p-line2" data-measure="高:100.0% 重:100.0% +100dB">高:100.0% 重:100.0% +100dB</div>
+          </div>
+          <div class="p-row">
+            <div class="p-head"><span class="p-name">格兰花 <span class="p-lv">Lv28</span></span><span class="p-dist">↖ 35m</span></div>
+            <div class="p-line2" data-measure="高:62.3% 重:48.1% +96dB">高:62.3% 重:48.1% +96dB</div>
+          </div>
+          <div class="p-row">
+            <div class="p-head"><span class="p-name">喵喵 <span class="p-lv">Lv8</span></span><span class="p-dist">↓ 8m</span></div>
+            <div class="p-line2" data-measure="高:38.2% 重:61.4% +2dB">高:38.2% 重:61.4% +2dB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>现状</b> · 第二行被省略号截断，声音只剩「+1…」</div>
+    <div class="line-zoom" style="--avail:90px">
+      <div class="t">高:100.0% 重:100.0% +100dB</div>
+      <div class="ruler"><span>90dp</span></div>
+      <div class="m"><span>文本实测 <b data-w="高:100.0% 重:100.0% +100dB">—</b></span><span>可用 90dp</span></div>
+    </div>
+    <div class="panel-anno">
+      <b>原因</b>：单行 + 固定 90dp + 完整格式。<code>pctText</code> 固定一位小数和 <code>%</code>，<code>+100dB</code> 不能再省；
+      文本比可用宽度多 <span class="num" data-over="高:100.0% 重:100.0% +100dB">—</span>，省略号从尾部吃掉声音。
+    </div>
+  </div>
+
+  <div class="panel-fig">
+    <div class="p" id="panel-wrap">
+      <div class="p-title"><span>附近 3 · 稀有 2</span><span class="badge">中心为估算</span></div>
+      <div class="p-body">
+        <div class="p-map"><img src="../../public/maps/10003.webp" alt="" /></div>
+        <div class="p-list">
+          <div class="p-row rare tall">
+            <div class="p-head"><span class="p-name">护主犬 <span class="p-lv">Lv37</span></span><span class="p-dist">↗ 12m</span></div>
+            <div class="p-line2">高:100.0% 重:100.0%</div>
+            <div class="p-line3">+100dB</div>
+          </div>
+          <div class="p-row tall">
+            <div class="p-head"><span class="p-name">格兰花 <span class="p-lv">Lv28</span></span><span class="p-dist">↖ 35m</span></div>
+            <div class="p-line2">高:62.3% 重:48.1%</div>
+            <div class="p-line3">+96dB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>修法 1 · 换行</b>：行高 28→40；保持列表 90 高只显示 2 行，要保 3 行则面板 126→162</div>
+    <div class="panel-anno">
+      声音另起一行，任何组合都不会截断；代价是 <b>列表可视行数 3→2</b>，或面板高度公式与规格文档一起改。
+      <b>改动量：中</b>。
+    </div>
+  </div>
+
+  <div class="panel-fig">
+    <div class="p" id="panel-short">
+      <div class="p-title"><span>附近 3 · 稀有 2</span><span class="badge">中心为估算</span></div>
+      <div class="p-body">
+        <div class="p-map"><img src="../../public/maps/10003.webp" alt="" /></div>
+        <div class="p-list">
+          <div class="p-row rare">
+            <div class="p-head"><span class="p-name">护主犬 <span class="p-lv">Lv37</span></span><span class="p-dist">↗ 12m</span></div>
+            <div class="p-line2">高100 重100 +100dB</div>
+          </div>
+          <div class="p-row">
+            <div class="p-head"><span class="p-name">格兰花 <span class="p-lv">Lv28</span></span><span class="p-dist">↖ 35m</span></div>
+            <div class="p-line2">高62.3 重48.1 +96dB</div>
+          </div>
+          <div class="p-row">
+            <div class="p-head"><span class="p-name">喵喵 <span class="p-lv">Lv8</span></span><span class="p-dist">↓ 8m</span></div>
+            <div class="p-line2">高38.2 重61.4 +2dB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>修法 2 · 缩写（推荐）</b>：<code>高100 重100 +100dB</code>，约 70dp &lt; 90dp，声音完整</div>
+    <div class="line-zoom" style="--avail:90px">
+      <div class="t">高100 重100 +100dB</div>
+      <div class="ruler"><span>90dp</span></div>
+      <div class="m"><span>文本实测 <b data-w="高100 重100 +100dB">—</b></span><span>余量 <b data-free="高100 重100 +100dB">—</b></span></div>
+    </div>
+    <div class="panel-anno">
+      去掉冒号与尾部 <code>.0</code>，其余保留一位小数（98.88 → 98.8，不会把 97.96 显示成 98 而误判达标）。
+      <b>不改行高、不改面板</b>，只改 <code>metaTextLine2</code> 与 <code>pctText</code>。<b>改动量：小</b>。
+    </div>
+  </div>
+
+  <div class="panel-fig">
+    <div class="p" id="panel-small">
+      <div class="p-title"><span>附近 3 · 稀有 2</span><span class="badge">中心为估算</span></div>
+      <div class="p-body">
+        <div class="p-map"><img src="../../public/maps/10003.webp" alt="" /></div>
+        <div class="p-list">
+          <div class="p-row rare">
+            <div class="p-head"><span class="p-name">护主犬 <span class="p-lv">Lv37</span></span><span class="p-dist">↗ 12m</span></div>
+            <div class="p-line2 small" style="font-size:6.5px">高:100.0% 重:100.0% +100dB</div>
+          </div>
+          <div class="p-row">
+            <div class="p-head"><span class="p-name">格兰花 <span class="p-lv">Lv28</span></span><span class="p-dist">↖ 35m</span></div>
+            <div class="p-line2" style="font-size:6.5px">高:62.3% 重:48.1% +96dB</div>
+          </div>
+          <div class="p-row">
+            <div class="p-head"><span class="p-name">喵喵 <span class="p-lv">Lv8</span></span><span class="p-dist">↓ 8m</span></div>
+            <div class="p-line2" style="font-size:6.5px">高:38.2% 重:61.4% +2dB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>修法 3 · 缩字号</b>：7.5→6.5sp，实测 86.7dp，余 3.3dp</div>
+    <div class="line-zoom" style="--avail:90px">
+      <div class="t" style="font-size:6.5px">高:100.0% 重:100.0% +100dB</div>
+      <div class="ruler"><span>90dp</span></div>
+      <div class="m"><span>文本实测 <b data-w6_5="高:100.0% 重:100.0% +100dB">—</b></span><span>可用 90dp</span></div>
+    </div>
+    <div class="panel-anno">
+      不推荐：字号已低于面板其他 9sp 文案；系统字体放大时仍会溢出，且 6.5sp 可读性差。
+    </div>
+  </div>
+
+  <div class="panel-fig">
+    <div class="p" id="panel-extreme">
+      <div class="p-title"><span>附近 3 · 稀有 2</span><span class="badge">中心为估算</span></div>
+      <div class="p-body">
+        <div class="p-map"><img src="../../public/maps/10003.webp" alt="" /></div>
+        <div class="p-list">
+          <div class="p-row rare">
+            <span class="bar"></span>
+            <div class="p-head" style="padding-left:4px"><span class="p-name">护主犬 <span class="p-lv">Lv37</span></span><span class="p-dist">↗ 12m</span></div>
+            <div class="p-line2" style="padding-left:4px">高100 重100 +100dB</div>
+            <span class="p-check" title="假设的已收集标记（当前不存在）">✓</span>
+          </div>
+          <div class="p-row rare">
+            <div class="p-head"><span class="p-name">格兰花 <span class="p-lv">Lv28</span></span><span class="p-dist">↖ 35m</span></div>
+            <div class="p-line2">高62.3 重48.1 +96dB</div>
+          </div>
+          <div class="p-row">
+            <div class="p-head"><span class="p-name">喵喵 <span class="p-lv">Lv8</span></span><span class="p-dist">↓ 8m</span></div>
+            <div class="p-line2">高38.2 重61.4 +2dB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>修法 2 + 极端组合</b>：稀有描边 + 目标红条 + 满分色 + 7dp「已收集」假设图标</div>
+    <div class="panel-anno">
+      稀有 / 目标出现都是<b>描边、左侧红条</b>，不占文字宽度；需求已下线，不再有玫红底。
+      「已收集」若以后要加，建议用 <b>7dp 图标</b>（右下角）而不是文字，否则 90dp 放不下；当前协议里<b>还没有</b>这个字段。
+    </div>
+  </div>
+</div>
+
+<h2>四、字段梳理（以解码器真实字段为准）</h2>
+<table class="fields">
+  <thead>
+    <tr><th style="width:132px">字段</th><th style="width:210px">来源（真实字段）</th><th style="width:74px">现状</th><th style="width:190px">建议显示</th><th>备注</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>物种名</td><td class="src">WildPet.name（wildNearby.ts:123）</td><td class="yes">显示</td><td>主行 · 名称</td><td>—</td></tr>
+    <tr><td>等级</td><td class="src">raw.level（wildNearby.ts:24）</td><td class="yes">显示</td><td>主行 · Lv37</td><td>—</td></tr>
+    <tr><td>性别</td><td class="src">ownedPetDetails → gender（wildNearby.ts:128）</td><td class="yes">显示</td><td>主行 · ♂/♀</td><td>野生实体本身没有，靠抓包里的宠物记录回填；没有就留空</td></tr>
+    <tr><td>性格</td><td class="src">ownedPetDetails → nature（wildNearby.ts:127）</td><td class="yes">显示</td><td>次行 · 性格 勇敢</td><td>同上</td></tr>
+    <tr><td>声音（dB）</td><td class="src">raw.voiceDb（wildNearby.ts:28）</td><td class="yes">显示</td><td>次行 · +100dB</td><td>±96 以上标达标色</td></tr>
+    <tr><td><b>身高百分比</b></td><td class="src">heightPct（wildNearby.ts:114，heightPercentOf）</td><td class="no">未显示</td><td>次行 · 高100%</td><td><b>本轮要补</b></td></tr>
+    <tr><td><b>体重百分比</b></td><td class="src">weightPct（wildNearby.ts:111，weightPercentile）</td><td class="no">未显示</td><td>次行 · 重100%</td><td><b>本轮要补</b></td></tr>
+    <tr><td>体型牌</td><td class="src">kinds: big/small（rareRules.ts:60）</td><td class="yes">显示</td><td>标签行 · 大块头 / 小不点</td><td>体重 + 身高同时 ≥98 / ≤2 才挂牌</td></tr>
+    <tr><td>声音牌</td><td class="src">kinds: high/low（rareRules.ts:64）</td><td class="no">被过滤</td><td>不显示文字（dB 已表达）</td><td>代码有意 <code>filter(kind !== 'high' &amp;&amp; kind !== 'low')</code></td></tr>
+    <tr><td>炫彩 / 异色 / 污染</td><td class="src">kinds（rareRules.ts:55–57）</td><td class="yes">显示</td><td>标签行</td><td>—</td></tr>
+    <tr><td>是否稀有</td><td class="src">rare = kinds.length &gt; 0（wildNearby.ts:130）</td><td class="todo">间接（加粗）</td><td>详情 · 稀有 是/否</td><td>不单独占主行</td></tr>
+    <tr><td>目标提示</td><td class="src">alertReason（rareRules.ts:82）</td><td class="yes">显示（与 +100dB 重复）</td><td>标签行 · 目标出现！</td><td>不再拼「+100dB」，声音已在指标行</td></tr>
+    <tr><td>需求命中</td><td class="src">demandHits（demandMatch.ts）</td><td class="yes">显示</td><td class="todo">不展示（功能下线）</td><td>2026-11-25 口径：列表/文案都不再出现；代码里仍在（Nearby.tsx:758-786），落代码时一并清</td></tr>
+    <tr><td>距离 / 方位</td><td class="src">radar.points（nearbyRadar.ts）</td><td class="yes">显示</td><td>主行右侧</td><td>—</td></tr>
+    <tr><td>是否在视野</td><td class="src">RetainedEntry.present（nearbyRetain.ts:18）</td><td class="yes">显示「已离开视野」</td><td>标签行</td><td>—</td></tr>
+    <tr><td><b>首次出现</b></td><td class="src">RetainedEntry.firstSeenAt（nearbyRetain.ts:16）</td><td class="no">未显示</td><td>详情 · 12:03:11</td><td>可算「2 分钟前」</td></tr>
+    <tr><td><b>最近看到</b></td><td class="src">RetainedEntry.lastSeenAt（nearbyRetain.ts:17）</td><td class="no">未显示</td><td>详情 · 12:04:05</td><td>—</td></tr>
+    <tr><td><b>世界坐标</b></td><td class="src">pos.x / pos.y（wildNearby.ts:32）</td><td class="no">未显示</td><td>详情 · (1024, -356)</td><td>排障 / 对地图有用</td></tr>
+    <tr><td>物种编号</td><td class="src">petId / cfgId（wildNearby.ts:20/22）</td><td class="no">未显示</td><td>详情 · #3002</td><td>排障用，可折叠</td></tr>
+    <tr><td>原始身高 / 体重</td><td class="src">WildPet.height / weight（wildNearby.ts:25–26）</td><td class="no">未进入展示模型</td><td class="todo">需确认</td><td><code>inspectCapture.ts:62–67</code> 只搬了百分比，没搬 cm / g；要显示得先补 LiveNearbyPet</td></tr>
+    <tr><td>是否已收集</td><td class="src">无此字段</td><td class="no">未显示</td><td class="todo">需确认</td><td>只能按物种粗判（有同种另一只就会误报），建议不做</td></tr>
+  </tbody>
+</table>
+
+<script>
+  // ---------- 样例数据（全部取自解码器现有字段，不发明） ----------
+  const ROWS = [
+    {
+      key: 'rare', name: '护主犬', level: 37, nature: '勇敢', gender: '公', present: true,
+      heightPct: 100, weightPct: 100, voiceDb: 100, kinds: ['big', 'high'], rare: true,
+      alertReason: '+100dB', demand: false, distance: '12.3m', bearing: '东北', arrow: '↗',
+      firstSeen: '12:03:11', lastSeen: '12:04:05', x: 1024, y: -356, petId: 3002,
+      demandLabel: '',
+    },
+    {
+      key: 'gran', name: '格兰花', level: 28, nature: '天真', gender: '母', present: true,
+      heightPct: null, weightPct: 48.1, voiceDb: 96, kinds: ['high'], rare: true,
+      alertReason: null, demand: false, distance: '34.7m', bearing: '西', arrow: '←',
+      firstSeen: '12:01:40', lastSeen: '12:04:02', x: -880, y: 120, petId: 3188,
+      demandLabel: '',
+    },
+    {
+      key: 'meow', name: '喵喵', level: 8, nature: '胆小', gender: '母', present: true,
+      heightPct: 38.2, weightPct: 61.4, voiceDb: 2, kinds: [], rare: false,
+      alertReason: null, demand: false, distance: '7.8m', bearing: '南', arrow: '↓',
+      firstSeen: '12:02:18', lastSeen: '12:04:06', x: 60, y: 760, petId: 3001,
+      demandLabel: '',
+    },
+    {
+      key: 'shiny', name: '蹦蹦种子', level: 12, nature: '', gender: '', present: false,
+      heightPct: 55, weightPct: 50, voiceDb: 3, kinds: ['shiny'], rare: true,
+      alertReason: null, demand: false, distance: '88.0m', bearing: '北', arrow: '↑',
+      firstSeen: '11:58:02', lastSeen: '12:00:44', x: -40, y: -2400, petId: 3002,
+      demandLabel: '',
+    },
+  ];
+
+  const KIND_LABEL = { colorful: '炫彩', shiny: '异色', pollution: '污染', big: '大块头', small: '小不点', high: '婉转声', low: '粗嗓门' };
+  const fmtPct = (v) => {
+    if (v == null) return '—';
+    const t = Math.trunc(v * 10) / 10;
+    return (Number.isInteger(t) ? String(t) : t.toFixed(1)) + '%';
+  };
+  const sexCls = (g) => g === '公' ? 'male' : 'female';
+  const voiceText = (v) => (v > 0 ? '+' : '') + Math.round(v) + 'dB';
+  const hotPct = (v) => v != null && (v >= 98 || v <= 2);
+  const hotVoice = (v) => v != null && Math.abs(v) >= 96;
+
+  // ---------- 现状行（逐项复刻 NearbyRowItem） ----------
+  function nowRow(p) {
+    const kinds = p.kinds.filter((k) => k !== 'high' && k !== 'low');
+    const ring = p.alertReason ? 'ring-alert' : '';
+    const chips = [];
+    if (!p.present) chips.push('<span class="now-chip c-slate">已离开视野</span>');
+    if (p.nature) chips.push(`<span class="now-chip c-sky">性格 ${p.nature}</span>`);
+    if (p.gender) chips.push(`<span class="now-chip c-violet">${p.gender}</span>`);
+    for (const k of kinds) chips.push(`<span class="now-chip c-emerald">${KIND_LABEL[k] || k}</span>`);
+    chips.push(`<span class="now-voice">${voiceText(p.voiceDb)}</span>`);
+    if (p.alertReason) chips.push(`<span class="now-alert">可提醒 · ${p.alertReason}</span>`);
+    return `<div class="now-row ${ring} ${p.present ? '' : 'absent'}">
+      <div class="now-head">
+        <span class="now-name ${p.rare ? 'rare' : ''}">${p.name} <span class="now-lv">${p.level}级</span></span>
+        <span class="now-dist">${p.distance} ${p.bearing}</span>
+      </div>
+      <div class="now-chips">${chips.join('')}</div>
+    </div>`;
+  }
+
+  // ---------- 方案 A ----------
+  function aRow(p, open) {
+    const kinds = p.kinds.filter((k) => k !== 'high' && k !== 'low');
+    const chips = [];
+    for (const k of kinds) chips.push(`<span class="u4-chip rare">${KIND_LABEL[k] || k}</span>`);
+    if (p.alertReason) chips.push('<span class="u4-chip alert">目标出现！</span>');
+    if (!p.present) chips.push('<span class="u4-chip left">已离开视野</span>');
+    return `<article class="u4-row ${open ? 'open' : ''} ${p.present ? '' : 'absent'}"
+        role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
+        data-alert="${p.alertReason ? 1 : 0}" data-rare="${p.rare ? 1 : 0}">
+      <div class="u4-r1">
+        <span class="u4-name">${p.name}</span>
+        <span class="u4-lv">Lv${p.level}</span>
+        ${p.gender ? `<span class="u4-sex ${sexCls(p.gender)}" title="性别 ${p.gender}">${p.gender}</span>` : ''}
+        <span class="u4-dist">${p.arrow} ${p.distance} ${p.bearing}</span>
+        <span class="u4-chev">⌄</span>
+      </div>
+      <div class="u4-r2">
+        <span class="u4-nature">${p.nature ? `性格 ${p.nature}` : '性格 未知'}</span>
+        <span class="u4-dot">·</span>
+        <span class="u4-metric ${hotPct(p.heightPct) ? 'hot' : ''} ${p.heightPct == null ? 'miss' : ''}">高${fmtPct(p.heightPct)}</span>
+        <span class="u4-metric ${hotPct(p.weightPct) ? 'hot' : ''} ${p.weightPct == null ? 'miss' : ''}">重${fmtPct(p.weightPct)}</span>
+        <span class="u4-dot">·</span>
+        <span class="u4-voice ${hotVoice(p.voiceDb) ? 'hot' : ''}">${voiceText(p.voiceDb)}</span>
+      </div>
+      ${chips.length ? `<div class="u4-r3">
+        <div class="u4-chips">${chips.join('')}</div>
+      </div>` : ''}
+      <div class="u4-detail">
+        <dl class="u4-grid">
+          <div class="u4-cell"><dt>身高</dt><dd>${fmtPct(p.heightPct)}</dd></div>
+          <div class="u4-cell"><dt>体重</dt><dd>${fmtPct(p.weightPct)}</dd></div>
+          <div class="u4-cell"><dt>声音</dt><dd class="${hotVoice(p.voiceDb) ? 'amber' : ''}">${voiceText(p.voiceDb)}</dd></div>
+          <div class="u4-cell"><dt>性别</dt><dd>${p.gender || '未知'}</dd></div>
+          <div class="u4-cell"><dt>性格</dt><dd>${p.nature || '未知'}</dd></div>
+          <div class="u4-cell"><dt>稀有</dt><dd>${p.rare ? '是' : '否'}</dd></div>
+          <div class="u4-cell"><dt>目标</dt><dd class="rose">${p.alertReason ? '出现' : '否'}</dd></div>
+          <div class="u4-cell"><dt>状态</dt><dd>${p.present ? '仍在视野' : '已离开'}</dd></div>
+          <div class="u4-cell"><dt>首次</dt><dd>${p.firstSeen}</dd></div>
+          <div class="u4-cell"><dt>最近</dt><dd>${p.lastSeen}</dd></div>
+          <div class="u4-cell"><dt>坐标</dt><dd>${p.x}, ${p.y}</dd></div>
+          <div class="u4-cell"><dt>距离</dt><dd>${p.distance} ${p.bearing}</dd></div>
+          <div class="u4-cell"><dt>编号</dt><dd>#${p.petId}</dd></div>
+          <div class="u4-cell"><dt>牌子</dt><dd>${p.kinds.length ? p.kinds.map((k) => KIND_LABEL[k] || k).join(' · ') : '无'}</dd></div>
+        </dl>
+      </div>
+    </article>`;
+  }
+
+  // ---------- 方案 B ----------
+  function bRow(p) {
+    const kinds = p.kinds.filter((k) => k !== 'high' && k !== 'low');
+    const chips = [];
+    for (const k of kinds) chips.push(`<span class="u4-chip rare">${KIND_LABEL[k] || k}</span>`);
+    if (p.alertReason) chips.push('<span class="u4-chip alert">目标出现！</span>');
+    if (!p.present) chips.push('<span class="u4-chip left">已离开视野</span>');
+    return `<div class="b-row">
+      <div class="u4-r1">
+        <span class="u4-name">${p.name}</span>
+        <span class="u4-lv">Lv${p.level}</span>
+        ${p.gender ? `<span class="u4-sex ${sexCls(p.gender)}">${p.gender}</span>` : ''}
+        <span class="u4-dist">${p.arrow} ${p.distance} ${p.bearing}</span>
+      </div>
+      <div class="u4-r2">
+        <span class="u4-nature">${p.nature ? `性格 ${p.nature}` : '性格 未知'}</span>
+        <span class="u4-dot">·</span>
+        <span class="u4-metric ${hotPct(p.heightPct) ? 'hot' : ''}">高${fmtPct(p.heightPct)}</span>
+        <span class="u4-metric ${hotPct(p.weightPct) ? 'hot' : ''}">重${fmtPct(p.weightPct)}</span>
+        <span class="u4-dot">·</span>
+        <span class="u4-voice ${hotVoice(p.voiceDb) ? 'hot' : ''}">${voiceText(p.voiceDb)}</span>
+      </div>
+      <div class="b-r3">${chips.join('') || '<span style="color:#cbd5e1">无牌子</span>'}</div>
+      <div class="b-r4">
+        <span>首次 ${p.firstSeen}</span><span>最近 ${p.lastSeen}</span>
+        <span>坐标 ${p.x}, ${p.y}</span><span>#${p.petId}</span>
+      </div>
+    </div>`;
+  }
+
+  // ---------- 方案 C ----------
+  function cRow(p) {
+    const kinds = p.kinds.filter((k) => k !== 'high' && k !== 'low');
+    const ring = p.alertReason ? 'ring-alert' : '';
+    const chips = [];
+    if (!p.present) chips.push('<span class="now-chip c-slate">已离开视野</span>');
+    if (p.nature) chips.push(`<span class="now-chip c-sky">性格 ${p.nature}</span>`);
+    if (p.gender) chips.push(`<span class="now-chip c-violet">${p.gender}</span>`);
+    for (const k of kinds) chips.push(`<span class="now-chip c-emerald">${KIND_LABEL[k] || k}</span>`);
+    chips.push(`<span class="now-chip c-slate">高${fmtPct(p.heightPct)}</span>`);
+    chips.push(`<span class="now-chip c-slate">重${fmtPct(p.weightPct)}</span>`);
+    chips.push(`<span class="now-voice">${voiceText(p.voiceDb)}</span>`);
+    if (p.alertReason) chips.push('<span class="u4-chip alert">目标出现！</span>');
+    return `<div class="now-row ${ring} ${p.present ? '' : 'absent'}">
+      <div class="now-head">
+        <span class="now-name ${p.rare ? 'rare' : ''}">${p.name} <span class="now-lv">${p.level}级</span></span>
+        <span class="now-dist">${p.distance} ${p.bearing}</span>
+      </div>
+      <div class="now-chips">${chips.join('')}</div>
+    </div>`;
+  }
+
+  function fill(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
+
+  for (const w of [375, 390, 768]) fill(`now-list-${w}`, ROWS.map(nowRow).join(''));
+  for (const w of [375, 390, 768]) fill(`a-list-${w}`, ROWS.map((p) => aRow(p, false)).join(''));
+  fill('a-open-list-375', ROWS.map((p, i) => aRow(p, i === 0)).join(''));
+  fill('b-list-375', ROWS.map(bRow).join(''));
+  fill('c-list-375', ROWS.map(cRow).join(''));
+
+  // 交互：点行展开（每帧独立，点哪边动哪边）
+  document.querySelectorAll('.u4-row').forEach((row) => {
+    const toggle = () => {
+      const open = row.classList.toggle('open');
+      row.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    row.addEventListener('click', toggle);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+
+  // ---------- 文本实测（标注用） ----------
+  function measure(text, sizePx, stack) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = `${sizePx}px ${stack}`;
+    return Number(ctx.measureText(text).width.toFixed(1));
+  }
+  const OVERLAY_STACK = 'Roboto, "Noto Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Segoe UI", sans-serif';
+  document.querySelectorAll('.line-zoom [data-w]').forEach((el) => {
+    el.textContent = `${measure(el.dataset.w, 7.5, OVERLAY_STACK)}dp`;
+  });
+  document.querySelectorAll('[data-w6_5]').forEach((el) => {
+    el.textContent = `${measure(el.dataset.w6_5, 6.5, OVERLAY_STACK)}dp`;
+  });
+  document.querySelectorAll('[data-free]').forEach((el) => {
+    el.textContent = `${(90 - measure(el.dataset.free, 7.5, OVERLAY_STACK)).toFixed(1)}dp`;
+  });
+  document.querySelectorAll('[data-over]').forEach((el) => {
+    el.textContent = `${(measure(el.dataset.over, 7.5, OVERLAY_STACK) - 90).toFixed(1)}dp`;
+  });
+</script>
+</body>
+</html>

@@ -1,11 +1,11 @@
 import type { LiveNearbyPet } from '../collector/captureProgress';
-import type { DemandHit } from './demandMatch';
 
 /**
  * 附近常驻列表的定期清理（2026-11-06）。
  *
- * 用户口径：常驻列表只保留高价值精灵（稀有 / 命中需求中心），普通精灵离开视野就清掉；
+ * 用户口径：常驻列表只保留高价值精灵（稀有 / 目标出现），普通精灵离开视野就清掉；
  * 高价值精灵离开后再保留 10 分钟，避免刚走开就丢记录，也防止列表无限增长。
+ * 2026-11-25 需求中心下线，不再有「命中需求」这条保留理由。
  */
 export const RETAIN_TTL_MS = 10 * 60 * 1000;
 export const RETAIN_MAX_ENTRIES = 60;
@@ -17,14 +17,12 @@ export interface RetainedEntry {
   lastSeenAt: number;
   /** 是否仍在当前附近列表里；false = 已离开视野，等待 TTL 清理 */
   present: boolean;
-  /** 稀有或命中需求中心：离开后仍保留 */
+  /** 稀有或目标出现：离开后仍保留 */
   highValue: boolean;
-  demandHits: DemandHit[];
 }
 
 export interface RetainClassify {
   highValue: boolean;
-  demandHits: DemandHit[];
 }
 
 /** 真正值得常驻的牌子：炫彩 / 异色 / 污染；体重牌、单声音牌不常驻。 */
@@ -34,16 +32,14 @@ const KEEP_KINDS = new Set(['colorful', 'shiny', 'pollution']);
  * 常驻列表的「高价值」口径（2026-11-06 用户反馈收紧，2026-11-09 补回稀有）：
  * - 可主动提醒（±100dB，或体重牌 + 声音牌）；
  * - 稀有（与附近页「稀有」筛选同一口径，雷达上能看到就必须能在列表里看到）；
- * - 炫彩 / 异色 / 污染；
- * - 命中需求中心。
+ * - 炫彩 / 异色 / 污染。
  *
  * 只有单一「大块头 / 小不点 / 婉转声 / 粗嗓门」牌子的普通精灵只在雷达/当前视野显示，
  * 不再进入常驻列表。
  */
-export function isHighValuePet(pet: LiveNearbyPet, demandHits: readonly DemandHit[]): boolean {
+export function isHighValuePet(pet: LiveNearbyPet): boolean {
   return pet.rare
     || Boolean(pet.alertReason)
-    || demandHits.length > 0
     || pet.kinds.some((kind) => KEEP_KINDS.has(kind));
 }
 
@@ -74,9 +70,7 @@ export function pruneRetained(
       firstSeenAt: before?.firstSeenAt ?? now,
       lastSeenAt: now,
       present: true,
-      // 稀有与「命中需求中心」都算高价值，调用方只判断稀有也不会漏掉需求命中
-      highValue: result.highValue || result.demandHits.length > 0,
-      demandHits: result.demandHits,
+      highValue: result.highValue,
     });
   }
 
