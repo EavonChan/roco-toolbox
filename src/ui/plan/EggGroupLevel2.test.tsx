@@ -1,7 +1,7 @@
 ﻿import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import type { WorkflowEgg } from '../../shared/eggWorkflow';
-import { EggGroupRows } from './EggGroupRows';
+import { EggGroupLevel2 } from './EggGroupLevel2';
 import { groupEggStock, type EggGroupFacts } from './eggStockGroups';
 
 const facts: EggGroupFacts = {
@@ -40,7 +40,7 @@ const EGGS = [
 const group = groupEggStock(EGGS, facts)[0];
 
 test('二级列表按性格分组：平和 ×4 / 冷静 ×1，组内按获得时间倒序', () => {
-  render(<EggGroupRows group={group} total={5} name={name} onPick={() => undefined} onCollapse={() => undefined} />);
+  render(<EggGroupLevel2 group={group} total={5} name={name} onPick={() => undefined} onCollapse={() => undefined} />);
   expect(screen.getByTestId('stock-group-rows')).toBeInTheDocument();
   const sections = screen.getAllByTestId('stock-group-section');
   expect(sections).toHaveLength(2);
@@ -53,7 +53,7 @@ test('二级列表按性格分组：平和 ×4 / 冷静 ×1，组内按获得时
 
 test('每行带状态：已挂出 / 未挂出 / 换蛋中 / 待认领 / 在家园，点行进详情', () => {
   const onPick = vi.fn();
-  render(<EggGroupRows group={group} total={5} name={name} onPick={onPick} onCollapse={() => undefined} />);
+  render(<EggGroupLevel2 group={group} total={5} name={name} onPick={onPick} onCollapse={() => undefined} />);
   const rows = screen.getAllByTestId('stock-group-row');
   expect(within(rows[0]).getByText('换蛋中')).toBeInTheDocument();
   expect(within(rows[1]).getByText('未挂出')).toBeInTheDocument();
@@ -66,7 +66,7 @@ test('每行带状态：已挂出 / 未挂出 / 换蛋中 / 待认领 / 在家�
 
 test('标题摘要写全量；筛选命中少于全量时补「当前筛选」；收起按钮回调', () => {
   const onCollapse = vi.fn();
-  render(<EggGroupRows group={group} total={7} name={name} onPick={() => undefined} onCollapse={onCollapse} />);
+  render(<EggGroupLevel2 group={group} total={7} name={name} onPick={() => undefined} onCollapse={onCollapse} />);
   expect(screen.getByText(/共 7 颗/)).toBeInTheDocument();
   expect(screen.getByText(/当前筛选 5 颗/)).toBeInTheDocument();
   expect(screen.getByText('白发懒人 · 5 颗')).toBeInTheDocument();

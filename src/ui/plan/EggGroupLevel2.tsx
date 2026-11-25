@@ -20,7 +20,7 @@ const ROW_STATUS_CLASS: Record<EggGroupRowStatus, string> = {
  * 组内按获得时间倒序；每行末尾是这颗蛋自己的状态（挂出 / 换蛋中 / 待认领 / 在家园 / 未挂出）。
  * 点行交给面板打开现有「蛋详情」——聚合不复制第二套标注 / 挂出动作。
  */
-export function EggGroupRows({ group, total, name, onPick, onCollapse }: {
+export function EggGroupLevel2({ group, total, name, onPick, onCollapse }: {
   group: EggGroup;
   /** 当前筛选/搜索下该物种总颗数；大于面板颗数时在摘要里写「当前筛选」。 */
   total: number;
