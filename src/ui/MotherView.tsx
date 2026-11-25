@@ -91,6 +91,8 @@ const CHAIN_FILTERS = [
   { value: 'collected', label: '已收集' },
 ] as const;
 type ChainFilter = (typeof CHAIN_FILTERS)[number]['value'];
+/** 没有推荐性格时的稳定空数组：避免每次查表都新建（保持引用一致） */
+const EMPTY_NATURES: readonly string[] = [];
 const INITIAL_CHAIN_SECTIONS = 2;
 const CHAIN_SECTION_BATCH = 5;
 
@@ -223,10 +225,26 @@ export function MotherView({
         ? '粗嗓门'
         : '婉转声';
 
+  /**
+   * 每颗蛋的推荐性格：**一次建表**，行渲染 / 缺口汇总 / 悬浮窗都查这一份
+   * （2026-11-25 P3：原来每渲染一次就按行现算一遍 `eggNatures`，
+   * `defaultEggNatures` 内部是 665 条线性扫，165 行一帧 11～21ms；
+   * 见 docs/分析-收集页卡顿-2026-11-25.md）。
+   */
+  const naturesByEgg = useMemo(() => {
+    const map = new Map<number, readonly string[]>();
+    for (const group of motherGroups) {
+      map.set(group.eggGameId, eggNatures(catalogSpecies, group.eggGameId, natureOverrides));
+    }
+    return map;
+  }, [motherGroups, natureOverrides]);
+  const naturesOfEgg = (eggGameId: number): readonly string[] =>
+    naturesByEgg.get(eggGameId) ?? EMPTY_NATURES;
+
   const missingNaturesByEgg = useMemo(() => {
     const map = new Map<number, readonly string[]>();
     for (const group of motherGroups) {
-      const natures = eggNatures(catalogSpecies, group.eggGameId, natureOverrides);
+      const natures = naturesByEgg.get(group.eggGameId) ?? EMPTY_NATURES;
       map.set(
         group.eggGameId,
         natures.filter(
@@ -240,7 +258,7 @@ export function MotherView({
       );
     }
     return map;
-  }, [motherGroups, owned, criteria, activeVoices.join(','), naturesOf, natureOverrides]);
+  }, [motherGroups, owned, criteria, activeVoices.join(','), naturesOf, naturesByEgg]);
 
   /** 搜索（进化链全员命中）+ 蛋组筛选：同时作用于已收集 / 计划 / 待补齐 */
   const keyword = query.trim().toLowerCase();
@@ -352,8 +370,7 @@ export function MotherView({
      * - 分子 = 该蛋组**实际已收集**的数量，与筛选无关。
      */
     const recommendedOnly = criteria.recommendedNatures === true;
-    const hasNatureTarget = (group: MotherGroup) =>
-      eggNatures(catalogSpecies, group.eggGameId, natureOverrides).length > 0;
+    const hasNatureTarget = (group: MotherGroup) => naturesOfEgg(group.eggGameId).length > 0;
     const byGroup = new Map<number, MotherGroup[]>();
     for (const group of matchedGroups) {
       const primary = group.eggGroups[0];
@@ -467,7 +484,7 @@ export function MotherView({
         name,
         number: group.number,
         gameId: group.eggGameId,
-        natures: eggNatures(catalogSpecies, group.eggGameId, natureOverrides),
+        natures: [...naturesOfEgg(group.eggGameId)],
         eggGroupLabels: group.eggGroups.map((groupId) => eggGroupNames[groupId] ?? `蛋组${groupId}`),
         tag: '未收集',
         targetLabel: gapTarget.label,
@@ -644,7 +661,7 @@ export function MotherView({
                     eggName={group.formLabel || '未知精灵'}
                     eggGameId={group.eggGameId}
                     number={group.number}
-                    recommendedNatures={eggNatures(catalogSpecies, group.eggGameId, natureOverrides)}
+                    recommendedNatures={naturesOfEgg(group.eggGameId)}
                     mothers={mothersOf(group)}
                     eggGroupLabels={group.eggGroups.map(
                       (groupId) => eggGroupNames[groupId] ?? `蛋组${groupId}`,
@@ -721,7 +738,7 @@ function MotherEggRow({
   eggName: string;
   eggGameId: number;
   number: string;
-  recommendedNatures: string[];
+  recommendedNatures: readonly string[];
   mothers: OwnedPet[];
   eggGroupLabels: string[];
   planned: boolean;
