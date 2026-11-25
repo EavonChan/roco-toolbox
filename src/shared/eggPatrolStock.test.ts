@@ -76,10 +76,13 @@ describe('recordPatrolProducedEgg', () => {
     const greenOf = (patrolEgg: PatrolEgg) =>
       recordPatrolProducedEgg(emptyEggWorkflow(), task, produced, patrolEgg, 1000).eggs[0].greenNest;
     const motherAcademy: PatrolEgg = { ...egg, mother: { ...egg.mother!, nestConfigId: 1001072 } };
+    // 母本学院 + 父本普通（用户截图那颗脆筒甜甜的组合）
     expect(greenOf(motherAcademy)).toBe(true);
-    expect(greenOf({ ...motherAcademy, fathers: [{ ...motherAcademy.fathers[0], nestConfigId: 1001072 }] })).toBe(true);
+    // 父本学院 + 母本普通：用户口径「亲本有一方」就算绿窝。
+    // 学院小窝一个家园只有一个，所以「双亲都在学院」不是有效状态，不要为它写分支。
     expect(greenOf({ ...egg, mother: { ...egg.mother!, nestConfigId: 1001071 },
       fathers: [{ ...egg.fathers[0], nestConfigId: 1001072 }] })).toBe(true);
+    // 双亲都普通小窝 → 不许误标
     expect(greenOf({
       ...egg,
       mother: { ...egg.mother!, nestConfigId: 1001071 },
