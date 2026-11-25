@@ -277,6 +277,13 @@ export default function App() {
           onEggStockOpened={() =>
             navigate({ type: 'consume-egg-stock', revision: navigation.eggStockRevision })
           }
+          // 从「我的 → 蛋仓」进来时，蛋仓的「返回」要回「我的」（2026-11-25 U3）；
+          // 普通从换蛋页进蛋仓不传，仍是回换蛋页。
+          onEggStockBack={
+            navigation.eggStockFromProfile
+              ? () => navigate({ type: 'tab', page: 'profile' })
+              : undefined
+          }
         />
       ) : (
         <Collection

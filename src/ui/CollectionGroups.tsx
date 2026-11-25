@@ -55,6 +55,11 @@ export interface CollectionGroupsProps {
   openEggStock?: boolean;
   /** 打开后回报上层，清掉这次请求 */
   onEggStockOpened?: () => void;
+  /**
+   * 这次蛋仓是从「我的」进来的（2026-11-25 U3）：蛋仓屏的「返回」回「我的」，
+   * 不传 = 回换蛋页（`EggMatchingHub` 的默认行为）。
+   */
+  onEggStockBack?: () => void;
 }
 
 /**
@@ -73,6 +78,7 @@ export function CollectionGroups({
   embedded = false,
   openEggStock = false,
   onEggStockOpened,
+  onEggStockBack,
 }: CollectionGroupsProps) {
   const { snapshots } = useSnapshots();
   const summary = useCollectionSummary();
@@ -461,6 +467,8 @@ export function CollectionGroups({
             }
             openStock={openEggStock}
             onStockOpened={onEggStockOpened}
+            onStockBack={onEggStockBack}
+            stockBackLabel={onEggStockBack ? '返回我的' : undefined}
           />
           </>
           ) : null}
