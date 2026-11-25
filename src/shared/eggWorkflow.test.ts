@@ -375,6 +375,20 @@ test('bag complete never deletes home eggs, and a home egg without parents canno
   expect(bare.eggs[0].confidence).toBe('unknown');
 });
 
+test('待认领的家蛋行随库存同步保留，并带上待认领标记（不再当失效蛋删掉）', () => {
+  let state = applyEggAction(emptyEggWorkflow(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1',
+    capturedAt: 1, complete: false, homeComplete: true, eggs: [homeEgg({ provenance: 'self-bred' })] }, 1);
+  expect(state.eggs).toHaveLength(1);
+  // 下一次同步：家园完整快照已经空了，客户端按「保底」把这一行带着 claimPending 一起发上来。
+  state = applyEggAction(state, 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1',
+    capturedAt: 2, complete: false, homeComplete: true, eggs: [homeEgg({ claimPending: true })] }, 2);
+  expect(state.eggs).toHaveLength(1);
+  expect(state.eggs[0]).toMatchObject({ id: 'home1', location: 'home', claimPending: true,
+    provenance: 'self-bred', labelSource: 'system', listed: false, parents });
+  // 关键：绝不能落 missingFromCapture —— 自动挂出、allocate / cancel、库清理都按它删「失效蛋」。
+  expect(state.eggs[0].missingFromCapture).toBeUndefined();
+});
+
 test('manual labels survive later home captures and stay manual', () => {
   let state = applyEggAction(emptyEggWorkflow(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: false,
     homeComplete: true, eggs: [homeEgg({})] }, 1);

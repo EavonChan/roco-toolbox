@@ -15,6 +15,11 @@ export interface WorkflowEgg extends EggRecord {
   listingOptOut?: boolean;
   /** Last complete capture no longer contains this reserved instance. */
   missingFromCapture?: boolean;
+  /**
+   * 待认领（2026-11-25 用户口径）：家蛋已从家园完整快照里消失，但还没有对应的背包蛋可认。
+   * 只做「保留 + 标记」，**不写 `missingFromCapture`**（那个标记会触发失效蛋清理）。
+   */
+  claimPending?: boolean;
 }
 export interface EggLine {
   eggGameId: number; nature: string; body: EggRecord['body']; voice: EggRecord['voice'];
@@ -115,7 +120,9 @@ function normalizeEgg(value: unknown, accountId: string, gameAccountKey: string,
     capturedEggId: typeof raw.capturedEggId === 'string' && raw.capturedEggId.length > 0 && raw.capturedEggId.length <= 512
       ? raw.capturedEggId : undefined,
     // 只认显式 true：旧数据 / 老客户端没这个字段时保持 undefined（= 未下架）。
-    listingOptOut: raw.listingOptOut === true ? true : undefined };
+    listingOptOut: raw.listingOptOut === true ? true : undefined,
+    // 待认领由客户端 reconcile 判定后随库存一起上来；只认显式 true，缺字段 = 不是待认领。
+    claimPending: raw.claimPending === true ? true : undefined };
 }
 const active = (trade: WorkflowTrade) => trade.status === 'accepted';
 

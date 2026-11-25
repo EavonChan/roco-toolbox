@@ -21,6 +21,15 @@ export interface StockEgg extends EggRecord {
   obtainedAt?: string;
   /** 家园蛋收进背包后链接到的背包实例 ID；有它才能在后续同步里继续合并。 */
   capturedEggId?: string;
+  /**
+   * 待认领（2026-11-25 用户口径，准确度优先）：这颗家蛋已经从「家园完整快照」里消失，
+   * 但协议里没有能证明它对应背包里哪一颗的字段（两侧唯一共有的是物种）。**保留原行、不删**，
+   * 等用户手动认领；认领之前绝不允许因为「家园里没了」就丢掉父母 / 自产 / 性格。
+   *
+   * 不能用 `missingFromCapture` 表示待认领：那个标记会被自动挂出、`allocate` / `cancel`
+   * 以及库清理当成「失效蛋」删掉，等于又丢一次。
+   */
+  claimPending?: boolean;
 }
 interface SnapshotPart {
   eggs: readonly EggObservation[];
@@ -109,6 +118,8 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
       weightGrams: observation.weightGrams ?? home.weightGrams,
       itemConfId: observation.itemConfId ?? home.itemConfId,
       capturedEggId: observation.id,
+      // 一旦合并出结果，「待认领」就不再成立，标记不能跟着旧行留着。
+      claimPending: undefined,
       lastConfirmedAt: Math.max(home.lastConfirmedAt, snapshot.bag?.capturedAt ?? snapshot.capturedAt),
     };
     egg.listed = home.listed && canCirculateEgg(egg);
@@ -138,6 +149,13 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
       if (!sameGame(egg) || egg.location !== location || currentIds.has(id)) continue;
       // 已链接到本次背包快照的家园行：背包里那颗才是它的新身份，不算在家园快照里消失。
       if (location === 'bag' && egg.capturedEggId && currentIds.has(egg.capturedEggId)) continue;
+      // 保底：家蛋从「家园完整快照」里消失**不等于**这颗蛋没了——它可能刚被收进背包，
+      // 而协议里没有字段能把它和背包里的某一颗串起来（E2 实测：唯一共有字段只有物种）。
+      // 直接删会把父母 / 自产 / 性格一起丢掉，所以只标成「待认领」，等用户手动认领。
+      if (location === 'home') {
+        if (!egg.claimPending) next.set(id, { ...egg, claimPending: true });
+        continue;
+      }
       next.delete(id);
     }
   }

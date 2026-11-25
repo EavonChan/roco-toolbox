@@ -25,15 +25,18 @@ describe('egg stock snapshots', () => {
     expect(state.eggs.find(e => e.id === 'e1')).toMatchObject({ nature: '固执', location: 'bag' });
     expect(state.eggs.find(e => e.id === 'e2')?.location).toBe('home');
   });
-  test('complete empty snapshot removes stock; partial or absent source never deletes', () => {
+  test('complete empty snapshot removes only bag stock; home eggs stay as 待认领', () => {
     const state = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 10,
       bag: part([egg()]), home: part([egg({ id: 'h1' })]) });
     const partial = reconcile(state, { accountId: 'me', capturedAt: 11, bag: part([], false) });
     expect(partial.eggs).toHaveLength(2);
     const bagOnly = reconcile(partial, { accountId: 'me', capturedAt: 12, bag: part([]) });
     expect(bagOnly.eggs.map(e => e.id)).toEqual(['h1']);
+    // 2026-11-25 保底：家园完整快照空了，家蛋行不再跟着删（协议里没有能对上背包蛋的字段，
+    // 删掉会连父母 / 自产 / 性格一起没），改成「待认领」等用户手动认领。
     const empty = reconcile(bagOnly, { accountId: 'me', capturedAt: 13, bag: part([]), home: part([]) });
-    expect(empty.eggs).toEqual([]);
+    expect(empty.eggs.map(e => e.id)).toEqual(['h1']);
+    expect(empty.eggs[0]).toMatchObject({ location: 'home', provenance: 'self-bred', claimPending: true });
   });
   test('accounts and capture time are isolated; old data cannot resurrect removed eggs', () => {
     const one = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 20, bag: part([egg()]) });
@@ -112,7 +115,9 @@ describe('egg stock snapshots', () => {
     expect(state.eggs.find(e => e.id === 'h1')?.lastConfirmedAt).toBe(20);
     const next = reconcile(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
       home: { eggs: [], complete: true, capturedAt: 30 } });
-    expect(next.eggs.map(e => e.id)).toEqual(['e1']);
+    // 家蛋那一侧完整快照空了：只代表「地上没有了」，行留着当待认领（保底，见 2026-11-25 口径）。
+    expect(next.eggs.map(e => e.id).sort()).toEqual(['e1', 'h1']);
+    expect(next.eggs.find(e => e.id === 'h1')).toMatchObject({ location: 'home', claimPending: true });
     const kept = reconcile(state, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 31,
       bag: { eggs: [], complete: true, capturedAt: 31 } });
     expect(kept.eggs.map(e => e.id)).toEqual(['h1']);
@@ -251,6 +256,87 @@ describe('egg stock snapshots', () => {
       .toThrow(/gameAccountKey|游戏账号/);
     // 报错不能动已有库存。
     expect(state.eggs.map(e => e.id).sort()).toEqual(['bag1', 'home1']);
+  });
+
+  test('同种 2 颗从家园收进背包：行数不减少，父母与自产标记仍在（2026-11-25 保底）', () => {
+    // 两颗同种家蛋：协议里唯一共有字段只有物种，`candidates.length !== 1` 因此不会自动合并。
+    const parentsA = { mother: { id: 'm1', gameId: 3103, name: '布是石', nature: '平和', body: '大块头', voice: '婉转声' },
+      fathers: [{ id: 'f1', gameId: 3754, name: '火豆丁', nature: '勇敢', body: '', voice: '' }], confirmed: false };
+    const parentsB = { mother: { id: 'm2', gameId: 3103, name: '布是石', nature: '固执', body: '', voice: '' },
+      fathers: [{ id: 'f2', gameId: 3754, name: '火豆丁', nature: '固执', body: '', voice: '' }], confirmed: false };
+    const first = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([
+        egg({ id: 'home1', eggGameId: 3103, location: 'home', nature: '', parents: parentsA }),
+        egg({ id: 'home2', eggGameId: 3103, location: 'home', nature: '', parents: parentsB }),
+      ]) });
+    expect(first.eggs).toHaveLength(2);
+
+    const second = reconcile(first, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20,
+      bag: part([
+        egg({ id: 'bag1', eggGameId: 3103, provenance: 'unknown', obtainedAt: '2026-11-25T00:06:50Z' }),
+        egg({ id: 'bag2', eggGameId: 3103, provenance: 'unknown', obtainedAt: '2026-11-25T00:06:56Z' }),
+      ]),
+      home: part([]) });
+
+    // 4 行 = 2 行待认领家蛋 + 2 行背包蛋：一颗都没被删，也没被乱合并。
+    expect(second.eggs).toHaveLength(4);
+    expect(second.eggs.filter(e => e.claimPending).map(e => e.id).sort()).toEqual(['home1', 'home2']);
+    expect(second.eggs.find(e => e.id === 'home1')).toMatchObject({
+      location: 'home', provenance: 'self-bred', parents: parentsA, claimPending: true });
+    expect(second.eggs.find(e => e.id === 'home2')).toMatchObject({
+      location: 'home', provenance: 'self-bred', parents: parentsB, claimPending: true });
+    // 待认领不能借 `missingFromCapture` 表达：那个标记会被自动挂出、任务动作和库清理当失效蛋删掉。
+    expect(second.eggs.filter(e => 'missingFromCapture' in e)).toHaveLength(0);
+    expect(second.eggs.find(e => e.id === 'bag1')).toMatchObject({ location: 'bag', provenance: 'unknown' });
+
+    // 再同步一次同一份（背包完整、家园仍空）：待认领留着，不重复长行。
+    const again = reconcile(second, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
+      bag: part([
+        egg({ id: 'bag1', eggGameId: 3103, provenance: 'unknown', obtainedAt: '2026-11-25T00:06:50Z' }),
+        egg({ id: 'bag2', eggGameId: 3103, provenance: 'unknown', obtainedAt: '2026-11-25T00:06:56Z' }),
+      ]),
+      home: part([]) });
+    expect(again.eggs).toHaveLength(4);
+    expect(again.eggs.filter(e => e.claimPending)).toHaveLength(2);
+  });
+
+  test('家园完整快照里没了家蛋、背包也没有新蛋：行保留为待认领，不删', () => {
+    const parents = { mother: { id: 'm', gameId: 3227, name: '菊花梨', nature: '保守', body: '大块头', voice: '+100' },
+      fathers: [{ id: 'f', gameId: 3215, name: '海豹战士', nature: '胆小', body: '大块头', voice: '婉转声' }], confirmed: false };
+    const home = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'h1', location: 'home', nature: '', parents, greenNest: true })]) });
+    const gone = reconcile(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, home: part([]) });
+    expect(gone.eggs.map(e => e.id)).toEqual(['h1']);
+    expect(gone.eggs[0]).toMatchObject({
+      location: 'home', provenance: 'self-bred', parents, greenNest: true, claimPending: true });
+    // 背包那一侧完整快照空了，也不能顺手把待认领的家蛋删掉。
+    const bagGone = reconcile(gone, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30, bag: part([]) });
+    expect(bagGone.eggs.map(e => e.id)).toEqual(['h1']);
+    expect(bagGone.eggs[0].claimPending).toBe(true);
+  });
+
+  test('待认领的家蛋重新出现在家园快照里：清掉待认领标记', () => {
+    const home = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'h1', location: 'home' })]) });
+    const gone = reconcile(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, home: part([]) });
+    expect(gone.eggs[0].claimPending).toBe(true);
+    const back = reconcile(gone, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
+      home: part([egg({ id: 'h1', location: 'home', nature: '开朗' })]) });
+    expect(back.eggs.map(e => e.id)).toEqual(['h1']);
+    expect(back.eggs[0].claimPending).toBeUndefined();
+    expect(back.eggs[0]).toMatchObject({ location: 'home', nature: '开朗' });
+  });
+
+  test('待认领行被自动合并（唯一候选，E2 已证口径）后不残留待认领标记', () => {
+    const home = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
+      home: part([egg({ id: 'h1', location: 'home' })]) });
+    const pending = reconcile(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, home: part([]) });
+    expect(pending.eggs[0].claimPending).toBe(true);
+    const merged = reconcile(pending, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
+      bag: part([egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-25T00:06:50Z' })]) });
+    expect(merged.eggs).toHaveLength(1);
+    expect(merged.eggs[0]).toMatchObject({ id: 'h1', location: 'bag', capturedEggId: 'bag1', provenance: 'self-bred' });
+    expect(merged.eggs[0].claimPending).toBeUndefined();
   });
 
   test('金标准形状：2 颗不同种的家蛋收进背包后仍是 2 行，并带上获得时间', () => {
