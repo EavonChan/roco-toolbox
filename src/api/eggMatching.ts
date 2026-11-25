@@ -3,8 +3,14 @@ import type { EggWorkflowState } from '../shared/eggWorkflow';
 import { isDemandBody, isDemandVoice } from '../shared/collectionGroups';
 
 export interface EggMatchingResponse { version: number; state: EggWorkflowState }
+/**
+ * 换蛋接口错误。
+ *
+ * `code` / `currentVersion` 来自服务端错误响应：409 会带回 `{ code, version }`，
+ * 客户端据此用最新版本自动重试一次，不必再补拉一次完整状态（2026-11-26 D3 / R2+R3）。
+ */
 export class EggMatchingError extends Error {
-  constructor(message: string, public status: number) { super(message); }
+  constructor(message: string, public status: number, public code?: string, public currentVersion?: number) { super(message); }
 }
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const validLine = (value: unknown): boolean => object(value) && Number.isSafeInteger(value.eggGameId) && Number(value.eggGameId)>0 &&
@@ -40,7 +46,15 @@ function validState(value: unknown): value is EggWorkflowState {
 }
 async function read(response: Response): Promise<EggMatchingResponse> {
   const data: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new EggMatchingError(object(data) && typeof data.error === 'string' ? data.error : '换蛋服务暂不可用', response.status);
+  if (!response.ok) {
+    const detail = object(data) ? data : null;
+    throw new EggMatchingError(
+      detail && typeof detail.error === 'string' ? detail.error : '换蛋服务暂不可用',
+      response.status,
+      detail && typeof detail.code === 'string' ? detail.code : undefined,
+      detail && Number.isSafeInteger(detail.version) ? Number(detail.version) : undefined,
+    );
+  }
   if (!object(data) || !Number.isSafeInteger(data.version) || Number(data.version) < 0 || !validState(data.state)) throw new EggMatchingError('换蛋数据格式不完整，请刷新重试', 502);
   return { version: Number(data.version), state: data.state };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import type { EggMatchingResponse } from '../../api/eggMatching';
+import { EggMatchingError, type EggMatchingResponse } from '../../api/eggMatching';
 import { inventoryFromSnapshot } from '../../domain/eggInventory';
 import type { AccountSnapshot } from '../../domain/parseBackup';
 import { homeStockFromSnapshot } from './homeEggAdapter';
@@ -23,6 +23,28 @@ export interface EggStockSync {
   /** 正在推蛋：调用方在别处写数据前要先让路 */
   syncing: MutableRefObject<boolean>;
   retrySync: () => void;
+}
+
+/**
+ * 远程失败的说明（2026-11-26 D3 / R4）。
+ *
+ * 以前把服务端原话直接甩在「蛋仓同步失败：」后面，用户会先看到一个玫红的
+ * 「小组数据已变化」再看到一条琥珀的「蛋仓同步失败」——其实是同一件事。
+ * 现在这里只留一句人话：版本冲突（客户端已经自动重试过一次）/ 同步繁忙 / 其它原样透出。
+ */
+function describeRemoteError(failure: unknown): string {
+  if (failure instanceof EggMatchingError && failure.status === 409) {
+    if (failure.code === 'SYNC_BUSY') return '同步繁忙（已自动重试，请稍后再试）';
+    // 没有 code 的是老服务端 / 测试替身，同样按版本冲突理解。
+    if (failure.code === undefined || failure.code === 'REVISION_CONFLICT') return '版本冲突（已自动重试一次）';
+  }
+  return failure instanceof Error ? failure.message : '蛋仓同步失败';
+}
+
+/** 本地合并（抓包 → reconcile → 服务端 payload）出错时用的说明，和远程失败分开。 */
+function describeLocalError(failure: unknown): string {
+  const message = failure instanceof Error ? failure.message : '未知错误';
+  return `本地合并异常：${message}`;
 }
 
 export function useEggStockSync({ api, groupId, me, snapshots }: {
@@ -93,11 +115,11 @@ export function useEggStockSync({ api, groupId, me, snapshots }: {
             partTimes.current[key] = { bag: bagChanged ? bagTime : times.bag, home: homeChanged ? homeTime : times.home };
             setSyncError('');
           })
-          .catch(e => setSyncError(e instanceof Error ? e.message : '蛋仓同步失败'))
+          .catch(e => setSyncError(describeRemoteError(e)))
           .finally(() => { syncing.current = false; setSyncRetry(n => n + 1); });
         break;
       } catch (e) {
-        setSyncError(e instanceof Error ? e.message : '蛋仓同步失败');
+        setSyncError(describeLocalError(e));
       }
     }
   }, [api.data, api.busy, api.mutate, snapshots, me, groupId, syncRetry]);

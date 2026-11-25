@@ -2,13 +2,27 @@ import { applyEggAction, emptyEggWorkflow, tradeLines, type EggWorkflowState } f
 import { migrateEggDemands, type LegacyDemandRow, type LegacyPlanRow, type LegacyCompletionRow } from '../../src/shared/eggMigration';
 import { isMember } from './motherGroupsStore';
 import { failCode, okJson } from './collectionGroupsHttp';
-import { rateLimit, type Env } from './util';
+import { json, rateLimit, type Env } from './util';
 import type { CollectionDemand, CollectionDemandFeed } from '../../src/shared/collectionGroups';
 import { readPatrolStatus } from './eggPatrolStore';
 import { prepareReminder, readReminderStatus } from './eggReminders';
 import { prepareExchangeNotification } from './eggExchangeNotifications';
 
 interface StateRow { version: number; state_json: string }
+
+/**
+ * 409 统一出口：把「当前 version」一起带回去，客户端不用再补拉一次（2026-11-26 R2）。
+ *
+ * `failCode` 只支持 code + error，这里单独拼一个带 version 的响应；缓存头与 `failCode` 一致。
+ */
+const revisionConflict = (origin: string | null, error: string, version: number, code = 'REVISION_CONFLICT'): Response => {
+  const response = json({ ok: false, code, error, version }, 409, origin);
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
+};
+
+/** 蛋仓同步合并写入的最大尝试次数（和巡查 / 机器人入库同一口径）。 */
+const MAX_STOCK_SYNC_ATTEMPTS = 4;
 
 /** Compatibility projection only: all post-migration writes use egg-matching. */
 export async function readMigratedDemandFeed(db:D1Database,groupId:string,viewer:string):Promise<CollectionDemandFeed|null>{
@@ -76,6 +90,59 @@ function visibleState(state: EggWorkflowState, accountId: string, members: Set<s
   };
 }
 
+/**
+ * 蛋仓同步（`stock-sync`）走合并写入：读最新 → 只改自己账号 + 角色的库存与水印 → CAS 重试。
+ *
+ * 为什么不吃 `baseVersion`（2026-11-26 线上 409）：
+ * - 这份写入本来就是幂等合并——`applyEggAction` 的 stock-sync 分支只碰该 actor + gameAccountKey
+ *   的 `eggs` 与 watermarks，需求 / 接单 / 成交 / 挂出都不参与；
+ * - 但 version 是**组级**的：组里任何人发需求、机器人 ingest、巡查写库都会 +1，蛋仓因此被
+ *   顶成 409，用户看到「小组数据已变化 + 蛋仓同步失败」；
+ * - 所以这里改成像 `recordIngestedHomeEggs` 那样「冲突就重读再合并」，4 次仍被抢走才报错。
+ *
+ * 注意：只放宽 stock-sync，其他 action 继续吃 version 乐观锁。
+ */
+async function writeStockSyncMerge(input: {
+  env: Env;
+  origin: string | null;
+  groupId: string;
+  accountId: string;
+  action: unknown;
+  now: number;
+  members: Set<string>;
+  current: { version: number; state: EggWorkflowState };
+}): Promise<Response> {
+  const { env, origin, groupId, accountId, action, now, members } = input;
+  let latest = input.current;
+  for (let attempt = 0; attempt < MAX_STOCK_SYNC_ATTEMPTS; attempt += 1) {
+    const next = applyEggAction(latest.state, groupId, accountId, action, now);
+    if (next === latest.state) {
+      // 水印没推进 = 这份采集早就同步过：不写库、不推进 version（R2 空操作不 +1）。
+      const visible = visibleState(latest.state, accountId, members);
+      return okJson(origin, { version: latest.version,
+        state: { ...visible, reminders: await readReminderStatus(env.DB, groupId, visible) } });
+    }
+    const stateJson = JSON.stringify(next);
+    if (new TextEncoder().encode(stateJson).byteLength > 1_500_000) {
+      return failCode(origin, 413, 'STATE_CAPACITY', '小组换蛋记录已达容量，请联系管理员扩容；原记录未改变');
+    }
+    // stock-sync 不改 trades / demands，锁定表与亲本预留不会变，所以这里不重跑那几条语句
+    // （它们只由换蛋状态机推进；以前每次同步都顺手重写一遍，纯属搭车）。
+    const version = latest.version + 1;
+    const result = await env.DB.prepare(`UPDATE egg_matching_groups SET state_json=?,version=?,mutation_id=?,updated_at=?
+      WHERE group_id=? AND version=? AND EXISTS (SELECT 1 FROM mother_group_members WHERE group_id=? AND account_id=?)`)
+      .bind(stateJson, version, crypto.randomUUID(), now, groupId, latest.version, groupId, accountId).run();
+    if (result.meta.changes) {
+      const visible = visibleState(next, accountId, members);
+      return okJson(origin, { version,
+        state: { ...visible, reminders: await readReminderStatus(env.DB, groupId, visible) } });
+    }
+    latest = await readState(env.DB, groupId);   // 被别的写抢走了：重读最新再合并
+  }
+  // 重试耗尽：明确告诉用户稍后再试，不静默丢这批蛋。
+  return revisionConflict(origin, '蛋仓正在被其他人更新，请稍后再试', latest.version, 'SYNC_BUSY');
+}
+
 /** Caller authenticates once; membership is checked inside every conditional write too. */
 export async function handleEggMatching(request: Request, env: Env, origin: string | null, accountId: string, groupId: string, now = Date.now()): Promise<Response> {
   if (!(await isMember(env.DB, groupId, accountId))) return failCode(origin, 403, 'NOT_MEMBER', '不是该组成员');
@@ -94,9 +161,18 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
     if (raw.length > 1_000_000) return failCode(origin, 413, 'PAYLOAD_TOO_LARGE', '数据过大');
     let body: { baseVersion?: unknown; action?: unknown };
     try { body = JSON.parse(raw); } catch { return failCode(origin, 400, 'INVALID_INPUT', '请求格式无效'); }
-    if (!body || !Number.isSafeInteger(body.baseVersion) || !body.action) return failCode(origin, 400, 'INVALID_INPUT', '缺少数据版本或操作');
-    if (body.baseVersion !== current.version) return failCode(origin, 409, 'REVISION_CONFLICT', '小组数据已变化，请刷新后重试');
+    if (!body || !body.action) return failCode(origin, 400, 'INVALID_INPUT', '缺少数据版本或操作');
     const action=body.action as {type?:string;id?:string;demandId?:string;supplierAccountId?:string};
+    /**
+     * 蛋仓同步只合并「自己账号 + 角色」那份库存，是幂等写：不吃组级 version（2026-11-26 D3）。
+     * 以前它和需求 / 接单共用 baseVersion，组里任何人一写、机器人一 ingest，蛋仓就 409。
+     * 其他 action 仍然走下面的 version 乐观锁，别一起放宽。
+     */
+    if (action.type === 'stock-sync') {
+      return writeStockSyncMerge({ env, origin, groupId, accountId, action: body.action, now, members, current });
+    }
+    if (!Number.isSafeInteger(body.baseVersion)) return failCode(origin, 400, 'INVALID_INPUT', '缺少数据版本或操作');
+    if (body.baseVersion !== current.version) return revisionConflict(origin, '小组数据已变化，请刷新后重试', current.version);
     // Check only the parties touched by this operation; an abandoned proposal must not freeze all members.
     const touchedDemand=current.state.demands.find(d=>d.id===action.demandId);
     const touchedTrade=current.state.trades.find(t=>t.id===action.id);
@@ -104,6 +180,15 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
       ['accept','place','allocate','receive','remind'].includes(action.type??'')&&touchedTrade?[touchedTrade.demanderAccountId,touchedTrade.supplierAccountId]:[];
     if(parties.some(id=>!id||!members.has(id)))return failCode(origin,409,'NOT_MEMBER','换蛋成员已退出小组');
     const next = applyEggAction(current.state, groupId, accountId, body.action, now);
+    /**
+     * 幂等空操作（重复 accept / receive、以及别的分支返回原对象）：不写库、不推进 version。
+     * 以前这类请求也会 +1，把别的通道手里的版本白白作废（R2）。
+     */
+    if (next === current.state) {
+      const visible = visibleState(current.state, accountId, members);
+      return okJson(origin, { version: current.version,
+        state: { ...visible, reminders: await readReminderStatus(env.DB, groupId, visible) } });
+    }
     const stateJson=JSON.stringify(next);
     if(new TextEncoder().encode(stateJson).byteLength>1_500_000)return failCode(origin,413,'STATE_CAPACITY','小组换蛋记录已达容量，请联系管理员扩容；原记录未改变');
     const version = current.version + 1;
@@ -151,7 +236,11 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
     if (reminder) statements.push(reminder);
     if (exchangeNotification) statements.push(exchangeNotification);
     const result = await env.DB.batch(statements);
-    if (!result[0].meta.changes) return failCode(origin, 409, 'REVISION_CONFLICT', '小组数据已变化或成员权限失效，请刷新');
+    if (!result[0].meta.changes) {
+      // CAS 落空 = 读和写之间又被别人写了一次；回带最新 version，客户端不用再补拉（R2）。
+      const latest = await readState(env.DB, groupId);
+      return revisionConflict(origin, '小组数据已变化或成员权限失效，请刷新', latest.version);
+    }
     const visible = visibleState(next, accountId, members);
     return okJson(origin, { version, state: {...visible,reminders:await readReminderStatus(env.DB,groupId,visible)} });
   } catch (error) {
