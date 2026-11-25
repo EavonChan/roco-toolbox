@@ -41,6 +41,12 @@ export interface AppNavigation {
    */
   eggStockRevision: number;
   consumedEggStockRevision: number;
+  /**
+   * 当前蛋仓屏是不是从「我的」进来的（2026-11-25 U3）：
+   * 是的话，蛋仓里的「返回」要回「我的」，不能掉回换蛋页。
+   * 消费只清「要不要自动打开」，来源要留到用户离开换蛋页为止。
+   */
+  eggStockFromProfile: boolean;
 }
 
 export type NavigationIntent =
@@ -65,6 +71,7 @@ const BASE: AppNavigation = {
   consumedFocusRevision: 0,
   eggStockRevision: 0,
   consumedEggStockRevision: 0,
+  eggStockFromProfile: false,
 };
 
 /**
@@ -102,12 +109,13 @@ export function resolveNavigation(
   switch (intent.type) {
     case 'tab':
       // 普通主导航只改 page：同一次会话里收集页的子视图、我的页的分区都保留。
-      // 跨页的一次性标记（返回小组、收集类型）不能跟着漏到下一次手动切换。
+      // 跨页的一次性标记（返回小组、收集类型、蛋仓来源）不能跟着漏到下一次手动切换。
       return {
         ...current,
         page: intent.page,
         returnToGroups: false,
         groupType: undefined,
+        eggStockFromProfile: false,
       };
     case 'open-collection':
       return {
@@ -116,6 +124,7 @@ export function resolveNavigation(
         collection: intent.location,
         returnToGroups: false,
         groupType: undefined,
+        eggStockFromProfile: false,
         focusRevision: current.focusRevision + 1,
       };
     case 'open-profile':
@@ -124,6 +133,7 @@ export function resolveNavigation(
         page: 'profile',
         profileSection: intent.section,
         returnToGroups: intent.returnToGroups === true,
+        eggStockFromProfile: false,
       };
     case 'open-groups':
       return {
@@ -131,15 +141,18 @@ export function resolveNavigation(
         page: 'groups',
         groupType: intent.groupType,
         returnToGroups: false,
+        eggStockFromProfile: false,
         focusRevision: current.focusRevision + 1,
       };
     case 'open-egg-stock':
-      // 蛋仓长在换蛋页里：切过去并挂一次「请打开蛋仓」请求，由换蛋页消费（见 eggStockPending）
+      // 蛋仓长在换蛋页里：切过去并挂一次「请打开蛋仓」请求，由换蛋页消费（见 eggStockPending）。
+      // 同时记住来源：这次蛋仓是从「我的」进来的，返回要回「我的」（U3）。
       return {
         ...current,
         page: 'groups',
         groupType: undefined,
         returnToGroups: false,
+        eggStockFromProfile: true,
         eggStockRevision: current.eggStockRevision + 1,
       };
     case 'consume-egg-stock':

@@ -192,6 +192,18 @@ test('openStock：从「我的」直达到蛋仓时直接打开蛋仓屏，并�
   view.unmount();
 });
 
+test('openStock + onStockBack：从「我的」直达进来的蛋仓，返回交给调用方（回我的）',()=>{
+  const onStockOpened=vi.fn();
+  const onStockBack=vi.fn();
+  const view=render(<EggMatchingHub {...props} openStock onStockOpened={onStockOpened} onStockBack={onStockBack} stockBackLabel="返回我的"/>);
+  expect(screen.getByRole('heading',{name:'我的蛋仓'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'‹ 返回'}));
+  expect(onStockBack).toHaveBeenCalledTimes(1);
+  // 组件自己不跳回换蛋页：去向由调用方决定
+  expect(screen.queryByText('我的收集')).toBeNull();
+  view.unmount();
+});
+
 test('没有 openStock 时停在换蛋主页（不擅自打开蛋仓）',()=>{
   const onStockOpened=vi.fn();
   const view=render(<EggMatchingHub {...props} onStockOpened={onStockOpened}/>);

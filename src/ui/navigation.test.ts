@@ -7,6 +7,7 @@ import {
   resolveNavigation,
   type AppNavigation,
   type CollectionLocation,
+  type NavigationIntent,
 } from './navigation';
 
 const EGG_LOCATION: CollectionLocation = { kind: 'studs', view: 'eggs' };
