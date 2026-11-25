@@ -61,11 +61,8 @@ describe('MotherView 推荐性格计算次数', () => {
       />,
     );
 
-    // 只看本用例这 8 颗蛋（id 1~8）。页面里还挂着「推荐性格」编辑器，
-    // 它会把全图鉴的蛋也算一遍（另一个已知问题，见回执 P3b），不在本条断言范围。
-    const forOurGroups = natureCalls.filter((eggGameId) => eggGameId >= 1 && eggGameId <= groups.length);
-    // 旧实现：missingNaturesByEgg 8 次 + 每行 8 次 = 16 次，同一颗蛋算两遍
-    expect(forOurGroups.length).toBe(groups.length);
-    expect(new Set(forOurGroups).size).toBe(groups.length);
+    // 8 颗蛋各算一次；「推荐性格」弹层关着时不再额外算全图鉴（2026-11-25 P3b 之后总次数就这么多）
+    expect(natureCalls).toHaveLength(groups.length);
+    expect(new Set(natureCalls)).toEqual(new Set([1, 2, 3, 4, 5, 6, 7, 8]));
   });
 });
