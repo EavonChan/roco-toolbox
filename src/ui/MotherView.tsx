@@ -97,6 +97,42 @@ const INITIAL_CHAIN_SECTIONS = 2;
 const CHAIN_SECTION_BATCH = 5;
 
 /**
+ * 渐进渲染（2026-11-25 P1，用户口径：平板横着用）。
+ *
+ * 横屏「首屏多给蛋组」的内容**不削减**（宽横屏仍到 10 组、4:3 横屏 6 组），但不在首帧一次挂完：
+ * 首帧只挂 `FIRST_PAINT_SECTIONS` 组（和手机一个量级，点进去立刻有东西、没有长任务），
+ * 其余在空闲时间一片 1～2 组补上，补的过程中用等高骨架占位，页面高度不跳。
+ */
+const FIRST_PAINT_SECTIONS = 2;
+/** 一次空闲追加最多几张卡 / 几个组：追加本身也不能变成长任务 */
+const IDLE_SLICE_MAX_CARDS = 20;
+const IDLE_SLICE_MAX_SECTIONS = 2;
+/**
+ * 骨架高度：**和分区自己声明的占位高度一致**（`containIntrinsicSize: 'auto 180px'`）。
+ *
+ * 分区带 `content-visibility: auto`，没滚到视口里时浏览器按 180px 占位；
+ * 骨架也取 180px，那么「骨架 → 真分区」这一步在屏外高度完全不变，滚动条不会跳。
+ */
+const SECTION_SKELETON_HEIGHT_PX = 180;
+
+/**
+ * 空闲调度：有 `requestIdleCallback` 就用（带 300ms 超时兜底），
+ * 没有就退回 `setTimeout(0)`（jsdom、老 WebView）。返回值用于取消。
+ */
+function scheduleIdleTask(run: () => void): () => void {
+  const scope = globalThis as unknown as {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  if (typeof scope.requestIdleCallback === 'function') {
+    const handle = scope.requestIdleCallback(run, { timeout: 300 });
+    return () => scope.cancelIdleCallback?.(handle);
+  }
+  const timer = window.setTimeout(run, 0);
+  return () => window.clearTimeout(timer);
+}
+
+/**
  * 母本视角：
  *
  * - **已收集**：按满分四档各自一节（与看板的四档计数同口径），行是两列紧凑卡（PetCard）；
@@ -151,7 +187,6 @@ export function MotherView({
     : tabletLandscape
       ? 6
       : INITIAL_CHAIN_SECTIONS;
-  const [visibleSectionCount, setVisibleSectionCount] = useState(initialSections);
 
   // 收集页的「未收集 / 收集中 / 已收集」直达：同步到本页的状态开关
   useEffect(() => {
@@ -406,11 +441,44 @@ export function MotherView({
     return sections;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchedGroups, chainFilter, owned, criteria, activeVoices.join(','), naturesOf, plannedSet, natureOverrides, eggGroupNames]);
+  /**
+   * 目标组数（横屏 10 / 6，竖屏 2）与「已经挂上」的组数分开：
+   * 首帧只挂 `FIRST_PAINT_SECTIONS` 组，其余靠下面的空闲任务补齐到目标。
+   */
+  const [requestedSections, setRequestedSections] = useState(() =>
+    Math.max(initialSections, FIRST_PAINT_SECTIONS),
+  );
+  const [mountedSections, setMountedSections] = useState(() =>
+    Math.min(initialSections, FIRST_PAINT_SECTIONS),
+  );
+  // 换筛选/搜索/断点就从头来：先只挂首帧那几组，避免上一轮的旧窗口把新结果截掉
   useEffect(() => {
-    setVisibleSectionCount(initialSections);
+    setRequestedSections(Math.max(initialSections, FIRST_PAINT_SECTIONS));
+    setMountedSections(Math.min(initialSections, FIRST_PAINT_SECTIONS));
   }, [chainFilter, keyword, eggGroupFilter.join(','), initialSections]);
-  const visibleChainSections = chainSections.slice(0, visibleSectionCount);
-  const hiddenChainSections = Math.max(0, chainSections.length - visibleChainSections.length);
+
+  /** 空闲追加：一片最多 2 组 / 20 张卡，补到目标组数就停 */
+  useEffect(() => {
+    if (chainFilter === 'collecting' || mountedSections >= requestedSections) return;
+    const cardsOf = (index: number) => chainSections[index]?.groups.length ?? 0;
+    const nextMounted = (current: number): number => {
+      let count = current;
+      let cards = 0;
+      while (count < requestedSections && count - current < IDLE_SLICE_MAX_SECTIONS) {
+        const sectionCards = cardsOf(count);
+        if (count > current && cards + sectionCards > IDLE_SLICE_MAX_CARDS) break;
+        cards += sectionCards;
+        count += 1;
+      }
+      return Math.min(requestedSections, count);
+    };
+    return scheduleIdleTask(() => setMountedSections((current) => nextMounted(current)));
+  }, [chainFilter, mountedSections, requestedSections, chainSections]);
+
+  const visibleChainSections = chainSections.slice(0, mountedSections);
+  /** 目标组数内、还没挂上的：先用等高骨架占位（追加时页面不跳） */
+  const pendingChainSections = chainSections.slice(mountedSections, requestedSections);
+  const hiddenChainSections = Math.max(0, chainSections.length - requestedSections);
 
   /**
    * 三列蛋组（2026-11-21 用户口径）：收起筛选且屏幕够宽时，
@@ -678,14 +746,34 @@ export function MotherView({
             </div>
           ))
         )}
+        {/*
+          目标组数内还没挂上的分区：等高骨架占位（2026-11-25 P1）。
+          高度与分区自己声明的占位高度（containIntrinsicSize 180px）一致，
+          所以「骨架 → 真分区」在屏外高度不变，追加时页面不跳。
+        */}
+        {chainFilter !== 'collecting'
+          ? pendingChainSections.map((section) => (
+              <div
+                key={`skeleton-${section.groupId}`}
+                className="overflow-hidden rounded-2xl bg-white shadow-sm"
+                style={{ height: `${SECTION_SKELETON_HEIGHT_PX}px` }}
+                data-testid="mother-chain-skeleton"
+                aria-hidden
+              />
+            ))
+          : null}
         {chainFilter !== 'collecting' && hiddenChainSections > 0 ? (
           <button
             type="button"
-            onClick={() =>
-              setVisibleSectionCount((current) =>
-                Math.min(chainSections.length, current + CHAIN_SECTION_BATCH),
-              )
-            }
+            onClick={() => {
+              // 用户主动点的：目标组数和已挂组数一起加，立刻给出结果，不再等空闲片
+              const nextRequested = Math.min(
+                chainSections.length,
+                requestedSections + CHAIN_SECTION_BATCH,
+              );
+              setRequestedSections(nextRequested);
+              setMountedSections(nextRequested);
+            }}
             className="min-h-[36px] w-full rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-600"
             data-testid="mother-chain-show-more"
           >
