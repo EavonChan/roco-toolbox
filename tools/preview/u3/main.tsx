@@ -13,10 +13,13 @@ import { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { species } from '../../../src/data/catalog';
 import { CARD, PAGE, TITLE } from '../../../src/ui/primitives/styles';
+import { SearchField } from '../../../src/ui/primitives/SearchField';
 import { TabNav } from '../../../src/ui/TabNav';
 import { EggCharacterSelect } from '../../../src/ui/plan/EggCharacterSelect';
+import { EggGroupCard } from '../../../src/ui/plan/EggGroupCard';
 import { EggStockPanel } from '../../../src/ui/plan/EggStockPanel';
 import { eggCharactersOf } from '../../../src/ui/plan/eggCharacter';
+import { groupEggStock, type EggGroupFacts } from '../../../src/ui/plan/eggStockGroups';
 import type { AccountSnapshot } from '../../../src/domain/parseBackup';
 import type { WorkflowEgg } from '../../../src/shared/eggWorkflow';
 
@@ -151,10 +154,12 @@ function HomeStock({ initialChar, back = 'header-right' }: {
  * `withCharacter` = 对齐后的样子（角色下拉 + 面板三个 props）。
  * `back`：`left` = **现状**（`‹ 返回` 文字按钮在标题左边）；`right` = 方向 B（`返回换蛋` 边框按钮在最右，和家园现状同形）。
  */
-function PlazaStock({ withCharacter = false, initialChar, back = 'left' }: {
+function PlazaStock({ withCharacter = false, initialChar, back = 'left', card = false }: {
   withCharacter?: boolean;
   initialChar?: string;
   back?: 'left' | 'right';
+  /** 套白卡（2026-11-26 用户口径：广场蛋仓复刻家园那层 CARD） */
+  card?: boolean;
 }) {
   const [character, setCharacter] = useState(initialChar ?? '');
   const characters = useMemo(() => eggCharactersOf(MY_EGGS, SNAPSHOTS), []);
@@ -175,17 +180,24 @@ function PlazaStock({ withCharacter = false, initialChar, back = 'left' }: {
             ? <button type="button" className="ml-auto min-h-[28px] shrink-0 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-600">返回换蛋</button>
             : null}
         </div>
-        <EggStockPanel
-          eggs={MY_EGGS}
-          species={species}
-          busy={false}
-          mutate={noop}
-          collapsibleFilterRail
-          railBack={{ label: '返回换蛋', onClick: () => undefined }}
-          {...(withCharacter
-            ? { character: active, characters, onCharacterChange: setCharacter }
-            : {})}
-        />
+        {(() => {
+          const panel = (
+            <EggStockPanel
+              eggs={MY_EGGS}
+              species={species}
+              busy={false}
+              mutate={noop}
+              collapsibleFilterRail
+              railBack={{ label: '返回换蛋', onClick: () => undefined }}
+              {...(withCharacter
+                ? { character: active, characters, onCharacterChange: setCharacter }
+                : {})}
+            />
+          );
+          return card
+            ? <section className={CARD} data-testid="egg-stock-card">{panel}</section>
+            : panel;
+        })()}
       </div>
     </Shell>
   );
@@ -198,13 +210,113 @@ const SCREENS = {
   'return-a-home': '返回 · 方向 A：家园改成左侧 ‹ 返回',
   'return-b-plaza': '返回 · 方向 B：广场改成右侧 返回换蛋',
   'return-c-home': '返回 · 方向 C：家园出内容行（页头隐藏）',
+  'plaza-card': '白卡 · 广场蛋仓套白卡（方案 1 的样子）',
+  'group-2': '分组 · 方案 2：一个角色一段（段头带蛋数）',
+  'group-2b': '分组 · 方案 2 + 同类蛋聚合（段内 ×N 聚合卡）',
+  'group-3': '分组 · 方案 3：默认分组 + 顶部角色芯片',
 } as const;
 type ScreenKey = keyof typeof SCREENS;
+
+/** 聚合卡要用的事实（与 `EggStockPanel` 里那几条私有判定同一口径）。 */
+const EGG_FACTS: EggGroupFacts = {
+  natureText: (egg) => egg.nature || '未标注',
+  isGreenNest: (egg) => egg.greenNest === true,
+  isSelfProduced: (egg) => egg.provenance === 'self-bred' || egg.location === 'home',
+  isAnnotated: () => false,
+  isSpecial: (egg) => egg.kind === 'special' || egg.kind === 'shiny',
+};
+const speciesName = (id: number) => species.find((entry) => entry.gameId === id)?.name ?? '未收录精灵';
+
+/**
+ * 蛋仓「按角色分组」的两个方向（2026-11-26 用户口径：不只是筛选，要分组）：
+ * - `plain`：一个角色一段，段内还是现在的蛋卡（方案 2）
+ * - `aggregate`：同上，但段内换成 U5 的「物种聚合卡 ×N」（分组 × 聚合两层嵌套）
+ * - `chips`：默认分组 + 顶部角色芯片，只留某个角色（方案 3）
+ */
+function GroupedStock({ mode }: { mode: 'plain' | 'aggregate' | 'chips' }) {
+  const [query, setQuery] = useState('');
+  const [only, setOnly] = useState('');
+  const visible = MY_EGGS.filter((egg) => !query || speciesName(egg.eggGameId).includes(query));
+  const characters = eggCharactersOf(visible, SNAPSHOTS);
+  const shown = mode === 'chips' && only ? characters.filter((item) => item.key === only) : characters;
+  const chips = [{ key: '', name: '全部', count: visible.length }, ...characters];
+  return (
+    <Shell tab="groups">
+      <div className="flex min-w-0 flex-col gap-2" data-testid="egg-matching-hub">
+        <div className="flex items-center gap-2">
+          <button type="button" className="min-h-[28px] shrink-0 px-1 text-xs text-slate-500">‹ 返回</button>
+          <h3 className="min-w-0 shrink-0 text-sm font-semibold">我的蛋仓</h3>
+          <span className="ml-auto shrink-0 text-[10px] text-slate-400">共 {visible.length} 颗</span>
+        </div>
+        <section className={CARD} data-testid="egg-stock-card">
+          <div className="flex flex-col gap-3">
+            <SearchField label="搜索蛋名" value={query} onValueChange={setQuery} placeholder="搜索蛋名" className="[&_input]:text-left" />
+            {mode === 'chips' ? (
+              <div className="flex flex-wrap gap-1" data-testid="stock-role-chips">
+                {chips.map((chip) => (
+                  <button
+                    key={chip.key || 'all'}
+                    type="button"
+                    aria-pressed={only === chip.key}
+                    onClick={() => setOnly(chip.key)}
+                    className={`min-h-7 rounded-md px-2 text-[11px] ${only === chip.key ? 'bg-emerald-50 font-semibold text-emerald-700' : 'text-slate-500'}`}
+                  >{chip.name}（{chip.count}）</button>
+                ))}
+              </div>
+            ) : null}
+            {shown.map((character) => {
+              const roleEggs = MY_EGGS.filter((egg) => egg.gameAccountKey === character.key);
+              const groups = groupEggStock(roleEggs, EGG_FACTS);
+              return (
+                <section key={character.key} className="flex flex-col gap-1.5" data-testid="stock-role-section">
+                  <header className="flex items-center gap-1.5">
+                    <h4 className="text-xs font-semibold text-slate-900">{character.name}</h4>
+                    <span className="text-[10px] text-slate-400">{character.count} 颗</span>
+                    {character.key === characters[0]?.key
+                      ? <span className="rounded bg-emerald-50 px-1 text-[9px] leading-4 text-emerald-700">主号</span>
+                      : null}
+                  </header>
+                  {character.count === 0 ? (
+                    <p className="text-[10px] text-slate-400">这个角色还没有蛋</p>
+                  ) : mode === 'aggregate' ? (
+                    <div className="egg-stock-grid grid grid-cols-4 gap-1.5">
+                      {groups.map((group) => (
+                        <EggGroupCard
+                          key={group.key}
+                          group={group}
+                          total={group.count}
+                          name={speciesName}
+                          expanded={false}
+                          onToggle={() => undefined}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    // 段内直接复用真实面板的蛋卡：只保留网格，把搜索与筛选条件藏掉
+                    <div className="u3-section">
+                      <EggStockPanel eggs={roleEggs} species={species} busy={false} mutate={noop} character={character.key} />
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    </Shell>
+  );
+}
 
 function renderScreen(screen: ScreenKey, initialChar?: string) {
   if (screen === 'home') return <HomeStock initialChar={initialChar} />;
   if (screen === 'return-a-home') return <HomeStock initialChar={initialChar} back="header-left" />;
   if (screen === 'return-c-home') return <HomeStock initialChar={initialChar} back="content-row" />;
+  if (screen === 'group-2') return <GroupedStock mode="plain" />;
+  if (screen === 'group-2b') return <GroupedStock mode="aggregate" />;
+  if (screen === 'group-3') return <GroupedStock mode="chips" />;
+  if (screen === 'plaza-card') {
+    return <PlazaStock withCharacter key="plaza-card" card initialChar={initialChar} />;
+  }
   return (
     <PlazaStock
       withCharacter={screen !== 'plaza'}

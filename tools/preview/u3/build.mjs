@@ -77,6 +77,11 @@ const html = `<!doctype html>
 </head>
 <body class="bg-slate-100">
 <div id="root"></div>
+<style>
+  /* 分组预览：段内只保留蛋卡网格，搜索 / 条件统一放段外 */
+  .u3-section input[type="search"],
+  .u3-section [data-testid="egg-stock-filter-chips"] { display: none; }
+</style>
 ${fixScript}
 <script>${jsText}</script>
 </body>

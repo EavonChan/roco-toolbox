@@ -57,6 +57,11 @@ const SHOTS = [
   { file: '返回A-家园-左侧返回', screen: 'return-a-home' },
   { file: '返回B-广场-右侧返回换蛋', screen: 'return-b-plaza' },
   { file: '返回C-家园-内容行', screen: 'return-c-home' },
+  // 2026-11-26：按角色分组的三个方案 + 白卡
+  { file: '分组-方案1-下拉筛选', screen: 'plaza-card' },
+  { file: '分组-方案2-按角色分段', screen: 'group-2' },
+  { file: '分组-方案2-叠加同类聚合', screen: 'group-2b' },
+  { file: '分组-方案3-分组加芯片', screen: 'group-3' },
 ];
 const SIZES = [
   { width: 375, height: 812 },
@@ -77,7 +82,7 @@ try {
       });
       const query = new URLSearchParams({ screen: shot.screen, bare: '1', ...(shot.char ? { char: shot.char } : {}) });
       await page.goto(`${base}?${query}`, { waitUntil: 'load' });
-      await page.waitForSelector('[data-testid="egg-stock-filter-chips"]', { timeout: 10_000 });
+      await page.waitForSelector('[data-testid="egg-stock-filter-chips"], [data-testid="stock-role-section"]', { timeout: 10_000 });
       await page.waitForLoadState('networkidle').catch(() => {});
       const file = path.join(OUT, `U3-${size.width}-${shot.file}.png`);
       await page.screenshot({ path: file });
