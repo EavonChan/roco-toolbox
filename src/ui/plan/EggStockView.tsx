@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { CATALOG_VERSION, species } from '../../data/catalog';
 import type { AccountSnapshot } from '../../domain/parseBackup';
@@ -8,8 +8,8 @@ import { CARD } from '../primitives/styles';
 import { useMotherGroups } from '../useMotherGroups';
 import { EggCharacterSelect } from './EggCharacterSelect';
 import { EggStockPanel } from './EggStockPanel';
-import { eggCharactersOf } from './eggCharacter';
 import { useEggMatching } from './useEggMatching';
+import { useEggStockCharacter } from './useEggStockCharacter';
 import { useEggStockSync } from './useEggStockSync';
 import { useLandscape } from '../useWideLandscape';
 
@@ -110,26 +110,16 @@ function StockBody({ groupId, me, snapshots, onBack, headerSlot }: {
   const api = useEggMatching(groupId, me);
   const sync = useEggStockSync({ api, groupId, me, snapshots });
   const landscape = useLandscape();
-  /**
-   * 一次只显示一个角色（2026-11-24 用户口径）：默认账号角色列表的第一个（一般是主号），
-   * 有多个角色时标题行/筛选栏可切换，没有「全部角色」。
-   */
-  const [character, setCharacter] = useState('');
   const myEggs = useMemo(
     () => (api.data?.state.eggs ?? []).filter((egg) => egg.accountId === me && egg.status !== 'transferred'),
     [api.data, me],
   );
-  const characters = useMemo(() => eggCharactersOf(myEggs, snapshots), [myEggs, snapshots]);
-  /** 首帧就按第一个角色渲染，别先闪一下「全部」再跳过去。 */
-  const activeCharacter = character || characters[0]?.key || '';
-  useEffect(() => {
-    if (!characters.length) {
-      if (character) setCharacter('');
-      return;
-    }
-    // 换号 / 角色数据变了：选中的角色不在列表里了就回到第一个（主号）
-    if (!characters.some((item) => item.key === character)) setCharacter(characters[0].key);
-  }, [character, characters]);
+  /**
+   * 一次只显示一个角色（2026-11-24 用户口径）：默认账号角色列表的第一个（一般是主号），
+   * 有多个角色时标题行/筛选栏可切换，没有「全部角色」。
+   * 状态从 2026-11-25 起抽进 `useEggStockCharacter`，换蛋广场的蛋仓也用同一份（别再抄一遍）。
+   */
+  const { characters, activeCharacter, setCharacter } = useEggStockCharacter({ eggs: myEggs, snapshots });
   const characterSelect = characters.length > 1
     ? <EggCharacterSelect value={activeCharacter} characters={characters} onChange={setCharacter} />
     : null;

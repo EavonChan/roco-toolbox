@@ -34,6 +34,13 @@ export interface AppNavigation {
    * 之后切走再回来不会被旧聚焦重新改列表。
    */
   consumedFocusRevision: number;
+  /**
+   * 「我的 · 我的蛋仓」直达换蛋页蛋仓屏（2026-11-25 U2）。
+   * 蛋仓是换蛋页的页内视图，所以用「请求 + 消费」两段式：页面打开蛋仓后回报消费，
+   * 之后切走再回来不会再被弹到蛋仓（同一个 `focusRevision` 的套路）。
+   */
+  eggStockRevision: number;
+  consumedEggStockRevision: number;
 }
 
 export type NavigationIntent =
@@ -41,6 +48,9 @@ export type NavigationIntent =
   | { type: 'open-collection'; location: CollectionLocation }
   | { type: 'open-profile'; section: ProfileSection; returnToGroups?: boolean }
   | { type: 'open-groups'; groupType?: CollectionGroupType }
+  /** 我的 · 我的蛋仓 → 换蛋页的蛋仓屏 */
+  | { type: 'open-egg-stock' }
+  | { type: 'consume-egg-stock'; revision: number }
   | { type: 'consume-focus'; revision: number };
 
 /** 初始收集落点 = 母本「未收集」（新人最常问「还缺什么」）。 */
@@ -53,6 +63,8 @@ const BASE: AppNavigation = {
   returnToGroups: false,
   focusRevision: 0,
   consumedFocusRevision: 0,
+  eggStockRevision: 0,
+  consumedEggStockRevision: 0,
 };
 
 /**
@@ -121,6 +133,20 @@ export function resolveNavigation(
         returnToGroups: false,
         focusRevision: current.focusRevision + 1,
       };
+    case 'open-egg-stock':
+      // 蛋仓长在换蛋页里：切过去并挂一次「请打开蛋仓」请求，由换蛋页消费（见 eggStockPending）
+      return {
+        ...current,
+        page: 'groups',
+        groupType: undefined,
+        returnToGroups: false,
+        eggStockRevision: current.eggStockRevision + 1,
+      };
+    case 'consume-egg-stock':
+      // 只消费匹配当前版本的请求；晚到的旧消费不能清掉后来的新请求
+      return intent.revision === current.eggStockRevision
+        ? { ...current, consumedEggStockRevision: intent.revision }
+        : current;
     case 'consume-focus':
       // 只消费匹配当前版本的聚焦；晚到的旧消费不能清掉后来的新直达。
       return intent.revision === current.focusRevision
@@ -132,6 +158,11 @@ export function resolveNavigation(
 /** 聚焦是否还没被消费（页面据此决定滚不滚）。 */
 export function focusPending(state: AppNavigation): boolean {
   return state.focusRevision > state.consumedFocusRevision;
+}
+
+/** 有没有一次「打开蛋仓」还没被换蛋页消费。 */
+export function eggStockPending(state: AppNavigation): boolean {
+  return state.eggStockRevision > state.consumedEggStockRevision;
 }
 
 export interface LegacyLocation {

@@ -520,6 +520,19 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
         ) : view === 'stock' ? (
           // 横屏：标题让给蛋仓右侧栏的标题栏（index.css 的 .home-stock-title 规则），竖屏照旧
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            {/*
+             * 返回跟换蛋广场的蛋仓放同一处（2026-11-25 用户口径：「两处蛋仓的返回要一致」）：
+             * 竖屏都是 `‹ 返回 + 标题 + 角色下拉`，都排在标题行最左；右侧不再放「返回家园」。
+             * testid 沿用 home-view-nests（Home.test.tsx 的点击 / 断言都挂着它）。
+             */}
+            <button
+              type="button"
+              onClick={() => changeView('nests')}
+              className="min-h-[28px] shrink-0 px-1 text-xs text-slate-500"
+              data-testid="home-view-nests"
+            >
+              ‹ 返回
+            </button>
             <h1 className={`${TITLE} home-stock-title min-w-0 shrink-0`} data-testid="home-title">
               我的蛋仓
             </h1>
@@ -553,7 +566,8 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
             >
               接单上窝
             </button>
-          ) : (
+          ) : view === 'demands' ? (
+            // 蛋仓屏的返回已挪到标题行最左（与换蛋广场一致，2026-11-25 用户口径），这里只剩接单上窝
             <button
               type="button"
               onClick={() => changeView('nests')}
@@ -562,7 +576,7 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
             >
               返回家园
             </button>
-          )}
+          ) : null}
           {loaded && view === 'nests' && snapshots.length > 0 ? (
             <HomeRefreshBar refresh={homeRefresh} />
           ) : null}

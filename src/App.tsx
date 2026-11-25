@@ -26,6 +26,7 @@ import { useNearbyOverlayPush } from './nearby/useNearbyOverlayPush';
 import { Profile } from './ui/Profile';
 import { TabNav } from './ui/TabNav';
 import {
+  eggStockPending,
   focusPending,
   initialNavigation,
   legacyLocation,
@@ -271,6 +272,10 @@ export default function App() {
           onGoProfileGroups={() => navigate({ type: 'open-profile', section: 'groups' })}
           onGoAccount={() =>
             navigate({ type: 'open-profile', section: 'identity', returnToGroups: true })
+          }
+          openEggStock={eggStockPending(navigation)}
+          onEggStockOpened={() =>
+            navigate({ type: 'consume-egg-stock', revision: navigation.eggStockRevision })
           }
         />
       ) : (

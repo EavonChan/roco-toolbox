@@ -182,6 +182,24 @@ test('retry also retries a failed published-line sync',async()=>{
   view.unmount();data.lines=[];
 });
 
+test('openStock：从「我的」直达到蛋仓时直接打开蛋仓屏，并回报已消费',()=>{
+  const onStockOpened=vi.fn();
+  const view=render(<EggMatchingHub {...props} openStock onStockOpened={onStockOpened}/>);
+  expect(screen.getByText('‹ 返回')).toBeTruthy();
+  expect(screen.getByRole('heading',{name:'我的蛋仓'})).toBeTruthy();
+  expect(screen.getByTestId('egg-stock-filter-chips')).toBeTruthy();
+  expect(onStockOpened).toHaveBeenCalledTimes(1);
+  view.unmount();
+});
+
+test('没有 openStock 时停在换蛋主页（不擅自打开蛋仓）',()=>{
+  const onStockOpened=vi.fn();
+  const view=render(<EggMatchingHub {...props} onStockOpened={onStockOpened}/>);
+  expect(screen.queryByTestId('egg-stock-main')).toBeNull();
+  expect(onStockOpened).not.toHaveBeenCalled();
+  view.unmount();
+});
+
 describe('EggMatchingHub 横屏（2026-11-22 三栏）', () => {
   const original = window.matchMedia;
   const setOrientation = (landscape: boolean) => {

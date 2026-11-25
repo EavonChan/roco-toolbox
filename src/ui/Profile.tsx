@@ -1,6 +1,7 @@
 import type { NavigationIntent, ProfileSection } from './navigation';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { appUpdateSnapshot, checkAppUpdate, hasAppUpdateShell, installAppUpdateBridge, seedAppUpdate, subscribeAppUpdate } from '../collector/appUpdate';
+import { readAccountId, subscribeSession } from '../api/session';
 import { AccountPanel } from './AccountPanel';
 import { CollectionGroups } from './CollectionGroups';
 import { Nearby } from './Nearby';
@@ -8,8 +9,9 @@ import { NearbyErrorBoundary } from './NearbyErrorBoundary';
 import { ImportOutcomeNotice } from './ImportOutcomeNotice';
 import { ImportPanel } from './ImportPanel';
 import { NativeCollectorPanel } from './NativeCollectorPanel';
+import { ProfileHeader } from './ProfileHeader';
+import { ProfileQuickEntries } from './ProfileQuickEntries';
 import { Button } from './primitives/Button';
-import { SegmentedControl } from './primitives/SegmentedControl';
 import { ServerAddressPanel, serverBridge, toggleServer } from './ServerAddressPanel';
 import { serverEnvOf } from './serverEnv';
 import { StateNotice } from './primitives/StateNotice';
@@ -30,26 +32,60 @@ export interface ProfileProps {
   onDraftDirtyChange?: (dirty: boolean) => void;
 }
 
-const SECTIONS = [
-  { value: 'groups', label: '小组' },
-  { value: 'identity', label: '我的身份' },
-  { value: 'data', label: '游戏数据' },
-];
-
-const DATA_VIEWS = [
-  { value: 'import', label: '导入' },
-  { value: 'nearby', label: '附近' },
-];
-
 /** 内测入口：2 秒内连点版本号 5 次，在测试站 / 正式站之间互切 */
 const VERSION_TAPS = 5;
 const TAP_WINDOW_MS = 2000;
 
+/** 一行一个目的地（2026-11-25 U2）：48px 行高满足「导航保留 40~44px」。 */
+function ProfileRow({
+  testId,
+  label,
+  value,
+  onClick,
+}: {
+  testId: string;
+  label: string;
+  value?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      data-testid={testId}
+      className="flex min-h-[48px] w-full items-center gap-2 px-4 text-left text-sm text-slate-800 disabled:text-slate-500"
+    >
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {value ? <span className="shrink-0 text-xs text-slate-500">{value}</span> : null}
+      <span aria-hidden className="shrink-0 text-slate-300">
+        ›
+      </span>
+    </button>
+  );
+}
+
+/** 分组列表容器：标题 11px 灰字 + 分隔线，行与行之间不画卡片。 */
+function ProfileList({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
+      <h2 className="px-4 pb-1 pt-3 text-[11px] font-semibold tracking-wide text-slate-400">{title}</h2>
+      <div className="divide-y divide-slate-100">{children}</div>
+    </section>
+  );
+}
+
 /**
- * 「我的」：小组 / 我的身份 / 游戏数据三块（2026-11-21 起）。
+ * 「我的」（2026-11-25 U2 方案 A）。
  *
- * 私有同步已从分区挪到「游戏数据 · 本机采集」下方：导入完就能顺手同步，
- * 不用再记一个单独的分区。
+ * 结构从「三段式分段控件」改成「首页 + 行 → 二级分区」：
+ * 1. 账号概览卡（谁在用 / 几个角色 / 上次采集）；
+ * 2. 三个高频入口（采集数据 / 我的蛋仓 / 我的小组）；
+ * 3. 采集与导入（本机采集 + 导入卡，导入仍是这一页的主动作）；
+ * 4. 账号 / 设置与帮助 两组列表，行为一行一个目的地。
+ *
+ * 分区内容（小组 / 身份 / 游戏数据）原样保留，只是入口从分段按钮换成列表行；
+ * `profile-section-*` 的 testid 仍然挂在可点击元素上，e2e 点击路径不变。
  */
 export function Profile({
   section,
@@ -63,6 +99,8 @@ export function Profile({
   const { conflict: autoConflict } = useSyncFeedback();
   // 入门卡只在「本机还没有任何导入数据」时出现：导入过一次就不再打扰（2026-11-01）
   const { snapshots, loaded } = useSnapshots();
+  // 登录态（本机模式 / 已登录）：概览卡与蛋仓入口都要用；只读，不在这里做登录
+  const accountId = useSyncExternalStore(subscribeSession, readAccountId, () => null);
   // 更新入口（1.3.6）：壳负责检查 / 下载 / 安装，这里只显示状态与触发
   const update = useSyncExternalStore(subscribeAppUpdate, appUpdateSnapshot);
   const [updateSupported] = useState(hasAppUpdateShell);
@@ -75,6 +113,8 @@ export function Profile({
   const [serverSwitching, setServerSwitching] = useState(false);
   const [serverNotice, setServerNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const versionTaps = useRef<number[]>([]);
+  /** 「采集数据」入口：把视线带到下面的采集 / 导入块（不再多一次跳页） */
+  const collectRef = useRef<HTMLDivElement>(null);
 
   const onVersionTap = () => {
     const bridge = serverBridge();
@@ -118,18 +158,22 @@ export function Profile({
     </span>
   );
 
+  const goSection = (next: ProfileSection) => onNavigate({ type: 'open-profile', section: next });
+  const backToProfile = () => goSection('data');
+  /** 二级分区（小组 / 我的身份）左上角的返回行；就是回到「我的」首页（数据视图）。 */
+  const backRow = (
+    <button
+      type="button"
+      onClick={backToProfile}
+      data-testid="profile-section-data"
+      className="flex min-h-[44px] w-full items-center gap-1 px-1 text-left text-sm font-medium text-emerald-700"
+    >
+      ‹ 返回我的
+    </button>
+  );
+
   return (
     <main className="mx-auto max-w-md space-y-3 p-4">
-      <SegmentedControl
-        label="我的分区"
-        value={section}
-        options={SECTIONS}
-        onValueChange={(next) =>
-          onNavigate({ type: 'open-profile', section: next as ProfileSection })
-        }
-        optionTestId={(value) => `profile-section-${value}`}
-      />
-
       {serverNotice ? (
         <p
           className={`text-xs ${serverNotice.kind === 'ok' ? 'text-emerald-700' : 'text-rose-600'}`}
@@ -140,64 +184,38 @@ export function Profile({
         </p>
       ) : null}
 
-      {returnToGroups ? (
-        <Button
-          variant="secondary"
-          onClick={() => onNavigate({ type: 'open-groups' })}
-          data-testid="profile-return-groups"
-        >
-          返回小组
-        </Button>
-      ) : null}
-
-      {section === 'groups' ? (
-        <CollectionGroups
-          embedded
-          variant="admin"
-          onDraftDirtyChange={onDraftDirtyChange}
-          onGoAccount={() => onNavigate({ type: 'open-profile', section: 'identity' })}
-        />
-      ) : null}
-
-      {section === 'identity' ? (
+      {section === 'data' && dataView === 'nearby' ? (
         <>
-          <StateNotice
-            kind="unknown"
-            title="我的身份"
-            description="用来跨设备同步同一份数据。游戏账号（UID）是游戏里的角色，在「游戏数据」里单独管理。"
-            testId="profile-identity-intro"
-          />
-          <AccountPanel
-            section="identity"
-            autoConflict={autoConflict}
-            onAutoConflictHandled={() => setSyncConflict(null)}
-          />
+          {backRow}
+          <NearbyErrorBoundary>
+            <Nearby embedded onNavigate={onNavigate} />
+          </NearbyErrorBoundary>
         </>
       ) : null}
 
-      {section === 'data' ? (
+      {section === 'data' && dataView === 'import' ? (
         <>
-          <SegmentedControl
-            label="游戏数据视图"
-            value={dataView}
-            options={DATA_VIEWS}
-            onValueChange={(next) =>
-              next === 'nearby'
-                ? onNavigate({ type: 'tab', page: 'nearby' })
-                : onNavigate({ type: 'open-profile', section: 'data' })
-            }
-            optionTestId={(value) => `data-view-${value}`}
+          <ProfileHeader
+            snapshots={snapshots}
+            accountId={accountId}
+            onGoAccount={() => goSection('identity')}
           />
-          {dataView === 'nearby' ? (
-            <NearbyErrorBoundary>
-              <Nearby embedded onNavigate={onNavigate} />
-            </NearbyErrorBoundary>
-          ) : null}
-          {dataView === 'import' && loaded && snapshots.length === 0 ? (
+          <ProfileQuickEntries
+            eggStockHint={accountId ? '换蛋 · 蛋仓' : '需登录'}
+            onCollect={() => collectRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })}
+            onEggStock={() => onNavigate({ type: 'open-egg-stock' })}
+            onGroups={() => goSection('groups')}
+          />
+
+          {loaded && snapshots.length === 0 ? (
             <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="first-run-card">
               <h2 className="text-base font-semibold text-slate-900">先采集一次，看看还缺什么</h2>
               <p className="mt-1 text-sm text-slate-600">
-                采集完成后这里会出现母本和种公的进度、缺口与下一步；看板、收集、小组也都按这份数据算。
+                小布助手帮你算洛克王国的孵蛋缺口：还缺哪只母本、怎么配窝、跟谁换蛋。
+                都按你导入的游戏数据算，数据只存在本机。
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                导入后可去「看板」看缺什么、「收集」补齐、「换蛋」互换。
               </p>
               {onStartTour ? (
                 <Button
@@ -211,22 +229,95 @@ export function Profile({
               ) : null}
             </section>
           ) : null}
-          {dataView === 'import' ? (
-            <>
-              <ImportOutcomeNotice onOpenGroups={() => onNavigate({ type: 'open-groups' })} />
-              <NativeCollectorPanel />
-              {/* 私有同步（2026-11-21 从独立分区挪到这里）：本机采集 / 导入的下方 */}
-              <ImportPanel
-                afterAnalytics={
-                  <AccountPanel
-                    section="sync"
-                    autoConflict={autoConflict}
-                    onAutoConflictHandled={() => setSyncConflict(null)}
-                  />
-                }
-              />
-            </>
+
+          <div ref={collectRef} className="space-y-3" data-testid="profile-collect">
+            <ImportOutcomeNotice onOpenGroups={() => onNavigate({ type: 'open-groups' })} />
+            <NativeCollectorPanel />
+            {/* 私有同步（2026-11-21 从独立分区挪到这里）：本机采集 / 导入的下方 */}
+            <ImportPanel
+              afterAnalytics={
+                <AccountPanel
+                  section="sync"
+                  autoConflict={autoConflict}
+                  onAutoConflictHandled={() => setSyncConflict(null)}
+                />
+              }
+            />
+          </div>
+
+          <ProfileList title="数据">
+            <ProfileRow
+              testId="data-view-nearby"
+              label="附近精灵"
+              value="采集时实时看"
+              onClick={() => onNavigate({ type: 'tab', page: 'nearby' })}
+            />
+          </ProfileList>
+
+          <ProfileList title="账号">
+            <ProfileRow
+              testId="profile-section-identity"
+              label="我的身份"
+              value={accountId ? '已登录' : '未登录'}
+              onClick={() => goSection('identity')}
+            />
+          </ProfileList>
+
+          <ProfileList title="设置与帮助">
+            <ProfileRow
+              testId="profile-guide"
+              label="新手引导"
+              value="重看一遍"
+              onClick={onStartTour}
+            />
+          </ProfileList>
+        </>
+      ) : null}
+
+      {section === 'groups' ? (
+        <>
+          {backRow}
+          {returnToGroups ? (
+            <Button
+              variant="secondary"
+              onClick={() => onNavigate({ type: 'open-groups' })}
+              data-testid="profile-return-groups"
+            >
+              返回小组
+            </Button>
           ) : null}
+          <CollectionGroups
+            embedded
+            variant="admin"
+            onDraftDirtyChange={onDraftDirtyChange}
+            onGoAccount={() => goSection('identity')}
+          />
+        </>
+      ) : null}
+
+      {section === 'identity' ? (
+        <>
+          {backRow}
+          {returnToGroups ? (
+            <Button
+              variant="secondary"
+              onClick={() => onNavigate({ type: 'open-groups' })}
+              data-testid="profile-return-groups"
+            >
+              返回小组
+            </Button>
+          ) : null}
+          <StateNotice
+            kind="unknown"
+            title="我的身份"
+            description="用来跨设备同步同一份数据。游戏账号（UID）是游戏里的角色，在「游戏数据」里单独管理。"
+            testId="profile-identity-intro"
+          />
+          <AccountPanel
+            section="identity"
+            autoConflict={autoConflict}
+            onAutoConflictHandled={() => setSyncConflict(null)}
+          />
         </>
       ) : null}
 

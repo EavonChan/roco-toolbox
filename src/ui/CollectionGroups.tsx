@@ -51,6 +51,10 @@ export interface CollectionGroupsProps {
   onGoProfileGroups?: () => void;
   /** 嵌在「我的」页里：不再自带外边距与最大宽度 */
   embedded?: boolean;
+  /** 「我的」页的蛋仓入口直达：打开换蛋页的蛋仓屏（2026-11-25 U2） */
+  openEggStock?: boolean;
+  /** 打开后回报上层，清掉这次请求 */
+  onEggStockOpened?: () => void;
 }
 
 /**
@@ -67,6 +71,8 @@ export function CollectionGroups({
   variant = 'feed',
   onGoProfileGroups,
   embedded = false,
+  openEggStock = false,
+  onEggStockOpened,
 }: CollectionGroupsProps) {
   const { snapshots } = useSnapshots();
   const summary = useCollectionSummary();
@@ -453,6 +459,8 @@ export function CollectionGroups({
                 location: { kind: 'mothers', status: 'collecting' },
               })
             }
+            openStock={openEggStock}
+            onStockOpened={onEggStockOpened}
           />
           </>
           ) : null}
