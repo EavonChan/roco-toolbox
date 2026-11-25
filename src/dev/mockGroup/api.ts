@@ -333,10 +333,21 @@ export function handleMockApi(
     return ok({ version: state.eggVersion, state: state.egg });
   }
   if (rest === 'egg-matching' && method === 'POST') {
+    const action = body.action as { type?: string } | undefined;
     const baseVersion = Number(body.baseVersion);
-    if (baseVersion !== state.eggVersion) return fail(409, '换蛋数据已变化，正在刷新');
+    /**
+     * 和线上一致（2026-11-26 D3）：蛋仓同步是幂等合并，不吃组级 version，也不会因为
+     * 「别人刚写过」被 409；其它 action 仍然按版本乐观锁拒绝，并回带当前 version。
+     * 以前这里对所有 action 都校验，导致 `?mock=group` 里复现不了真实行为、排查会误判。
+     */
+    if (action?.type !== 'stock-sync' && baseVersion !== state.eggVersion) {
+      return { status: 409, body: { error: '换蛋数据已变化，正在刷新', code: 'REVISION_CONFLICT', version: state.eggVersion } };
+    }
     try {
-      state.egg = applyEggAction(state.egg, groupId, state.me, body.action, Date.now());
+      const next = applyEggAction(state.egg, groupId, state.me, body.action, Date.now());
+      // 空操作（同一份采集重发 / 重复接受）不写库、不推进版本，与线上一致。
+      if (next === state.egg) return ok({ version: state.eggVersion, state: state.egg });
+      state.egg = next;
       state.eggVersion += 1;
       return ok({ version: state.eggVersion, state: state.egg });
     } catch (error) {
