@@ -146,6 +146,8 @@ export function recordPatrolProducedEgg(
       status: 'available',
       location: 'home',
       listed: false,
+      // 服务端第一次建行：属于「新出现」，允许以后进背包时自动挂出（R4-01 的资格标记）。
+      autoListEligible: true,
       labelSource: 'unknown',
       lastConfirmedAt: now,
       ...(parents ? { parents } : {}),
@@ -251,6 +253,8 @@ export function recordIngestedHomeEggs(
         status: 'available',
         location: 'home',
         listed: false,
+        // 同上：机器人首次入库的新行才有自动挂出资格（R4-01）。
+        autoListEligible: true,
         labelSource: hasLabel ? 'system' : 'unknown',
         lastConfirmedAt: now,
         ...(parents ? { parents } : {}),

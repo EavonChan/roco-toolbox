@@ -197,13 +197,68 @@ test('one action labels every available egg of the same species but leaves other
     eggs: [stock('one', 3227), stock('two', 3227), stock('other', 3436)],
   }, 1);
   state = applyEggAction(state, 'g', 'a', {
-    type: 'label-many', eggGameId: 3227, nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true,
+    type: 'label-many', eggGameId: 3227, gameAccountKey: 'uid:1', nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true,
   }, 2);
   expect(state.eggs.filter(egg => egg.eggGameId === 3227)).toMatchObject([
-    { nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true, labelSource: 'manual' },
-    { nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true, labelSource: 'manual' },
+    { nature: '冷静/平和', body: '大块头', voice: '婉转声', labelSource: 'manual' },
+    { nature: '冷静/平和', body: '大块头', voice: '婉转声', labelSource: 'manual' },
   ]);
+  // 绿窝是逐颗事实：批量动作即使带了 greenNest 也不写（R4-10）。
+  expect(state.eggs.filter(egg => egg.eggGameId === 3227).every(egg => egg.greenNest === undefined)).toBe(true);
   expect(state.eggs.find(egg => egg.id === 'other')).toMatchObject({ nature: '固执', labelSource: 'unknown' });
+});
+
+test('批量标注只改指定游戏角色的同种蛋，另一个角色的同种蛋不动（R4-10）', () => {
+  let state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true, eggs: [stock('r1', 3227)],
+  }, 1);
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:2', capturedAt: 1, complete: true, eggs: [stock('r2', 3227)],
+  }, 1);
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'label-many', eggGameId: 3227, gameAccountKey: 'uid:1',
+    nature: '冷静/平和', body: '大块头', voice: '婉转声',
+  }, 2);
+  expect(state.eggs.find(egg => egg.id === 'r1')).toMatchObject({ nature: '冷静/平和', labelSource: 'manual' });
+  expect(state.eggs.find(egg => egg.id === 'r2')).toMatchObject({ nature: '固执', labelSource: 'unknown' });
+});
+
+test('同种蛋里有一颗在换蛋中时，批量标注跳过它而不是整批失败（R4-10）', () => {
+  let state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,
+    eggs: [stock('free', 3227), stock('busy', 3227)],
+  }, 1);
+  state.eggs.find(egg => egg.id === 'busy')!.status = 'reserved';
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'label-many', eggGameId: 3227, gameAccountKey: 'uid:1',
+    nature: '冷静/平和', body: '大块头', voice: '婉转声',
+  }, 2);
+  expect(state.eggs.find(egg => egg.id === 'free')).toMatchObject({ nature: '冷静/平和', labelSource: 'manual' });
+  expect(state.eggs.find(egg => egg.id === 'busy')).toMatchObject({ nature: '固执', status: 'reserved', labelSource: 'unknown' });
+});
+
+test('同类蛋全都不可流通时批量标注是空操作，不推进状态（R4-10）', () => {
+  const state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true, eggs: [stock('busy', 3227)],
+  }, 1);
+  state.eggs[0]!.status = 'reserved';
+  expect(applyEggAction(state, 'g', 'a', {
+    type: 'label-many', eggGameId: 3227, gameAccountKey: 'uid:1',
+    nature: '冷静/平和', body: '大块头', voice: '婉转声',
+  }, 2)).toBe(state);
+});
+
+test('批量标注不写绿窝：两颗同种蛋各自保留自己的绿窝标记（R4-10）', () => {
+  let state = applyEggAction(initial(), 'g', 'a', {
+    type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,
+    eggs: [{ ...stock('green', 3227), greenNest: true }, stock('plain', 3227)],
+  }, 1);
+  state = applyEggAction(state, 'g', 'a', {
+    type: 'label-many', eggGameId: 3227, gameAccountKey: 'uid:1',
+    nature: '冷静/平和', body: '大块头', voice: '婉转声', greenNest: true,
+  }, 2);
+  expect(state.eggs.find(egg => egg.id === 'green')?.greenNest).toBe(true);
+  expect(state.eggs.find(egg => egg.id === 'plain')?.greenNest).toBeUndefined();
 });
 
 test('背包与家园各自记水印：较晚导入的旧家园快照不再被背包时间挡掉', () => {
@@ -497,4 +552,46 @@ test('stock captured before the measurements existed is listed once the fields a
   expect(state.eggs[0].listed).toBe(false);
   state = bagSync(state, 'a', 2, [measured('bag1')]);
   expect(state.eggs[0]).toMatchObject({ listed: true, obtainedAt: '2026-11-17T22:31:00', weightGrams: 2320, heightCm: 34 });
+});
+
+/**
+ * R4-01（P1）：`listingOptOut` 是 2026-11-26 才加的字段。升级前用户手动下架过的蛋在旧数据里
+ * 只有 `listed=false`、没有 `listingOptOut`，升级后第一次同步不能被当成「没下架」重新挂出去。
+ *
+ * 口径：自动挂出只对「本轮以后第一次被采集确认出现的蛋」生效（新行带 `autoListEligible`）；
+ * 升级前就存在的历史行一律视为已下架，不批量回填（不回写 `listingOptOut`、不改 `listed`）。
+ */
+const legacyUnlisted = (): EggWorkflowState => ({
+  ...emptyEggWorkflow(),
+  eggs: [{
+    id: 'old', accountId: 'a', gameAccountKey: 'uid:1', eggGameId: 3227, nature: '固执',
+    body: 'unknown', voice: 'unknown', provenance: 'unknown', confidence: 'unknown',
+    kind: 'ordinary', status: 'available', listed: false, location: 'bag',
+  }],
+});
+
+test('升级前就存在且未挂出的历史蛋，升级后第一次同步仍不自动挂出（R4-01）', () => {
+  const state = bagSync(legacyUnlisted(), 'a', 1, [measured('old')]);
+  expect(state.eggs).toHaveLength(1);
+  // 测量值照常合并进来（数据不能丢），但挂出状态保持用户原来的「未挂出」。
+  expect(state.eggs[0]).toMatchObject({
+    id: 'old', listed: false, weightGrams: 2320, heightCm: 34, obtainedAt: '2026-11-17T22:31:00',
+  });
+  // 不做批量回填：不给旧行补「已下架」标记，也不改任何用户可见状态。
+  expect(state.eggs[0].listingOptOut).toBeUndefined();
+  // 之后的每次采集同样不挂出。
+  expect(bagSync(state, 'a', 2, [measured('old')]).eggs[0].listed).toBe(false);
+});
+
+test('历史蛋手动挂出后照常生效，且后续采集不会把它降回去（R4-01）', () => {
+  let state = applyEggAction(legacyUnlisted(), 'g', 'a', { type: 'list', id: 'old', listed: true }, 2);
+  expect(state.eggs[0]).toMatchObject({ listed: true });
+  expect(state.eggs[0].listingOptOut).toBeUndefined();
+  state = bagSync(state, 'a', 3, [measured('old')]);
+  expect(state.eggs[0].listed).toBe(true);
+});
+
+test('本次采集才出现的完整蛋仍然自动挂出（R4-01 反例）', () => {
+  const state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('fresh')]);
+  expect(state.eggs[0]).toMatchObject({ id: 'fresh', listed: true, location: 'bag' });
 });

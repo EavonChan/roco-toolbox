@@ -107,9 +107,25 @@ test('same-species bulk labelling is available from the annotation form',async()
   render(<EggStockPanel eggs={[ordinary,{...ordinary,id:'e2'}]} species={[{gameId:3227,key:'p',name:'菊花梨',number:'1',eggGroups:[2]}]} busy={false} mutate={mutate}/>);
   fireEvent.click(screen.getAllByTestId('stock-card')[0]);
   fireEvent.click(screen.getByRole('button',{name:'标注所有同类蛋'}));
+  // 带上当前游戏角色（服务端只改这个角色）；绿窝是逐颗事实，不进批量载荷（R4-10）。
   await waitFor(()=>expect(mutate).toHaveBeenCalledWith({
-    type:'label-many', eggGameId:3227, nature:'固执', body:'大块头', voice:'婉转声', greenNest:false,
+    type:'label-many', eggGameId:3227, gameAccountKey:'uid:1', nature:'固执', body:'大块头', voice:'婉转声',
   }));
+});
+
+/** R4-10：同种蛋里有一颗在换蛋中时，批量标注不能整批失败；要告诉用户改了几颗、跳过几颗。 */
+test('同种蛋里有换蛋中的蛋时，批量标注照常提交并说明跳过了几颗',async()=>{
+  const mutate=vi.fn().mockResolvedValue(undefined);
+  const busy={...ordinary,id:'busy',status:'reserved' as const};
+  render(<EggStockPanel eggs={[ordinary,{...ordinary,id:'e2'},busy]} species={[{gameId:3227,key:'p',name:'菊花梨',number:'1',eggGroups:[2]}]} busy={false} mutate={mutate}/>);
+  const cards=screen.getAllByTestId('stock-card');
+  expect(cards).toHaveLength(3);
+  fireEvent.click(cards.find(card=>card.getAttribute('data-egg-id')==='e')!);
+  fireEvent.click(screen.getByRole('button',{name:'标注所有同类蛋'}));
+  await waitFor(()=>expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
+    type:'label-many', eggGameId:3227, gameAccountKey:'uid:1',
+  })));
+  await waitFor(()=>expect(screen.getByTestId('egg-label-notice')).toHaveTextContent('已更新 2 颗，跳过 1 颗（换蛋中）'));
 });
 
 test('stock card shows the obtained time and the detail shows it in full',()=>{
@@ -215,7 +231,10 @@ test('亲本在学院小窝的蛋，即使 greenNest 没落库也显示绿窝标
   expect(screen.getByRole('checkbox',{name:'绿窝蛋'})).toBeChecked();
   // 保存标注时要把绿窝写回数据，而不是用「没落库 = 不是绿窝」覆盖成 false
   fireEvent.click(within(dialog).getByRole('button',{name:'标注所有同类蛋'}));
-  await waitFor(()=>expect(mutate).toHaveBeenCalledWith(expect.objectContaining({type:'label-many',eggGameId:3124,greenNest:true})));
+  // 批量标注不带绿窝（绿窝逐颗写，见 R4-10），但单颗标注仍会带。
+  await waitFor(()=>expect(mutate).toHaveBeenCalledWith({
+    type:'label-many', eggGameId:3124, gameAccountKey:'uid:1', nature:'胆小', body:'大块头', voice:'婉转声',
+  }));
   // 用户手动取消过（greenNest:false）时按显式值来，不被父母的 academy 覆盖
   cleanup();
   render(<EggStockPanel eggs={[{...greenParent,greenNest:false}]} species={[

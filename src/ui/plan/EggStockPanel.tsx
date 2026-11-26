@@ -100,6 +100,8 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const [voice,setVoice]=useState<DemandVoice>('婉转声');
   const [greenNest,setGreenNest]=useState(false);
   const [error,setError]=useState('');
+  /** 批量标注结果（R4-10）：改了几颗、跳过几颗；与红色错误分开，成功也要能说明。 */
+  const [notice,setNotice]=useState('');
   /** 横屏右侧筛选栏：只有 opt-in 且确实横屏时出现，竖屏保持原来的上下排布。 */
   const landscape=useLandscape();
   const rail= collapsibleFilterRail && landscape;
@@ -160,8 +162,9 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   useEffect(()=>{
     if(labeling)requestAnimationFrame(()=>labelEditorRef.current?.scrollIntoView({block:'nearest'}));
   },[labeling,selected]);
-  const run=(action:unknown,done?:()=>void)=>{setError('');void mutate(action).then(done).catch(e=>setError(e instanceof Error?e.message:'操作失败'));};
+  const run=(action:unknown,done?:()=>void)=>{setError('');setNotice('');void mutate(action).then(done).catch(e=>setError(e instanceof Error?e.message:'操作失败'));};
   const beginLabeling=(target:WorkflowEgg)=>{
+    setNotice('');
     const stored=eggNatureNames(target.nature);
     setNatures(stored.length?stored:possibleEggNatures(target));
     setMoreNatures(false);
@@ -170,14 +173,32 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
     setGreenNest(isGreenNestEgg(target));
     setLabeling(true);
   };
-  const labelValues=(target:WorkflowEgg)=>labeling
-    ? {nature:natures.join(' / '),body,voice,greenNest}
+  /**
+   * 批量标注只写 性格 / 体型 / 声音（R4-10）：绿窝是「某一颗来自学院小窝」的逐颗事实，
+   * 不能把当前这颗的绿窝刷给同物种的每一颗。单颗标注仍带绿窝。
+   */
+  const labelCore=(target:WorkflowEgg)=>labeling
+    ? {nature:natures.join(' / '),body,voice}
     : {
         nature:eggNatureText(target),
         body:(target.body==='unknown'||!target.body?'大块头':target.body),
         voice:(target.voice==='unknown'||!target.voice?'婉转声':target.voice),
-        greenNest:isGreenNestEgg(target),
       };
+  const labelValues=(target:WorkflowEgg)=>({...labelCore(target),greenNest:labeling?greenNest:isGreenNestEgg(target)});
+  /**
+   * 「标注所有同类蛋」的作用域与蛋仓当前视图一致（R4-10）：同一游戏角色的同物种蛋。
+   * 换蛋中 / 已换出 / 不可交换的会被服务端跳过；这里先按同一口径算给用户看，避免整批报错。
+   */
+  const bulkLabel=(target:WorkflowEgg)=>{
+    const sameSpecies=eggs.filter(e=>e.eggGameId===target.eggGameId&&e.gameAccountKey===target.gameAccountKey);
+    const skipped=sameSpecies.filter(e=>!canCirculateEgg(e));
+    const reasons=[...new Set(skipped.map(e=>e.status==='reserved'?'换蛋中':e.status==='transferred'?'已换出':'不可交换'))];
+    const updated=sameSpecies.length-skipped.length;
+    run({type:'label-many',eggGameId:target.eggGameId,...(target.gameAccountKey?{gameAccountKey:target.gameAccountKey}:{}),...labelCore(target)},()=>{
+      setLabeling(false);
+      setNotice(`已更新 ${updated} 颗${skipped.length?`，跳过 ${skipped.length} 颗（${reasons.join(' / ')}）`:''}`);
+    });
+  };
   const characterBlock=characters&&characters.length>1&&onCharacterChange
     ? <EggCharacterSelect compact testId="egg-stock-character-rail" value={character??''} characters={characters} onChange={onCharacterChange}/>
     : null;
@@ -185,7 +206,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const filterBlock=<div className="flex flex-wrap gap-1" data-testid="egg-stock-filter-chips">{(['全部','已标注','未标注','自产','不可交换'] as const).map(f=><button key={f} type="button" aria-pressed={filter===f} onClick={()=>setFilter(f)} className={'min-h-7 rounded-md px-2 text-[11px] '+(filter===f?'bg-emerald-50 font-semibold text-emerald-700':'text-slate-500')}>{f}</button>)}</div>;
   const cards=visible.length?<div className="egg-stock-grid grid grid-cols-4 gap-1.5" data-testid="egg-stock-grid">{visible.map(e=>{
       const border=isGreenNestEgg(e)?'border-emerald-500':'border-slate-200';
-      return <button data-testid="stock-card" data-egg-id={e.id} key={e.id} type="button" onClick={()=>{setSelected(e.id);setLabeling(false);setError('');}} className={`relative flex min-w-0 flex-col items-center overflow-hidden rounded-lg border bg-white ${border}`}>
+      return <button data-testid="stock-card" data-egg-id={e.id} key={e.id} type="button" onClick={()=>{setSelected(e.id);setLabeling(false);setError('');setNotice('');}} className={`relative flex min-w-0 flex-col items-center overflow-hidden rounded-lg border bg-white ${border}`}>
         <div data-testid="stock-card-labels" className="flex h-4 w-full shrink-0 items-center justify-between gap-1 px-1">
           <span className="flex min-w-0 items-center gap-0.5">
             {isGreenNestEgg(e)?<img data-testid="stock-green-nest" src={GREEN_NEST_ICON} alt="绿窝" className="size-3.5 shrink-0 object-contain"/>:null}
@@ -243,7 +264,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
     {egg?<ModalSurface open title="蛋详情" size="xl" onClose={()=>setSelected(null)} footer={<div className="w-full">{canCirculateEgg(egg)?<>
     <div className="grid grid-cols-3 gap-2">
       <Button variant="secondary" size="sm" busy={busy} onClick={()=>labeling?run({type:'label',id:egg.id,...labelValues(egg)},()=>setLabeling(false)):beginLabeling(egg)}>标注此蛋</Button>
-      <Button variant="secondary" size="sm" busy={busy} onClick={()=>run({type:'label-many',eggGameId:egg.eggGameId,...labelValues(egg)},()=>setLabeling(false))}>标注所有同类蛋</Button>
+      <Button variant="secondary" size="sm" busy={busy} onClick={()=>bulkLabel(egg)}>标注所有同类蛋</Button>
       <Button size="sm" busy={busy} disabled={egg.location==='home'} title={egg.location==='home'?'收进背包后才能挂出':undefined} onClick={()=>run({type:'list',id:egg.id,listed:!egg.listed})}>{egg.listed?'取消挂出':'挂出'}</Button>
     </div>{egg.location==='home'?<p className="mt-1 text-center text-[11px] text-slate-500">收进背包后才能挂出</p>:null}
     </>:<span className="text-sm text-slate-500">{status(egg)}</span>}</div>}>
@@ -328,6 +349,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
           <label className="flex min-h-[24px] items-center gap-1.5 text-[11px] text-slate-500"><input type="checkbox" checked={greenNest} onChange={e=>setGreenNest(e.target.checked)} className="size-3.5 accent-emerald-600"/>绿窝蛋</label>
         </div>:null}
         {error?<p role="alert" className={`text-xs text-rose-600 ${landscape ? 'col-span-2' : ''}`}>{error}</p>:null}
+        {notice?<p role="status" data-testid="egg-label-notice" className={`text-xs text-emerald-700 ${landscape ? 'col-span-2' : ''}`}>{notice}</p>:null}
       </div>
     </ModalSurface>:null}
   </div>;

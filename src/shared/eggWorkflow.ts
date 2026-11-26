@@ -13,6 +13,17 @@ export interface WorkflowEgg extends EggRecord {
   capturedEggId?: string;
   /** 用户手动下架过这颗蛋；自动挂出必须尊重它。旧数据没有该字段 = 未下架。 */
   listingOptOut?: boolean;
+  /**
+   * 这颗蛋是「本轮之后第一次被采集确认出现」的，允许自动挂出（2026-11-26 R4-01）。
+   *
+   * `listingOptOut` 是本轮新加的字段，升级前手动下架过的蛋在旧数据里只有 `listed=false`、
+   * 没有 `listingOptOut`——单看这两个字段无法区分「新采集的蛋」与「升级前手动下架的蛋」，
+   * 直接自动挂出会把用户私藏的蛋挂到组内广场。所以：**没有这个标记的历史行一律视为已下架**，
+   * 只有 stock-sync 里第一次出现的新行才由服务端写入 `true`。
+   *
+   * 不回填 `listingOptOut`（那是「用户下架过」的事实，不能凭空写）。
+   */
+  autoListEligible?: boolean;
   /** Last complete capture no longer contains this reserved instance. */
   missingFromCapture?: boolean;
   /**
@@ -152,7 +163,10 @@ export const hasAcademyParent = (parents: EggParentsInfo | undefined): boolean =
  * 口径（用户 2026-11-24 定，别扩条件）：
  * - 家园蛋一律不挂：蛋重要收进背包才知道，满重蛋挂出去会亏；
  * - 只置 true，**永不置 false**——取消挂出只由用户手动下架或 reserved/transferred 状态机负责；
- * - 尊重 `listingOptOut`（用户手动下架过，例如满重蛋、绿窝蛋要收藏）；旧数据没有该字段 = 未下架；
+ * - 尊重 `listingOptOut`（用户手动下架过，例如满重蛋、绿窝蛋要收藏）；
+ * - **只挂「本轮以后第一次采集确认出现」的蛋**（`autoListEligible`）。升级前就存在的行没有这个
+ *   标记：旧数据的 `listed=false` 分不清「还没挂过」还是「用户手动下架过」，一律当已下架，
+ *   不做批量回填（R4-01）。用户手动挂出不受这条限制（`list` 动作直接写 `listed`）；
  * - 父母本**不是**门槛（后续支持用户自填）；
  * - 已换出 / 不可交换按现有 `canCirculateEgg`（status available 且非异色/特殊）排除。
  */
@@ -161,6 +175,8 @@ export function autoListStock(state: EggWorkflowState, accountId: string, gameAc
   const eggs = state.eggs.map(egg => {
     if (egg.accountId !== accountId || egg.gameAccountKey !== gameAccountKey) return egg;
     if (egg.listed || egg.listingOptOut || egg.missingFromCapture) return egg;
+    // 历史行（没有 autoListEligible）永远不自动挂出，见上面 R4-01 说明。
+    if (egg.autoListEligible !== true) return egg;
     if ((egg.location ?? 'bag') !== 'bag') return egg;
     if (!egg.obtainedAt || !hasMeasure(egg.weightGrams) || !hasMeasure(egg.heightCm) ||
         !hasVoice(egg) || !hasNature(egg)) return egg;
@@ -294,6 +310,8 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         if (!egg.obtainedAt) egg.obtainedAt = before.obtainedAt;
         if (!egg.capturedEggId) egg.capturedEggId = before.capturedEggId;
         if (egg.listingOptOut === undefined && before.listingOptOut === true) egg.listingOptOut = true;
+        // 自动挂出资格跟行走：老行没有这个字段就永远没有（历史数据 = 已下架，R4-01）。
+        if (before.autoListEligible === true) egg.autoListEligible = true;
         if (!egg.parents) egg.parents = before.parents;
         if (egg.heightCm === undefined) egg.heightCm = before.heightCm;
         if (egg.weightGrams === undefined) egg.weightGrams = before.weightGrams;
@@ -301,6 +319,9 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         const confirmed = Math.max(egg.lastConfirmedAt ?? 0, before.lastConfirmedAt ?? 0);
         if (confirmed > 0) egg.lastConfirmedAt = confirmed;
         egg.listed = before.listed && canCirculateEgg(egg);
+      } else {
+        // 本次采集第一次出现的蛋：从这一刻起允许自动挂出；历史行没有这个标记，永不自动挂出。
+        egg.autoListEligible = true;
       }
     }
     // 历史蛋可能只写了父母、漏了绿窝标记（rc 入库早期 / 抓包把绿窝绑在性格上）：
@@ -338,21 +359,40 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
     } else {
       if (typeof action.nature !== 'string' || action.nature.length > 32 || !isDemandBody(action.body) || !isDemandVoice(action.voice)) throw new Error('标注无效');
       if (action.greenNest !== undefined && typeof action.greenNest !== 'boolean') throw new Error('绿窝标注无效');
-      const targets = action.type === 'label'
-        ? [ownEgg(state, actor, str(action.id))]
-        : (() => {
-            if (!Number.isSafeInteger(action.eggGameId) || Number(action.eggGameId) <= 0) throw new Error('蛋物种无效');
-            const matched = state.eggs.filter(egg => egg.accountId === actor && egg.eggGameId === Number(action.eggGameId));
-            if (!matched.length) throw new Error('同类蛋不存在');
-            return matched;
-          })();
-      for (const egg of targets) {
+      if (action.type === 'label') {
+        const egg = ownEgg(state, actor, str(action.id));
         available(egg);
         Object.assign(egg, {
           nature: action.nature, body: action.body, voice: action.voice,
           ...(action.greenNest === undefined ? {} : { greenNest: action.greenNest }),
           confidence: 'manual', labelSource: 'manual',
         });
+      } else {
+        /**
+         * 「标注所有同类蛋」的作用域 = 当前账号 + 当前游戏角色（`gameAccountKey`）+ 同物种（R4-10）。
+         *
+         * 以前只按 `accountId + eggGameId` 取全部同种蛋：会改到用户在蛋仓里根本看不见的另一个
+         * 角色的蛋（界面已经宣布「蛋仓按角色查看」）。现在带上角色就只改这个角色；旧客户端不带
+         * `gameAccountKey` 时保持原来的全角色行为，不破坏兼容。
+         *
+         * 另外两条（R4-10）：
+         * - 绿窝是「某一颗来自学院小窝」的逐颗事实，**不随批量写**（这里忽略 `action.greenNest`）；
+         * - 换蛋中 / 已换出 / 不可交换的蛋跳过，不整批回滚（某颗被占用不该让整批失败）。
+         */
+        if (!Number.isSafeInteger(action.eggGameId) || Number(action.eggGameId) <= 0) throw new Error('蛋物种无效');
+        const role = action.gameAccountKey === undefined ? undefined : str(action.gameAccountKey);
+        const matched = state.eggs.filter(egg => egg.accountId === actor && egg.eggGameId === Number(action.eggGameId) &&
+          (role === undefined || egg.gameAccountKey === role));
+        if (!matched.length) throw new Error('同类蛋不存在');
+        const editable = matched.filter(canCirculateEgg);
+        // 一颗都改不了：不写库、不推进版本（空操作；服务端按 next === previous 判定）。
+        if (!editable.length) return previous;
+        for (const egg of editable) {
+          Object.assign(egg, {
+            nature: action.nature, body: action.body, voice: action.voice,
+            confidence: 'manual', labelSource: 'manual',
+          });
+        }
       }
     }
     return state;
