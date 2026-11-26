@@ -503,7 +503,7 @@ span {
   display: grid;
   grid-template-columns: repeat(auto-fill, 6.5rem);
   gap: 0.25rem;
-  justify-content: start;
+  justify-content: center;
 }
 
 /* ==========================================================================
