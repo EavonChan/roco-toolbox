@@ -4,7 +4,8 @@
 数据源（三份）：
 1. `D:\\download\\孵蛋攻略.xlsx`「按序号」表：档位 / 蛋组 / 性别比 / 大块头 / 满重 /
    小不点 / 满轻 / 区间数 / 孵蛋时间；
-2. `tmp-diag/analysis.json`：DATA1 已落位的「名称 → gameId」映射（直接复用，不重做）；
+2. `tmp-diag/analysis.json`：DATA1 已落位的「名称 → gameId」映射（直接复用，不重做；
+   攻略表笔误「雪绒鸟（冬鸟）」按用户 2026-11-27 拍板特批到 3533，见 `GAME_ID_OVERRIDES`）；
 3. `src/data/eggWeights.json`：只做交叉核对，同一物种数值不一致时**以攻略表为准**，
    差异写进 `tmp-diag/eggGuide-report.json`。
 
@@ -50,6 +51,13 @@ EXPECTED_HEADER = [
     "是否收集",
 ]
 
+# 攻略表笔误：游戏蛋配置里没有「雪绒鸟（冬鸟）」这种形态（只有春 / 夏 / 秋 /
+# 本来的样子）。用户 2026-11-27 拍板：冬鸟 = 「本来的样子」3533，与
+# productEggNatures.json 的 209 条口径一致。只在 analysis.json 没给出 gameId 时兜底。
+GAME_ID_OVERRIDES = {
+    "雪绒鸟（冬鸟）": 3533,
+}
+
 
 def is_number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
@@ -78,6 +86,11 @@ def read_rows() -> list[dict]:
                 f"第 {index} 行与 analysis.json 错位："
                 f"{row[1]}/{row[3]} vs {item.get('dexRaw')}/{item.get('name')}"
             )
+        game_id = item.get("gameId")
+        overridden = False
+        if game_id is None and row[3] in GAME_ID_OVERRIDES:
+            game_id = GAME_ID_OVERRIDES[row[3]]
+            overridden = True
         result.append(
             {
                 "row": index,
@@ -92,7 +105,8 @@ def read_rows() -> list[dict]:
                 "min": row[10],
                 "ranges": row[11],
                 "hatchHours": row[12],
-                "gameId": item.get("gameId"),
+                "gameId": game_id,
+                "gameIdOverride": overridden,
                 "analysisConfidence": item.get("confidence"),
                 "analysisMatchMethod": item.get("matchMethod"),
                 "analysisReason": item.get("matchReason"),
@@ -159,8 +173,18 @@ def main() -> None:
 
     guide: dict[str, dict] = {}
     unmapped = []
+    overrides = []
     for row in rows:
         game_id = row["gameId"]
+        if row["gameIdOverride"]:
+            overrides.append(
+                {
+                    "row": row["row"],
+                    "name": row["name"],
+                    "gameId": game_id,
+                    "reason": "攻略表笔误：游戏蛋配置无冬形态；用户 2026-11-27 拍板归到「本来的样子」3533",
+                }
+            )
         if game_id is None:
             unmapped.append(
                 {
@@ -219,6 +243,7 @@ def main() -> None:
             "mapped": len(ordered),
             "unmapped": len(unmapped),
             "unmappedRows": unmapped,
+            "overrides": overrides,
         },
         "weightsCrossCheck": weights_report,
     }
@@ -227,6 +252,7 @@ def main() -> None:
     lines = [
         f"攻略表行数：{len(rows)}；落位 gameId：{len(ordered)}；未落位：{len(unmapped)}",
         *[f"  未落位：第 {item['row']} 行 {item['name']}（{item['reason']}）" for item in unmapped],
+        *[f"  特批映射：第 {item['row']} 行 {item['name']} → {item['gameId']}（{item['reason']}）" for item in overrides],
         "",
         f"与 eggWeights 交叉核对：命中 {weights_report['checked']} 条；仅在攻略表 {weights_report['onlyInGuide']} 条；数值差异 {weights_report['diffRows']} 条",
         "规则：同一物种不一致时以攻略表为准",

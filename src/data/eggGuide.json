@@ -2054,6 +2054,19 @@
     "ranges": 16,
     "hatchHours": 12
   },
+  "3533": {
+    "tier": 2,
+    "eggGroups": [
+      "天空"
+    ],
+    "genderRatio": "5:5",
+    "big": 1.783,
+    "max": 1.8,
+    "small": 0.987,
+    "min": 0.97,
+    "ranges": 18,
+    "hatchHours": 8
+  },
   "3534": {
     "tier": 2,
     "eggGroups": [

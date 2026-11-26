@@ -17,11 +17,25 @@ interface EggGuideEntry {
 const guide = eggGuide as Record<string, EggGuideEntry>;
 
 describe('蛋品种静态资料（eggGuide.json）', () => {
-  test('覆盖率：攻略表 209 行，208 条按 gameId 落位', () => {
-    // 唯一缺口是「雪绒鸟（冬鸟）」：analysis.json 里图鉴只有春/夏/秋与「本来的样子」，
-    // 没有「冬天的样子」，DATA1 标为未匹配，这里不猜。
-    expect(Object.keys(guide)).toHaveLength(208);
+  test('覆盖率：攻略表 209 行，209 条按 gameId 落位', () => {
+    // 攻略表「雪绒鸟（冬鸟）」是笔误；游戏蛋配置没有冬形态，用户 2026-11-27 拍板
+    // 归到「本来的样子」3533（与 productEggNatures.json 的 209 条口径一致）。
+    expect(Object.keys(guide)).toHaveLength(209);
     expect(Object.keys(guide).every((key) => /^\d+$/.test(key))).toBe(true);
+  });
+
+  test('雪绒鸟（冬鸟）按用户拍板归到「本来的样子」3533', () => {
+    expect(guide['3533']).toMatchObject({
+      tier: 2,
+      eggGroups: ['天空'],
+      genderRatio: '5:5',
+      big: 1.783,
+      max: 1.8,
+      small: 0.987,
+      min: 0.97,
+      ranges: 18,
+      hatchHours: 8,
+    });
   });
 
   test('按 gameId 升序排列，便于 diff', () => {
