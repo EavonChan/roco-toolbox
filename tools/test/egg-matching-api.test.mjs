@@ -208,8 +208,58 @@ test('allocated real hatch eggs stay locked across groups and after receipt',asy
   await write('h','b',{type:'propose',id:'other',demandId:'d',giveId:'hatched',receiveId:'back-h'});
   assert.equal((await write('h','a',{type:'accept',id:'other'})).status,409);
   assert.equal((await write('g','a',{type:'receive',id:'t'})).status,200);
+  // 双向确认：只点一侧不解锁，另一侧不点就一直是 reserved
+  assert.equal((await write('h','a',{type:'accept',id:'other'})).status,409);
+  assert.equal((await write('g','b',{type:'confirm-return',id:'t'})).status,200);
   assert.equal((await write('h','a',{type:'accept',id:'other'})).status,409);
   assert.equal(db.sql.prepare("SELECT status FROM egg_matching_locks WHERE resource_id='egg:hatched'").get().status,'transferred');
+  db.sql.close();
+});
+
+/* ------------------------------------------------------------------ *
+ * 广场送蛋 + 免费领蛋（V8 一期）：结单双向、次数只给自己、送蛋投影
+ * ------------------------------------------------------------------ */
+test('双向确认才结单：次数双方各 +1 且只下发给本人；送蛋 open 全组可见', async () => {
+  const db = database();
+  const write = async (actor, action) => {
+    const read = await call(db, actor);
+    return call(db, actor, 'POST', { baseVersion: read.body.version, action });
+  };
+  await write('a', { type: 'publish', demand: { id: 'd', eggGameId: 3227, natures: [], body: '', voice: '', quantity: 1 } });
+  await write('a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,
+    eggs: [{ id: 'back', eggGameId: 3436, kind: 'ordinary' }] });
+  await write('b', { type: 'stock-sync', gameAccountKey: 'uid:2', capturedAt: 1, complete: true,
+    eggs: [{ id: 'give', eggGameId: 3227, kind: 'ordinary' }] });
+  await write('a', { type: 'list', id: 'back', listed: true });
+  await write('b', { type: 'propose', id: 't', demandId: 'd', giveId: 'give', receiveId: 'back' });
+  await write('a', { type: 'accept', id: 't' });
+
+  const half = await write('a', { type: 'receive', id: 't' });
+  assert.equal(half.status, 200);
+  assert.equal(half.body.state.trades[0].status, 'accepted');
+  assert.deepEqual(half.body.state.chances, { a: { balance: 0, grantedTotal: 0, claimedTotal: 0 } });
+  // 只有需求方能点「已收到」，换出方不能替他点
+  assert.equal((await write('b', { type: 'receive', id: 't' })).status, 400);
+
+  const done = await write('b', { type: 'confirm-return', id: 't' });
+  assert.equal(done.status, 200);
+  assert.equal(done.body.state.trades[0].status, 'done');
+  assert.deepEqual(done.body.state.chances, { b: { balance: 1, grantedTotal: 1, claimedTotal: 0 } });
+
+  const seenByA = await call(db, 'a');
+  assert.deepEqual(seenByA.body.state.chances, { a: { balance: 1, grantedTotal: 1, claimedTotal: 0 } });
+  assert.equal(seenByA.body.state.chances.b, undefined);      // 别人的次数不下发
+
+  // 送蛋：open 的蛋全组可见；自己送的蛋在自己名下、状态 reserved
+  await write('b', { type: 'stock-sync', gameAccountKey: 'uid:2', capturedAt: 2, complete: true,
+    eggs: [{ id: 'giftEgg', eggGameId: 3001, kind: 'ordinary' }] });
+  const published = await write('b', { type: 'gift-publish', id: 'gift', eggId: 'giftEgg', note: '送你' });
+  assert.equal(published.status, 200);
+  assert.equal(published.body.state.gifts[0].status, 'open');
+  assert.equal(published.body.state.eggs.find((egg) => egg.id === 'giftEgg').status, 'reserved');
+  const giftSeenByA = await call(db, 'a');
+  assert.equal(giftSeenByA.body.state.gifts.length, 1);
+  assert.equal(giftSeenByA.body.state.gifts[0].giverAccountId, 'b');
   db.sql.close();
 });
 

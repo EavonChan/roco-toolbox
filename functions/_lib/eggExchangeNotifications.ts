@@ -34,7 +34,9 @@ const eventOfAction = (type: string): ExchangeNotificationEvent | null => {
   if (type === 'propose' || type === 'request') return 'request';
   if (type === 'accept') return 'accepted';
   if (type === 'cancel') return 'cancelled';
-  if (type === 'receive') return 'completed';
+  // 结单改双向确认后，「完成」可能由任何一侧最后点下（receive / confirm-return）触发；
+  // 只有一个确认位时 trade.status 还是 accepted，下面的 done 校验会把它挡掉。
+  if (type === 'receive' || type === 'confirm-return') return 'completed';
   return null;
 };
 

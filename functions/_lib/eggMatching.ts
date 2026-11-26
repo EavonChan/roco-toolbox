@@ -1,4 +1,5 @@
 import { applyEggAction, emptyEggWorkflow, tradeLines, type EggWorkflowState } from '../../src/shared/eggWorkflow';
+import { chanceOf } from '../../src/shared/eggGift';
 import { migrateEggDemands, type LegacyDemandRow, type LegacyPlanRow, type LegacyCompletionRow } from '../../src/shared/eggMigration';
 import { isMember } from './motherGroupsStore';
 import { failCode, okJson } from './collectionGroupsHttp';
@@ -83,6 +84,17 @@ function visibleState(state: EggWorkflowState, accountId: string, members: Set<s
     lines:(state.lines??[]).filter(l=>members.has(l.accountId)),
     eggs: state.eggs.filter(e => e.accountId === accountId || (members.has(e.accountId) && e.listed && e.status === 'available')),
     trades: state.trades.filter(t => [t.demanderAccountId, t.supplierAccountId].includes(accountId)),
+    /**
+     * 广场送蛋：`open` 的蛋全组可见（正在送）；自己送的、自己领的都能看到全过程。
+     * 送蛋人已退组的那条不再露出来（方案 §10.1 #14 的「送出中的蛋隐藏」）。
+     */
+    gifts: (state.gifts ?? [])
+      .filter(g => members.has(g.giverAccountId) &&
+        (g.giverAccountId === accountId || g.claimerAccountId === accountId || g.status === 'open'))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 60),
+    // 次数只给自己：别的成员领了几次、还剩几次都不该下发。
+    chances: { [accountId]: chanceOf(state.chances, accountId) },
     orders: { [JSON.stringify(accountId)]: state.orders[JSON.stringify(accountId)] ?? [] },
     watermarks: Object.fromEntries(Object.entries(state.watermarks).filter(([key]) => {
       try { return JSON.parse(key)[0] === accountId; } catch { return false; }
@@ -176,8 +188,10 @@ export async function handleEggMatching(request: Request, env: Env, origin: stri
     // Check only the parties touched by this operation; an abandoned proposal must not freeze all members.
     const touchedDemand=current.state.demands.find(d=>d.id===action.demandId);
     const touchedTrade=current.state.trades.find(t=>t.id===action.id);
+    const touchedGift=(current.state.gifts??[]).find(g=>g.id===action.id);
     const parties=action.type==='propose'?[accountId,touchedDemand?.demanderAccountId]:action.type==='request'?[accountId,action.supplierAccountId]:
-      ['accept','place','allocate','receive','remind'].includes(action.type??'')&&touchedTrade?[touchedTrade.demanderAccountId,touchedTrade.supplierAccountId]:[];
+      ['accept','place','allocate','receive','confirm-return','remind'].includes(action.type??'')&&touchedTrade?[touchedTrade.demanderAccountId,touchedTrade.supplierAccountId]:
+      action.type==='gift-claim'&&touchedGift?[touchedGift.giverAccountId]:[];
     if(parties.some(id=>!id||!members.has(id)))return failCode(origin,409,'NOT_MEMBER','换蛋成员已退出小组');
     const next = applyEggAction(current.state, groupId, accountId, body.action, now);
     /**

@@ -17,8 +17,12 @@ test('authenticated spot flow reserves only after accepting and receipt is deman
   expect(state.eggs.every(e => e.status === 'reserved')).toBe(true);
   expect(() => applyEggAction(state, 'g', 'b', { type: 'receive', id: 't' }, 5)).toThrow();
   state = applyEggAction(state, 'g', 'a', { type: 'receive', id: 't' }, 5);
+  // 双向确认：需求方点完只记自己那侧，单子停在「交接中」，不结单、不发次数。
+  expect(state.trades[0]).toMatchObject({ status: 'accepted', giveConfirmedAt: 5 });
+  expect(state.demands[0].fulfilled).toBe(0);
+  state = applyEggAction(state, 'g', 'b', { type: 'confirm-return', id: 't' }, 6);
   expect(state.demands[0].fulfilled).toBe(1);
-  expect(applyEggAction(state, 'g', 'a', { type: 'receive', id: 't' }, 6).demands[0].fulfilled).toBe(1);
+  expect(applyEggAction(state, 'g', 'a', { type: 'receive', id: 't' }, 7).demands[0].fulfilled).toBe(1);
 });
 test('custom offer carries actual parent IDs; no receipt before placement, no special return egg', () => {
   let state = sync(initial(), 'a', 'back', 3436);
@@ -30,7 +34,10 @@ test('custom offer carries actual parent IDs; no receipt before placement, no sp
   state = applyEggAction(state, 'g', 'b', { type: 'place', id: 't' }, 5);
   state=sync(state,'b','hatched',3227);
   state=applyEggAction(state,'g','b',{type:'allocate',id:'t',eggId:'hatched'},6);
-  expect(applyEggAction(state, 'g', 'a', { type: 'receive', id: 't' }, 6).demands[0].status).toBe('fulfilled');
+  state = applyEggAction(state, 'g', 'a', { type: 'receive', id: 't' }, 6);
+  expect(state.trades[0].status).toBe('accepted');
+  state = applyEggAction(state, 'g', 'b', { type: 'confirm-return', id: 't' }, 6);
+  expect(state.demands[0].status).toBe('fulfilled');
 });
 test('cross-group actions, special eggs and spoofed owners cannot mutate state', () => {
   const state = sync(sync(initial(), 'a', 'back', 3436), 'b', 'give', 3227);
@@ -76,6 +83,8 @@ test('bilateral custom trades wait for both owners to place and only the demande
   state=sync(state,'b','hatched-b',3227);state=sync(state,'a','hatched-a',3436);
   state=applyEggAction(state,'g','b',{type:'allocate',id:'t',eggId:'hatched-b'},6);state=applyEggAction(state,'g','a',{type:'allocate',id:'t',eggId:'hatched-a'},6);
   state=applyEggAction(state,'g','a',{type:'receive',id:'t'},6);
+  expect(state.demands.map(d=>d.status)).toEqual(['open','open']);
+  state=applyEggAction(state,'g','b',{type:'confirm-return',id:'t'},6);
   expect(state.demands.map(d=>d.status)).toEqual(['fulfilled','fulfilled']);
 });
 
@@ -119,7 +128,10 @@ test('a demander can request listed supply; only the other member accepts and th
   expect(() => applyEggAction(state, 'g', 'a', { type: 'accept', id: 't' }, 4)).toThrow();
   state = applyEggAction(state, 'g', 'b', { type: 'accept', id: 't' }, 4);
   expect(state.eggs.every(e => e.status === 'reserved')).toBe(true);
-  expect(applyEggAction(state, 'g', 'a', { type: 'receive', id: 't' }, 5).demands[0].fulfilled).toBe(1);
+  state = applyEggAction(state, 'g', 'a', { type: 'receive', id: 't' }, 5);
+  expect(state.demands[0].fulfilled).toBe(0);
+  state = applyEggAction(state, 'g', 'b', { type: 'confirm-return', id: 't' }, 5);
+  expect(state.demands[0].fulfilled).toBe(1);
 });
 
 test('a request must match the supplier return demand when one is selected', () => {
@@ -325,6 +337,8 @@ test('a hatched egg is allocated once and cannot circulate again after custom re
   expect(state.eggs.find(e=>e.id==='hatched')?.status).toBe('reserved');
   expect(state.trades[0].give.id).toBe('hatched');
   state=applyEggAction(state,'g','a',{type:'receive',id:'t'},7);
+  expect(state.eggs.find(e=>e.id==='hatched')?.status).toBe('reserved');
+  state=applyEggAction(state,'g','b',{type:'confirm-return',id:'t'},7);
   expect(state.eggs.find(e=>e.id==='hatched')?.status).toBe('transferred');
   expect(()=>applyEggAction(state,'g','b',{type:'list',id:'hatched',listed:true},8)).toThrow();
 });
@@ -349,6 +363,9 @@ test('fulfilling a linked return demand cancels its obsolete proposals',()=>{
   for(const id of ['t1','t2'])state=applyEggAction(state,'g','b',{type:'propose',id,demandId:'d',giveId:'give',receiveId:'back',returnDemandId:'return'},3);
   state=applyEggAction(state,'g','a',{type:'accept',id:'t1'},4);
   state=applyEggAction(state,'g','a',{type:'receive',id:'t1'},5);
+  // 单边确认还没结单：竞争提案此时不能解散
+  expect(state.trades.find(t=>t.id==='t2')?.status).toBe('proposed');
+  state=applyEggAction(state,'g','b',{type:'confirm-return',id:'t1'},6);
   expect(state.trades.find(t=>t.id==='t2')?.status).toBe('cancelled');
 });
 
@@ -594,4 +611,186 @@ test('历史蛋手动挂出后照常生效，且后续采集不会把它降回�
 test('本次采集才出现的完整蛋仍然自动挂出（R4-01 反例）', () => {
   const state = bagSync(emptyEggWorkflow(), 'a', 1, [measured('fresh')]);
   expect(state.eggs[0]).toMatchObject({ id: 'fresh', listed: true, location: 'bag' });
+});
+
+/* ------------------------------------------------------------------ *
+ * 广场送蛋 + 免费领蛋（方案 V8 一期：数据与规则）
+ *
+ * 口径（docs/方案-广场送蛋与免费领蛋-2026-11-25.md §10.1）：
+ * - 结单 = 双向确认（receive + confirm-return → finalize），双方各 +1 次、每单 +1、无限累积；
+ * - 同一对成员 24h 只给 1 次；同一笔结单不重复发；同账号不能互换；
+ * - 老单（receive === null / legacy）单边结单但**不发**次数（R7）；
+ * - 送蛋不要求五项齐全；领取先到先得、扣 1 次；放弃退次数；领到的蛋不写库存。
+ * ------------------------------------------------------------------ */
+
+const chance = (state: EggWorkflowState, accountId: string) =>
+  state.chances?.[accountId] ?? { balance: 0, grantedTotal: 0, claimedTotal: 0 };
+
+/** 一单已接受的点对点换蛋：需求方 a、换出方 b。 */
+const acceptedSpot = (): EggWorkflowState => {
+  let state = sync(sync(initial(), 'a', 'back', 3436), 'b', 'give', 3227);
+  state = applyEggAction(state, 'g', 'a', { type: 'list', id: 'back', listed: true }, 2);
+  state = applyEggAction(state, 'g', 'b', { type: 'propose', id: 't', demandId: 'd', giveId: 'give', receiveId: 'back' }, 3);
+  return applyEggAction(state, 'g', 'a', { type: 'accept', id: 't' }, 4);
+};
+
+test('结单改成双向确认：两边各点一次才 done，双方各 +1 次免费领蛋', () => {
+  let state = applyEggAction(acceptedSpot(), 'g', 'a', { type: 'receive', id: 't' }, 5);
+  expect(state.trades[0]).toMatchObject({ status: 'accepted', giveConfirmedAt: 5 });
+  expect(state.demands[0].fulfilled).toBe(0);
+  expect(state.eggs.every(egg => egg.status === 'reserved')).toBe(true);
+  expect(chance(state, 'a')).toMatchObject({ balance: 0, grantedTotal: 0 });
+  expect(chance(state, 'b')).toMatchObject({ balance: 0, grantedTotal: 0 });
+
+  state = applyEggAction(state, 'g', 'b', { type: 'confirm-return', id: 't' }, 6);
+  expect(state.trades[0]).toMatchObject({ status: 'done', completedAt: 6, chanceGranted: true });
+  expect(state.trades[0].returnConfirmedAt).toBe(6);
+  expect(state.demands[0].fulfilled).toBe(1);
+  expect(state.eggs.every(egg => egg.status === 'transferred')).toBe(true);
+  expect(chance(state, 'a')).toMatchObject({ balance: 1, grantedTotal: 1 });
+  expect(chance(state, 'b')).toMatchObject({ balance: 1, grantedTotal: 1 });
+});
+
+test('换出方先点也一样；重复点确认是幂等的，不会重复发次数', () => {
+  let state = applyEggAction(acceptedSpot(), 'g', 'b', { type: 'confirm-return', id: 't' }, 5);
+  expect(state.trades[0]).toMatchObject({ status: 'accepted', returnConfirmedAt: 5 });
+  expect(state.demands[0].fulfilled).toBe(0);
+  state = applyEggAction(state, 'g', 'a', { type: 'receive', id: 't' }, 6);
+  expect(state.trades[0].status).toBe('done');
+  expect(chance(state, 'a').balance).toBe(1);
+
+  const done = state;
+  expect(applyEggAction(done, 'g', 'a', { type: 'receive', id: 't' }, 7)).toBe(done);
+  expect(applyEggAction(done, 'g', 'b', { type: 'confirm-return', id: 't' }, 7)).toBe(done);
+  expect(chance(done, 'a')).toMatchObject({ balance: 1, grantedTotal: 1 });
+  expect(chance(done, 'b')).toMatchObject({ balance: 1, grantedTotal: 1 });
+});
+
+test('同一对成员 24h 内第二单：照常结单但不发次数；过了 24h 才再发', () => {
+  const state0: EggWorkflowState = { ...initial() };
+  state0.demands[0].quantity = 3;
+  let state = applyEggAction(state0, 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,
+    eggs: [stock('back1', 3436), stock('back2', 3436), stock('back3', 3436)] }, 1);
+  state = applyEggAction(state, 'g', 'b', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1, complete: true,
+    eggs: [stock('give1', 3227), stock('give2', 3227), stock('give3', 3227)] }, 1);
+  for (const id of ['back1', 'back2', 'back3']) state = applyEggAction(state, 'g', 'a', { type: 'list', id, listed: true }, 2);
+  const settle = (base: EggWorkflowState, n: number, at: number) => {
+    let next = applyEggAction(base, 'g', 'b', { type: 'propose', id: 't' + n, demandId: 'd', giveId: 'give' + n, receiveId: 'back' + n }, at);
+    next = applyEggAction(next, 'g', 'a', { type: 'accept', id: 't' + n }, at);
+    next = applyEggAction(next, 'g', 'a', { type: 'receive', id: 't' + n }, at);
+    return applyEggAction(next, 'g', 'b', { type: 'confirm-return', id: 't' + n }, at);
+  };
+  state = settle(state, 1, 10);
+  expect(state.trades.find(t => t.id === 't1')).toMatchObject({ status: 'done', chanceGranted: true });
+  expect(chance(state, 'a').balance).toBe(1);
+
+  // 第 2 单：同一对成员、24h 内 → 结单照常、凭证照写，但不发次数
+  state = settle(state, 2, 20);
+  expect(state.trades.find(t => t.id === 't2')).toMatchObject({ status: 'done', chanceSuppressed: 'pair-24h' });
+  expect(chance(state, 'a')).toMatchObject({ balance: 1, grantedTotal: 1 });
+  expect(chance(state, 'b')).toMatchObject({ balance: 1, grantedTotal: 1 });
+
+  // 第 3 单：距第 2 单满 24h（边界：正好 24h 不算「24h 内」，可以再发）
+  state = settle(state, 3, 20 + 24 * 60 * 60 * 1000);
+  expect(state.trades.find(t => t.id === 't3')).toMatchObject({ status: 'done', chanceGranted: true });
+  expect(chance(state, 'a')).toMatchObject({ balance: 2, grantedTotal: 2 });
+  expect(state.demands[0].fulfilled).toBe(3);
+});
+
+test('老单（单边 / 代孵迁移）仍单边结单，但绝不发免费领蛋次数（R7）', () => {
+  const legacy: EggWorkflowState = { ...initial(), trades: [{
+    id: 't', groupId: 'g', demandId: 'd', supplierAccountId: 'b', demanderAccountId: 'a',
+    give: { id: 'give', accountId: 'b', eggGameId: 3227, nature: '固执', body: '', voice: '',
+      provenance: 'unknown', confidence: 'unknown', status: 'reserved' },
+    receive: null, type: 'spot', status: 'accepted', placed: true, createdAt: 1, legacy: true }] };
+  const done = applyEggAction(legacy, 'g', 'a', { type: 'receive', id: 't' }, 5);
+  expect(done.trades[0]).toMatchObject({ status: 'done', completedAt: 5 });
+  expect(done.demands[0].fulfilled).toBe(1);
+  expect(done.trades[0].chanceGranted).toBeUndefined();
+  expect(chance(done, 'a').balance).toBe(0);
+  expect(chance(done, 'b').balance).toBe(0);
+  // 老单没有「换回的蛋」，换出方那一侧不存在确认
+  expect(() => applyEggAction(legacy, 'g', 'b', { type: 'confirm-return', id: 't' }, 5)).toThrow();
+  // 单边确认过的老单被别人点了第二下，也不会补发次数
+  expect(applyEggAction(done, 'g', 'a', { type: 'receive', id: 't' }, 7)).toBe(done);
+});
+
+test('一方确认后取消：蛋不复活（直接 transferred）、次数不发也不退', () => {
+  let state = applyEggAction(acceptedSpot(), 'g', 'a', { type: 'receive', id: 't' }, 5);
+  const cancelled = applyEggAction(state, 'g', 'b', { type: 'cancel', id: 't' }, 6);
+  expect(cancelled.trades[0].status).toBe('cancelled');
+  expect(cancelled.eggs.every(egg => egg.status === 'transferred')).toBe(true);
+  expect(chance(cancelled, 'a').balance).toBe(0);
+  expect(chance(cancelled, 'b').balance).toBe(0);
+  // 谁都没确认过才把蛋放回可流通
+  const plain = applyEggAction(acceptedSpot(), 'g', 'b', { type: 'cancel', id: 't' }, 6);
+  expect(plain.eggs.every(egg => egg.status === 'available')).toBe(true);
+});
+
+test('同一成员不能和自己换蛋（自换直接拒绝）', () => {
+  let state = applyEggAction(initial(), 'g', 'a', { type: 'stock-sync', gameAccountKey: 'uid:1',
+    capturedAt: 1, complete: true, eggs: [stock('one', 3436), stock('two', 3227)] }, 1);
+  state = applyEggAction(state, 'g', 'a', { type: 'list', id: 'one', listed: true }, 2);
+  expect(() => applyEggAction(state, 'g', 'a', { type: 'propose', id: 't', demandId: 'd', giveId: 'two', receiveId: 'one' }, 3)).toThrow();
+  expect(() => applyEggAction(state, 'g', 'a', { type: 'request', id: 't', demandId: 'd', supplierAccountId: 'a', giveId: 'two', receiveId: 'one' }, 3)).toThrow();
+});
+
+test('送蛋：发布锁蛋（不要求五项齐全）、领取扣 1 次、先到先得、放弃退次数、撤回恢复挂出', () => {
+  let state = sync(sync(initial(), 'a', 'back', 3436), 'b', 'give', 3227);
+  state = applyEggAction(state, 'g', 'b', { type: 'list', id: 'give', listed: true }, 2);
+  state = applyEggAction(state, 'g', 'b', { type: 'gift-publish', id: 'gift', eggId: 'give', note: '送你了' }, 3);
+  expect(state.eggs.find(egg => egg.id === 'give')).toMatchObject({ status: 'reserved', listed: false });
+  expect(state.gifts?.[0]).toMatchObject({
+    id: 'gift', status: 'open', giverAccountId: 'b', eggId: 'give', wasListed: true, note: '送你了',
+  });
+
+  // 自己不能领自己的蛋
+  expect(() => applyEggAction(state, 'g', 'b', { type: 'gift-claim', id: 'gift', claimId: 'c1' }, 4)).toThrow(/自己/);
+  // 没有次数领不了
+  expect(() => applyEggAction(state, 'g', 'a', { type: 'gift-claim', id: 'gift', claimId: 'c1' }, 4)).toThrow(/次数/);
+
+  state.chances = { a: { balance: 1, grantedTotal: 1, claimedTotal: 0 } };
+  state = applyEggAction(state, 'g', 'a', { type: 'gift-claim', id: 'gift', claimId: 'c1' }, 4);
+  expect(state.chances?.a).toMatchObject({ balance: 0, claimedTotal: 1 });
+  expect(state.gifts?.[0]).toMatchObject({ status: 'claimed', claimId: 'c1', claimerAccountId: 'a', claimedAt: 4 });
+  // 领到的蛋不写库存：蛋还在送蛋人名下、只是锁着
+  expect(state.eggs.find(egg => egg.id === 'give')).toMatchObject({ accountId: 'b', status: 'reserved' });
+  expect(state.eggs.some(egg => egg.accountId === 'a' && egg.id === 'give')).toBe(false);
+
+  // 同一笔领取重放：不重复扣次数
+  const claimed = state;
+  expect(applyEggAction(claimed, 'g', 'a', { type: 'gift-claim', id: 'gift', claimId: 'c1' }, 5)).toBe(claimed);
+  expect(chance(claimed, 'a').balance).toBe(0);
+  // 先到先得：已被领走，别人不能再领
+  expect(() => applyEggAction(claimed, 'g', 'c', { type: 'gift-claim', id: 'gift', claimId: 'c2' }, 5)).toThrow(/领走/);
+
+  // 放弃：次数退回、蛋回广场
+  state = applyEggAction(claimed, 'g', 'a', { type: 'gift-cancel', id: 'gift' }, 5);
+  expect(state.chances?.a).toMatchObject({ balance: 1, claimedTotal: 0 });
+  expect(state.gifts?.[0]).toMatchObject({ status: 'open', releasedAt: 5 });
+  expect(state.gifts?.[0].claimerAccountId).toBeUndefined();
+  // 重复放弃不会二次退次数
+  expect(() => applyEggAction(state, 'g', 'a', { type: 'gift-cancel', id: 'gift' }, 6)).toThrow();
+
+  // 撤回：蛋回 available，恢复发布前的挂出状态
+  state = applyEggAction(state, 'g', 'b', { type: 'gift-cancel', id: 'gift' }, 6);
+  expect(state.gifts?.[0]).toMatchObject({ status: 'cancelled', cancelledAt: 6 });
+  expect(state.eggs.find(egg => egg.id === 'give')).toMatchObject({ status: 'available', listed: true });
+});
+
+test('家园蛋与异色蛋不能送；被领走之后送蛋人不能单方撤回', () => {
+  let state = applyEggAction(initial(), 'g', 'b', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 1,
+    complete: false, homeComplete: true, eggs: [{ ...stock('home', 3227), location: 'home' }] }, 1);
+  expect(() => applyEggAction(state, 'g', 'b', { type: 'gift-publish', id: 'g1', eggId: 'home' }, 2)).toThrow(/家园/);
+  const shiny = applyEggAction(state, 'g', 'b', { type: 'stock-sync', gameAccountKey: 'uid:1', capturedAt: 2,
+    complete: true, eggs: [{ ...stock('shiny', 3227), kind: 'shiny' }] }, 2);
+  expect(() => applyEggAction(shiny, 'g', 'b', { type: 'gift-publish', id: 'g2', eggId: 'shiny' }, 3)).toThrow();
+
+  let claimed = applyEggAction(applyEggAction(initial(), 'g', 'b', { type: 'stock-sync', gameAccountKey: 'uid:1',
+    capturedAt: 1, complete: true, eggs: [stock('give', 3227)] }, 1), 'g', 'b',
+  { type: 'gift-publish', id: 'gift', eggId: 'give' }, 2);
+  claimed.chances = { a: { balance: 1, grantedTotal: 1, claimedTotal: 0 } };
+  claimed = applyEggAction(claimed, 'g', 'a', { type: 'gift-claim', id: 'gift', claimId: 'c1' }, 3);
+  expect(() => applyEggAction(claimed, 'g', 'b', { type: 'gift-cancel', id: 'gift' }, 4)).toThrow(/领走|回收/);
+  expect(claimed.eggs.find(egg => egg.id === 'give')?.status).toBe('reserved');
 });

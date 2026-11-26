@@ -2,6 +2,10 @@ import type { LegacyEggHistory } from './eggMigration';
 import type { PatrolTaskStatus } from './eggPatrol';
 import { isDemandBody, isDemandVoice } from './collectionGroups';
 import { canCirculateEgg, canMatchDemand, createDemand, type EggDemand, type EggParentInfo, type EggParentsInfo, type EggRecord } from './eggMatching';
+import {
+  CHANCE_PER_TRADE, PAIR_CHANCE_WINDOW_MS, chanceOf, exchangeKeyOf, giftClaimBlockedReason, memberPairKeyOf,
+  type EggChance, type EggGift,
+} from './eggGift';
 
 export interface WorkflowEgg extends EggRecord {
   gameAccountKey: string;
@@ -48,6 +52,19 @@ export interface WorkflowTrade {
   returnLine?:EggLine; returnPlaced?:boolean;
   lineOfferId?:string; returnLineOfferId?:string;
   completedAt?:number; giveEggId?:string; returnEggId?:string;
+  /**
+   * 双向确认（方案 §2.1）：两个时间戳各记一侧。
+   * - `giveConfirmedAt`：需求方点了「已收到」（S 给的蛋到手）；
+   * - `returnConfirmedAt`：换出方点了「已收到」（D 给的蛋到手）。
+   * 两个都齐才 `finalize`；只有一个时单子停在「交接中」（可催、可取消）。
+   */
+  giveConfirmedAt?: number;
+  returnConfirmedAt?: number;
+  /** 本单已经发过免费领蛋次数（幂等标记：重放 / 重开都不再发）。 */
+  chanceGranted?: true;
+  chanceGrantedAt?: number;
+  /** 本单结单了但没发次数：同一对成员 24h 内的第 2 单，或同一对蛋已经发过。 */
+  chanceSuppressed?: 'pair-24h' | 'egg-pair';
 }
 export interface EggWorkflowState {
   demands: EggDemand[]; eggs: WorkflowEgg[]; trades: WorkflowTrade[];
@@ -56,8 +73,12 @@ export interface EggWorkflowState {
   legacyHistory?:LegacyEggHistory[];
   patrol?:PatrolTaskStatus[];
   reminders?:{tradeId:string;reminderAt:number;status:'pending'|'sent'|'failed'|'unbound'}[];
+  /** 广场送蛋（一期只有数据与动作，界面在二期）。 */
+  gifts?: EggGift[];
+  /** 免费领蛋次数余额（按成员）；GET 只下发自己的那一份。 */
+  chances?: Record<string, EggChance>;
 }
-export const emptyEggWorkflow = (): EggWorkflowState => ({ demands: [], eggs: [], trades: [], watermarks: {}, orders: {} });
+export const emptyEggWorkflow = (): EggWorkflowState => ({ demands: [], eggs: [], trades: [], watermarks: {}, orders: {}, gifts: [], chances: {} });
 
 const record = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('参数无效');
@@ -238,6 +259,171 @@ function checkParentCapacity(state:EggWorkflowState,trade:WorkflowTrade){
   }
 }
 
+/* ── 广场送蛋 + 免费领蛋（方案 V8 一期：数据与规则） ─────────────────── */
+
+const findGift = (state: EggWorkflowState, groupId: string, id: unknown): EggGift => {
+  const giftId = str(id);
+  const gift = (state.gifts ?? []).find(g => g.id === giftId && g.groupId === groupId);
+  if (!gift) throw new Error('送蛋记录不存在或小组不匹配');
+  return gift;
+};
+
+/** 撤回 / 放弃时把蛋放回可流通：`listed` 恢复成发布前的样子（方案 §11）。 */
+const releaseGiftEgg = (state: EggWorkflowState, gift: EggGift) => {
+  const egg = state.eggs.find(e => e.accountId === gift.giverAccountId && e.id === gift.eggId);
+  if (!egg) return;
+  egg.status = 'available';
+  egg.listed = gift.wasListed === true && canCirculateEgg(egg);
+};
+
+const bumpChance = (state: EggWorkflowState, accountId: string, delta: 1 | -1) => {
+  const current = chanceOf(state.chances, accountId);
+  state.chances = { ...(state.chances ?? {}), [accountId]: {
+    balance: Math.max(0, current.balance + delta * CHANCE_PER_TRADE),
+    grantedTotal: current.grantedTotal,
+    claimedTotal: Math.max(0, current.claimedTotal - delta * CHANCE_PER_TRADE),
+  } };
+};
+
+/**
+ * 送蛋三动作（方案 §8）：发布即锁蛋、领取先到先得且扣 1 次、撤回 / 放弃。
+ *
+ * 一期只做到「领取」：领取后的「已收到」结单（`gift-complete`）和界面一起在二期上，
+ * 所以现在没有把蛋记成 `transferred` 的入口，蛋保持 `reserved` 直到二期结单或放弃。
+ */
+function applyGiftAction(previous: EggWorkflowState, state: EggWorkflowState, groupId: string, actor: string,
+  action: Record<string, unknown>, now: number): EggWorkflowState {
+  const gifts = state.gifts ?? [];
+  if (action.type === 'gift-publish') {
+    const id = str(action.id);
+    if (gifts.some(g => g.id === id)) throw new Error('送蛋编号重复');
+    const egg = ownEgg(state, actor, str(action.eggId));
+    if ((egg.location ?? 'bag') !== 'bag') throw new Error('家园蛋不能送，先收进背包');
+    // 只拦「不可流通」：不要求五项齐全（五项齐全只是自动挂出的门槛）。
+    available(egg);
+    if (action.note !== undefined && (typeof action.note !== 'string' || action.note.length > 60)) throw new Error('说明最多 60 字');
+    const note = typeof action.note === 'string' ? action.note.trim() : '';
+    const gift: EggGift = {
+      id, groupId, giverAccountId: actor, eggId: egg.id, egg: { ...egg },
+      wasListed: egg.listed === true, status: 'open', createdAt: now,
+      ...(note ? { note } : {}),
+    };
+    egg.status = 'reserved';
+    egg.listed = false;
+    state.gifts = [...gifts, gift];
+    return state;
+  }
+  const gift = findGift(state, groupId, action.id);
+  if (action.type === 'gift-claim') {
+    const claimId = str(action.claimId);
+    // 同一笔领取重放：不重复扣次数。
+    if (gift.status === 'claimed' && gift.claimerAccountId === actor && gift.claimId === claimId) return previous;
+    const blocked = giftClaimBlockedReason(gift, actor);
+    if (blocked) throw new Error(blocked);
+    const chance = chanceOf(state.chances, actor);
+    if (chance.balance < 1) throw new Error('免费领蛋次数不足，先换一单 +1 次');
+    const egg = state.eggs.find(e => e.accountId === gift.giverAccountId && e.id === gift.eggId);
+    if (!egg || egg.status !== 'reserved') throw new Error('这颗蛋已经不在广场上了');
+    bumpChance(state, actor, -1);
+    gift.status = 'claimed';
+    gift.claimId = claimId;
+    gift.claimedAt = now;
+    gift.claimerAccountId = actor;
+    if (action.gameAccountKey !== undefined) gift.claimGameAccountKey = str(action.gameAccountKey);
+    return state;
+  }
+  // gift-cancel：送出方撤回（领取前）/ 领取人放弃（领取后，次数退回、蛋回广场）。
+  if (actor === gift.giverAccountId) {
+    if (gift.status === 'cancelled') return previous;
+    if (gift.status !== 'open') throw new Error('这颗蛋已经被领走了，7 天后才能回收');
+    releaseGiftEgg(state, gift);
+    gift.status = 'cancelled';
+    gift.cancelledAt = now;
+    return state;
+  }
+  if (gift.claimerAccountId === actor && gift.status === 'claimed') {
+    bumpChance(state, actor, 1);
+    gift.status = 'open';
+    gift.releasedAt = now;
+    gift.abandonCount = (gift.abandonCount ?? 0) + 1;
+    delete gift.claimId; delete gift.claimedAt; delete gift.claimerAccountId; delete gift.claimGameAccountKey;
+    return state;
+  }
+  throw new Error('无权撤回这颗送蛋');
+}
+
+/**
+ * 结单：两侧确认位齐了才走到这里（老单单边结单也走这里）。
+ * done、两侧蛋 transferred、两边需求 +1、双方各 +1 次（发次数见 `grantChances`）。
+ */
+function finalizeTrade(state: EggWorkflowState, trade: WorkflowTrade, demand: EggDemand, now: number) {
+  trade.status = 'done';
+  trade.completedAt = now;
+  demand.fulfilled++;
+  if (trade.returnDemandId) {
+    const backDemand = state.demands.find(d => d.id === trade.returnDemandId);
+    if (!backDemand) throw new Error('换回的需求不存在');
+    backDemand.fulfilled++;
+    if (backDemand.fulfilled >= backDemand.quantity) {
+      backDemand.status = 'fulfilled';
+      state.trades.filter(t => (t.demandId === backDemand.id || t.returnDemandId === backDemand.id) && t.status === 'proposed')
+        .forEach(t => { t.status = 'cancelled'; });
+    }
+  }
+  if (demand.fulfilled >= demand.quantity) {
+    demand.status = 'fulfilled';
+    state.trades.filter(t => (t.demandId === demand.id || t.returnDemandId === demand.id) && t.status === 'proposed')
+      .forEach(t => { t.status = 'cancelled'; });
+  }
+  for (const egg of state.eggs) {
+    if (same(egg, trade.give) || (trade.receive && same(egg, trade.receive))) {
+      egg.status = 'transferred';
+      egg.listed = false;
+    }
+  }
+  grantChances(state, trade, now);
+}
+
+/**
+ * 结单时发次数（方案 §4.4 / §10.1 #3 #6 #16）。
+ *
+ * 三条防刷都只靠 state 里的标记，一期不落表：
+ * 1. `trade.chanceGranted`：同一笔结单重放不再发；
+ * 2. `exchangeKeyOf(...)`：同一对蛋（取消后重开）只发一次；
+ * 3. 同一对成员 24h 内只给 1 次 —— 结单照常、次数不发（`chanceSuppressed = 'pair-24h'`）。
+ *
+ * 老单（R7）只有一颗蛋，既证明不了双向也凑不出对，**一发都不发**。
+ */
+function grantChances(state: EggWorkflowState, trade: WorkflowTrade, now: number) {
+  if (!trade.receive || trade.legacy) return;
+  if (trade.chanceGranted) return;
+  const exchangeKey = exchangeKeyOf(trade.give, trade.receive);
+  if (state.trades.some(t => t.id !== trade.id && t.chanceGranted === true && t.receive &&
+      exchangeKeyOf(t.give, t.receive) === exchangeKey)) {
+    trade.chanceSuppressed = 'egg-pair';
+    return;
+  }
+  const pair = memberPairKeyOf(trade.supplierAccountId, trade.demanderAccountId);
+  if (state.trades.some(t => t.id !== trade.id && t.status === 'done' &&
+      memberPairKeyOf(t.supplierAccountId, t.demanderAccountId) === pair &&
+      (t.completedAt ?? 0) > now - PAIR_CHANCE_WINDOW_MS)) {
+    trade.chanceSuppressed = 'pair-24h';
+    return;
+  }
+  const chances = { ...(state.chances ?? {}) };
+  for (const accountId of [trade.supplierAccountId, trade.demanderAccountId]) {
+    const current = chanceOf(chances, accountId);
+    chances[accountId] = {
+      balance: current.balance + CHANCE_PER_TRADE,
+      grantedTotal: current.grantedTotal + CHANCE_PER_TRADE,
+      claimedTotal: current.claimedTotal,
+    };
+  }
+  state.chances = chances;
+  trade.chanceGranted = true;
+  trade.chanceGrantedAt = now;
+}
+
 /** All identity arguments come from authenticated API; rejects raw field/role spoofing. */
 export function applyEggAction(previous: EggWorkflowState, groupId: string, actor: string, input: unknown, now: number): EggWorkflowState {
   const action = record(input);
@@ -252,6 +438,10 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
   if (action.type === 'publish-batch') {
     if (!Array.isArray(action.demands) || !action.demands.length || action.demands.length > 50) throw new Error('每批请选择1至50项需求');
     return action.demands.reduce((next,demand)=>applyEggAction(next,groupId,actor,{type:'publish',demand},now),state);
+  }
+  // 广场送蛋：发布 / 领取 / 撤回·放弃（方案 V8 一期只有数据与规则，界面在二期）。
+  if (action.type === 'gift-publish' || action.type === 'gift-claim' || action.type === 'gift-cancel') {
+    return applyGiftAction(previous, state, groupId, actor, action, now);
   }
   const getDemand = (id: unknown) => {
     const demand = state.demands.find(d => d.id === str(id));
@@ -518,31 +708,38 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
     egg.status='reserved';egg.listed=false;
     if(supplier){trade.give={...egg};trade.giveEggId=egg.id;}else{trade.receive={...egg};trade.returnEggId=egg.id;}
     state.eggs=state.eggs.filter(e=>!(e.status==='available'&&e.missingFromCapture));
-  } else if (action.type === 'receive') {
-    if (actor !== trade.demanderAccountId) throw new Error('仅需求方可以确认收到');
+  } else if (action.type === 'receive' || action.type === 'confirm-return') {
+    const fromDemander = action.type === 'receive';
+    if (fromDemander ? actor !== trade.demanderAccountId : actor !== trade.supplierAccountId) {
+      throw new Error(fromDemander ? '仅需求方可以确认收到' : '仅换出方可以确认收到');
+    }
     if (trade.status === 'done') return previous;
     if (trade.status !== 'accepted') throw new Error('任务尚未接受');
+    // 两侧确认套同一套前置条件（方案 §2.6）：该上窝的已上窝、该分配现蛋的已分配。
     if (((trade.line||trade.legacy)&&!trade.placed)||(trade.returnLine&&!trade.returnPlaced)) throw new Error('现孵任务尚未上窝');
     if((trade.line&&!trade.giveEggId)||(trade.returnLine&&!trade.returnEggId))throw new Error('请现孵方先分配现蛋');
-    trade.status = 'done';trade.completedAt=now; demand.fulfilled++;
-    if (trade.returnDemandId) {
-      const backDemand = getDemand(trade.returnDemandId);
-      backDemand.fulfilled++;
-      if (backDemand.fulfilled >= backDemand.quantity) {
-        backDemand.status = 'fulfilled';
-        state.trades.filter(t => (t.demandId === backDemand.id || t.returnDemandId === backDemand.id) && t.status === 'proposed').forEach(t => { t.status = 'cancelled'; });
-      }
+    // 老单（规则 R7）：数据里只有一颗蛋，换出方那一侧没有蛋可确认，也不发次数。
+    const legacySingle = !trade.receive || trade.legacy === true;
+    if (!fromDemander && legacySingle) throw new Error('老任务没有换回的蛋，无需确认');
+    // 同一侧重复点：空操作，不推进 version。
+    if (fromDemander ? trade.giveConfirmedAt != null : trade.returnConfirmedAt != null) return previous;
+    if (fromDemander) trade.giveConfirmedAt = now;
+    else trade.returnConfirmedAt = now;
+    // 老单单边结单；新单要两个确认位都齐（方案 §2.1）。
+    if (legacySingle || (trade.giveConfirmedAt != null && trade.returnConfirmedAt != null)) {
+      finalizeTrade(state, trade, demand, now);
     }
-    if (demand.fulfilled >= demand.quantity) {
-      demand.status = 'fulfilled';
-      state.trades.filter(t => (t.demandId === demand.id || t.returnDemandId === demand.id) && t.status === 'proposed').forEach(t => { t.status = 'cancelled'; });
-    }
-    for (const egg of state.eggs) if (same(egg, trade.give) || (trade.receive && same(egg, trade.receive))) { egg.status = 'transferred'; egg.listed = false; }
   } else if (action.type === 'cancel') {
     if (trade.status === 'done') throw new Error('已完成任务不可取消');
+    // 已有一方确认过：蛋已经交出去了，取消时直接 transferred，不能复活（方案 §2.2）。
+    const halfDone = trade.giveConfirmedAt != null || trade.returnConfirmedAt != null;
     trade.status = 'cancelled';
-    for (const egg of state.eggs) if (egg.status === 'reserved' && (same(egg, trade.give) || (trade.receive && same(egg, trade.receive))) &&
-      !state.trades.some(t => active(t) && (same(egg, t.give) || (t.receive && same(egg, t.receive))))) egg.status = 'available';
+    for (const egg of state.eggs) {
+      if (!(same(egg, trade.give) || (trade.receive && same(egg, trade.receive)))) continue;
+      if (halfDone) { egg.status = 'transferred'; egg.listed = false; continue; }
+      if (egg.status === 'reserved' &&
+        !state.trades.some(t => active(t) && (same(egg, t.give) || (t.receive && same(egg, t.receive))))) egg.status = 'available';
+    }
     state.eggs = state.eggs.filter(egg => !(egg.status === 'available' && egg.missingFromCapture));
   } else throw new Error('不支持的操作');
   return state;
