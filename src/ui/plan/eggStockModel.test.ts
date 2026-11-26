@@ -327,16 +327,44 @@ describe('egg stock snapshots', () => {
     expect(back.eggs[0]).toMatchObject({ location: 'home', nature: '开朗' });
   });
 
-  test('待认领行被自动合并（唯一候选，E2 已证口径）后不残留待认领标记', () => {
+  test('待认领行仍参与唯一候选自动合并（2026-11-27 拍板 5：只有唯一候选才合）', () => {
     const home = reconcile(emptyEggStock(), { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 10,
       home: part([egg({ id: 'h1', location: 'home' })]) });
     const pending = reconcile(home, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 20, home: part([]) });
     expect(pending.eggs[0].claimPending).toBe(true);
+    // 口径变更（覆盖方案 §3.2 R6）：待认领行不退出自动合并，仍按「同物种 + 唯一候选」合。
     const merged = reconcile(pending, { accountId: 'me', gameAccountKey: 'uid:1', capturedAt: 30,
       bag: part([egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-25T00:06:50Z' })]) });
     expect(merged.eggs).toHaveLength(1);
     expect(merged.eggs[0]).toMatchObject({ id: 'h1', location: 'bag', capturedEggId: 'bag1', provenance: 'self-bred' });
     expect(merged.eggs[0].claimPending).toBeUndefined();
+  });
+
+  test('新进背包的蛋记首次进包时间；已存在的行不被覆盖', () => {
+    const first = reconcile(emptyEggStock(), { accountId: 'me', capturedAt: 10,
+      bag: part([egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-25T00:06:50Z' })]) });
+    expect(first.eggs[0].claimArrivedAt).toBe(10);
+
+    const second = reconcile(first, { accountId: 'me', capturedAt: 20,
+      bag: part([
+        egg({ id: 'bag1', provenance: 'unknown', obtainedAt: '2026-11-25T00:06:50Z' }),
+        egg({ id: 'bag2', eggGameId: 3436, provenance: 'unknown', obtainedAt: '2026-11-25T00:07:10Z' }),
+      ]) });
+    // 老行的「首次进包」时间不能被后续同步刷新，否则认领页右列永远像「本次新进」。
+    expect(second.eggs.find(e => e.id === 'bag1')?.claimArrivedAt).toBe(10);
+    expect(second.eggs.find(e => e.id === 'bag2')?.claimArrivedAt).toBe(20);
+  });
+
+  test('升级前就存在的背包行，同步时不会被补当成「本次新进」', () => {
+    const legacy: EggStockState = { eggs: [{ id: 'old-bag', accountId: 'me', gameAccountKey: 'uid:1',
+      eggGameId: 3227, nature: '固执', body: '大块头', voice: '婉转声', provenance: 'unknown',
+      confidence: 'unknown', labelSource: 'unknown', kind: 'ordinary', location: 'bag',
+      lastConfirmedAt: 5, listed: false, status: 'available' }],
+    captureWatermarks: {}, provenanceHistory: {} };
+    const next = reconcile(legacy, { accountId: 'me', capturedAt: 20,
+      bag: part([egg({ id: 'old-bag', provenance: 'unknown' })]) });
+    // 旧数据没有这个字段：认领页不能把用户几百颗旧蛋全铺到「本次新进」右列。
+    expect(next.eggs.find(e => e.id === 'old-bag')?.claimArrivedAt).toBeUndefined();
   });
 
   test('金标准形状：2 颗不同种的家蛋收进背包后仍是 2 行，并带上获得时间', () => {

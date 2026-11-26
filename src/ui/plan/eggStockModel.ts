@@ -30,6 +30,11 @@ export interface StockEgg extends EggRecord {
    * 以及库清理当成「失效蛋」删掉，等于又丢一次。
    */
   claimPending?: boolean;
+  /**
+   * 这个背包蛋是「某次快照里新出现、还没认领」的那一颗；值是首次进背包的抓包时间（ms）。
+   * 认领页右列只列这一类蛋，避免把用户几百颗旧蛋全铺出来。
+   */
+  claimArrivedAt?: number;
 }
 interface SnapshotPart {
   eggs: readonly EggObservation[];
@@ -120,6 +125,7 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
       capturedEggId: observation.id,
       // 一旦合并出结果，「待认领」就不再成立，标记不能跟着旧行留着。
       claimPending: undefined,
+      claimArrivedAt: undefined,
       lastConfirmedAt: Math.max(home.lastConfirmedAt, snapshot.bag?.capturedAt ?? snapshot.capturedAt),
     };
     egg.listed = home.listed && canCirculateEgg(egg);
@@ -135,6 +141,8 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
       continue;
     }
     if (next.has(observation.id)) continue;
+    // 待认领的家蛋行**仍然参与**唯一候选自动合并（2026-11-27 用户拍板 5）：
+    // 只有候选恰好 1 颗才合，多颗同种一律并存、等用户手动认领——不改现有启发式。
     const candidates = [...next.values()].filter(egg => sameGame(egg) && egg.location === 'home' &&
       egg.eggGameId === observation.eggGameId && !egg.obtainedAt && !egg.capturedEggId);
     if (candidates.length !== 1) continue;
@@ -201,6 +209,11 @@ export function reconcileEggStock(state: EggStockState, snapshot: EggStockSnapsh
         itemConfId: observation.itemConfId ?? old?.itemConfId,
         obtainedAt: observation.obtainedAt ?? old?.obtainedAt,
         capturedEggId: observation.capturedEggId ?? old?.capturedEggId,
+        // 新进背包的蛋记一次「首次进包」时间，认领页右列只列这一批（旧蛋不铺）。
+        // 已存在的行保留原值、没有也不补：升级前就在库里的几百颗旧蛋不能被当成「本次新进」。
+        claimArrivedAt: location === 'bag'
+          ? (old ? old.claimArrivedAt : snapshot.bag?.capturedAt ?? snapshot.capturedAt)
+          : undefined,
         gameAccountKey: observation.gameAccountKey ?? old?.gameAccountKey ?? snapshot.gameAccountKey,
         status: old?.status ?? 'available', location, lastConfirmedAt: snapshot[location]?.capturedAt ?? snapshot.capturedAt, listed: false };
       egg.listed = !!old?.listed && canCirculateEgg(egg);

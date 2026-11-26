@@ -353,3 +353,166 @@ test('竖屏不出现右侧折叠栏，搜索与条件仍在蛋卡上方', () =>
   expect(screen.getByRole('searchbox', { name: '搜索蛋名' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '自产' })).toBeTruthy();
 });
+
+/* ==================== F5/F6 待认领 · 手动认领（2026-11-27） ==================== */
+/**
+ * 口径来源：`docs/方案-同种多颗手动认领-2026-11-25.md` + 2026-11-27 用户拍板 5 条。
+ * 关键约束：入口是蛋仓顶部琥珀横幅；待认领卡留在网格里；认领页左右各点一张；
+ * 物种不同直接禁用；不作废横幅永远消不掉；合并后可拆开（两张都不删）。
+ */
+const claimSpecies = [
+  { gameId: 3227, key: 'p', name: '菊花梨', number: '1', eggGroups: [2] },
+  { gameId: 3436, key: 'bug', name: '柴渣虫', number: '325', eggGroups: [4, 8] },
+];
+const claimParents = {
+  mother: { id: 'm1', gameId: 3227, name: '菊花梨', nature: '保守', body: '大块头' as const, voice: '+100' as const, nestName: '普通小窝' },
+  fathers: [{ id: 'f1', gameId: 3215, name: '海豹战士', nature: '胆小', body: '大块头' as const, voice: '婉转声' as const, nestName: '普通小窝' }],
+  confirmed: false,
+};
+/** 待认领的家蛋：已从家园完整快照消失，还没认出背包里是哪一颗。 */
+const pendingClaim = (over: Partial<WorkflowEgg> = {}): WorkflowEgg => ({
+  ...ordinary, id: 'home1', location: 'home', nature: '', body: 'unknown', voice: 'unknown',
+  provenance: 'self-bred', claimPending: true,
+  lastConfirmedAt: Date.parse('2026-11-25T08:40:00'), parents: claimParents, ...over,
+});
+/** 本次新进背包的蛋：有时间 / 蛋重 / 蛋高 / 性格，没有父母。 */
+const freshBag = (over: Partial<WorkflowEgg> = {}): WorkflowEgg => ({
+  ...ordinary, id: 'bag1', location: 'bag', obtainedAt: '2026-11-25T08:41:00',
+  heightCm: 23, weightGrams: 12886, claimArrivedAt: Date.parse('2026-11-25T08:41:30'), ...over,
+});
+const renderStock = (eggs: WorkflowEgg[], mutate = vi.fn().mockResolvedValue(undefined), character?: string) =>
+  render(<EggStockPanel eggs={eggs} species={claimSpecies} busy={false} mutate={mutate} character={character} />);
+const enterClaim = () => fireEvent.click(screen.getByRole('button', { name: '去认领' }));
+
+test('蛋仓顶部横幅：按当前角色的待认领数计数，0 颗时整条不出现', () => {
+  const mutate = vi.fn();
+  const { rerender } = renderStock(
+    [pendingClaim(), pendingClaim({ id: 'home2' }), pendingClaim({ id: 'home3', gameAccountKey: 'uid:2' })],
+    mutate, 'uid:1',
+  );
+  const banner = screen.getByTestId('claim-banner');
+  expect(banner).toHaveTextContent('2 颗自产蛋待认领');
+  expect(within(banner).getByRole('button', { name: '去认领' })).toBeTruthy();
+  // 0 颗：整条不渲染（不占高度）。
+  rerender(<EggStockPanel eggs={[freshBag()]} species={claimSpecies} busy={false} mutate={mutate} character="uid:1" />);
+  expect(screen.queryByTestId('claim-banner')).toBeNull();
+});
+
+test('待认领的卡留在网格里：虚线琥珀框 + 「待认领」标，时间位写待认领', () => {
+  renderStock([pendingClaim()], vi.fn(), 'uid:1');
+  const card = screen.getByTestId('stock-card');
+  expect(card.className).toContain('border-dashed');
+  expect(card.className).toContain('border-amber-400');
+  // 4 列网格一行放不下「绿窝 + 待认领 + 自产」三个标：待认领标放在时间位（原型同款）。
+  expect(within(card).getByTestId('stock-pending-badge')).toHaveTextContent('待认领');
+  expect(within(card).queryByTestId('stock-confirmed')).toBeNull();
+  // 自产 / 绿窝标记照旧显示，父母只在详情里。
+  expect(within(card).getByTestId('stock-self-badge')).toHaveTextContent('自产');
+});
+
+test('只有 1 颗待认领时点「去认领」直接进认领页，且左卡自动选中', () => {
+  renderStock([pendingClaim(), freshBag()], vi.fn(), 'uid:1');
+  enterClaim();
+  expect(screen.getByTestId('claim-view')).toBeTruthy();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByTestId('claim-home-card')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('认领页两列：左列家园蛋有父母/自产/绿窝、无时间蛋重；右列背包蛋有时间/蛋重/蛋高/性格', () => {
+  renderStock([pendingClaim({ greenNest: true }), freshBag()], vi.fn(), 'uid:1');
+  enterClaim();
+  const homeCard = screen.getByTestId('claim-home-card');
+  expect(within(homeCard).getByTestId('claim-self-badge')).toHaveTextContent('自产');
+  expect(within(homeCard).getByTestId('claim-green-nest')).toBeTruthy();
+  expect(homeCard.querySelectorAll('[data-testid="breed-pet-card"]')).toHaveLength(2);
+  expect(within(homeCard).getByText('无获得时间 · 无蛋重')).toBeTruthy();
+  const bagCard = screen.getByTestId('claim-bag-card');
+  expect(bagCard).toHaveTextContent('11-25 08:41');
+  expect(bagCard).toHaveTextContent('12.886 kg');
+  expect(bagCard).toHaveTextContent('0.23 m');
+  expect(bagCard).toHaveTextContent('固执');
+  fireEvent.click(bagCard);
+  // 已选一行实时写清楚两边是谁。
+  expect(screen.getByTestId('claim-selection')).toHaveTextContent('家园 菊花梨');
+  expect(screen.getByTestId('claim-selection')).toHaveTextContent('背包 #bag1');
+  expect(screen.getByTestId('claim-selection')).toHaveTextContent('12.886 kg');
+});
+
+test('左一张 + 右一张同种 → 「合并这两颗」走 claim-egg', async () => {
+  const mutate = vi.fn().mockResolvedValue(undefined);
+  renderStock([pendingClaim(), freshBag()], mutate, 'uid:1');
+  enterClaim();
+  fireEvent.click(screen.getByTestId('claim-bag-card'));
+  expect(screen.getByTestId('claim-bag-card')).toHaveAttribute('aria-pressed', 'true');
+  const merge = screen.getByRole('button', { name: '合并这两颗' });
+  expect(merge).toBeEnabled();
+  fireEvent.click(merge);
+  await waitFor(() => expect(mutate).toHaveBeenCalledWith({ type: 'claim-egg', id: 'home1', capturedEggId: 'bag1' }));
+});
+
+test('物种不同的背包蛋直接禁用：选不了，合并按钮不可点', () => {
+  const different = freshBag({ id: 'bag2', eggGameId: 3436 });
+  renderStock([pendingClaim(), different], vi.fn(), 'uid:1');
+  enterClaim();
+  const bagCard = screen.getByTestId('claim-bag-card');
+  expect(bagCard).toBeDisabled();
+  expect(within(bagCard).getByTestId('claim-species-block')).toHaveTextContent('物种不同');
+  expect(screen.getByRole('button', { name: '合并这两颗' })).toBeDisabled();
+  fireEvent.click(bagCard);
+  expect(bagCard).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('「✕ 这颗不在了」把该行标记为不再等待，走 claim-dismiss', async () => {
+  const mutate = vi.fn().mockResolvedValue(undefined);
+  renderStock([pendingClaim()], mutate, 'uid:1');
+  enterClaim();
+  fireEvent.click(screen.getByRole('button', { name: '这颗不在了' }));
+  await waitFor(() => expect(mutate).toHaveBeenCalledWith({ type: 'claim-dismiss', id: 'home1' }));
+});
+
+test('「暂不认领」回蛋仓，不发任何写库动作', () => {
+  const mutate = vi.fn();
+  renderStock([pendingClaim(), freshBag()], mutate, 'uid:1');
+  enterClaim();
+  fireEvent.click(screen.getByRole('button', { name: '暂不认领' }));
+  expect(screen.queryByTestId('claim-view')).toBeNull();
+  expect(screen.getByTestId('claim-banner')).toBeTruthy();
+  expect(mutate).not.toHaveBeenCalled();
+});
+
+test('认领后横幅计数递减，最后一颗认领完横幅消失', () => {
+  const mutate = vi.fn();
+  const { rerender } = renderStock([pendingClaim(), pendingClaim({ id: 'home2' })], mutate, 'uid:1');
+  expect(screen.getByTestId('claim-banner')).toHaveTextContent('2 颗自产蛋待认领');
+  rerender(<EggStockPanel eggs={[pendingClaim({ id: 'home2' })]} species={claimSpecies} busy={false} mutate={mutate} character="uid:1" />);
+  expect(screen.getByTestId('claim-banner')).toHaveTextContent('1 颗自产蛋待认领');
+  rerender(<EggStockPanel eggs={[freshBag()]} species={claimSpecies} busy={false} mutate={mutate} character="uid:1" />);
+  expect(screen.queryByTestId('claim-banner')).toBeNull();
+});
+
+test('最后一颗认领完，认领页显示「都认领完了」而不是空的两列', () => {
+  const mutate = vi.fn();
+  const { rerender } = renderStock([pendingClaim(), freshBag()], mutate, 'uid:1');
+  enterClaim();
+  expect(screen.getByTestId('claim-columns')).toBeTruthy();
+  // 服务端回包后 eggs 少掉那颗待认领的家蛋。
+  rerender(<EggStockPanel eggs={[freshBag()]} species={claimSpecies} busy={false} mutate={mutate} character="uid:1" />);
+  expect(screen.getByTestId('claim-view')).toBeTruthy();
+  expect(screen.getByTestId('claim-done')).toHaveTextContent('都认领完了');
+  expect(screen.queryByTestId('claim-columns')).toBeNull();
+});
+
+test('手动认领合并后的详情有「拆开认领」：确认后走 claim-split', async () => {
+  const mutate = vi.fn().mockResolvedValue(undefined);
+  const merged = { ...ordinary, id: 'home1', location: 'bag' as const, capturedEggId: 'bag1',
+    obtainedAt: '2026-11-25T08:41:00', heightCm: 23, weightGrams: 12886,
+    claimBackup: { nature: '', body: 'unknown' as const, voice: 'unknown' as const } };
+  renderStock([merged], mutate, 'uid:1');
+  fireEvent.click(screen.getByTestId('stock-card'));
+  const dialog = screen.getByRole('dialog', { name: '蛋详情' });
+  expect(within(dialog).getByTestId('claim-split-note')).toHaveTextContent('已与家园蛋');
+  fireEvent.click(within(dialog).getByRole('button', { name: '拆开认领' }));
+  expect(within(dialog).getByTestId('claim-split-confirm')).toHaveTextContent('两张都不删');
+  fireEvent.click(within(dialog).getByRole('button', { name: '确认拆开' }));
+  await waitFor(() => expect(mutate).toHaveBeenCalledWith({ type: 'claim-split', id: 'home1' }));
+});
