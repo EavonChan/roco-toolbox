@@ -171,6 +171,11 @@
   .p-row.demand.rare{box-shadow:inset 0 0 0 1px #be123c;}
   .p-row .bar{position:absolute; left:0; top:4px; bottom:4px; width:3px; border-radius:1.5px; background:#f43f5e;}
   .p-row.tall{height:40px;}
+  /* 修法 3：7sp + 列表左移 3dp；列表 102→105、gap 6→3、行内 padding 6→5（文字可用 95dp） */
+  .p.compact .p-body{gap:3px;}
+  .p.compact .p-list{width:105px;}
+  .p.compact .p-row{padding:0 5px;}
+  .p.compact .p-line2{font-size:7px;}
   .p-head{height:16px; display:flex; align-items:center; gap:4px;}
   .p-name{min-width:0; flex:1; font-size:10px; line-height:16px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .p-lv{font-size:8px; line-height:16px; font-weight:400; color:rgba(226,232,240,.82); flex:none;}
@@ -455,34 +460,35 @@
   </div>
 
   <div class="panel-fig">
-    <div class="p" id="panel-small">
+    <div class="p compact" id="panel-small">
       <div class="p-title"><span>附近 3 · 稀有 2</span><span class="badge">中心为估算</span></div>
       <div class="p-body">
         <div class="p-map"><img src="../../public/maps/10003.webp" alt="" /></div>
         <div class="p-list">
           <div class="p-row rare">
             <div class="p-head"><span class="p-name">护主犬 <span class="p-lv">Lv37</span></span><span class="p-dist">↗ 12m</span></div>
-            <div class="p-line2 small" style="font-size:6.5px">高:100.0% 重:100.0% +100dB</div>
+            <div class="p-line2">高:100.0% 重:100.0% +100dB</div>
           </div>
           <div class="p-row">
             <div class="p-head"><span class="p-name">格兰花 <span class="p-lv">Lv28</span></span><span class="p-dist">↖ 35m</span></div>
-            <div class="p-line2" style="font-size:6.5px">高:62.3% 重:48.1% +96dB</div>
+            <div class="p-line2">高:62.3% 重:48.1% +96dB</div>
           </div>
           <div class="p-row">
             <div class="p-head"><span class="p-name">喵喵 <span class="p-lv">Lv8</span></span><span class="p-dist">↓ 8m</span></div>
-            <div class="p-line2" style="font-size:6.5px">高:38.2% 重:61.4% +2dB</div>
+            <div class="p-line2">高:38.2% 重:61.4% +2dB</div>
           </div>
         </div>
       </div>
     </div>
-    <div class="cap"><b>修法 3 · 缩字号</b>：7.5→6.5sp，实测 86.7dp，余 3.3dp</div>
-    <div class="line-zoom" style="--avail:90px">
-      <div class="t" style="font-size:6.5px">高:100.0% 重:100.0% +100dB</div>
-      <div class="ruler"><span>90dp</span></div>
-      <div class="m"><span>文本实测 <b data-w6_5="高:100.0% 重:100.0% +100dB">—</b></span><span>可用 90dp</span></div>
+    <div class="cap"><b>修法 3 · 7sp + 列表左移 3dp</b>：102→105、gap 6→3、padding 6→5，实测 93.4dp / 可用 95dp</div>
+    <div class="line-zoom" style="--avail:95px">
+      <div class="t" style="font-size:7px">高:100.0% 重:100.0% +100dB</div>
+      <div class="ruler"><span>95dp</span></div>
+      <div class="m"><span>文本实测 <b data-w7="高:100.0% 重:100.0% +100dB">—</b></span><span>余量 <b data-free7="高:100.0% 重:100.0% +100dB">—</b></span></div>
     </div>
     <div class="panel-anno">
-      不推荐：字号已低于面板其他 9sp 文案；系统字体放大时仍会溢出，且 6.5sp 可读性差。
+      字号只降到 7sp（比 6.5 可读），靠 <b>列表左移 3dp + 行内 padding 缩 1dp</b> 挤出 5dp 文字宽；余量只有约 1.6dp，
+      <b>系统字体放大仍会溢出</b>。能用，但修法 2 仍是更稳的首选。
     </div>
   </div>
 
@@ -743,8 +749,11 @@
   document.querySelectorAll('.line-zoom [data-w]').forEach((el) => {
     el.textContent = `${measure(el.dataset.w, 7.5, OVERLAY_STACK)}dp`;
   });
-  document.querySelectorAll('[data-w6_5]').forEach((el) => {
-    el.textContent = `${measure(el.dataset.w6_5, 6.5, OVERLAY_STACK)}dp`;
+  document.querySelectorAll('[data-w7]').forEach((el) => {
+    el.textContent = `${measure(el.dataset.w7, 7, OVERLAY_STACK)}dp`;
+  });
+  document.querySelectorAll('[data-free7]').forEach((el) => {
+    el.textContent = `${(95 - measure(el.dataset.free7, 7, OVERLAY_STACK)).toFixed(1)}dp`;
   });
   document.querySelectorAll('[data-free]').forEach((el) => {
     el.textContent = `${(90 - measure(el.dataset.free, 7.5, OVERLAY_STACK)).toFixed(1)}dp`;
