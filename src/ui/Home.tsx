@@ -427,6 +427,16 @@ export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps 
         家园数据来自抓包里的家园场景。采集时要进入家园走一圈（最好切一次楼层、打开一次小窝），
         再退出并结束采集；否则抓包里没有家园。
       </p>
+      {/*
+       * 2026-11-26 UI-12：横屏不渲染顶栏，刷新按钮原来只挂在顶栏 / AccountHome 上，
+       * 于是「这份数据里没有家园记录」这个最该重试的状态反而没有入口。
+       * 竖屏顶栏已有刷新，这里只在横屏补一份，避免重复。
+       */}
+      {rail ? (
+        <div className="mt-2 flex items-center gap-2" data-testid="home-no-capture-refresh">
+          {refreshBar}
+        </div>
+      ) : null}
     </section>
   ) : (
     <AccountHome

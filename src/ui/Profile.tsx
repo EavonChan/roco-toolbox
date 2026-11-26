@@ -115,6 +115,25 @@ export function Profile({
   const versionTaps = useRef<number[]>([]);
   /** 「采集数据」入口：把视线带到下面的采集 / 导入块（不再多一次跳页） */
   const collectRef = useRef<HTMLDivElement>(null);
+  /**
+   * 已登录时概览卡的「同步」要落到真有同步按钮的地方（UI-01）：
+   * 「我的身份」页面把「立即同步」藏起来了，所以这里滚到数据页的「私有同步」卡并短暂高亮。
+   */
+  const syncBlockRef = useRef<HTMLDivElement>(null);
+  const [syncHighlight, setSyncHighlight] = useState(false);
+  const syncHighlightTimer = useRef<number | null>(null);
+  const scrollToSync = () => {
+    setSyncHighlight(true);
+    syncBlockRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    if (syncHighlightTimer.current != null) window.clearTimeout(syncHighlightTimer.current);
+    syncHighlightTimer.current = window.setTimeout(() => {
+      syncHighlightTimer.current = null;
+      setSyncHighlight(false);
+    }, 2000);
+  };
+  useEffect(() => () => {
+    if (syncHighlightTimer.current != null) window.clearTimeout(syncHighlightTimer.current);
+  }, []);
 
   const onVersionTap = () => {
     const bridge = serverBridge();
@@ -199,6 +218,7 @@ export function Profile({
             snapshots={snapshots}
             accountId={accountId}
             onGoAccount={() => goSection('identity')}
+            onSync={scrollToSync}
           />
           <ProfileQuickEntries
             eggStockHint={accountId ? '换蛋 · 蛋仓' : '需登录'}
@@ -233,14 +253,25 @@ export function Profile({
           <div ref={collectRef} className="space-y-3" data-testid="profile-collect">
             <ImportOutcomeNotice onOpenGroups={() => onNavigate({ type: 'open-groups' })} />
             <NativeCollectorPanel />
-            {/* 私有同步（2026-11-21 从独立分区挪到这里）：本机采集 / 导入的下方 */}
+            {/* 私有同步（2026-11-21 从独立分区挪到这里）：本机采集 / 导入的下方。
+                2026-11-26 UI-01：概览卡「同步」直接滚到这一块（里面有「立即同步」），
+                所以只有同步卡本身带 ref 与高亮，不再把用户丢到把同步按钮藏起来的身份页。 */}
             <ImportPanel
               afterAnalytics={
-                <AccountPanel
-                  section="sync"
-                  autoConflict={autoConflict}
-                  onAutoConflictHandled={() => setSyncConflict(null)}
-                />
+                <div
+                  ref={syncBlockRef}
+                  data-testid="profile-sync-block"
+                  data-highlight={syncHighlight ? 'true' : 'false'}
+                  className={`rounded-2xl transition ${
+                    syncHighlight ? 'ring-2 ring-emerald-400 ring-offset-2' : ''
+                  }`}
+                >
+                  <AccountPanel
+                    section="sync"
+                    autoConflict={autoConflict}
+                    onAutoConflictHandled={() => setSyncConflict(null)}
+                  />
+                </div>
               }
             />
           </div>

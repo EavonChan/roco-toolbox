@@ -68,4 +68,23 @@ describe('ProfileHeader（账号概览卡）', () => {
     screen.getByTestId('profile-header-action').click();
     expect(onGoAccount).toHaveBeenCalledTimes(1);
   });
+
+  test('已登录时点「同步」走同步落点（不去账号页，那里没有同步按钮）', () => {
+    const onGoAccount = vi.fn();
+    const onSync = vi.fn();
+    render(
+      <ProfileHeader
+        snapshots={[snapshot()]}
+        accountId="acc-1"
+        onGoAccount={onGoAccount}
+        onSync={onSync}
+      />,
+    );
+
+    const action = screen.getByTestId('profile-header-action');
+    expect(action).toHaveTextContent('同步');
+    action.click();
+    expect(onSync).toHaveBeenCalledTimes(1);
+    expect(onGoAccount).not.toHaveBeenCalled();
+  });
 });

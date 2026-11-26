@@ -475,6 +475,27 @@ describe('家园横屏（2026-11-24 右侧纵向标题栏）', () => {
     expect(screen.getByTestId('home-pair-cards')).toBeTruthy();
   });
 
+  test('横屏 + 这份数据里没有家园记录：卡里仍留可点的刷新入口', () => {
+    setOrientation(true);
+    const snapshot = snapshotWithHome();
+    snapshot.home = undefined;
+    h.snapshots = [snapshot];
+    const bridge = { startCapture: () => '' };
+    (window as unknown as { RocoCapture?: unknown }).RocoCapture = bridge;
+    try {
+      render(<HomeLand />);
+
+      // 横屏不渲染顶栏，所以刷新入口只能在空态卡里
+      expect(screen.queryByTestId('home-header')).toBeNull();
+      const card = screen.getByTestId('home-no-capture');
+      const refresh = within(card).getByTestId('home-refresh-start');
+      expect(refresh).toBeEnabled();
+      expect(refresh).toHaveTextContent('刷新家园');
+    } finally {
+      delete (window as unknown as { RocoCapture?: unknown }).RocoCapture;
+    }
+  });
+
   test('右侧标题栏的蛋仓入口仍是页内一屏，返回家园回到家园', () => {
     setOrientation(true);
     h.snapshots = [snapshotWithHome()];
