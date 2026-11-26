@@ -38,26 +38,36 @@ const CLAIMED_DEMAND = {
   updatedAt: 1_760_000_000_000,
 };
 
-test('首启只讲「先采集一次」：数据没到位不能下一步，数据到齐后自动走到教程提示', async ({ page }) => {
+test('首启先讲「把数据导进来」：数据没到位不能下一步，数据到齐后逐条走到教程提示', async ({ page }) => {
   await page.goto('/');
 
   const root = page.getByTestId('tour-root');
   await expect(root).toBeVisible();
-  await expect(page.getByTestId('tour-progress')).toHaveText('第 1 / 3 步');
-  await expect(page.getByTestId('tour-title')).toHaveText('先采集一次游戏数据');
-  // 第 1 步框住顶部「我的」页签
+  await expect(page.getByTestId('tour-progress')).toHaveText('第 1 / 6 步');
+  await expect(page.getByTestId('tour-title')).toHaveText('先让数据进来');
+  // 第 1 步框住顶部页签导航
   await expect(page.getByTestId('tour-spotlight')).toBeVisible();
 
   await page.getByTestId('tour-next').click();
-  await expect(page.getByTestId('tour-title')).toHaveText('点「开始采集」');
+  // preview 没有采集桥 → 走「导入游戏数据」版（有采集桥才是「开始采集」）
+  await expect(page.getByTestId('tour-title')).toHaveText('点「导入游戏数据」');
   await expect(page.getByTestId('tour-next')).toBeDisabled();
   await expect(page.getByTestId('tour-wait')).toBeVisible();
 
-  // preview 没有安卓采集桥，这里用一份可配对的数据模拟「采集完成、数据到位」→ 自动进入收尾步
+  // 导入一份数据 → 自动继续到「缺口」那步
   await page
     .getByTestId('import-input')
     .setInputFiles('src/domain/__fixtures__/backup-breed-pair.json');
-  await expect(page.getByTestId('tour-title')).toHaveText('随时能重看引导', { timeout: 10_000 });
+  await expect(page.getByTestId('tour-title')).toHaveText('这就是你的缺口', { timeout: 10_000 });
+  await expect(page.getByTestId('tour-spotlight')).toBeVisible();
+
+  // 缺口 → 怎么补 → 蛋仓入口 → 收尾
+  await page.getByTestId('tour-next').click();
+  await expect(page.getByTestId('tour-title')).toHaveText('点开一张卡看「怎么补」');
+  await page.getByTestId('tour-next').click();
+  await expect(page.getByTestId('tour-title')).toHaveText('你孵的蛋在这儿');
+  await page.getByTestId('tour-next').click();
+  await expect(page.getByTestId('tour-title')).toHaveText('随时能重看引导');
   await expect(page.getByTestId('tour-spotlight')).toBeVisible();
 
   await page.getByTestId('tour-done').click();
@@ -75,8 +85,8 @@ test('首次进入看板自动弹一次；跳过后再进不再自动弹', async
   await expect(page.getByTestId('tour-root')).toHaveCount(0);
   await page.getByRole('button', { name: '看板', exact: true }).click();
   await expect(page.getByTestId('tour-root')).toBeVisible();
-  await expect(page.getByTestId('tour-title')).toHaveText('先定种公目标');
-  // 2026-11-22：看板段从 4 步收成 3 步
+  await expect(page.getByTestId('tour-title')).toHaveText('先定你的目标');
+  // 2026-11-25：看板段从 3 步收成 2 步（目标模式 + 跨号传蛋）
   await expect(page.getByTestId('tour-progress')).toHaveText(/^第 1 \/ \d+ 步$/);
   await expect(page.getByTestId('tour-spotlight')).toBeVisible();
 
@@ -108,7 +118,7 @@ test('顶部「教程」直接重播当前页那一段', async ({ page }) => {
 test('引导进行中点「教程」：结束当前段并重播当前页，不叠出两层', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('tour-root')).toBeVisible();
-  await expect(page.getByTestId('tour-title')).toHaveText('先采集一次游戏数据');
+  await expect(page.getByTestId('tour-title')).toHaveText('先让数据进来');
 
   await page.getByTestId('guide-open').click();
   await expect(page.getByTestId('tour-root')).toHaveCount(1);
@@ -116,7 +126,7 @@ test('引导进行中点「教程」：结束当前段并重播当前页，不�
   await expect(page.getByTestId('tour-title')).toHaveText('先导入一次数据');
 });
 
-test('家园段会真的切到「接单上窝」并框到接单内容', async ({ page }) => {
+test('家园段讲「三块」并框住家园页头（蛋仓入口在页头右侧）', async ({ page }) => {
   await loginAs(page);
   await mockMotherGroups(page, { demands: [CLAIMED_DEMAND] });
   await presetSeen(page, ['home']);
@@ -128,13 +138,12 @@ test('家园段会真的切到「接单上窝」并框到接单内容', async ({
   await expect(page.getByTestId('import-outcome')).toContainText('已保存到本机');
 
   await page.getByRole('button', { name: '家园', exact: true }).click();
-  await expect(page.getByTestId('tour-title')).toHaveText('家园分两页');
-  await page.getByTestId('tour-next').click();
-
-  await expect(page.getByTestId('tour-title')).toHaveText('接单上窝');
-  await expect(page.getByTestId('home-title')).toHaveText('接单上窝');
-  await expect(page.getByTestId('home-view-nests')).toBeVisible();
-  await expect(page.getByTestId('home-demand-placements')).toBeVisible();
-  // 2026-11-22：内容块是 home-demand-placements（里面行内容取决于数据），这里验聚光确实框在它上面
+  await expect(page.getByTestId('tour-title')).toHaveText('家园分三块');
+  await expect(page.getByTestId('home-page')).toBeVisible();
+  await expect(page.getByTestId('home-egg-stock')).toBeVisible();
   await expect(page.getByTestId('tour-spotlight')).toBeVisible();
+
+  // 下一步是「配窝卡」（数据里没有家园时会被 skipWhenMissing 自动跳过），只验它离开了第一步
+  await page.getByTestId('tour-next').click();
+  await expect(page.getByTestId('tour-title')).not.toHaveText('家园分三块');
 });
