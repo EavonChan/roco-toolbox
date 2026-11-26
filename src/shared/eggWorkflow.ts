@@ -30,11 +30,12 @@ export interface WorkflowEgg extends EggRecord {
   autoListEligible?: boolean;
   /** Last complete capture no longer contains this reserved instance. */
   missingFromCapture?: boolean;
-  /**
-   * 待认领（2026-11-25 用户口径）：家蛋已从家园完整快照里消失，但还没有对应的背包蛋可认。
-   * 只做「保留 + 标记」，**不写 `missingFromCapture`**（那个标记会触发失效蛋清理）。
-   */
+  /** 待认领（2026-11-25 用户口径）：家蛋已从家园完整快照里消失，但还没有对应的背包蛋可认。 */
   claimPending?: boolean;
+  /** 首次进背包的抓包时间（ms）：认领页右列只列这批新蛋。 */
+  claimArrivedAt?: number;
+  /** 认领合并前的家蛋侧标签，拆开时原样还原（背包值只覆盖这几项）。 */
+  claimBackup?: { nature: string; body: EggRecord['body']; voice: EggRecord['voice'] };
 }
 export interface EggLine {
   eggGameId: number; nature: string; body: EggRecord['body']; voice: EggRecord['voice'];
@@ -95,16 +96,40 @@ const obtainedAtOf = (value: unknown): string | undefined => {
   if (!text || text.length > 40 || Number.isNaN(Date.parse(text))) return undefined;
   return text;
 };
+/** 个体三维：只在形状对时保留前 3 项，坏值丢掉，不阻塞整条记录。 */
+function individualBonusesOf(value: unknown): { name: string; value: number }[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const list = value.slice(0, 3).flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const raw = item as Record<string, unknown>;
+    const name = typeof raw.name === 'string' ? raw.name.slice(0, 8) : '';
+    if (!name || typeof raw.value !== 'number' || !Number.isFinite(raw.value)) return [];
+    return [{ name, value: raw.value }];
+  });
+  return list.length ? list : undefined;
+}
 function parentInfoOf(value: unknown): EggParentInfo {
   const raw = record(value);
   // gameId 允许 0：抓包只拿到名字/窝时仍保留父母展示，不伪造物种。
   if (!Number.isSafeInteger(raw.gameId) || Number(raw.gameId) < 0) throw new Error('亲本物种无效');
+  const bonuses = individualBonusesOf(raw.individualBonuses);
   return { id: str(raw.id), gameId: Number(raw.gameId),
     name: typeof raw.name === 'string' ? raw.name.slice(0, 80) : '',
     nature: typeof raw.nature === 'string' ? raw.nature.slice(0, 32) : '',
     body: isDemandBody(raw.body) ? raw.body : '', voice: isDemandVoice(raw.voice) ? raw.voice : '',
+    ...(bonuses ? { individualBonuses: bonuses } : {}),
     ...(typeof raw.nestName === 'string' && raw.nestName ? { nestName: raw.nestName.slice(0, 40) } : {}),
     ...(raw.academy === true ? { academy: true } : {}) };
+}
+/** 认领前的家蛋侧标签：拆开时原样还原；形状不对就当没有（不阻塞同步）。 */
+function claimBackupOf(value: unknown): { nature: string; body: EggRecord['body']; voice: EggRecord['voice'] } | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  return {
+    nature: typeof raw.nature === 'string' ? raw.nature.slice(0, 32) : '',
+    body: isDemandBody(raw.body) ? raw.body : 'unknown',
+    voice: isDemandVoice(raw.voice) ? raw.voice : 'unknown',
+  };
 }
 /** 家园蛋的父母只作为展示与推算依据；形状不对直接拒绝，不保存半截数据。 */
 function parentsOf(value: unknown): EggParentsInfo | undefined {
@@ -154,7 +179,10 @@ function normalizeEgg(value: unknown, accountId: string, gameAccountKey: string,
     // 只认显式 true：旧数据 / 老客户端没这个字段时保持 undefined（= 未下架）。
     listingOptOut: raw.listingOptOut === true ? true : undefined,
     // 待认领由客户端 reconcile 判定后随库存一起上来；只认显式 true，缺字段 = 不是待认领。
-    claimPending: raw.claimPending === true ? true : undefined };
+    claimPending: raw.claimPending === true ? true : undefined,
+    ...(Number.isFinite(raw.claimArrivedAt) && Number(raw.claimArrivedAt) > 0
+      ? { claimArrivedAt: Number(raw.claimArrivedAt) } : {}),
+    ...(claimBackupOf(raw.claimBackup) ? { claimBackup: claimBackupOf(raw.claimBackup) } : {}) };
 }
 const active = (trade: WorkflowTrade) => trade.status === 'accepted';
 
@@ -536,6 +564,76 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
     if (appliedHome) state.watermarks[sideKey('home')] = timestamp;
     // 合并/状态继承之后才自动挂出：保留 reserved/transferred 的 listed=false，也只补 true。
     return autoListStock(state, actor, key);
+  }
+  /**
+   * F5（2026-11-25）：待认领家蛋的四个出口——认领 / 作废 / 拆开 / 手动标注父母本。
+   * 家蛋行认领之前不会被删（保底），所以必须给这些显式动作，否则会一直挂着。
+   */
+  if (action.type === 'claim-egg' || action.type === 'claim-dismiss' ||
+      action.type === 'claim-split' || action.type === 'label-parents') {
+    const egg = ownEgg(state, actor, str(action.id));
+    if (action.type === 'claim-dismiss') {
+      if (!egg.claimPending) throw new Error('只有待认领的家蛋可以作废');
+      state.eggs = state.eggs.filter(e => e !== egg);
+      return state;
+    }
+    if (action.type === 'claim-split') {
+      const bagId = egg.capturedEggId;
+      if (!bagId) throw new Error('这颗蛋没有认领记录');
+      if (state.eggs.some(e => e.accountId === actor && e.id === bagId)) throw new Error('背包蛋已经存在');
+      const backup = egg.claimBackup;
+      const bag: WorkflowEgg = { ...egg, id: bagId, body: 'unknown', voice: 'unknown',
+        provenance: 'unknown', confidence: 'unknown', labelSource: 'unknown',
+        parents: undefined, greenNest: undefined, capturedEggId: undefined, claimPending: undefined,
+        claimBackup: undefined, claimArrivedAt: now, status: 'available', listed: false, location: 'bag' };
+      const home: WorkflowEgg = { ...egg,
+        nature: backup?.nature ?? '', body: backup?.body ?? 'unknown', voice: backup?.voice ?? 'unknown',
+        obtainedAt: undefined, heightCm: undefined, weightGrams: undefined, itemConfId: undefined,
+        capturedEggId: undefined, claimBackup: undefined, claimArrivedAt: undefined,
+        claimPending: true, listed: false, location: 'home' };
+      state.eggs = state.eggs.map(e => e === egg ? home : e);
+      state.eggs.push(bag);
+      state.orders = Object.fromEntries(Object.entries(state.orders)
+        .map(([key, ids]) => [key, ids.filter(id => id !== bagId)]));
+      return state;
+    }
+    if (action.type === 'label-parents') {
+      const mother = parentInfoOf(record(action.mother));
+      const father = parentInfoOf(record(action.father));
+      if (mother.id === father.id) throw new Error('父母不能是同一只');
+      egg.parents = { mother, fathers: [father], confirmed: false };
+      egg.labelSource = 'manual';
+      egg.confidence = 'manual';
+      if (egg.greenNest === undefined) egg.greenNest = hasAcademyParent(egg.parents);
+      return state;
+    }
+    // claim-egg：保留家蛋 id / 父母 / 自产，补上背包的时间、蛋重、蛋高、性格。
+    const bagId = str(action.capturedEggId);
+    if (!egg.claimPending || egg.location !== 'home') throw new Error('只有待认领的家蛋可以认领');
+    const bag = state.eggs.find(e => e.accountId === actor && e.id === bagId);
+    if (!bag) throw new Error('要认领的背包蛋不存在');
+    if ((bag.location ?? 'bag') !== 'bag') throw new Error('只能认领背包里的蛋');
+    if (egg.eggGameId !== bag.eggGameId) throw new Error('物种不一致，不能认领');
+    if (egg.status !== 'available' || bag.status !== 'available') throw new Error('蛋正在换蛋中，先取消任务再认领');
+    const merged: WorkflowEgg = { ...egg,
+      nature: bag.nature || egg.nature,
+      body: bag.body !== 'unknown' ? bag.body : egg.body,
+      voice: bag.voice !== 'unknown' ? bag.voice : egg.voice,
+      kind: bag.kind ?? egg.kind,
+      specialCategory: bag.specialCategory ?? egg.specialCategory,
+      obtainedAt: bag.obtainedAt ?? egg.obtainedAt,
+      heightCm: bag.heightCm ?? egg.heightCm,
+      weightGrams: bag.weightGrams ?? egg.weightGrams,
+      itemConfId: bag.itemConfId ?? egg.itemConfId,
+      location: 'bag', status: bag.status, listed: false,
+      capturedEggId: bagId, claimPending: undefined, claimArrivedAt: undefined, missingFromCapture: undefined,
+      claimBackup: { nature: egg.nature, body: egg.body, voice: egg.voice } };
+    const confirmed = Math.max(egg.lastConfirmedAt ?? 0, bag.lastConfirmedAt ?? 0);
+    if (confirmed > 0) merged.lastConfirmedAt = confirmed; else delete merged.lastConfirmedAt;
+    state.eggs = state.eggs.map(e => e === egg ? merged : e).filter(e => e !== bag);
+    state.orders = Object.fromEntries(Object.entries(state.orders)
+      .map(([key, ids]) => [key, ids.filter(id => id !== bagId)]));
+    return autoListStock(state, actor, merged.gameAccountKey);
   }
   if (action.type === 'list' || action.type === 'label' || action.type === 'label-many') {
     if (action.type === 'list') {

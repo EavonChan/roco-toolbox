@@ -318,6 +318,7 @@ export function PairingPetCard({
   academy = false,
   home = false,
   hideMeasurements = false,
+  size = 'sm',
   testId = 'breed-pet-card',
 }: {
   pet: PairCardPet;
@@ -328,6 +329,12 @@ export function PairingPetCard({
   home?: boolean;
   /** 只有物种没有个体（母本缺口）：奖牌照画（目标奖牌），不写分贝/身高/体重，避免假装有数据 */
   hideMeasurements?: boolean;
+  /**
+   * 卡片尺寸。`sm` = 家园 / 配窝建议那套（高 86，名字和右侧数值挤在一行）；
+   * `lg` = 蛋详情与认领页的「实际父母」用（高 108，名字单独一行、字大一号）。
+   * 2026-11-25 用户口径：蛋详情那张卡太挤，可以适当大一些。
+   */
+  size?: 'sm' | 'lg';
   /** 覆盖默认 data-testid（接单上窝复用这张卡时用 `home-demand-parent`） */
   testId?: string;
 }) {
@@ -359,10 +366,13 @@ export function PairingPetCard({
    */
   const bonuses = home ? sortIndividualBonuses(pet.individualBonuses ?? []).slice(0, 3) : [];
   const bonusesMissing = home && bonuses.length === 0;
+  const large = size === 'lg';
 
   return (
     <article
-      className={`relative h-[86px] min-w-0 overflow-hidden rounded-xl p-1.5 shadow-sm ${
+      className={`relative min-w-0 overflow-hidden rounded-xl p-1.5 shadow-sm ${
+        large ? 'h-[108px]' : 'h-[86px]'
+      } ${
         pet.gender === '母'
           ? 'bg-pink-50'
           : pet.gender === '公'
@@ -418,7 +428,7 @@ export function PairingPetCard({
             </span>
           ) : null}
         </div>
-        <div className={`flex min-w-0 flex-col items-end gap-px text-[10px] text-slate-500 ${home ? 'leading-[13px]' : 'leading-3'}`}>
+        <div className={`flex min-w-0 flex-col items-end gap-px text-slate-500 ${large ? 'text-[10.5px] leading-[14px]' : home ? 'text-[10px] leading-[13px]' : 'text-[10px] leading-3'}`}>
           <span className="flex min-w-0 items-center justify-end gap-0.5">
             <GenderMark gender={pet.gender} />
             <span
@@ -439,20 +449,20 @@ export function PairingPetCard({
           ) : null}
         </div>
       </header>
-      <div className="absolute left-1/2 top-[6px] flex h-11 w-11 -translate-x-1/2 items-center justify-center">
+      <div className={`absolute left-1/2 top-[6px] flex -translate-x-1/2 items-center justify-center ${large ? 'h-[46px] w-[46px]' : 'h-11 w-11'}`}>
         <PetAvatar gameId={pet.gameId} name={pet.name} size={44} />
       </div>
       <h4
         className={`absolute inset-x-1 truncate text-center font-bold text-slate-900 ${
-          home ? 'top-[52px]' : 'top-[56px]'
-        } ${nameClass}`}
+          large ? 'top-[62px] text-[12px] leading-4' : home ? 'top-[52px]' : 'top-[56px]'
+        } ${large ? '' : nameClass}`}
         title={pet.fullName ?? pet.name}
       >
         {pet.name}
       </h4>
       {home ? (
         <div
-          className="absolute inset-x-0 bottom-0 flex h-4 divide-x divide-slate-300/70 border-t border-slate-300/60 text-center text-[8px] leading-none text-slate-600"
+          className={`absolute inset-x-0 bottom-0 flex divide-x divide-slate-300/70 border-t border-slate-300/60 text-center leading-none text-slate-600 ${large ? 'h-5 text-[9px]' : 'h-4 text-[8px]'}`}
           data-testid="breed-pet-stats"
           title={bonusesMissing ? '该快照未采集个体三维' : undefined}
         >

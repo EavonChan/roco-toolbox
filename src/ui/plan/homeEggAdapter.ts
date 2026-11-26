@@ -72,6 +72,8 @@ function parentInfo(resident: HomeResident, pet: OwnedPet | undefined): EggParen
     nature: resident.nature || pet?.nature || '',
     body: pet ? bodyGradeOf(pet) : '',
     voice: pet ? voiceLabelOf(pet.voiceDb) : '',
+    // 父母卡底部的个体三维（2026-11-25）：抓包里本来就有，之前没往父母身上带。
+    ...(pet?.individualBonuses?.length ? { individualBonuses: pet.individualBonuses } : {}),
     ...(resident.nest ? { nestName: resident.nest.nestName || (academy ? '学院小窝' : '普通小窝'), academy } : {}),
   };
 }

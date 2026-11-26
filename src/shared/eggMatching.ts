@@ -30,6 +30,8 @@ export interface EggParentInfo {
   nestName?: string;
   /** 学院小窝那只：性格 100% 遗传。 */
   academy?: boolean;
+  /** 个体三维（抓包 individualBonuses）；首页配窝卡与蛋详情父母卡底部三格用。 */
+  individualBonuses?: readonly { name: string; value: number }[];
 }
 
 export interface EggParentsInfo {
