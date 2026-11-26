@@ -358,7 +358,8 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
       <strong className="text-sm font-semibold text-slate-900">手动认领</strong>
       <span className="ml-auto text-[10px] text-slate-500">{claimCount} 颗待认领</span>
     </div>
-    <p className="text-[10px] leading-4 text-slate-500">左边是家园里的蛋（有父母、自产），右边是这次新进背包的蛋（时间 / 蛋重 / 蛋高 / 性格）。按你收蛋时看到的蛋重对一下——我们不自动配对，也不替你猜。</p>
+    {/* copy-lint-ignore 认领页要教操作（对蛋重），tour 到不了这个视图 */}
+    <p className="text-[10px] leading-4 text-slate-500">左边家园蛋（有父母、自产），右边新进背包蛋（时间 / 蛋重 / 蛋高 / 性格）；按蛋重对一下。</p>
     {error?<p role="alert" className="text-xs text-rose-600">{error}</p>:null}
     {notice?<p role="status" className="text-xs text-emerald-700">{notice}</p>:null}
     {!claimCount
