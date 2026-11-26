@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { MotherGroup } from '../domain/petFilters';
 import { DEFAULT_MOTHER_CRITERIA } from '../domain/motherCriteria';
@@ -80,6 +81,27 @@ function renderView() {
   );
 }
 
+/** 带 Profiler 渲染：每次提交时记录「当时屏上有几个组」，用来抓中间那次整屏提交 */
+function renderViewProfiled(commits: number[]) {
+  return render(
+    <Profiler
+      id="mothers"
+      onRender={() => {
+        commits.push(sectionSelector().length);
+      }}
+    >
+      <MotherView
+        owned={[]}
+        searchIndex={new Map()}
+        eggGroupNames={Object.fromEntries(groups.map((group) => [group.eggGroups[0], `蛋组${group.eggGroups[0]}`]))}
+        motherGroups={groups}
+        mode="perfect"
+        status="missing"
+      />
+    </Profiler>,
+  );
+}
+
 describe('母本列表渐进渲染', () => {
   test('首帧只挂前几组，剩下的用骨架占位', () => {
     renderView();
@@ -103,5 +125,25 @@ describe('母本列表渐进渲染', () => {
     expect(screen.getAllByTestId('mother-chain-row')).toHaveLength(10);
     // 目标组数内不出现「显示更多蛋组」
     expect(screen.queryByTestId('mother-chain-show-more')).toBeNull();
+  });
+
+  /**
+   * PERF-01（2026-11-26 审查）：重置如果写在 `useEffect` 里，换筛选后的**第一次提交**
+   * 还会按上一次的组数（宽横屏 10）把新结果整屏铺一遍，然后再塌回 2 组 + 骨架 ——
+   * 宽横屏下每敲一个字抖一次。这里用 Profiler 抓「每次提交时屏上有几组」。
+   */
+  test('换搜索词后的第一次提交就回到首帧组数，不会先整屏再塌', async () => {
+    const commits: number[] = [];
+    renderViewProfiled(commits);
+    await waitFor(() => expect(sectionSelector()).toHaveLength(10));
+
+    commits.length = 0;
+    fireEvent.change(screen.getByTestId('mother-search'), { target: { value: '测试精灵' } });
+
+    // 第一次提交必须已是首帧上限（2）附近，不能是旧的 10
+    expect(commits.length).toBeGreaterThan(0);
+    expect(commits[0]).toBeLessThanOrEqual(3);
+    // 并且之后还能补齐回 10 组（内容没被削）
+    await waitFor(() => expect(sectionSelector()).toHaveLength(10));
   });
 });

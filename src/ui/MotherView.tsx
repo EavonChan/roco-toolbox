@@ -444,18 +444,29 @@ export function MotherView({
   /**
    * 目标组数（横屏 10 / 6，竖屏 2）与「已经挂上」的组数分开：
    * 首帧只挂 `FIRST_PAINT_SECTIONS` 组，其余靠下面的空闲任务补齐到目标。
+   *
+   * 2026-11-26 PERF-01：**筛选签名一变，就在这一次渲染里直接按首帧窗口取数**，不等 useEffect。
+   * 原来重置写在 effect 里，换筛选/搜索后的**第一次提交**还会按上一次的组数（宽横屏 10）
+   * 把新结果整屏铺一遍，再塌回 2 组 + 骨架长回来 —— 宽横屏下每敲一个字抖一次，
+   * 那次整屏提交也白付了一遍成本（见 `docs/code-review/2026-11-26/R-04-性能与死代码.md` PERF-01）。
    */
-  const [requestedSections, setRequestedSections] = useState(() =>
-    Math.max(initialSections, FIRST_PAINT_SECTIONS),
-  );
-  const [mountedSections, setMountedSections] = useState(() =>
-    Math.min(initialSections, FIRST_PAINT_SECTIONS),
-  );
-  // 换筛选/搜索/断点就从头来：先只挂首帧那几组，避免上一轮的旧窗口把新结果截掉
-  useEffect(() => {
-    setRequestedSections(Math.max(initialSections, FIRST_PAINT_SECTIONS));
-    setMountedSections(Math.min(initialSections, FIRST_PAINT_SECTIONS));
-  }, [chainFilter, keyword, eggGroupFilter.join(','), initialSections]);
+  const sectionsKey = `${chainFilter}|${keyword}|${eggGroupFilter.join(',')}|${initialSections}`;
+  const firstPaintWindow = {
+    requested: Math.max(initialSections, FIRST_PAINT_SECTIONS),
+    mounted: Math.min(initialSections, FIRST_PAINT_SECTIONS),
+  };
+  const [sectionWindow, setSectionWindow] = useState(() => ({
+    key: sectionsKey,
+    ...firstPaintWindow,
+  }));
+  const sectionWindowStale = sectionWindow.key !== sectionsKey;
+  if (sectionWindowStale) {
+    // 渲染期同步（React「渲染期调整 state」写法）：这次按旧窗口的渲染结果会被丢弃，
+    // 立刻按新签名重渲染 —— 所以第一次提交就已经是首帧组数，不会先整屏再塌。
+    setSectionWindow({ key: sectionsKey, ...firstPaintWindow });
+  }
+  const requestedSections = sectionWindowStale ? firstPaintWindow.requested : sectionWindow.requested;
+  const mountedSections = sectionWindowStale ? firstPaintWindow.mounted : sectionWindow.mounted;
 
   /** 空闲追加：一片最多 2 组 / 20 张卡，补到目标组数就停 */
   useEffect(() => {
@@ -472,8 +483,13 @@ export function MotherView({
       }
       return Math.min(requestedSections, count);
     };
-    return scheduleIdleTask(() => setMountedSections((current) => nextMounted(current)));
-  }, [chainFilter, mountedSections, requestedSections, chainSections]);
+    return scheduleIdleTask(() =>
+      setSectionWindow((current) =>
+        // 片还没跑就换了筛选：这次作废（新签名会自己从首帧窗口重来）
+        current.key === sectionsKey ? { ...current, mounted: nextMounted(current.mounted) } : current,
+      ),
+    );
+  }, [chainFilter, mountedSections, requestedSections, chainSections, sectionsKey]);
 
   const visibleChainSections = chainSections.slice(0, mountedSections);
   /** 目标组数内、还没挂上的：先用等高骨架占位（追加时页面不跳） */
@@ -771,8 +787,7 @@ export function MotherView({
                 chainSections.length,
                 requestedSections + CHAIN_SECTION_BATCH,
               );
-              setRequestedSections(nextRequested);
-              setMountedSections(nextRequested);
+              setSectionWindow({ key: sectionsKey, requested: nextRequested, mounted: nextRequested });
             }}
             className="min-h-[36px] w-full rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-600"
             data-testid="mother-chain-show-more"
