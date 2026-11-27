@@ -85,3 +85,8 @@ systemPromptSection: true
 本机 `ollama` 已装但**一个模型都没有**，且显卡是集成 AMD（0.5 GB VRAM），本地模型只能跑 CPU。
 Hindsight 的事实抽取要结构化 JSON，7B 以下会产脏数据、7B+ 在 CPU 上一条记忆要 30~60 秒。
 所以走 DeepSeek API；ollama 留作以后完全离线时的备选。
+
+| PowerShell 写的 .cmd 用了 LF | cmd 把 set/or 解析成"不是内部或外部命令" | **.cmd 必须 CRLF + ASCII**，用 "
+" + ASCIIEncoding 写 |
+| 启动脚本靠用户环境变量 | wscript/cmd 继承的是旧环境，读不到后设的变量 | 启动脚本里**自己 set** 全部变量，key 用 or /f "usebackq skip=1" 从 D:\desk\ds-key.txt 读 |
+| 服务随终端退出 | 从 DSH 的 shell 里 Start-Process 起的服务，DSH 重启后被带走 | 用 Startup 目录的 vbs 拉起（wscript 派生的进程独立存活） |
