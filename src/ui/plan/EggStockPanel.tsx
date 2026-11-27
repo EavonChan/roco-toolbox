@@ -118,8 +118,6 @@ export function EggMedals({body,voice}:{body:string;voice:string}) {
 export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRail=false, railBack, character, characters, onCharacterChange }: { eggs:readonly WorkflowEgg[];species:readonly SpeciesEntry[];busy:boolean;mutate:(action:unknown)=>Promise<unknown>;/** 横屏把搜索与条件收进右侧折叠栏（家园页蛋仓屏用） */collapsibleFilterRail?:boolean;/** 横屏标题栏里的返回动作（家园页传入「返回家园」） */railBack?:{label?:string;onClick:()=>void};/** 游戏角色筛选：'' = 全部角色（家园蛋仓屏传入，组内广场不传就不出这一项） */character?:string;characters?:readonly EggCharacter[];onCharacterChange?:(key:string)=>void }) {
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState<StockFilter>('全部');
-  /** 档位排序（2026-11-27）：默认保持原来的「自产/绿窝」顺序；开启后按 eggGuide.tier 升序，没资料的排最后。 */
-  const [sortByTier,setSortByTier]=useState(false);
   const [selected,setSelected]=useState<string|null>(null);
   const [labeling,setLabeling]=useState(false);
   const [natures,setNatures]=useState<string[]>([]);
@@ -177,16 +175,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const matchesFilter=(e:WorkflowEgg)=>filter==='不可交换'?special(e):!special(e)&&(
     filter==='全部'||filter==='已标注'&&annotated(e)||filter==='未标注'&&!annotated(e)||filter==='自产'&&selfProduced(e));
   const visible=eggs.filter(e=>e.status!=='transferred'&&(!character||e.gameAccountKey===character)&&(!query||name(e.eggGameId).includes(query))&&matchesFilter(e))
-    .sort((a,b)=>{
-      if(sortByTier){
-        const tierA=eggGuideOf(a.eggGameId)?.tier;
-        const tierB=eggGuideOf(b.eggGameId)?.tier;
-        if(tierA!==undefined&&tierB!==undefined&&tierA!==tierB)return tierA-tierB;
-        if(tierA===undefined&&tierB!==undefined)return 1;
-        if(tierA!==undefined&&tierB===undefined)return -1;
-      }
-      return Number(selfProduced(b))-Number(selfProduced(a))||Number(isGreenNestEgg(b))-Number(isGreenNestEgg(a));
-    });
+    .sort((a,b)=>Number(selfProduced(b))-Number(selfProduced(a))||Number(isGreenNestEgg(b))-Number(isGreenNestEgg(a)));
   const egg=eggs.find(e=>e.id===selected);
   const guide=egg?eggGuideOf(egg.eggGameId):null;
   const guideText=guide&&egg?eggGuideText(guide,egg.weightGrams):null;
@@ -298,11 +287,6 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
     : null;
   const searchBlock=<SearchField label="搜索蛋名" value={query} onValueChange={setQuery} placeholder="搜索蛋名" className="[&_input]:text-left"/>;
   const filterBlock=<div className="flex flex-wrap gap-1" data-testid="egg-stock-filter-chips">{(['全部','已标注','未标注','自产','不可交换'] as const).map(f=><button key={f} type="button" aria-pressed={filter===f} onClick={()=>setFilter(f)} className={'min-h-7 rounded-md px-2 text-[11px] '+(filter===f?'bg-emerald-50 font-semibold text-emerald-700':'text-slate-500')}>{f}</button>)}</div>;
-  const sortBlock=<div className="flex flex-wrap items-center gap-0.5" data-testid="egg-stock-sort">
-    <span className="w-7 shrink-0 text-[9px] text-slate-400">排序</span>
-    <button type="button" aria-pressed={!sortByTier} onClick={()=>setSortByTier(false)} className={'min-h-7 rounded-md px-2 text-[11px] '+(!sortByTier?'bg-emerald-50 font-semibold text-emerald-700':'text-slate-500')}>默认</button>
-    <button type="button" aria-pressed={sortByTier} onClick={()=>setSortByTier(true)} className={'min-h-7 rounded-md px-2 text-[11px] '+(sortByTier?'bg-emerald-50 font-semibold text-emerald-700':'text-slate-500')}>档位 ↑</button>
-  </div>;
   const cards=visible.length?<div className="egg-stock-grid grid grid-cols-4 gap-1.5" data-testid="egg-stock-grid">{visible.map(e=>{
       // 待认领的卡留在网格里（不藏起来）：虚线琥珀框 + 「待认领」标，父母只在详情里看得到。
       const border=e.claimPending?'border-dashed border-amber-400':isGreenNestEgg(e)?'border-emerald-500':'border-slate-200';
@@ -442,7 +426,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
         <div className="egg-stock-main flex min-w-0 flex-col gap-2" data-testid="egg-stock-main">
           {cards}
         </div>
-        {railCollapsed?null:<div className="egg-stock-filters flex min-w-0 flex-col gap-2" data-testid="egg-stock-filters">{characterBlock}{searchBlock}{filterBlock}{sortBlock}</div>}
+        {railCollapsed?null:<div className="egg-stock-filters flex min-w-0 flex-col gap-2" data-testid="egg-stock-filters">{characterBlock}{searchBlock}{filterBlock}</div>}
         <aside className="egg-stock-rail" data-testid="egg-stock-rail" aria-label="蛋仓标题栏">
           {railBack?<button
             type="button"
@@ -467,7 +451,6 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
       </div>:<>
         {searchBlock}
         {filterBlock}
-        {sortBlock}
         {cards}
       </>}
     </>}
