@@ -38,6 +38,9 @@ export interface PatrolEgg {
   biologicalParentageConfirmed: boolean;
   /** 蛋所在小窝的家具配置 id。 */
   nestConfigId?: number | null;
+  /** 蛋的变异名：普通 / 异色 / 炫彩…（空 = 没给）。 */
+  mutationName?: string;
+  mutationType?: number | null;
 }
 /** 家园里已经排上的一对亲本（breeding_pairs）。用于判定「已上窝」。 */
 export interface PatrolPair { mother: PatrolParent; fathers: PatrolParent[] }
@@ -158,6 +161,8 @@ export function parsePatrolScene(raw: unknown, now: number): PatrolScene {
       actorId, nestId, mother, fathers,
       biologicalParentageConfirmed: rawEgg.biological_parentage_confirmed === true,
       nestConfigId: optionalInteger(rawEgg.nest_furniture_config_id),
+      mutationName: typeof rawEgg.mutation_name === 'string' ? rawEgg.mutation_name : '',
+      mutationType: optionalInteger(rawEgg.mutation_type),
     };
   });
   if (new Set(eggs.map(egg => egg.actorId)).size !== eggs.length) throw new Error('蛋实例重复');
