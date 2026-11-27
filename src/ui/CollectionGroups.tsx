@@ -37,6 +37,8 @@ import {
 
 export interface CollectionGroupsProps {
   onGoAccount?: () => void;
+  /** 去「我的 · 游戏数据」导入（「没有找到你的游戏号？」走这条，不是去登录） */
+  onGoImport?: () => void;
   onDraftDirtyChange?: (dirty: boolean) => void;
   onNavigate?: (intent: import('./navigation').NavigationIntent) => void;
   /** 从看板 / 收集页直达：进入同类型的小组（个人求蛋已删除，2026-10-30）。 */
@@ -70,6 +72,7 @@ export interface CollectionGroupsProps {
  */
 export function CollectionGroups({
   onGoAccount,
+  onGoImport,
   onDraftDirtyChange,
   onNavigate,
   focus,
@@ -311,6 +314,7 @@ export function CollectionGroups({
                   editing={editing}
                   onToggle={() => setEditingGroupId(editing ? null : hook.currentGroupId)}
                   onGoAccount={onGoAccount}
+                  onGoImport={onGoImport}
                   snapshots={snapshots}
                 />
               </div>
@@ -361,6 +365,7 @@ export function CollectionGroups({
               hook={hook as never}
               snapshots={snapshots}
               species={species}
+              onGoImport={onGoImport}
               onGoAccount={onGoAccount}
             />
           ) : null}
@@ -591,12 +596,14 @@ function PublicationCard({
   editing,
   onToggle,
   onGoAccount,
+  onGoImport,
   snapshots,
 }: {
   hook: ReturnType<typeof useCollectionGroups>;
   editing: boolean;
   onToggle: () => void;
   onGoAccount?: () => void;
+  onGoImport?: () => void;
   snapshots: ReturnType<typeof useSnapshots>['snapshots'];
 }) {
   const mother = hook.myMember?.resource ?? null;
@@ -614,10 +621,10 @@ function PublicationCard({
   });
   const summary = hook.groupType === 'stud'
     ? stud
-      ? `${stud.accounts.length} 个账号 · ${new Set(stud.accounts.flatMap((account) => account.covered.map((slot) => `${slot.groupId}:${slot.natureId}:${slot.grade}`))).size} 个覆盖格`
+      ? `${stud.accounts.length} 个游戏号 · ${new Set(stud.accounts.flatMap((account) => account.covered.map((slot) => `${slot.groupId}:${slot.natureId}:${slot.grade}`))).size} 个覆盖格`
       : '还没有绑定游戏账号：右边的按钮勾选后发布。'
     : mother
-      ? `${new Set(mother.accounts.flatMap((account) => account.eggGameIds)).size} 种母本 · ${mother.accounts.length} 个账号。`
+      ? `${new Set(mother.accounts.flatMap((account) => account.eggGameIds)).size} 种母本 · ${mother.accounts.length} 个游戏号。`
       : '还没有绑定游戏账号：右边的按钮勾选后发布。';
 
   const badgeClass =
@@ -649,7 +656,7 @@ function PublicationCard({
           {!hasLocalData ? (
             <button
               type="button"
-              onClick={onGoAccount}
+              onClick={onGoImport ?? onGoAccount}
               className="mt-1 min-h-[24px] text-[11px] font-medium text-emerald-700"
               data-testid="group-go-import"
             >

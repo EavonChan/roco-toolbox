@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { bindingStateOf, unbindConfirmText } from '../domain/collectionBinding';
 import { isBreedableGroup } from '../domain/eggs';
 import { accountKeyOf, type AccountSnapshot } from '../domain/parseBackup';
 import type { SpeciesEntry } from '../domain/types';
@@ -12,6 +13,8 @@ export interface MotherResourceEditorProps {
   hook: MotherGroupsHook;
   snapshots: AccountSnapshot[];
   species: SpeciesEntry[];
+  /** 「没有找到你的游戏号？」→ 去「我的 · 游戏数据」导入（不是去登录） */
+  onGoImport?: () => void;
   onGoAccount?: () => void;
 }
 
@@ -25,6 +28,7 @@ export function MotherResourceEditor({
   hook,
   snapshots,
   species,
+  onGoImport,
   onGoAccount,
 }: MotherResourceEditorProps) {
   const [busy, setBusy] = useState(false);
@@ -101,11 +105,27 @@ export function MotherResourceEditor({
     }
   };
 
-  const handlePublish = () =>
-    run(
+  /**
+   * 发布 = **整份替换**：不在本次选号里的号会被解绑，机器人立刻认不到。
+   * 所以先看「这次少了谁」，少了就再确认一次（2026-11-27 用户口径：误取消不能悄悄解绑）。
+   */
+  const publishedKeys = new Set((published?.accounts ?? []).map((account) => account.accountKey));
+  const unbinding = (published?.accounts ?? []).filter(
+    (account) => !selection.includes(account.accountKey),
+  );
+
+  const handlePublish = () => {
+    if (unbinding.length > 0) {
+      const names = unbinding.map((account) => account.accountName);
+      if (!window.confirm(unbindConfirmText(names))) return;
+    }
+    return run(
       () => hook.publish(),
-      published ? '已更新，组员刷新后就能看到' : '已发布，组员刷新后就能看到',
+      published
+        ? `已更新绑定：${selection.length} 个游戏号，组员刷新后就能看到`
+        : `已绑定 ${selection.length} 个游戏号，组员刷新后就能看到`,
     );
+  };
 
   const handleStop = () => {
     if (!window.confirm('停止共享会从小组里撤掉你已发布的所有母本（保留组员身份），确定吗？')) {
@@ -134,9 +154,6 @@ export function MotherResourceEditor({
   const coverageTotal = preview.resource
     ? new Set(preview.resource.accounts.flatMap((account) => account.eggGameIds)).size
     : 0;
-  const publishedTotal = published
-    ? new Set(published.accounts.flatMap((account) => account.eggGameIds)).size
-    : 0;
 
   return (
     <section className="rounded-2xl bg-white p-3 shadow-sm" data-testid="mother-resource-editor">
@@ -144,22 +161,26 @@ export function MotherResourceEditor({
         <h2 className="text-sm font-medium text-slate-500">我的共享资源</h2>
         <span className="text-[11px] text-slate-400" data-testid="mother-my-status">
           {published
-            ? `已发布 ${publishedTotal} 种 · ${timeText(published.publishedAt)}`
-            : '尚未发布'}
+            ? `已绑定 ${published.accounts.length} 个游戏号 · ${timeText(published.publishedAt)}`
+            : '尚未绑定'}
         </span>
       </div>
       <p className="mt-1 text-[11px] text-slate-400">
         共享全部母本与产线；具体缺什么由你在小组页的本地筛选决定。按人汇总，一个号有就算有。
+      </p>
+      {/* 2026-11-27：用户问「两个 UID 是不是要建两个账号」——这句就是答案，别再让他猜 */}
+      <p className="mt-0.5 text-[11px] text-slate-400" data-testid="mother-bind-scope">
+        一个人可以绑多个游戏号，都在这个小布助手账号下——不用再注册第二个账号。
       </p>
 
       {snapshots.length === 0 ? (
         <div className="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500" data-testid="mother-no-local-data">
           本机还没有导入任何账号。先导入游戏数据，或在导入页用云同步拉齐。
           {published ? '已发布的资源不会因此被撤回。' : ''}
-          {onGoAccount ? (
+          {onGoImport ?? onGoAccount ? (
             <button
               type="button"
-              onClick={onGoAccount}
+              onClick={onGoImport ?? onGoAccount}
               className="mt-2 block min-h-[30px] rounded-lg border border-emerald-500 px-2.5 text-xs text-emerald-700"
             >
               去导入数据
@@ -171,6 +192,7 @@ export function MotherResourceEditor({
           {localSnapshots.map((snapshot) => {
             const key = snapshot.accountKey ?? accountKeyOf(snapshot);
             const on = selection.includes(key);
+            const state = bindingStateOf({ selected: on, published: publishedKeys.has(key) });
             return (
               <li key={key}>
                 <button
@@ -185,6 +207,20 @@ export function MotherResourceEditor({
                   }`}
                 >
                   <span className="font-medium">{snapshot.accountName}</span>
+                  <span
+                    className={`ml-1 rounded px-1 text-[10px] leading-[1.4] ${
+                      state === '将解绑'
+                        ? 'bg-amber-50 text-amber-700'
+                        : state === '将绑定'
+                          ? 'bg-sky-50 text-sky-700'
+                          : state === '已绑定'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-slate-100 text-slate-500'
+                    }`}
+                    data-testid={`mother-account-state-${key}`}
+                  >
+                    {state}
+                  </span>
                   <span className="ml-1 text-[11px] text-slate-400">
                     UID {snapshot.gameId > 0 ? snapshot.gameId : '未知'} · 母本 {coverageOf(snapshot)} 种
                   </span>
@@ -197,6 +233,28 @@ export function MotherResourceEditor({
           })}
         </ul>
       )}
+
+      {/* 2026-11-27：列表只来自「本机导入过的账号」，没有这一行用户会一直找"添加"按钮 */}
+      {onGoImport && localSnapshots.length > 0 ? (
+        <div
+          className="mt-2 rounded-xl border border-dashed border-slate-200 px-3 py-2"
+          data-testid="mother-add-account"
+        >
+          <button
+            type="button"
+            onClick={onGoImport}
+            className="min-h-[28px] text-xs font-medium text-emerald-700"
+          >
+            ＋ 没有找到你的游戏号？
+          </button>
+          <p
+            className="mt-0.5 text-[11px] leading-snug text-slate-400"
+            data-testid="mother-add-account-hint"
+          >
+            需要先用这个游戏号在小布助手里导入一次数据，它才会出现在上面。
+          </p>
+        </div>
+      ) : null}
 
       {missingAccounts.length > 0 ? (
         <ul className="mt-2 space-y-1">
@@ -246,7 +304,10 @@ export function MotherResourceEditor({
         ) : (
           <>
             <p className="text-xs text-slate-500">
-              本次共享 {selection.length} 个账号 · 覆盖 {coverageTotal} 种母本
+              本次绑定 {selection.length} 个游戏号 · 覆盖 {coverageTotal} 种母本
+              {selection.length > 1 ? (
+                <span className="ml-1 text-slate-400">（同一个账号，机器人两个号都认）</span>
+              ) : null}
               {preview.diff && !preview.diff.unchanged ? (
                 <span className="ml-1" data-testid="mother-preview-diff">
                   （新增 {preview.diff.addedEggGameIds.length} 种、移除{' '}

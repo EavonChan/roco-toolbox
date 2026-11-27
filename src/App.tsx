@@ -273,6 +273,9 @@ export default function App() {
           onGoAccount={() =>
             navigate({ type: 'open-profile', section: 'identity', returnToGroups: true })
           }
+          onGoImport={() =>
+            navigate({ type: 'open-profile', section: 'data', returnToGroups: true })
+          }
           openEggStock={eggStockPending(navigation)}
           onEggStockOpened={() =>
             navigate({ type: 'consume-egg-stock', revision: navigation.eggStockRevision })

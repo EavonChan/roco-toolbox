@@ -73,6 +73,48 @@ for (const size of SIZES) {
   await page.screenshot({ path: path.join(OUT, `B3-${size.tag}-已绑定.png`) });
   console.log(`  横向溢出：${(await overflow()) ? '有' : '无'}`);
 
+  // 绑定面板：新入口（＋ 没有找到你的游戏号？）+ 四个勾选态（2026-11-27）
+  await edit.first().click();
+  await page.waitForTimeout(500);
+  const states = async () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-testid^="mother-account-state-"]')).map(
+        (el) => `${el.getAttribute('data-testid').replace('mother-account-state-', '')}=${el.textContent}`,
+      ),
+    );
+  console.log(`[${size.tag}] 面板四态：${(await states()).join(' / ')}`);
+  const publishedKey = await page.evaluate(() => {
+    const chip = Array.from(
+      document.querySelectorAll('[data-testid^="mother-account-state-"]'),
+    ).find((el) => el.textContent === '已绑定');
+    return chip?.getAttribute('data-testid')?.replace('mother-account-state-', '') ?? '';
+  });
+  const addEntry = page.locator('[data-testid="mother-add-account"]');
+  console.log(
+    `  新增入口：${await addEntry.count() ? (await addEntry.first().innerText()).replace(/\s+/g, ' ') : '（没有渲染）'}`,
+  );
+  await page.screenshot({ path: path.join(OUT, `B3-${size.tag}-绑定面板.png`) });
+  console.log(`  横向溢出：${(await overflow()) ? '有' : '无'}`);
+
+  // 勾上「未绑定」的那个号 → 「将绑定」
+  const unboundKey = await page.evaluate(() => {
+    const chip = Array.from(
+      document.querySelectorAll('[data-testid^="mother-account-state-"]'),
+    ).find((el) => el.textContent === '未绑定');
+    return chip?.getAttribute('data-testid')?.replace('mother-account-state-', '') ?? '';
+  });
+  if (unboundKey) {
+    await page.locator(`[data-testid="mother-account-${unboundKey}"]`).click();
+    await page.waitForTimeout(400);
+    console.log(`[${size.tag}] 勾第二个号后：${(await states()).join(' / ')}`);
+    await page.screenshot({ path: path.join(OUT, `B3-${size.tag}-将绑定.png`) });
+    // 取消第一个（原本已发布的）号 → 「将解绑」
+    await page.locator(`[data-testid="mother-account-${publishedKey}"]`).click();
+    await page.waitForTimeout(400);
+    console.log(`[${size.tag}] 取消原号后：${(await states()).join(' / ')}`);
+    await page.screenshot({ path: path.join(OUT, `B3-${size.tag}-将解绑.png`) });
+  }
+
   // 未发布：清掉假后端里「我」的已发布资源，再点刷新
   const cleared = await page.evaluate(() => {
     const state = window.__mockGroup;
@@ -94,13 +136,6 @@ for (const size of SIZES) {
 
   console.log(`[${size.tag}] 未绑定态：${(await badge.first().innerText()).trim()} / 按钮「${(await edit.first().innerText()).trim()}」 / 小字「${(await hint.first().innerText()).trim()}」`);
   await page.screenshot({ path: path.join(OUT, `B3-${size.tag}-未绑定.png`) });
-  console.log(`  横向溢出：${(await overflow()) ? '有' : '无'}`);
-
-  // 展开选号面板：确认按钮变成「收起」，小字仍在
-  await edit.first().click();
-  await page.waitForTimeout(600);
-  console.log(`[${size.tag}] 展开后按钮「${(await edit.first().innerText()).trim()}」`);
-  await page.screenshot({ path: path.join(OUT, `B3-${size.tag}-展开选号.png`) });
   console.log(`  横向溢出：${(await overflow()) ? '有' : '无'}`);
 
   if (errors.length) console.log(`  [${size.tag} 页面错误] ${errors.join(' | ')}`);

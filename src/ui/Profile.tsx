@@ -322,6 +322,8 @@ export function Profile({
             variant="admin"
             onDraftDirtyChange={onDraftDirtyChange}
             onGoAccount={() => goSection('identity')}
+            // 「没有找到你的游戏号？」= 先去导入，不是去登录（2026-11-27）
+            onGoImport={() => goSection('data')}
           />
         </>
       ) : null}
