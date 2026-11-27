@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AV1 · 自定义头像方案（2026-11-28）</title>
+<style>
+  /* ------------------------------------------------------------------
+     这是「按现有组件几何复刻」的可交互方案稿，不是真机截图。
+     375 / 390 共用一套状态：点顶部按钮切方案与屏宽，头像、面板都能点。
+     本轮只出方案：没有改 src/、没有打包、没有发版。
+     几何依据：src/App.tsx（外壳）、src/ui/Profile.tsx、ProfileHeader.tsx、
+     ProfileQuickEntries.tsx；原语样式见 src/ui/kit/。
+     ------------------------------------------------------------------ */
+  :root{
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155;
+    --slate-800:#1e293b; --slate-900:#0f172a;
+    --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-200:#a7f3d0; --emerald-500:#10b981;
+    --emerald-600:#059669; --emerald-700:#047857;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    padding:20px 20px 60px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+    background:#eef2f7; color:var(--slate-700); -webkit-font-smoothing:antialiased;
+  }
+  h1{font-size:17px; margin:0 0 6px; color:var(--slate-800);}
+  .lead{font-size:12px; line-height:1.75; color:var(--slate-500); margin:0 0 8px; max-width:900px;}
+  .lead b{color:var(--slate-700);}
+  code{font-family:ui-monospace,"SFMono-Regular",Consolas,monospace; font-size:11px; background:var(--slate-200); padding:0 3px; border-radius:3px;}
+
+  /* 顶部开关（bare=1 时整条隐藏，截图只留手机） */
+  .toolbar{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0 18px; padding:8px 10px; background:#fff; border:1px solid var(--slate-200); border-radius:10px;}
+  .toolbar span{font-size:11px; color:var(--slate-500);}
+  .toolbar button{min-height:30px; padding:0 10px; font-size:11.5px; border:1px solid var(--slate-200); background:#fff; color:var(--slate-600); border-radius:7px; cursor:pointer;}
+  .toolbar button[aria-pressed="true"]{background:var(--emerald-50); border-color:var(--emerald-500); color:var(--emerald-700); font-weight:600;}
+  .toolbar .sep{width:1px; height:18px; background:var(--slate-200);}
+  body.bare{padding:0; background:#eef2f7;}
+  body.bare .toolbar,body.bare h1,body.bare .lead,body.bare .foot{display:none;}
+  body.bare .stage{margin:0;}
+
+  .stage{display:flex; gap:26px; align-items:flex-start; flex-wrap:wrap;}
+  .device{display:flex; flex-direction:column; gap:8px; flex:none;}
+  .device>.cap{font-size:11.5px; color:var(--slate-500);}
+  .phone{
+    position:relative; background:var(--slate-100); overflow:hidden; display:flex; flex-direction:column;
+    border:1px solid var(--slate-300); border-radius:20px;
+    box-shadow:0 10px 26px rgba(15,23,42,.10);
+  }
+  .phone[data-w="375"]{width:375px; height:812px;}
+  .phone[data-w="390"]{width:390px; height:844px;}
+
+  /* ---------- App 外壳（App.tsx:214-243） ---------- */
+  .app-head{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 16px; border-bottom:1px solid var(--slate-100); background:#fff; flex:none;}
+  .app-head h1{font-size:16px; font-weight:600; margin:0; color:var(--slate-900);}
+  .head-actions{display:flex; gap:6px; flex:none;}
+  .head-actions button{min-height:30px; padding:0 10px; font-size:12px; color:var(--slate-500); background:#fff; border:1px solid var(--slate-200); border-radius:8px;}
+  .app-tabs{display:flex; padding:0 8px; border-bottom:1px solid var(--slate-100); background:#fff; flex:none;}
+  .app-tabs button{position:relative; min-height:40px; flex:1; padding:0 8px; font-size:14px; font-weight:500; color:var(--slate-500); background:none; border:none; border-bottom:2px solid transparent;}
+  .app-tabs button[aria-current="page"]{color:var(--emerald-700); border-bottom-color:var(--emerald-600);}
+
+  /* ---------- 页面主体（Profile.tsx:195） ---------- */
+  .page{flex:1; overflow:hidden; padding:16px; display:flex; flex-direction:column; gap:12px;}
+  .card{background:#fff; border-radius:16px; box-shadow:0 1px 2px rgba(15,23,42,.06);}
+
+  /* 概览卡（ProfileHeader.tsx:49） */
+  .profile-head{display:flex; align-items:center; gap:12px; padding:16px;}
+  .avatar{
+    position:relative; width:44px; height:44px; flex:none; border-radius:9999px;
+    display:flex; align-items:center; justify-content:center; border:1px solid transparent;
+    font-size:16px; font-weight:600; background:none; padding:0; cursor:pointer;
+  }
+  .avatar-initial{background:var(--emerald-50); border-color:var(--emerald-100); color:var(--emerald-700);}
+  .avatar-sprite{background:#fff; border-color:var(--emerald-200); overflow:hidden;}
+  .avatar-sprite img{width:36px; height:36px; object-fit:contain;}
+  .avatar-photo{border-color:var(--emerald-200); overflow:hidden;}
+  .avatar-photo img{width:100%; height:100%; object-fit:cover;}
+  .who{min-width:0; flex:1;}
+  .who .name{display:flex; align-items:center; gap:6px; margin:0; font-size:15px; font-weight:600; color:var(--slate-900);}
+  .who .name span.txt{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .who .name i{width:7px; height:7px; flex:none; border-radius:9999px; background:var(--emerald-500);}
+  .who .state{margin:2px 0 0; font-size:12px; color:var(--slate-500);}
+  .head-action{min-height:36px; flex:none; border-radius:8px; border:1px solid var(--emerald-200); background:#fff; color:var(--emerald-700); font-size:14px; font-weight:500; padding:0 12px;}
+
+  /* 三个快捷入口（ProfileQuickEntries.tsx） */
+  .quick{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .tile{min-height:86px; display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; gap:4px; padding:10px; text-align:left; background:#fff; border:1px solid var(--slate-200); border-radius:16px; box-shadow:0 1px 2px rgba(15,23,42,.06);}
+  .tile.primary{border-color:var(--emerald-500); background:var(--emerald-50);}
+  .tile .ico{width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:var(--emerald-50); color:var(--emerald-700);}
+  .tile.primary .ico{background:#fff;}
+  .tile .ico svg{width:16px; height:16px;}
+  .tile b{font-size:13px; font-weight:600; line-height:1.2; color:var(--slate-800);}
+  .tile small{font-size:10.5px; line-height:1.2; color:var(--slate-500);}
+
+  /* 列表（Profile.tsx:69） */
+  .list{overflow:hidden; border-radius:16px; background:#fff; box-shadow:0 1px 2px rgba(15,23,42,.06);}
+  .list h2{margin:0; padding:12px 16px 4px; font-size:11px; font-weight:600; letter-spacing:.02em; color:var(--slate-400);}
+  .list .rows{display:flex; flex-direction:column;}
+  .list .rows>*+*{border-top:1px solid var(--slate-100);}
+  .row{display:flex; align-items:center; gap:8px; min-height:48px; width:100%; padding:0 16px; text-align:left; font-size:14px; color:var(--slate-800); background:none; border:none;}
+  .row .label{min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .row .value{flex:none; font-size:12px; color:var(--slate-500);}
+  .row .chev{flex:none; color:var(--slate-300);}
+
+  .version{margin-top:auto; padding-top:4px; text-align:center; font-size:10px; color:var(--slate-300);}
+
+  /* ---------- 底部面板 ---------- */
+  .backdrop{position:absolute; inset:0; background:rgba(15,23,42,.42);}
+  .sheet{
+    position:absolute; left:0; right:0; bottom:0; background:#fff; border-radius:20px 20px 0 0;
+    display:flex; flex-direction:column; max-height:82%; box-shadow:0 -10px 30px rgba(15,23,42,.18);
+  }
+  .sheet .grab{width:36px; height:4px; border-radius:9999px; background:var(--slate-200); margin:8px auto 0;}
+  .sheet .sheet-head{padding:10px 16px 8px; flex:none;}
+  .sheet .sheet-head h2{margin:0; font-size:16px; font-weight:600; color:var(--slate-900);}
+  .sheet .sheet-head p{margin:4px 0 0; font-size:12px; line-height:1.6; color:var(--slate-500);}
+  .sheet .sheet-body{flex:1; overflow:hidden; padding:0 16px 12px; min-height:0;}
+  .sheet .sheet-foot{flex:none; display:flex; gap:8px; padding:10px 16px 20px; border-top:1px solid var(--slate-100);}
+  .sheet .sheet-foot button{flex:1; min-height:44px; border-radius:12px; font-size:15px; font-weight:600;}
+  .btn-ghost{background:#fff; border:1px solid var(--slate-200); color:var(--slate-600);}
+  .btn-primary{background:var(--emerald-600); border:1px solid var(--emerald-600); color:#fff;}
+
+  /* 精灵宫格 */
+  .sprite-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px;}
+  .sprite-cell{display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 2px 6px; background:#fff; border:1px solid var(--slate-200); border-radius:14px;}
+  .sprite-cell .pic{position:relative; width:56px; height:56px; border-radius:9999px; background:var(--slate-50); display:flex; align-items:center; justify-content:center; border:1px solid var(--slate-100);}
+  .sprite-cell .pic img{width:46px; height:46px; object-fit:contain;}
+  .sprite-cell .pic .initial{font-size:22px; font-weight:600; color:var(--emerald-700);}
+  .sprite-cell small{font-size:11px; color:var(--slate-500); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sprite-cell[aria-pressed="true"]{border-color:var(--emerald-500); background:var(--emerald-50);}
+  .sprite-cell[aria-pressed="true"] .pic{border-color:var(--emerald-200); background:#fff;}
+  .sprite-cell .check{position:absolute; right:-2px; bottom:-2px; width:18px; height:18px; border-radius:9999px; background:var(--emerald-600); color:#fff; display:none; align-items:center; justify-content:center;}
+  .sprite-cell .check svg{width:11px; height:11px;}
+  .sprite-cell[aria-pressed="true"] .check{display:flex;}
+  .grid-note{margin:8px 0 0; font-size:11px; color:var(--slate-400); text-align:center;}
+
+  /* 我的身份：资料卡（头像入口） */
+  .back-row{display:flex; align-items:center; min-height:44px; width:100%; padding:0 4px; background:none; border:none; font-size:14px; font-weight:500; color:var(--emerald-700); text-align:left;}
+  .notice{padding:12px 16px; border-radius:16px; background:#fff; box-shadow:0 1px 2px rgba(15,23,42,.06);}
+  .notice b{display:block; font-size:14px; color:var(--slate-800);}
+  .notice p{margin:4px 0 0; font-size:12px; line-height:1.6; color:var(--slate-500);}
+  .identity-thumb{width:28px; height:28px; flex:none; border-radius:9999px; background:#fff; border:1px solid var(--emerald-200); display:flex; align-items:center; justify-content:center; overflow:hidden;}
+  .identity-thumb img{width:23px; height:23px; object-fit:contain;}
+  .row .row-main{display:flex; align-items:center; gap:10px; min-width:0; flex:1;}
+  .row .row-main .label{flex:none;}
+
+  /* 两个来源的页签 */
+  .tabs{display:flex; gap:6px; padding:0 0 10px; flex:none;}
+  .tabs button{min-height:34px; padding:0 12px; border-radius:9999px; border:1px solid var(--slate-200); background:#fff; font-size:13px; color:var(--slate-500);}
+  .tabs button[aria-pressed="true"]{background:var(--emerald-50); border-color:var(--emerald-500); color:var(--emerald-700); font-weight:600;}
+
+  /* 上传照片那一条 */
+  .upload-row{display:flex; align-items:center; gap:10px; width:100%; margin-top:10px; padding:10px 12px; border:1px dashed var(--slate-300); border-radius:12px; background:var(--slate-50); text-align:left;}
+  .upload-row .ico{width:32px; height:32px; flex:none; border-radius:10px; background:#fff; color:var(--emerald-700); display:flex; align-items:center; justify-content:center; border:1px solid var(--slate-200);}
+  .upload-row b{display:block; font-size:13px; font-weight:600; color:var(--slate-800);}
+  .upload-row small{display:block; font-size:11px; color:var(--slate-500); margin-top:1px;}
+
+  /* 裁剪 */
+  .crop-stage{display:flex; justify-content:center; padding:4px 0 10px;}
+  .crop-circle{position:relative; width:236px; height:236px; border-radius:9999px; overflow:hidden; background:var(--slate-100); border:1px solid var(--slate-200); box-shadow:inset 0 0 0 1px rgba(255,255,255,.6);}
+  .crop-circle img{position:absolute; left:50%; top:50%; width:100%; height:100%; transform:translate(-50%,-50%) scale(1); object-fit:cover;}
+  .crop-tools{display:flex; align-items:center; gap:10px; padding:2px 4px 8px;}
+  .crop-tools span{font-size:12px; color:var(--slate-500); flex:none;}
+  .crop-tools input[type=range]{flex:1; accent-color:var(--emerald-600);}
+  .crop-hint{margin:0 0 12px; font-size:11.5px; color:var(--slate-500); text-align:center;}
+
+  /* 保存后的即时反馈 */
+  .toast{position:absolute; left:50%; bottom:96px; transform:translateX(-50%); background:rgba(15,23,42,.88); color:#fff; font-size:12px; padding:8px 14px; border-radius:9999px; white-space:nowrap;}
+
+  .foot{margin-top:14px; font-size:11px; color:var(--slate-400);}
+</style>
+</head>
+<body>
+<h1>AV1 · 自定义头像（只出方案）</h1>
+<p class="lead">
+  三个方向：<b>A 图鉴精灵</b>（零上传、零裁剪）、<b>B 上传照片</b>（要裁剪与存储）、<b>C 两者都支持</b>（先 A 后 B）。
+  每屏都是 375 / 390 真实宽度；点头像、点宫格、切页签、拉缩放条都能动。
+  本轮不改 <code>src/</code>、不打包、不发版。
+</p>
+<div class="toolbar" id="toolbar"></div>
+<div class="stage">
+  <div class="device">
+    <div class="cap" id="cap"></div>
+    <div class="phone" id="phone" data-w="375"></div>
+  </div>
+</div>
+<div class="foot">方案稿 · 2026-11-28 · 几何按现有组件复刻；精灵图来自官方 CDN（同 PetAvatar 口径），上传照片为示意插画。</div>
+<script>
+(function () {
+  var SPRITES = [
+    { id: '3001', name: '喵喵' },
+    { id: '3002', name: '水蓝蓝' },
+    { id: '3003', name: '火花' },
+    { id: '3004', name: '迪莫' },
+    { id: '3006', name: '火神' },
+    { id: '3007', name: '魔力猫' },
+    { id: '3013', name: '铠甲虫' }
+  ];
+  var STATES = [
+    { id: 'now', label: '现状' },
+    { id: 'a-home', label: 'A · 我的首页' },
+    { id: 'a-pick', label: 'A · 选精灵' },
+    { id: 'b-home', label: 'B · 我的首页' },
+    { id: 'b-crop', label: 'B · 上传裁剪' },
+    { id: 'c-home', label: 'C · 我的首页' },
+    { id: 'c-sheet', label: 'C · 头像面板' },
+    { id: 'entry', label: '入口 · 我的身份' }
+  ];
+  var CAPTIONS = {
+    now: '现状：概览卡只有「名字首字」，没有头像入口（RUI P1-02 已修用户名，头像还没做）',
+    'a-home': 'A：头像换成图鉴精灵（官方立绘，零上传、零裁剪）',
+    'a-pick': 'A：从已导入的精灵里挑一只（64px 圆，零上传、零裁剪）',
+    'b-home': 'B：头像换成自己上传的照片（按圆形裁切）',
+    'b-crop': 'B：上传后进裁剪——圆形预览 + 缩放条，再决定用哪一块',
+    'c-home': 'C：默认还是图鉴精灵，想用照片再换（先 A 后 B）',
+    'c-sheet': 'C：一个面板两个来源——图鉴精灵 / 上传照片',
+    entry: '入口（三方案共用）：「我的身份」里新增一行「头像」，点进来就是上面的选择面板'
+  };
+  var params = new URLSearchParams(location.search);
+  var state = params.get('state') || 'a-home';
+  var width = Number(params.get('w')) || 375;
+  var bare = params.get('bare') === '1';
+  var chosen = 'sprite';      // default | sprite | photo
+  var sheetTab = 'sprite';    // sprite | photo
+  var toastTimer = null;
+  var toast = '';
+
+  if (bare) document.body.classList.add('bare');
+  if (STATES.every(function (s) { return s.id !== state; })) state = 'a-home';
+
+  function icons() {
+    return {
+      check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>',
+      download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg>',
+      egg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c3.6 3 6 6.4 6 9.5a6 6 0 0 1-12 0c0-3.1 2.4-6.5 6-9.5Z"/></svg>',
+      group: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-2.6 2.9-4 5.5-4s4.9 1.4 5.5 4"/><path d="M16 5.5a3 3 0 0 1 0 5.8"/><path d="M17.5 15c1.7.4 2.8 1.7 3.2 3.5"/></svg>',
+      camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3v11H4Z"/><circle cx="12" cy="13" r="3.2"/></svg>'
+    };
+  }
+  var I = icons();
+
+  function avatarHtml(kind) {
+    if (kind === 'sprite') {
+      return '<button type="button" class="avatar avatar-sprite" data-act="open-avatar" aria-label="换头像"><img src="AV1-assets/3007.png" alt=""></button>';
+    }
+    if (kind === 'photo') {
+      return '<button type="button" class="avatar avatar-photo" data-act="open-avatar" aria-label="换头像"><img src="AV1-assets/photo.svg" alt=""></button>';
+    }
+    return '<button type="button" class="avatar avatar-initial" data-act="open-avatar" aria-label="换头像">训</button>';
+  }
+
+  function homeHtml(kind) {
+    return '' +
+      '<header class="app-head"><h1>小布助手</h1><div class="head-actions"><button type="button">刷新</button><button type="button">教程</button></div></header>' +
+      '<nav class="app-tabs">' +
+        '<button type="button">看板</button><button type="button">家园</button><button type="button">收集</button><button type="button">换蛋</button>' +
+        '<button type="button" aria-current="page">我的</button>' +
+      '</nav>' +
+      '<div class="page">' +
+        '<section class="card profile-head">' + avatarHtml(kind) +
+          '<div class="who"><p class="name"><span class="txt">训练家小明</span><i></i></p>' +
+          '<p class="state">2 个角色 · 上次采集 11-27 22:10</p></div>' +
+          '<button type="button" class="head-action">同步</button>' +
+        '</section>' +
+        '<div class="quick">' +
+          '<button type="button" class="tile primary"><span class="ico">' + I.download + '</span><b>采集数据</b><small>导入 / 本机采集</small></button>' +
+          '<button type="button" class="tile"><span class="ico">' + I.egg + '</span><b>我的蛋仓</b><small>换蛋 · 蛋仓</small></button>' +
+          '<button type="button" class="tile"><span class="ico">' + I.group + '</span><b>我的小组</b><small>换蛋与共享</small></button>' +
+        '</div>' +
+        '<section class="list"><h2>数据</h2><div class="rows"><button type="button" class="row"><span class="label">附近精灵</span><span class="value">采集时实时看</span><span class="chev">›</span></button></div></section>' +
+        '<section class="list"><h2>账号</h2><div class="rows"><button type="button" class="row"><span class="label">我的身份</span><span class="value">训练家小明</span><span class="chev">›</span></button></div></section>' +
+        '<section class="list"><h2>设置与帮助</h2><div class="rows"><button type="button" class="row"><span class="label">新手引导</span><span class="value">重看一遍</span><span class="chev">›</span></button></div></section>' +
+        '<div class="version">版本 2026-11-28 · 内测</div>' +
+      '</div>';
+  }
+
+  function identityHtml() {
+    return '' +
+      '<header class="app-head"><h1>小布助手</h1><div class="head-actions"><button type="button">刷新</button><button type="button">教程</button></div></header>' +
+      '<nav class="app-tabs">' +
+        '<button type="button">看板</button><button type="button">家园</button><button type="button">收集</button><button type="button">换蛋</button>' +
+        '<button type="button" aria-current="page">我的</button>' +
+      '</nav>' +
+      '<div class="page">' +
+        '<button type="button" class="back-row">‹ 返回我的</button>' +
+        '<div class="notice"><b>我的身份</b><p>用来跨设备同步同一份数据。游戏账号（UID）是游戏里的角色，在「游戏数据」里单独管理。</p></div>' +
+        '<section class="list"><h2>资料</h2><div class="rows">' +
+          '<button type="button" class="row" data-act="open-avatar"><span class="row-main"><span class="identity-thumb"><img src="AV1-assets/3007.png" alt=""></span><span class="label">头像</span></span><span class="value">魔力猫</span><span class="chev">›</span></button>' +
+          '<button type="button" class="row"><span class="row-main"><span class="label">用户名</span></span><span class="value">训练家小明</span><span class="chev">›</span></button>' +
+          '<button type="button" class="row"><span class="row-main"><span class="label">密码</span></span><span class="value">已设置</span><span class="chev">›</span></button>' +
+        '</div></section>' +
+        '<section class="list"><h2>账号</h2><div class="rows">' +
+          '<button type="button" class="row"><span class="row-main"><span class="label">退出登录</span></span><span class="chev">›</span></button>' +
+        '</div></section>' +
+        '<div class="version">版本 2026-11-28 · 内测</div>' +
+      '</div>';
+  }
+
+  function spriteGridHtml() {
+    var cells = ['<button type="button" class="sprite-cell" data-act="pick-default" aria-pressed="' + (chosen === 'default') + '">' +
+      '<span class="pic"><span class="initial">训</span><span class="check">' + I.check + '</span></span><small>默认（首字）</small></button>'];
+    SPRITES.forEach(function (s) {
+      cells.push('<button type="button" class="sprite-cell" data-act="pick-sprite" data-id="' + s.id + '" aria-pressed="' + (chosen === s.id) + '">' +
+        '<span class="pic"><img src="AV1-assets/' + s.id + '.png" alt=""><span class="check">' + I.check + '</span></span>' +
+        '<small>' + s.name + '</small></button>');
+    });
+    return '<div class="sprite-grid">' + cells.join('') + '</div>' +
+      '<p class="grid-note">来自你导入的 12 只精灵 · 按最近导入排序</p>';
+  }
+
+  function sheetShell(title, desc, body, foot) {
+    return '<div class="backdrop" data-act="close-sheet"></div>' +
+      '<section class="sheet" role="dialog" aria-label="' + title + '">' +
+        '<div class="grab"></div>' +
+        '<div class="sheet-head"><h2>' + title + '</h2><p>' + desc + '</p></div>' +
+        '<div class="sheet-body">' + body + '</div>' +
+        '<div class="sheet-foot">' + foot + '</div>' +
+      '</section>';
+  }
+
+  function sheetPickA() {
+    var foot = '<button type="button" class="btn-ghost" data-act="close-sheet">取消</button>' +
+      '<button type="button" class="btn-primary" data-act="save">保存</button>';
+    return sheetShell('换头像', '从你导入的精灵里挑一只，跟着账号同步到别的设备。', spriteGridHtml(), foot);
+  }
+
+  function cropBody() {
+    return '<div class="crop-stage"><div class="crop-circle"><img src="AV1-assets/photo.svg" alt=""></div></div>' +
+      '<div class="crop-tools"><span>缩放</span><input type="range" min="100" max="180" value="100" data-act="zoom"><span>100%</span></div>' +
+      '<p class="crop-hint">拖动照片调整位置，圆圈里的范围就是头像</p>';
+  }
+
+  function sheetCropB() {
+    var foot = '<button type="button" class="btn-ghost" data-act="close-sheet">取消</button>' +
+      '<button type="button" class="btn-primary" data-act="save-photo">使用这张</button>';
+    return sheetShell('上传头像', '选一张照片，按圆形裁切；建议用脸在中间的方图。', cropBody(), foot);
+  }
+
+  function sheetC() {
+    var body = '' +
+      '<div class="tabs">' +
+        '<button type="button" aria-pressed="' + (sheetTab === 'sprite') + '" data-act="tab-sprite">图鉴精灵</button>' +
+        '<button type="button" aria-pressed="' + (sheetTab === 'photo') + '" data-act="tab-photo">上传照片</button>' +
+      '</div>' +
+      (sheetTab === 'sprite'
+        ? spriteGridHtml() +
+          '<button type="button" class="upload-row" data-act="tab-photo"><span class="ico">' + I.camera + '</span>' +
+          '<span><b>或从手机相册上传</b><small>上传后可裁圆，换设备也在</small></span></button>'
+        : cropBody());
+    var foot = '<button type="button" class="btn-ghost" data-act="close-sheet">取消</button>' +
+      '<button type="button" class="btn-primary" data-act="save">保存</button>';
+    return sheetShell('换头像', '默认用图鉴精灵；想用自己的照片也可以，二选一。', body, foot);
+  }
+
+  function render() {
+    var phone = document.getElementById('phone');
+    phone.setAttribute('data-w', String(width));
+    var kind = 'initial';
+    var sheet = '';
+    if (state === 'a-home') {
+      kind = 'sprite';
+    } else if (state === 'a-pick') {
+      kind = 'sprite'; sheet = sheetPickA();
+    } else if (state === 'b-home') {
+      kind = 'photo';
+    } else if (state === 'b-crop') {
+      kind = 'photo'; sheet = sheetCropB();
+    } else if (state === 'c-home') {
+      kind = 'sprite';
+    } else if (state === 'c-sheet') {
+      kind = 'sprite'; sheet = sheetC();
+    }
+    if (chosen === 'default' && state !== 'now') kind = 'initial';
+    if (chosen === 'photo' && state.indexOf('c-') === 0) kind = 'photo';
+    phone.innerHTML = state === 'entry'
+      ? identityHtml()
+      : homeHtml(kind) + sheet + (toast ? '<div class="toast">' + toast + '</div>' : '');
+    document.getElementById('cap').textContent = (CAPTIONS[state] || '') + ' · ' + width + ' × ' + (width === 390 ? 844 : 812);
+    var toolbar = document.getElementById('toolbar');
+    toolbar.innerHTML = '';
+    STATES.forEach(function (s) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = s.label;
+      b.setAttribute('aria-pressed', String(s.id === state));
+      b.addEventListener('click', function () { state = s.id; chosen = 'sprite'; sheetTab = 'sprite'; render(); });
+      toolbar.appendChild(b);
+    });
+    var sep = document.createElement('span'); sep.className = 'sep'; toolbar.appendChild(sep);
+    [375, 390].forEach(function (w) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.textContent = w + ' 宽';
+      b.setAttribute('aria-pressed', String(w === width));
+      b.addEventListener('click', function () { width = w; render(); });
+      toolbar.appendChild(b);
+    });
+    var hint = document.createElement('span');
+    hint.textContent = '点手机里的头像 / 宫格 / 页签试试';
+    toolbar.appendChild(hint);
+  }
+
+  function showToast(text) {
+    toast = text;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast = ''; render(); }, 1400);
+  }
+
+  document.getElementById('phone').addEventListener('click', function (event) {
+    var node = event.target.closest('[data-act]');
+    if (!node) return;
+    var act = node.getAttribute('data-act');
+    if (act === 'open-avatar') {
+      state = state.indexOf('c-') === 0 ? 'c-sheet' : state.indexOf('b-') === 0 ? 'b-crop' : 'a-pick';
+      render();
+      return;
+    }
+    if (act === 'close-sheet') {
+      state = state.indexOf('c-') === 0 ? 'c-home' : state.indexOf('b-') === 0 ? 'b-home' : 'a-home';
+      render();
+      return;
+    }
+    if (act === 'pick-default') { chosen = 'default'; render(); return; }
+    if (act === 'pick-sprite') { chosen = node.getAttribute('data-id'); render(); return; }
+    if (act === 'tab-sprite') { sheetTab = 'sprite'; render(); return; }
+    if (act === 'tab-photo') { sheetTab = 'photo'; render(); return; }
+    if (act === 'save') {
+      if (state === 'c-sheet' && sheetTab === 'photo') chosen = 'photo';
+      state = state.indexOf('c-') === 0 ? 'c-home' : 'a-home';
+      showToast('头像已更新，正在同步到云端');
+      render();
+      return;
+    }
+    if (act === 'save-photo') {
+      chosen = 'photo';
+      state = 'b-home';
+      showToast('头像已更新，正在同步到云端');
+      render();
+    }
+  });
+
+  document.getElementById('phone').addEventListener('input', function (event) {
+    if (event.target.getAttribute('data-act') !== 'zoom') return;
+    var circle = document.querySelector('.crop-circle img');
+    if (circle) circle.style.transform = 'translate(-50%,-50%) scale(' + (Number(event.target.value) / 100) + ')';
+    var label = event.target.parentNode.querySelector('span:last-child');
+    if (label) label.textContent = event.target.value + '%';
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
