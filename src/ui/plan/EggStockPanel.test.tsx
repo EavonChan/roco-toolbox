@@ -102,15 +102,35 @@ test('stock details place egg height in metres and weight in kilograms below egg
   expect(screen.getByText('1.234 kg')).toBeTruthy();
 });
 
-test('蛋详情品种资料显示区间两行，实测 1.84 判满重',()=>{
+test('蛋详情品种资料只显示大块头区间，实测 1.84 判满重',()=>{
   render(<EggStockPanel eggs={[{...ordinary,eggGameId:3001,weightGrams:1840}]} species={[{gameId:3001,key:'p',name:'喵喵',number:'1',eggGroups:[2]}]} busy={false} mutate={vi.fn()}/>);
   fireEvent.click(screen.getByTestId('stock-card'));
   const dialog=screen.getByRole('dialog',{name:'蛋详情'});
-  expect(within(dialog).getByText('区间 1.267–1.840 kg（每档约 50g，共 12 档）')).toBeTruthy();
-  expect(within(dialog).getByText(/^大块头 1\.829–1\.840 · 小不点 1\.267–1\.278/))
-    .toHaveTextContent('大块头 1.829–1.840 · 小不点 1.267–1.278 · 实测 1.84 kg 满重');
+  expect(within(dialog).getByText('大块头 1.829–1.840（12 档） · 实测 1.84 kg 满重')).toBeTruthy();
+  expect(within(dialog).queryByText(/区间/)).toBeNull();
+  expect(within(dialog).queryByText(/小不点/)).toBeNull();
   expect(within(dialog).queryByText(/孵蛋/)).toBeNull();
   expect(within(dialog).queryByText(/性别比/)).toBeNull();
+});
+
+test('蛋仓可按品种档位排序，没资料的排最后',()=>{
+  const eggs=[
+    {...ordinary,id:'t2',eggGameId:3001},
+    {...ordinary,id:'t1',eggGameId:3002},
+    {...ordinary,id:'tn',eggGameId:9999},
+  ];
+  const speciesList=[
+    {gameId:3001,key:'p1',name:'喵喵',number:'1',eggGroups:[2]},
+    {gameId:3002,key:'p2',name:'水蓝蓝',number:'8',eggGroups:[2]},
+    {gameId:9999,key:'pn',name:'未收录',number:'9',eggGroups:[2]},
+  ];
+  render(<EggStockPanel eggs={eggs} species={speciesList} busy={false} mutate={vi.fn()}/>);
+  const ids=()=>screen.getAllByTestId('stock-card').map(card=>card.getAttribute('data-egg-id'));
+  expect(ids()).toEqual(['t2','t1','tn']);
+  fireEvent.click(screen.getByRole('button',{name:'档位 ↑'}));
+  expect(ids()).toEqual(['t1','t2','tn']);
+  fireEvent.click(screen.getByRole('button',{name:'默认'}));
+  expect(ids()).toEqual(['t2','t1','tn']);
 });
 
 test('没有品种资料时整块不渲染',()=>{
