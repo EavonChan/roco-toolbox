@@ -77,9 +77,9 @@ describe('新手引导', () => {
     }
   });
 
-  test('22 步逐条走通：标题都不为空，最后一步「开始用」并关闭', () => {
+  test('23 步逐条走通：标题都不为空，最后一步「开始用」并关闭', () => {
     const steps = TOUR_SEGMENT_ORDER.flatMap((segment) => TOUR_SEGMENTS[segment]);
-    expect(steps).toHaveLength(22);
+    expect(steps).toHaveLength(23);
     const onClose = vi.fn();
     render(<TourOverlay steps={steps} onClose={onClose} importReady />);
 
@@ -89,7 +89,7 @@ describe('新手引导', () => {
       expect(screen.getByTestId('tour-progress')).toHaveTextContent(`${index + 1} / ${steps.length}`);
       if (index < steps.length - 1) fireEvent.click(screen.getByTestId('tour-next'));
     }
-    expect(titles).toHaveLength(22);
+    expect(titles).toHaveLength(23);
     expect(titles.every((title) => title.trim().length > 0)).toBe(true);
     // 整条链路的最后一步是「我的」（个人页，本轮不动），所以按钮是「开始用」而不是「知道了」
     expect(screen.getByTestId('tour-done')).toHaveTextContent('开始用');
