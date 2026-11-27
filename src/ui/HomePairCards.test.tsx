@@ -449,6 +449,60 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
   });
 });
 
+describe('住户信息缺失时的兜底（2026-11-27）', () => {
+  const MOTHER_ACTOR_ID = '9511622085510695294';
+
+  test('住户没有名字、背包里也没有这只：显示「未知精灵」，不把内部 actorId 当名字', () => {
+    const residents = [
+      resident({ actorId: MOTHER_ACTOR_ID, name: '', gender: '母', baseId: '9999' }),
+      resident({ actorId: 'm1', name: '柴渣虫', gender: '公' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_m1', owned({ gameId: 3436, name: '柴渣虫', gender: '公' })],
+    ]);
+
+    render(
+      <HomePairCards
+        couples={[{ femaleActorId: MOTHER_ACTOR_ID, maleActorIds: ['m1'] }]}
+        residents={residents}
+        pets={pets}
+      />,
+    );
+
+    const card = screen.getByTestId('home-pair-card');
+    const motherCard = within(card).getAllByTestId('breed-pet-card')[0];
+    expect(motherCard).toHaveTextContent('未知精灵');
+    // 19 位 actorId 是内部 id，不能出现在界面上
+    expect(card).not.toHaveTextContent(MOTHER_ACTOR_ID);
+    // 一句提示：完整导入一次抓包就能补全
+    expect(within(card).getByTestId('home-pair-pet-hint')).toHaveTextContent('导入一次抓包');
+  });
+
+  test('住户没有名字但有 baseId：按图鉴物种名显示，并提示这次没匹配到背包', () => {
+    const residents = [
+      resident({ actorId: MOTHER_ACTOR_ID, name: '', gender: '母', baseId: '3436' }),
+      resident({ actorId: 'm1', name: '柴渣虫', gender: '公' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_m1', owned({ gameId: 3436, name: '柴渣虫', gender: '公' })],
+    ]);
+
+    render(
+      <HomePairCards
+        couples={[{ femaleActorId: MOTHER_ACTOR_ID, maleActorIds: ['m1'] }]}
+        residents={residents}
+        pets={pets}
+      />,
+    );
+
+    const card = screen.getByTestId('home-pair-card');
+    const motherCard = within(card).getAllByTestId('breed-pet-card')[0];
+    expect(motherCard).toHaveTextContent('柴渣虫');
+    expect(card).not.toHaveTextContent(MOTHER_ACTOR_ID);
+    expect(within(card).getByTestId('home-pair-pet-hint')).toHaveTextContent('导入一次抓包');
+  });
+});
+
 describe('三只组默认排在上方（2026-11-22 用户口径）', () => {
   test('输入顺序是 2 只在前、3 只在后时，也把三只组排到最上面', () => {
     const residents = [

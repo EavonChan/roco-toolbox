@@ -20,6 +20,19 @@ import { useHomePairSplit } from './useWideLandscape';
  */
 const natureOf = (node: HomePairNode): string => node.nature || node.pet?.nature || '';
 
+/**
+ * 名字只能退到物种名 / 「未知精灵」时的提示（2026-11-27）：住户和当前背包对不上，
+ * 完整导入一次抓包就能补全。写在卡头本来就有的同高空行里，不额外撑高卡片。
+ */
+function PetHint({ node }: { node: HomePairNode }) {
+  if (!node.hint) return null;
+  return (
+    <span className="text-[10px] leading-none text-slate-400" data-testid="home-pair-pet-hint">
+      {node.hint}
+    </span>
+  );
+}
+
 interface NatureChance {
   nature: string;
   chance: number;
@@ -79,7 +92,8 @@ function petCardOf(node: HomePairNode): PairCardPet {
     key: node.actorId,
     gameId: pet?.gameId ?? (node.baseId ? Number(node.baseId) || null : null),
     name: node.name.split('_')[0] || node.name,
-    fullName: node.name,
+    // 名字拿不到个体记录时的说明放进 title（悬停 / 长按可见）
+    fullName: node.hint ? `${node.name}（${node.hint}）` : node.name,
     gender: node.gender,
     nature: natureOf(node),
     voiceDb: pet?.voiceDb,
@@ -178,7 +192,9 @@ function SharedStudLayout({
           </div>
         ) : (
           // 母本缺失也要留同高的空行，同一排卡片不能一高一低
-          <div className="min-h-4" aria-hidden />
+          <div className="flex min-h-4 flex-wrap items-center gap-1">
+            <PetHint node={female} />
+          </div>
         )}
         <PairingPetCard
           pet={petCardOf(female)}
@@ -280,7 +296,9 @@ function TriplePairCard({
                       <span className="text-[10px] leading-none text-slate-500">{voiceDb}dB</span>
                     ) : null}
                   </>
-                ) : null}
+                ) : (
+                  <PetHint node={node} />
+                )}
               </div>
               <PairingPetCard
                 pet={petCardOf(node)}
@@ -332,7 +350,11 @@ function VerticalPairCard({
               <span className="text-[10px] leading-none text-slate-500">{voiceDb}dB</span>
             ) : null}
           </div>
-        ) : null}
+        ) : (
+          <div className="flex min-h-4 flex-wrap items-center gap-1">
+            <PetHint node={female} />
+          </div>
+        )}
         <PairingPetCard
           pet={petCardOf(female)}
           collectedGroupIds={new Set()}
@@ -422,6 +444,8 @@ function HomePairCard({
                 </span>
               ) : null}
             </>
+          ) : firstMother ? (
+            <PetHint node={firstMother} />
           ) : null}
         </div>
         <div
@@ -447,7 +471,9 @@ function HomePairCard({
                     </span>
                   ) : null}
                 </div>
-              ) : null}
+              ) : (
+                <PetHint node={female} />
+              )}
               <PairingPetCard
                 pet={petCardOf(female)}
                 collectedGroupIds={new Set()}

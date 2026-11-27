@@ -246,7 +246,7 @@ export function mergeImportedSnapshot(
 }
 
 /** 宠物身份：优先抓包给的唯一编号 `captureId`；老数据没有时退回「物种 + 名字 + 盒子位置」。 */
-const petIdentityOf = (pet: OwnedPet): string | undefined => {
+export const petIdentityOf = (pet: OwnedPet): string | undefined => {
   if (pet.captureId) return `id:${pet.captureId}`;
   if (!pet.name) return undefined;
   return `slot:${pet.gameId}|${pet.name}|${pet.boxGroup ?? ''}|${pet.boxNumber ?? ''}|${pet.slotOrder ?? ''}`;
