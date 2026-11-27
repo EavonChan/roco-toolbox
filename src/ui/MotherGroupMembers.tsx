@@ -105,12 +105,17 @@ export function MotherGroupMembers({
           [...account.covered, ...account.breedable].map((slot) => slotKeyOf(slot)),
         ),
       ).size;
-      return count > 0 ? `已发布 ${count} 格` : '已发布 · 目前无达标种公';
+      // 2026-11-27：把「几个游戏号」写在成员行上，让「一人多号」在列表里就看得见
+      const accounts = stud.accounts.length > 0 ? ` · ${stud.accounts.length} 个游戏号` : '';
+      return count > 0 ? `已发布 ${count} 格${accounts}` : '已发布 · 目前无达标种公';
     }
     if (!member.resource) return member.resourceRevision > 0 ? '已停止共享' : '尚未发布';
     if (!isMotherResourceComparable(member.resource, catalogVersion, targetCriteriaId)) return '需更新';
     const count = new Set(member.resource.accounts.flatMap((account) => account.eggGameIds)).size;
-    return count > 0 ? `已发布 ${count} 种母本` : '已发布 · 目前无母本';
+    const accounts = member.resource.accounts.length > 0
+      ? ` · ${member.resource.accounts.length} 个游戏号`
+      : '';
+    return count > 0 ? `已发布 ${count} 种母本${accounts}` : '已发布 · 目前无母本';
   };
 
   const run = async (tag: string, action: () => Promise<void>, success: string) => {

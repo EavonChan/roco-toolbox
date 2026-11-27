@@ -121,6 +121,10 @@ export function CollectionGroupSetup({
           data-testid="group-setup-nickname"
           className="mt-2 min-h-[36px] w-full rounded-lg border border-slate-200 px-2.5 text-sm text-slate-700 placeholder:text-slate-300"
         />
+        {/* 2026-11-27：用户以为「一个游戏号要加一个组 / 建一个账号」，进组前先说清 */}
+        <p className="mt-1 text-[11px] text-slate-400" data-testid="group-setup-bind-hint">
+          游戏号进组后再绑，一个人绑几个都行，不用为每个号单独加组。
+        </p>
 
         {mode === 'create' ? (
           <input

@@ -163,6 +163,11 @@ describe('教程大纲（v5）', () => {
     // 必须讲清「不绑会怎样」，否则这一步的意义看不出来
     expect(bind.body).toContain('机器人');
     expect(bind.body).toContain('蛋仓');
+    // 用户「不知道这个怎么操作」：要有编号步骤，并写明可以多选
+    expect(bind.body).toContain('①');
+    expect(bind.body).toContain('②');
+    expect(bind.body).toContain('③');
+    expect(bind.body).toContain('多选');
     // 按钮只在「已登录 + 已入组」时渲染
     expect(bind.skipWhenMissing).toBe(true);
   });
