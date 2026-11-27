@@ -13,6 +13,26 @@ import { isStudResourceComparable } from './studSharing';
  */
 export type GroupPublicationStatus = '未发布' | '已发布' | '需更新';
 
+/**
+ * 组卡右侧按钮的文案（2026-11-27 改名）。
+ *
+ * 用户原话「没找到绑的地方，只登录了」：界面叫「选号并发布」，机器人 ingest 查的是
+ * 「这个游戏 UID 有没有出现在 `mother_group_accounts`」。同一件事两个词，所以入口统一说「绑定」，
+ * 让在群里看到「蛋仓未同步（这个 UID 还没绑定到小组成员）」的人，回到站内能对上这个词。
+ */
+export const publicationActionLabel = (
+  status: GroupPublicationStatus,
+  editing: boolean,
+): string => {
+  if (editing) return '收起';
+  if (status === '需更新') return '更新绑定';
+  if (status === '已发布') return '已绑定的账号';
+  return '绑定游戏账号';
+};
+
+/** 按钮下的一行说明：点明这步和机器人的关系（别让人以为只是「共享给组员看」）。 */
+export const PUBLICATION_BIND_HINT = '机器人靠这个把蛋同步到蛋仓';
+
 export function groupPublicationStatus(input: {
   type: 'mother' | 'stud';
   mother: PublishedMotherResource | null;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TargetMode } from '../domain/petFilters';
-import { groupPublicationStatus } from '../domain/collectionPublication';
+import { PUBLICATION_BIND_HINT, groupPublicationStatus, publicationActionLabel } from '../domain/collectionPublication';
 import { CATALOG_VERSION, species } from '../data/catalog';
 import {
   GROUP_TYPE_LABELS,
@@ -615,10 +615,10 @@ function PublicationCard({
   const summary = hook.groupType === 'stud'
     ? stud
       ? `${stud.accounts.length} 个账号 · ${new Set(stud.accounts.flatMap((account) => account.covered.map((slot) => `${slot.groupId}:${slot.natureId}:${slot.grade}`))).size} 个覆盖格`
-      : '尚未向本小组发布资源，选号并预览后再手动发布。'
+      : '还没有绑定游戏账号：右边的按钮勾选后发布。'
     : mother
       ? `${new Set(mother.accounts.flatMap((account) => account.eggGameIds)).size} 种母本 · ${mother.accounts.length} 个账号。`
-      : '尚未向本小组发布资源，选号并预览后再手动发布。';
+      : '还没有绑定游戏账号：右边的按钮勾选后发布。';
 
   const badgeClass =
     status === '需更新'
@@ -669,9 +669,16 @@ function PublicationCard({
           aria-expanded={editing}
           onClick={onToggle}
         >
-          {editing ? '收起选号' : status === '需更新' ? '去发布更新' : status === '已发布' ? '管理选号' : '选号并发布'}
+          {publicationActionLabel(status, editing)}
         </button>
       </div>
+      {/* 2026-11-27：点明这步和机器人的关系。放整行右侧，免得把左边的状态说明挤成一条 */}
+      <p
+        className="mt-1 text-right text-[10px] leading-snug text-slate-400"
+        data-testid="group-bind-hint"
+      >
+        {PUBLICATION_BIND_HINT}
+      </p>
     </div>
   );
 }
