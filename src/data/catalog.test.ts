@@ -1,6 +1,22 @@
 import { describe, expect, test } from 'vitest';
 import { allNatureNames, species } from './catalog';
+import catalogGenJson from './catalog.gen.json';
 import productEggNatures from './productEggNatures.json';
+
+/**
+ * 图鉴管线把「多分支进化按最终形态汇总推荐性格」的结果烘进 `catalog.gen.json` 的 `eggRecommendedNatures`；
+ * `catalog.ts` 随后会用产品数据（`productEggNatures.json`）覆盖同名字段，而产品数据现在覆盖了全部 209 颗蛋——
+ * 物种层已经看不到管线值，所以这里直接读烘好的数据产物，守住这条汇总规则。
+ */
+const bakedEggNatures = (name: string): string[] | undefined => {
+  const entries = (
+    catalogGenJson as unknown as {
+      species: Array<{ name: string; gameId: number; eggGameId?: number; eggRecommendedNatures?: string[] }>;
+    }
+  ).species.filter((entry) => entry.name === name && entry.eggGameId === entry.gameId);
+  expect(entries, `${name} 在图鉴里应当只有一条「自成一蛋」的条目`).toHaveLength(1);
+  return entries[0].eggRecommendedNatures;
+};
 
 describe('图鉴数据', () => {
   test('新赛季精灵（云梦豚 / 长江豚）已按蛋物种接入', () => {
@@ -24,14 +40,12 @@ describe('图鉴数据', () => {
 
   test('多分支进化的蛋按最终形态汇总推荐性格（2026-10-25）', () => {
     // 小灵面自己只有 30% 调皮，但两个分支最终形态都是胆小为主 → 只推胆小
-    const soul = species.find((entry) => entry.name === '小灵面');
-    expect(soul?.eggRecommendedNatures).toEqual(['胆小']);
+    expect(bakedEggNatures('小灵面')).toEqual(['胆小']);
     // 书魔虫两个分支各有主流（古卷执政官 聪明 / 古卷匣魔像 固执）→ 都保留
-    const book = species.find((entry) => entry.name === '书魔虫');
-    expect(book?.eggRecommendedNatures).toEqual(['聪明', '固执']);
+    expect(bakedEggNatures('书魔虫')).toEqual(['聪明', '固执']);
   });
 
-  test('产品设定的推荐性格（2026-11-02）覆盖到对应的每一颗蛋', () => {
+  test('产品设定的推荐性格（2026-11-27）覆盖到对应的每一颗蛋', () => {
     const eggs = new Map(
       species.filter((entry) => entry.eggGameId === entry.gameId).map((entry) => [entry.gameId, entry]),
     );
@@ -41,13 +55,11 @@ describe('图鉴数据', () => {
       expect(egg!.eggRecommendedNatures).toEqual(natures);
       for (const nature of natures) expect(allNatureNames).toContain(nature);
     }
-    // 图鉴原本没有推荐值的蛋也能用产品口径
+    // 图鉴原本没有推荐值的蛋也能用产品口径（2026-11-02 首版 → 2026-11-27 按孵蛋攻略表更新）
     expect(species.find((entry) => entry.name === '云梦豚')?.eggRecommendedNatures).toEqual([
-      '聪明',
+      '胆小',
       '开朗',
       '急躁',
-      '胆小',
-      '沉默',
     ]);
   });
 });

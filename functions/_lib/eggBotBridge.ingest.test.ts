@@ -108,14 +108,24 @@ describe('egg-bot ingest', () => {
     const db = new FakeDB({ binding: { groupId: 'g1' }, account: null });
     const response = await handleEggBotBridge(ingestRequest(payload), envFor(db), 1000);
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining('绑定') });
+    // 2026-11-27：拒绝要带机器可读的 code，机器人才能按 code 给「去哪绑」的引导；
+    // 原 error 文案保留，旧机器人忽略新字段仍然正常。
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      code: 'uid-unbound',
+      error: expect.stringContaining('绑定'),
+    });
     expect(db.updates).toBe(0);
   });
 
   test('a group that has not bound the bot is rejected', async () => {
     const db = new FakeDB({ binding: null, account: { accountId: 'a1' } });
     const response = await handleEggBotBridge(ingestRequest(payload), envFor(db), 1000);
-    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining('接入') });
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      code: 'group-unbound',
+      error: expect.stringContaining('接入'),
+    });
     expect(db.updates).toBe(0);
   });
 

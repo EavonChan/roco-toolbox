@@ -33,6 +33,8 @@ const LEDGER = path.join(REPO_ROOT, 'docs', '会话台账.md');
 const PROGRESS = path.join(REPO_ROOT, 'docs', '进度');
 const PREVIEW = path.join(REPO_ROOT, 'docs', 'preview');
 const BASE_PORT = Number(process.env.CHECK_APPROVE_PORT || 4481);
+// 页面加载时会打计时器心跳；指到临时目录，绝不碰用户真实的 ~/.workbench/timer/
+process.env.WORKBENCH_TIMER_DIR = path.join(tmpdir(), `wb-timer-check-approve-${process.pid}`);
 const SYMBOL_RE = /[\u{1F7E1}\u{1F535}\u{26AA}\u{1F7E2}\u{1F534}]/u;
 const STAGES = ['待派', '执行中', '已交付', '已验收', '已收口'];
 const COLUMN_HEADS = [
@@ -79,6 +81,22 @@ function countLedgerRows(text, headingRe) {
     i = j - 1;
   }
   return { rows, coded };
+}
+
+/** 判断计算出来的底色是不是「红底」：兼容 rgb()/rgba() 与 color(srgb …) 两种序列化。
+ *  浅色主题的红色底是「白 + 8% 红」，比灰底红一点点就够；深色主题是 rgba(248,81,73,…)，两种都认。 */
+function isReddish(color) {
+  if (!color) return false;
+  let rgb = null;
+  const legacy = color.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if (legacy) rgb = legacy.slice(1, 4).map(Number);
+  if (!rgb) {
+    const modern = color.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i);
+    if (modern) rgb = modern.slice(1, 4).map((v) => Number(v) * 255);
+  }
+  if (!rgb) return false;
+  const [r, g, b] = rgb;
+  return r > g + 8 && r > b + 8;
 }
 
 /** 数四张任务表的数据行（和 check.mjs 同口径）。 */
@@ -541,8 +559,8 @@ try {
     await page.waitForSelector(`.card[data-key="${key}"] .blocker`, { timeout: 3000 }).catch(() => null);
     const blockerText = await page.locator(`.card[data-key="${key}"] .blocker`).innerText().catch(() => '');
     const blockerColor = await page.locator(`.card[data-key="${key}"] .blocker`).evaluate((el) => getComputedStyle(el).backgroundColor).catch(() => '');
-    if (blockerText.trim() && /248,\s*81,\s*73/.test(blockerColor)) {
-      ok(`卡片上出现红色阻塞条：${blockerText.replace(/\s+/g, ' ').trim().slice(0, 60)}`);
+    if (blockerText.trim() && isReddish(blockerColor)) {
+      ok(`卡片上出现红色阻塞条：${blockerText.replace(/\s+/g, ' ').trim().slice(0, 60)}（底色 ${blockerColor}）`);
     } else {
       bad(`没有红色阻塞条（文字「${blockerText.slice(0, 30)}」，底色「${blockerColor}」）`);
     }
@@ -786,5 +804,6 @@ try {
       }
     }
   }
+  await rm(process.env.WORKBENCH_TIMER_DIR, { recursive: true, force: true }).catch(() => {});
   process.exitCode = failures === 0 ? 0 : 1;
 }

@@ -87,8 +87,7 @@ describe('MotherGroupMembers 已结单与移除', () => {
     expect(screen.getAllByTestId('mother-member-completed').length).toBeGreaterThan(0);
   });
 
-  test('组长能看到每个人的已结单数，并能移除组员（不能移除自己和组长）', async () => {
-    const onRemove = vi.fn().mockResolvedValue(undefined);
+  test('组长能看到每个人的已结单数，并能移除组员（不能移除自己和组长）', async () => {    const onRemove = vi.fn().mockResolvedValue(undefined);
     renderMembers({ onRemove });
     expand();
 
@@ -125,6 +124,37 @@ describe('MotherGroupMembers 已结单与移除', () => {
     const updated = within(cRow).getByTestId('mother-member-updated');
     expect(updated).toHaveTextContent('10 天未更新');
     expect(updated.className).toContain('text-rose-600');
+  });
+
+  test('成员行显示绑了几个游戏号（一人多号是常态，别让人以为要建两个账号）', () => {
+    render(
+      <MotherGroupMembers
+        group={{
+          group: group.group,
+          members: [
+            member(
+              'A',
+              resourceWith([101], {
+                accounts: [
+                  sharedAccount(1001, [101], { accountName: '主号' }),
+                  sharedAccount(1002, [201], { accountName: '小号' }),
+                ],
+              }),
+            ),
+          ],
+        }}
+        accountId="A"
+        catalogVersion={FIXTURE_CATALOG_VERSION}
+        inviteCode={null}
+        onRename={vi.fn()}
+        onResetInvite={vi.fn()}
+        onRemove={vi.fn()}
+        onLeave={vi.fn()}
+        onDissolve={vi.fn()}
+      />,
+    );
+    expand();
+    expect(screen.getByTestId('mother-member-row')).toHaveTextContent('2 个游戏号');
   });
 
   test('成员发布时间缺失时只显示发布状态', () => {

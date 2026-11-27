@@ -7,7 +7,7 @@ import {
   useEggMatching,
 } from './useEggMatching';
 import { emptyEggWorkflow } from '../../shared/eggWorkflow';
-import { getEggMatching,mutateEggMatching } from '../../api/eggMatching';
+import { EggMatchingError, getEggMatching,mutateEggMatching } from '../../api/eggMatching';
 import { getPlanAlertBadge, publishPlanAlertBadge } from './planAlertsStore';
 vi.mock('../../api/eggMatching',async original=>({...await original<typeof import('../../api/eggMatching')>(),getEggMatching:vi.fn(),mutateEggMatching:vi.fn()}));
 const response=()=>({version:0,state:emptyEggWorkflow()});
@@ -94,4 +94,68 @@ test('没有小组时不发请求，也不停在加载中',async()=>{
   expect(getEggMatching).not.toHaveBeenCalled();
   expect(hook.result.current.loading).toBe(false);
   expect(hook.result.current.data).toBeNull();
+});
+
+/* ------------------------------------------------------------------ *
+ * 版本冲突自动重试（2026-11-26，D3 / R2+R3）
+ *
+ * 服务端 409 会回带当前 version，客户端直接用它重试一次；没回带才补拉。
+ * 409 时服务端保证这次没有落库，所以重试一次不会重复执行。
+ * ------------------------------------------------------------------ */
+test('409 用服务端回带的 version 自动重试一次，成功就不报错', async () => {
+  clearEggMatchingCache();
+  vi.mocked(getEggMatching).mockReset().mockResolvedValue({ ...response(), version: 7 });
+  vi.mocked(mutateEggMatching).mockReset()
+    .mockRejectedValueOnce(new EggMatchingError('小组数据已变化，请刷新后重试', 409, 'REVISION_CONFLICT', 9))
+    .mockResolvedValueOnce({ ...response(), version: 10 });
+  const hook = renderHook(() => useEggMatching('g', 'a'));
+  await waitFor(() => expect(hook.result.current.data?.version).toBe(7));
+  let result: unknown;
+  await act(async () => { result = await hook.result.current.mutate({ type: 'list', id: 'e', listed: true }); });
+  expect(vi.mocked(mutateEggMatching).mock.calls.map(call => call[1])).toEqual([7, 9]);
+  expect(vi.mocked(getEggMatching)).toHaveBeenCalledTimes(1);   // 只有进页面那次，没有补拉
+  expect(hook.result.current.data?.version).toBe(10);
+  expect(hook.result.current.error).toBeNull();
+  expect(result).toMatchObject({ version: 10 });
+});
+
+test('409 没回带 version 时先补拉再重试', async () => {
+  clearEggMatchingCache();
+  vi.mocked(getEggMatching).mockReset()
+    .mockResolvedValueOnce({ ...response(), version: 7 })
+    .mockResolvedValueOnce({ ...response(), version: 8 });
+  vi.mocked(mutateEggMatching).mockReset()
+    .mockRejectedValueOnce(new EggMatchingError('小组数据已变化，请刷新后重试', 409))
+    .mockResolvedValueOnce({ ...response(), version: 9 });
+  const hook = renderHook(() => useEggMatching('g', 'a'));
+  await waitFor(() => expect(hook.result.current.data?.version).toBe(7));
+  await act(async () => { await hook.result.current.mutate({ type: 'list', id: 'e', listed: true }); });
+  expect(vi.mocked(getEggMatching)).toHaveBeenCalledTimes(2);   // 进页面 + 补拉
+  expect(vi.mocked(mutateEggMatching).mock.calls.map(call => call[1])).toEqual([7, 8]);
+  expect(hook.result.current.error).toBeNull();
+});
+
+test('自动重试只做一次：仍然冲突才报错', async () => {
+  clearEggMatchingCache();
+  vi.mocked(getEggMatching).mockReset().mockResolvedValue({ ...response(), version: 7 });
+  vi.mocked(mutateEggMatching).mockReset().mockRejectedValue(new EggMatchingError('小组数据已变化，请刷新后重试', 409, 'REVISION_CONFLICT', 9));
+  const hook = renderHook(() => useEggMatching('g', 'a'));
+  await waitFor(() => expect(hook.result.current.data?.version).toBe(7));
+  await act(async () => {
+    await expect(hook.result.current.mutate({ type: 'list', id: 'e', listed: true })).rejects.toBeInstanceOf(EggMatchingError);
+  });
+  expect(vi.mocked(mutateEggMatching)).toHaveBeenCalledTimes(2);
+  expect(hook.result.current.error).toBe('小组数据已变化，请刷新后重试');
+});
+
+test('stock-sync 的失败不写进 api.error（交给蛋仓同步横幅，只弹一条）', async () => {
+  clearEggMatchingCache();
+  vi.mocked(getEggMatching).mockReset().mockResolvedValue({ ...response(), version: 7 });
+  vi.mocked(mutateEggMatching).mockReset().mockRejectedValue(new EggMatchingError('小组数据已变化，请刷新后重试', 409, 'SYNC_BUSY', 9));
+  const hook = renderHook(() => useEggMatching('g', 'a'));
+  await waitFor(() => expect(hook.result.current.data?.version).toBe(7));
+  await act(async () => {
+    await expect(hook.result.current.mutate({ type: 'stock-sync', gameAccountKey: 'uid:1' })).rejects.toBeInstanceOf(EggMatchingError);
+  });
+  expect(hook.result.current.error).toBeNull();
 });

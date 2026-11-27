@@ -1,4 +1,6 @@
+import { species } from '../data/catalog';
 import { NEST_SIZE } from '../domain/nestGeometry';
+import { speciesDisplayName } from '../domain/speciesName';
 import type { HomePair, HomeResident, OwnedPet } from '../domain/types';
 import { NestLayoutSvg, type NestSvgLine, type NestSvgSlot } from './NestLayoutSvg';
 import { pairingColor, pairingDashed } from './pairingColors';
@@ -16,6 +18,25 @@ import { pairingColor, pairingDashed } from './pairingColors';
 
 /** 配窝卡片四周留白（地板单元）：1/4 窝，只够描边不被裁，剩下的都留给方块。 */
 const HOME_PAIR_PADDING = 2;
+
+const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
+
+/**
+ * 名字都拿不到时的兜底文案（2026-11-27）：**不许把内部 id 当名字显示**。
+ * 住户报文可能整条没有 `name`（抓包实测 11 只里 6 只没有 field 11），
+ * 这时先按 `baseId` 查图鉴物种名，查不到才写「未知精灵」。
+ */
+const UNKNOWN_PET_NAME = '未知精灵';
+/** 住户和背包对不上时的提示（用户看到的名字只到物种，个体数据还没有） */
+const REFRESH_HINT = '完整导入一次抓包即可补全';
+
+const speciesNameOfBaseId = (baseId: string | undefined): string => {
+  if (!baseId) return '';
+  const gameId = Number(baseId);
+  if (!Number.isFinite(gameId) || gameId <= 0) return '';
+  const entry = speciesByGameId.get(gameId);
+  return entry ? speciesDisplayName(entry, '') : '';
+};
 
 interface PairPosition {
   x: number;
@@ -121,6 +142,11 @@ export interface HomePairNode {
   baseId?: string;
   /** 背包里对应的那只：有就带分贝 / 身高 / 体重 / 奖牌 */
   pet?: OwnedPet;
+  /**
+   * 这次没匹配到背包记录时的提示（2026-11-27）：名字只能到物种名甚至「未知精灵」，
+   * 完整导入一次抓包即可补全。空 = 名字来自住户报文，不需要提示。
+   */
+  hint?: string;
 }
 
 export interface HomePairCluster {
@@ -160,12 +186,17 @@ export function buildHomePairClusters(
       return { actorId, name: '公本未知', gender: '未知', academy: false, missing: true };
     }
     const pet = petOf(resident);
+    /**
+     * 名字来源：住户报文 → 背包记录 → 图鉴物种名（按 baseId）→ 「未知精灵」。
+     * 后面两级都是「这次没匹配到背包」的兜底，不再显示 19 位 actorId（2026-11-27 用户口径）。
+     */
+    const fallbackSpecies = resident.name || pet?.name ? '' : speciesNameOfBaseId(resident.baseId);
     const nestName = resident.nest
       ? resident.nest.nestName || (resident.nest.nestType === 'academy' ? '学院小窝' : '普通小窝')
       : '';
     return {
       actorId,
-      name: resident.name || pet?.name || `精灵 ${actorId}`,
+      name: resident.name || pet?.name || fallbackSpecies || UNKNOWN_PET_NAME,
       gender:
         resident.gender === '公' || resident.gender === '母'
           ? resident.gender
@@ -178,6 +209,7 @@ export function buildHomePairClusters(
       nature: resident.nature || pet?.nature,
       baseId: resident.baseId,
       pet,
+      hint: !pet && !resident.name ? REFRESH_HINT : undefined,
     };
   };
 

@@ -30,6 +30,15 @@ describe('CollectionGroupSetup（二期）', () => {
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith('周末互换', '阿甲', 'mother'));
   });
 
+  test('入组表单写清「游戏号进组后再绑，一人几个都行」', () => {
+    render(
+      <CollectionGroupSetup onCreate={vi.fn()} onJoin={vi.fn()} preflightInvite={vi.fn()} />,
+    );
+    const hint = screen.getByTestId('group-setup-bind-hint');
+    expect(hint).toHaveTextContent('游戏号进组后再绑');
+    expect(hint).toHaveTextContent('不用为每个号单独加组');
+  });
+
   test('加入前先展示组名与本地筛选说明，确认后才提交', async () => {
     const preflightInvite = vi.fn().mockResolvedValue(preview);
     const onJoin = vi.fn().mockResolvedValue({ groupId: 'g1', groupType: 'mother' });

@@ -1,8 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildEggSearchIndex } from '../domain/petFilters';
+import type { OwnedPet } from '../domain/types';
 import { eggGroupNames, species } from '../data/catalog';
 import type { CollectionLocation, NavigationIntent } from './navigation';
 import { MyPets } from './MyPets';
+import { SimulatedBackpack } from './SimulatedBackpack';
 import { MotherView } from './MotherView';
 import { StudCollection } from './StudCollection';
 import { useCollectionSummary } from './useCollectionSummary';
@@ -15,6 +17,7 @@ import {
   setMyPetsSelected,
 } from './myPetsFilterStore';
 import { setPersonalQuery } from './listViewStore';
+import { useLandscape } from './useWideLandscape';
 
 export interface CollectionProps {
   location: CollectionLocation;
@@ -80,7 +83,7 @@ function MothersBranch({
   const accountNames = accounts.filter((name) => !excluded.has(name));
   /** 悬浮窗与看板共用同一份母本建议（2026-11-19） */
   const { suggestions, targetLabel, bodyMedal, voiceTarget, voiceDb, weightPercent } =
-    useMotherSuggestions(summary);
+    useMotherSuggestions(summary, accountNames);
 
   return (
     <main className="mx-auto max-w-md space-y-2 p-3">
@@ -125,6 +128,14 @@ export function Collection({
   const searchIndex = useMemo(() => buildEggSearchIndex(species), []);
   const [inventoryCount, setInventoryCount] = useState(0);
   const [railCollapsed, setRailCollapsed] = useState(readRailCollapsed);
+  const [simBagOpen, setSimBagOpen] = useState(false);
+  /** 右侧筛选栏回传的精灵；null = 还没算，先用全量 */
+  const [simFilteredPets, setSimFilteredPets] = useState<OwnedPet[] | null>(null);
+  // 仿真背包只在横屏提供；转到竖屏时直接收起，避免 6×5 网格被挤扁
+  const landscape = useLandscape();
+  useEffect(() => {
+    if (!landscape) setSimBagOpen(false);
+  }, [landscape]);
   const toggleRail = useCallback(() => {
     setRailCollapsed((collapsed) => {
       saveRailCollapsed(!collapsed);
@@ -136,6 +147,7 @@ export function Collection({
   const kind: Kind = location.kind;
 
   const switchKind = (next: Kind) => {
+    setSimBagOpen(false);
     const target: CollectionLocation =
       next === 'mothers'
         ? { kind: 'mothers', status: 'missing' }
@@ -149,6 +161,7 @@ export function Collection({
     <div
       className="collection-scope"
       data-rail-collapsed={railCollapsed ? 'true' : 'false'}
+      data-sim-bag={simBagOpen ? 'true' : 'false'}
       data-testid="collection-scope"
     >
       <nav className="mx-auto max-w-md px-3 pt-2" aria-label="收集视图">
@@ -159,7 +172,7 @@ export function Collection({
         >
           <CollectionAccountSlot />
           {KINDS.map((item) => {
-            const active = item.value === kind;
+            const active = !simBagOpen && item.value === kind;
             return (
               <button
                 key={item.value}
@@ -188,21 +201,50 @@ export function Collection({
               </button>
             );
           })}
+          {landscape ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!simBagOpen) setSimFilteredPets(null);
+                setSimBagOpen((open) => !open);
+              }}
+              aria-pressed={simBagOpen}
+              data-testid="collection-sim-backpack"
+              className="collection-sim-bag-toggle"
+            >
+              仿真背包
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={toggleRail}
+            aria-expanded={!railCollapsed}
+            aria-label={railCollapsed ? '展开筛选' : '收起筛选'}
+            title={railCollapsed ? '展开筛选' : '收起筛选'}
+            data-testid="collection-rail-toggle"
+            className="collection-rail-toggle"
+          >
+            {railCollapsed ? '展开筛选' : '收起筛选'}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={toggleRail}
-          aria-expanded={!railCollapsed}
-          aria-label={railCollapsed ? '展开筛选' : '收起筛选'}
-          title={railCollapsed ? '展开筛选' : '收起筛选'}
-          data-testid="collection-rail-toggle"
-          className="collection-rail-toggle"
-        >
-          {railCollapsed ? '筛选' : '收起筛选'}
-        </button>
       </nav>
 
-      {location.kind === 'mothers' ? (
+      {simBagOpen ? (
+        <div
+          className={`sim-shell${railCollapsed ? ' is-expanded' : ''}`}
+          data-testid="sim-shell"
+        >
+          <SimulatedBackpack
+            pets={simFilteredPets ?? undefined}
+            standardCards={railCollapsed}
+          />
+          {!railCollapsed ? (
+            <div className="sim-shell-filters" data-testid="sim-filter-rail">
+              <MyPets filtersOnly onFilteredPetsChange={setSimFilteredPets} />
+            </div>
+          ) : null}
+        </div>
+      ) : location.kind === 'mothers' ? (
         <MothersBranch
           searchIndex={searchIndex}
           status={location.status}
@@ -220,6 +262,7 @@ export function Collection({
           <MyPets
             onGoImport={() => onNavigate({ type: 'open-profile', section: 'data' })}
             onTotalCountChange={reportInventoryCount}
+            railCollapsed={railCollapsed}
           />
         </>
       )}

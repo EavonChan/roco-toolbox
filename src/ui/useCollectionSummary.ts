@@ -31,6 +31,11 @@ import { useTargetMode } from './targetModeStore';
 export interface CollectionSummary {
   loaded: boolean;
   owned: OwnedPet[];
+  /**
+   * 全部账号的精灵（不按账号筛选）。母本「怎么补 / 配窝建议」要用它算跨号来源，
+   * 否则单选一个号时看不到其他号能补的线（2026-11-24 用户口径）。
+   */
+  allOwned?: OwnedPet[];
   motherGroups: MotherGroup[];
   mode: TargetMode;
   mother: { collected: number; total: number };
@@ -43,7 +48,7 @@ export interface CollectionSummary {
 
 export function useCollectionSummary(): CollectionSummary {
   const { loaded } = useSnapshots();
-  const { owned } = useOwnedPets();
+  const { owned, all: allOwned } = useOwnedPets();
   const mode = useTargetMode();
   const motherCriteria = useMotherCriteria();
   const natureOverrides = useNatureOverrides();
@@ -105,6 +110,7 @@ export function useCollectionSummary(): CollectionSummary {
   return {
     loaded,
     owned,
+    allOwned,
     motherGroups,
     mode,
     mother,

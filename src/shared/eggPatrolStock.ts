@@ -1,6 +1,7 @@
 import type { DemandBody, DemandVoice } from './collectionGroups';
 import type { EggParentInfo, EggParentsInfo } from './eggMatching';
 import type { EggWorkflowState, WorkflowEgg } from './eggWorkflow';
+import { autoListStock, hasAcademyParent } from './eggWorkflow';
 import type { BodySize } from './bodySize.js';
 import type { PatrolEgg, PatrolObservation, PatrolParent, PatrolTask } from './eggPatrol';
 import { ACADEMY_NEST_CONFIG_ID, ORDINARY_NEST_CONFIG_ID } from './eggPatrol';
@@ -76,6 +77,17 @@ export interface InferredLabels {
 }
 
 /**
+ * 绿窝（学院小窝）：蛋自己或任一亲本住在学院小窝就是绿窝蛋。
+ *
+ * 2026-11-25 用户实证：rc「生蛋了吗」入库的蛋永远没有绿窝标记——这两条入库函数以前完全不写
+ * `greenNest`。判定与展示/合并共用 `hasAcademyParent`（父母里有 `academy: true` 即可，
+ * 不要求恰好一只、也不要求它有性格）。
+ */
+function isGreenNestEgg(egg: PatrolEgg, parents?: EggParentsInfo): boolean {
+  return egg.nestConfigId === ACADEMY_NEST_CONFIG_ID || hasAcademyParent(parents);
+}
+
+/**
  * 由父母本推蛋的标注（与抓包导入 `homeEggAdapter` 同一套口径）：
  * - 性格：双亲都有且完全相同才落值（绿色小窝 100% 遗传的场景里，抓包入口会另标）；
  * - 体型：双亲都能判、且同档才落值；
@@ -127,6 +139,7 @@ export function recordPatrolProducedEgg(
   const gameAccountKey = `uid:${task.uid}`;
   const id = JSON.stringify([gameAccountKey, 'home', egg.actorId]);
   const parents = parentsInfo(egg);
+  const greenNest = isGreenNestEgg(egg, parents);
   const existing = previous.eggs.find(value => value.accountId === accountId && value.id === id);
   const mutation = mutationKindOf(egg.mutationName);
   if (!existing) {
@@ -139,17 +152,20 @@ export function recordPatrolProducedEgg(
       body: 'unknown',
       voice: 'unknown',
       provenance: 'self-bred',
+      greenNest,
       confidence: 'unknown',
       kind: mutation.kind,
       ...(mutation.specialCategory ? { specialCategory: mutation.specialCategory } : {}),
       status: 'available',
       location: 'home',
       listed: false,
+      // 服务端第一次建行：属于「新出现」，允许以后进背包时自动挂出（R4-01 的资格标记）。
+      autoListEligible: true,
       labelSource: 'unknown',
       lastConfirmedAt: now,
       ...(parents ? { parents } : {}),
     };
-    return { ...previous, eggs: [...previous.eggs, next] };
+    return autoListStock({ ...previous, eggs: [...previous.eggs, next] }, accountId, gameAccountKey);
   }
 
   const next: WorkflowEgg = {
@@ -158,14 +174,16 @@ export function recordPatrolProducedEgg(
     lastConfirmedAt: Math.max(existing.lastConfirmedAt ?? 0, now),
     ...(existing.provenance === 'unknown' ? { provenance: 'self-bred' as const } : {}),
     ...(!existing.parents && parents ? { parents } : {}),
+    // 历史行缺绿窝标记（rc 入库早期）→ 按父母补；已有 true / 手动取消的 false 一律不动。
+    ...(existing.greenNest === undefined && greenNest ? { greenNest: true } : {}),
     ...(existing.kind === 'ordinary' && mutation.kind !== 'ordinary'
       ? { kind: mutation.kind, specialCategory: mutation.specialCategory }
       : {}),
   };
-  return {
+  return autoListStock({
     ...previous,
     eggs: previous.eggs.map(value => value.accountId === accountId && value.id === id ? next : value),
-  };
+  }, accountId, gameAccountKey);
 }
 
 function fillParents(existing: EggParentsInfo, incoming: EggParentsInfo): EggParentsInfo {
@@ -231,6 +249,7 @@ export function recordIngestedHomeEggs(
     const key = `${accountId}\n${id}`;
     const position = indexById.get(key);
     const parents = parentsInfo(input.egg, index);
+    const greenNest = isGreenNestEgg(input.egg, parents);
     const labels = index ? inferEggLabels(input.egg, index) : { nature: '', body: 'unknown' as const, voice: 'unknown' as const };
     const hasLabel = !!labels.nature || labels.body !== 'unknown' || labels.voice !== 'unknown';
     const mutation = mutationKindOf(input.egg.mutationName);
@@ -245,12 +264,15 @@ export function recordIngestedHomeEggs(
         body: labels.body,
         voice: labels.voice,
         provenance: 'self-bred',
+        greenNest,
         confidence: hasLabel ? 'system' : 'unknown',
         kind: mutation.kind,
         ...(mutation.specialCategory ? { specialCategory: mutation.specialCategory } : {}),
         status: 'available',
         location: 'home',
         listed: false,
+        // 同上：机器人首次入库的新行才有自动挂出资格（R4-01）。
+        autoListEligible: true,
         labelSource: hasLabel ? 'system' : 'unknown',
         lastConfirmedAt: now,
         ...(parents ? { parents } : {}),
@@ -291,6 +313,11 @@ export function recordIngestedHomeEggs(
         changed = true;
       }
     }
+    // 历史行缺绿窝标记（rc 入库早期）→ 按父母补；已有 true / 手动取消的 false 一律不动。
+    if (next.greenNest === undefined && greenNest) {
+      next = { ...next, greenNest: true };
+      changed = true;
+    }
     const refresh = now - (next.lastConfirmedAt ?? 0) >= INGEST_CONFIRM_REFRESH_MS;
     if (refresh) {
       next = {
@@ -304,8 +331,11 @@ export function recordIngestedHomeEggs(
     if (next !== existing) nextEggs[position] = next;
   }
 
+  // 入库完成后再走自动挂出；家园蛋不满足「在背包」，这里只会补到已合并成背包的行。
+  // autoListStock 无变化时返回原对象，保持「没变化就返回同一个 state」的契约。
+  const state = changed ? { ...previous, eggs: nextEggs } : previous;
   return {
-    state: changed ? { ...previous, eggs: nextEggs } : previous,
+    state: autoListStock(state, accountId, gameAccountKey),
     written,
     labeled,
   };

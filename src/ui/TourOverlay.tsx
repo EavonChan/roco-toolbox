@@ -6,7 +6,12 @@ import { TOUR_ANCHOR_ATTR, type TourStep } from './tour';
  *
  * 只在视觉上压暗页面（`pointer-events-none`），不拦截真实点击：
  * 「下一步」由用户点气泡推进，页面本身仍可滚动。
- * 锚点元素找不到时（例如未入组、没有家园数据）退化成居中的说明卡，不卡住流程。
+ *
+ * 定位支持两种：`anchor`（data-tour 值）或 `selector`（任意 `[data-testid="..."]` 这类选择器，
+ * 2026-11-25 加：页面里已有稳定 testid 时不用为了教程去改别人组件）。
+ *
+ * 锚点找不到时：普通步骤退化成居中的说明卡；标了 `skipWhenMissing` 的条件步骤
+ * （蛋仓 / 广场 / 雷达这类「登录入组后才有」的元素）直接跳到下一步，不把卡片飘在空位置上。
  */
 export interface TourOverlayProps {
   steps: TourStep[];
@@ -24,6 +29,9 @@ const TOOLTIP_ESTIMATED_HEIGHT = 172;
 /** 等锚点挂载（切页/拉数据有延迟）最多等多少帧，约 1 秒 */
 const MAX_WAIT_FRAMES = 60;
 
+/** 条件步骤等多久才认定「这个锚点就是没有」并跳过（略大于上面的等待窗口） */
+const MISSING_SKIP_MS = 1100;
+
 export function TourOverlay({ steps, onClose, onEnter, importReady = false }: TourOverlayProps) {
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -32,6 +40,8 @@ export function TourOverlay({ steps, onClose, onEnter, importReady = false }: To
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const onEnterRef = useRef(onEnter);
   const onCloseRef = useRef(onClose);
+  /** 条件步骤「锚点不存在 → 自动下一步」用；每次渲染指向最新的 next */
+  const advanceRef = useRef<() => void>(() => {});
   /** 进入「等导入」那步时本机是否已经有数据（有数据就不用自动跳，用户自己点下一步） */
   const readyAtEntryRef = useRef(importReady);
   const importReadyRef = useRef(importReady);
@@ -90,10 +100,17 @@ export function TourOverlay({ steps, onClose, onEnter, importReady = false }: To
     targetRef.current = null;
     setRect(null);
 
-    const findAnchor = () =>
-      step.anchor
-        ? (document.querySelector(`[${TOUR_ANCHOR_ATTR}="${step.anchor}"]`) as HTMLElement | null)
-        : null;
+    const hasTarget = Boolean(step.anchor || step.selector);
+
+    const findAnchor = () => {
+      if (step.selector) return document.querySelector(step.selector) as HTMLElement | null;
+      if (step.anchor) {
+        return document.querySelector(
+          `[${TOUR_ANCHOR_ATTR}="${step.anchor}"]`,
+        ) as HTMLElement | null;
+      }
+      return null;
+    };
 
     const measure = (element: HTMLElement) => {
       targetRef.current = element;
@@ -110,7 +127,7 @@ export function TourOverlay({ steps, onClose, onEnter, importReady = false }: To
       setRect(null);
       const element = findAnchor();
       if (!element) {
-        if (step.anchor && tries < MAX_WAIT_FRAMES) {
+        if (hasTarget && tries < MAX_WAIT_FRAMES) {
           tries += 1;
           frame = requestAnimationFrame(locate);
         }
@@ -124,7 +141,7 @@ export function TourOverlay({ steps, onClose, onEnter, importReady = false }: To
     locate();
 
     // 目标中途被卸载（用户点了别的页签）或晚挂载（数据还没回来）：每 0.6 秒补找一次
-    const watchdog = step.anchor
+    const watchdog = hasTarget
       ? window.setInterval(() => {
           if (cancelled) return;
           const current = targetRef.current;
@@ -142,10 +159,21 @@ export function TourOverlay({ steps, onClose, onEnter, importReady = false }: To
         }, 600)
       : null;
 
+    // 条件步骤：等满约 1 秒还是找不到锚点 → 认定这一步对本机不适用，自动进下一步
+    const skipTimer =
+      hasTarget && step.skipWhenMissing
+        ? window.setTimeout(() => {
+            if (cancelled) return;
+            if (targetRef.current?.isConnected) return;
+            advanceRef.current();
+          }, MISSING_SKIP_MS)
+        : null;
+
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
       if (watchdog !== null) window.clearInterval(watchdog);
+      if (skipTimer !== null) window.clearTimeout(skipTimer);
     };
     // step 由 index 决定，无需单独列进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,6 +199,7 @@ export function TourOverlay({ steps, onClose, onEnter, importReady = false }: To
     if (last) onClose();
     else setIndex((value) => value + 1);
   }, [last, onClose]);
+  advanceRef.current = next;
 
   /**
    * 跳过：不直接消失，先跳到收尾的「教程入口」那一步（用户要求：跳过时也要告诉他能从教程再进）；

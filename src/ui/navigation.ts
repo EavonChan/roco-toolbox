@@ -34,6 +34,19 @@ export interface AppNavigation {
    * 之后切走再回来不会被旧聚焦重新改列表。
    */
   consumedFocusRevision: number;
+  /**
+   * 「我的 · 我的蛋仓」直达换蛋页蛋仓屏（2026-11-25 U2）。
+   * 蛋仓是换蛋页的页内视图，所以用「请求 + 消费」两段式：页面打开蛋仓后回报消费，
+   * 之后切走再回来不会再被弹到蛋仓（同一个 `focusRevision` 的套路）。
+   */
+  eggStockRevision: number;
+  consumedEggStockRevision: number;
+  /**
+   * 当前蛋仓屏是不是从「我的」进来的（2026-11-25 U3）：
+   * 是的话，蛋仓里的「返回」要回「我的」，不能掉回换蛋页。
+   * 消费只清「要不要自动打开」，来源要留到用户离开换蛋页为止。
+   */
+  eggStockFromProfile: boolean;
 }
 
 export type NavigationIntent =
@@ -41,6 +54,9 @@ export type NavigationIntent =
   | { type: 'open-collection'; location: CollectionLocation }
   | { type: 'open-profile'; section: ProfileSection; returnToGroups?: boolean }
   | { type: 'open-groups'; groupType?: CollectionGroupType }
+  /** 我的 · 我的蛋仓 → 换蛋页的蛋仓屏 */
+  | { type: 'open-egg-stock' }
+  | { type: 'consume-egg-stock'; revision: number }
   | { type: 'consume-focus'; revision: number };
 
 /** 初始收集落点 = 母本「未收集」（新人最常问「还缺什么」）。 */
@@ -53,6 +69,9 @@ const BASE: AppNavigation = {
   returnToGroups: false,
   focusRevision: 0,
   consumedFocusRevision: 0,
+  eggStockRevision: 0,
+  consumedEggStockRevision: 0,
+  eggStockFromProfile: false,
 };
 
 /**
@@ -90,12 +109,13 @@ export function resolveNavigation(
   switch (intent.type) {
     case 'tab':
       // 普通主导航只改 page：同一次会话里收集页的子视图、我的页的分区都保留。
-      // 跨页的一次性标记（返回小组、收集类型）不能跟着漏到下一次手动切换。
+      // 跨页的一次性标记（返回小组、收集类型、蛋仓来源）不能跟着漏到下一次手动切换。
       return {
         ...current,
         page: intent.page,
         returnToGroups: false,
         groupType: undefined,
+        eggStockFromProfile: false,
       };
     case 'open-collection':
       return {
@@ -104,6 +124,7 @@ export function resolveNavigation(
         collection: intent.location,
         returnToGroups: false,
         groupType: undefined,
+        eggStockFromProfile: false,
         focusRevision: current.focusRevision + 1,
       };
     case 'open-profile':
@@ -112,6 +133,7 @@ export function resolveNavigation(
         page: 'profile',
         profileSection: intent.section,
         returnToGroups: intent.returnToGroups === true,
+        eggStockFromProfile: false,
       };
     case 'open-groups':
       return {
@@ -119,8 +141,25 @@ export function resolveNavigation(
         page: 'groups',
         groupType: intent.groupType,
         returnToGroups: false,
+        eggStockFromProfile: false,
         focusRevision: current.focusRevision + 1,
       };
+    case 'open-egg-stock':
+      // 蛋仓长在换蛋页里：切过去并挂一次「请打开蛋仓」请求，由换蛋页消费（见 eggStockPending）。
+      // 同时记住来源：这次蛋仓是从「我的」进来的，返回要回「我的」（U3）。
+      return {
+        ...current,
+        page: 'groups',
+        groupType: undefined,
+        returnToGroups: false,
+        eggStockFromProfile: true,
+        eggStockRevision: current.eggStockRevision + 1,
+      };
+    case 'consume-egg-stock':
+      // 只消费匹配当前版本的请求；晚到的旧消费不能清掉后来的新请求
+      return intent.revision === current.eggStockRevision
+        ? { ...current, consumedEggStockRevision: intent.revision }
+        : current;
     case 'consume-focus':
       // 只消费匹配当前版本的聚焦；晚到的旧消费不能清掉后来的新直达。
       return intent.revision === current.focusRevision
@@ -132,6 +171,11 @@ export function resolveNavigation(
 /** 聚焦是否还没被消费（页面据此决定滚不滚）。 */
 export function focusPending(state: AppNavigation): boolean {
   return state.focusRevision > state.consumedFocusRevision;
+}
+
+/** 有没有一次「打开蛋仓」还没被换蛋页消费。 */
+export function eggStockPending(state: AppNavigation): boolean {
+  return state.eggStockRevision > state.consumedEggStockRevision;
 }
 
 export interface LegacyLocation {

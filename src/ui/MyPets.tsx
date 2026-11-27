@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   buildChainSearchIndex,
@@ -43,7 +43,8 @@ import {
   hasChosenColumns,
   useMyPetsFilters,
 } from './myPetsFilterStore';
-import { useWideLandscape } from './useWideLandscape';
+import { useLandscape, useWideLandscape } from './useWideLandscape';
+import { columnsForCollapsedRail } from './petGridColumns';
 import { setPersonalQuery, usePersonalList } from './listViewStore';
 
 /** 筛选维度顺序；稀有度单独占一行。 */
@@ -276,8 +277,12 @@ function HeightRangeControl({
 
   return (
     <section className="bg-white px-1.5 py-0" data-testid="height-filter-controls">
-      <div className="flex flex-nowrap items-center gap-0.5 overflow-x-auto whitespace-nowrap text-[10px] text-slate-600">
-        <span className="shrink-0 font-medium">身高:</span>
+      <div
+        data-testid="height-controls-line"
+        className="flex flex-wrap items-center gap-0.5 overflow-x-auto whitespace-nowrap text-[10px] text-slate-600"
+      >
+        <div data-testid="height-inputs-group" className="flex shrink-0 items-center gap-0.5">
+          <span className="shrink-0 font-medium">身高:</span>
         <label className="flex w-[84px] shrink-0 items-center rounded-md border border-slate-200 bg-slate-50 px-1 focus-within:border-emerald-500">
           <input
             id="height-range-min"
@@ -313,6 +318,8 @@ function HeightRangeControl({
           />
           <span className="shrink-0 text-[10px] text-slate-400">%</span>
         </label>
+        </div>
+        <div data-testid="height-presets-group" className="flex shrink-0 items-center gap-0.5">
         <button
           type="button"
           aria-pressed={isZeroPreset}
@@ -349,6 +356,7 @@ function HeightRangeControl({
         >
           清除
         </button>
+        </div>
       </div>
       {/* 卡片显示开关已挪到筛选区顶部；身高和体重共用一个开关（2026-11-18 用户口径） */}
     </section>
@@ -359,6 +367,12 @@ export interface MyPetsProps {
   /** 空数据时「去导入数据」按钮的跳转 */
   onGoImport?: () => void;
   onTotalCountChange?: (count: number) => void;
+  /** 收集页右栏（搜索 / 筛选）是否收起：收起后卡片区变宽，改成多排几张卡 */
+  railCollapsed?: boolean;
+  /** 只渲染搜索 / 筛选栏（仿真背包右侧复用），不渲染精灵网格 */
+  filtersOnly?: boolean;
+  /** filtersOnly 模式下，把筛选后的精灵回传给父层 */
+  onFilteredPetsChange?: (pets: OwnedPet[]) => void;
 }
 
 /**
@@ -367,7 +381,13 @@ export interface MyPetsProps {
  * 2026-10-29 用户口径：「合格种公」视图不要了——挑种公去「收集 · 种公」看种公阵列；
  * 母本去看「收集 · 母本」。这里不再有视角切换。
  */
-export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
+export function MyPets({
+  onGoImport,
+  onTotalCountChange,
+  railCollapsed = false,
+  filtersOnly = false,
+  onFilteredPetsChange,
+}: MyPetsProps) {
   const { owned, accounts, all } = useOwnedPets();
   // 本机全部精灵（不受账号筛选影响）：用来区分「真没数据」和「筛选后为空」
   const libraryPets = all ?? owned;
@@ -403,6 +423,54 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
     if (wideLandscape && !hasChosenColumns() && columns === 4) setMyPetsColumns(5);
   }, [wideLandscape, columns]);
   const effectiveColumns = wideLandscape ? columns : (Math.min(columns, 4) as 3 | 4);
+
+  /**
+   * 收起筛选右栏（2026-11-23 用户口径）：空出来的宽度用来多排几张卡，
+   * 卡片宽度保持收起前的样子，不再把卡片拉宽；只有横屏才有这条右栏。
+   */
+  const landscape = useLandscape();
+  const mainRef = useRef<HTMLDivElement | null>(null);
+  const [collapsedColumns, setCollapsedColumns] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!railCollapsed || !landscape) {
+      setCollapsedColumns(null);
+      return;
+    }
+    const main = mainRef.current;
+    if (!main) return;
+    const measure = () => {
+      const collapsedWidth = main.clientWidth;
+      if (!(collapsedWidth > 0)) return;
+      const rootFont =
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      // 横屏收集页右栏 22rem + 栏间距 1rem（见 index.css 的 .collection-layout）
+      const expandedWidth = collapsedWidth - rootFont * 23;
+      const list = main.querySelector<HTMLElement>('[data-testid="pet-list-items"]');
+      // 列表还没渲染（数据未到 / 筛选为空）时按 PetList 的 gap-1.5 兜底
+      const gap =
+        (list && Number.parseFloat(getComputedStyle(list).columnGap)) || rootFont * 0.375;
+      const next = columnsForCollapsedRail({
+        baseColumns: effectiveColumns,
+        expandedWidth,
+        collapsedWidth,
+        gap,
+      });
+      setCollapsedColumns(next > effectiveColumns ? next : null);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(main);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+    // accounts 从 0 变成有值时主区才挂上（空数据先渲染空态），要重新量一次
+  }, [railCollapsed, landscape, effectiveColumns, accounts.length]);
   const { tags, index } = useMemo(
     () => buildTagIndex(owned, speciesByGameId, eggGroupNames),
     [owned, speciesByGameId],
@@ -491,6 +559,12 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
     onTotalCountChange?.(owned.length);
   }, [owned.length, onTotalCountChange]);
 
+  // 仿真背包右侧复用筛选栏时，把当前筛选结果交给父层画格子
+  useEffect(() => {
+    if (!filtersOnly) return;
+    onFilteredPetsChange?.([...visiblePets]);
+  }, [filtersOnly, onFilteredPetsChange, visiblePets]);
+
   const toggle = (tagId: string) => {
     const kind = tagId.split(':')[0];
     const next = new Set(selected);
@@ -527,6 +601,9 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
   // 完全没数据才早退；账号筛选全取消导致 owned 为空时，保留页面与顶部账号筛选条
   // （2026-10-05 用户反馈：全取消后控件会消失）
   if (accounts.length === 0) {
+    if (filtersOnly) {
+      return <aside className="inventory-filter-only" data-testid="inventory-filters-only" />;
+    }
     return (
       <main className="mx-auto max-w-md p-4">
         <EmptyState onGoImport={onGoImport} />
@@ -768,10 +845,11 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
     };
   });
 
-  return (
-    <main className="mx-auto max-w-md space-y-1 px-4 pb-4 pt-0.5" data-testid="collection-inventory">
-      <div className="collection-layout">
-        <div className="collection-rail space-y-1">
+  const filterRail = (
+    <div
+      className={`collection-rail space-y-1${filtersOnly ? ' inventory-filter-only-rail' : ''}`}
+      data-testid="inventory-filter-rail"
+    >
           {/* 搜索常显、独立于高级筛选（2026-10-24 统一控件） */}
           <SearchField
         label="搜索精灵名"
@@ -873,7 +951,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           </div>
           <FilterAccordion
             inline
-            popover
+            popover={!filtersOnly}
             centered
             dimensions={filterDimensions}
           />
@@ -909,8 +987,22 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           />
         </div>
       </FilterPanel>
-        </div>
-        <div className="collection-main space-y-1">
+    </div>
+  );
+
+  if (filtersOnly) {
+    return (
+      <aside className="inventory-filter-only" data-testid="inventory-filters-only">
+        {filterRail}
+      </aside>
+    );
+  }
+
+  return (
+    <main className="mx-auto max-w-md space-y-1 px-4 pb-4 pt-0.5" data-testid="collection-inventory">
+      <div className="collection-layout">
+        {filterRail}
+        <div className="collection-main space-y-1" ref={mainRef}>
       {visiblePets.length === 0 ? (
         libraryPets.length === 0 ? (
           <EmptyState onGoImport={onGoImport} />
@@ -928,7 +1020,7 @@ export function MyPets({ onGoImport, onTotalCountChange }: MyPetsProps) {
           speciesByGameId={speciesByGameId}
           eggGroupNames={eggGroupNames}
           showCount={false}
-          columns={effectiveColumns}
+          columns={collapsedColumns ?? effectiveColumns}
         />
       )}
         </div>

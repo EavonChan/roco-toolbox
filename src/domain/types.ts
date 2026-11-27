@@ -72,6 +72,12 @@ export interface SpeciesEntry {
   eggRecommendedNatures?: string[];
 }
 
+/** 个体三维的一项：物攻 +8 等（2026-11-22 用户口径）。 */
+export interface IndividualBonus {
+  name: string;
+  value: number;
+}
+
 export interface OwnedPet {
   gameId: number;
   name: string;
@@ -92,6 +98,18 @@ export interface OwnedPet {
    * 奖牌（medalBody）仍只看体重。老抓包没有身高字段时为空，判定退回原口径。
    */
   heightPercent?: number;
+  /**
+   * 个体三维（2026-11-22）：最多三项「物攻+8 / 生命+9 / 速度+10」。
+   * 只在新抓包里有；老备份没有这一项，卡片上留空。
+   */
+  individualBonuses?: IndividualBonus[];
+  /**
+   * 三维的原始协议字段（2026-11-24）：**只保留 `bytes["14"]` 的 hex**。
+   * 采集器导出的 `rawFields` 全量协议记录（int / 其它 bytes / source / occurrences）
+   * 不进快照——精灵数量 × 字段数太大；领域层只需要 field 14。
+   * 留着的作用：以后解码规则改进还能重新解，跨版本合并时也不会被旧客户端抹掉。
+   */
+  rawFields?: { bytes?: { '14'?: string[] } };
   isShiny: boolean;
   /** 炫彩（2026-10-05 直接从导入内容读取：备份 JSON 里同为平铺字段 isColorful，采集器导出就有） */
   isColorful?: boolean;

@@ -36,24 +36,43 @@ export interface MotherSuggestionsView {
 }
 
 export function useMotherSuggestions(
-  summary: Pick<CollectionSummary, 'owned' | 'mode' | 'coverageByAccount' | 'plans'>,
+  summary: Pick<CollectionSummary, 'owned' | 'mode' | 'coverageByAccount' | 'plans'> & {
+    allOwned?: CollectionSummary['allOwned'];
+  },
+  /**
+   * 当前账号筛选里选中的号：只把它们作为「目标号」返回，其他号只作为跨号来源。
+   * 不传 = 返回全部账号（老调用方 / 全选）。
+   */
+  selectedAccounts?: readonly string[],
 ): MotherSuggestionsView {
-  const { owned, mode, coverageByAccount, plans } = summary;
+  const { owned, allOwned, mode, coverageByAccount, plans } = summary;
   const coverageFilter = useCoverageFilter();
   const motherCriteria = useMotherCriteria();
   const natureOverrides = useNatureOverrides();
 
   const selectedGrade = coverageFilter.grades[coverageFilter.grades.length - 1] ?? null;
 
-  const effectiveCriteria: MotherCriteria = useMemo(
+  /**
+   * 「已收集」判定必须和母本页同一份（`MotherView` 的 effectiveCriteria），
+   * 否则会出现「页面说已收集、怎么补还推这一颗」：单选莱茵时实测差 1 条
+   * （2026-11-24）。配窝档位仍由 coverageFilter 的 selectedGrade 单独决定。
+   */
+  const collectionCriteria: MotherCriteria = useMemo(
     () => ({
       bodies: motherCriteria.bodies,
       voices: effectiveMotherVoices(motherCriteria.voices, mode),
-      grades: selectedGrade ? [selectedGrade] : motherCriteria.grades,
+      grades: motherCriteria.grades,
       targetMode: mode,
       recommendedNatures: motherCriteria.recommendedNatures === true,
     }),
-    [motherCriteria, mode, selectedGrade],
+    [motherCriteria, mode],
+  );
+  const effectiveCriteria: MotherCriteria = useMemo(
+    () => ({
+      ...collectionCriteria,
+      grades: selectedGrade ? [selectedGrade] : collectionCriteria.grades,
+    }),
+    [collectionCriteria, selectedGrade],
   );
 
   const naturesOf = useMemo(
@@ -61,19 +80,38 @@ export function useMotherSuggestions(
     [natureOverrides],
   );
 
+  /**
+   * 账号筛选只限制「谁是目标号」，不能限制「算谁的数据」：
+   * 单选莱茵时，洛丝/洛伞仍然是合法的出蛋来源（2026-11-24 用户口径）。
+   * 所以用 allOwned 计算，再把结果过滤回选中号。
+   */
+  const selectedKey = selectedAccounts?.join('\u0000') ?? '';
   const suggestions = useMemo(() => {
     if (!selectedGrade) return new Map<string, MotherNestAccount>();
-    return buildMotherNestSuggestions({
+    const built = buildMotherNestSuggestions({
       species,
-      owned,
+      owned: allOwned ?? owned,
       mode,
       grade: selectedGrade,
-      criteria: effectiveCriteria,
+      criteria: collectionCriteria,
       naturesOf,
       coverageByAccount,
       plans,
     });
-  }, [owned, mode, selectedGrade, effectiveCriteria, naturesOf, coverageByAccount, plans]);
+    if (!selectedKey) return built;
+    const wanted = new Set(selectedKey.split('\u0000'));
+    return new Map([...built].filter(([account]) => wanted.has(account)));
+  }, [
+    owned,
+    allOwned,
+    mode,
+    selectedGrade,
+    collectionCriteria,
+    naturesOf,
+    coverageByAccount,
+    plans,
+    selectedKey,
+  ]);
 
   const bodyMedal = selectedGrade ? GRADE_BODY[selectedGrade] : null;
   const targetLabel = selectedGrade

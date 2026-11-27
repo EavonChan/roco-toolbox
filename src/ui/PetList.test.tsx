@@ -47,6 +47,14 @@ describe('PetList（全部展示，不分页）', () => {
     expect(screen.queryByText(/每页/)).toBeNull();
   });
 
+  test('收起筛选后可以排到六列以上（卡片宽度不变，只多排几张）', () => {
+    render(<PetList {...props} columns={9} />);
+    const list = screen.getByTestId('pet-list-items');
+    expect(list).toHaveAttribute('data-columns', '9');
+    expect(list.style.gridTemplateColumns).toBe('repeat(9, minmax(0, 1fr))');
+    expect(screen.getAllByRole('article')).toHaveLength(21);
+  });
+
   test('500 只先渲染首屏，滚动到底再续一屏（仍不分页）', () => {
     const many: OwnedPet[] = Array.from({ length: 500 }, (_, index): OwnedPet => ({
       gameId: index + 1,

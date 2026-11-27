@@ -12,6 +12,13 @@
  *   ③ 追加一行到 docs/进度/审批.jsonl（append-only）
  *   任何一步失败都回滚 md 并报错，不留半截。
  *
+ * 汇报（W4，只读）：GET /api/reports 列 docs/汇报/ 下的 .md，GET /api/reports/<名> 回原文。
+ *   只读这一个目录；`..` / 绝对路径 / 非 .md 一律 400，绝不把别处的文件吐出去。
+ *
+ * 工时计时器（T1）：/api/timer/*  —— 数据只存本机，**不在仓库里**、不上传、不做考勤：
+ *   %USERPROFILE%\.workbench\timer\YYYY-MM-DD.jsonl  一天一个事件日志（只追加）
+ *   日志在仓库外，所以 `git status` 永远看不见它；答案只回答"今天时间去哪了"。
+ *
  * 用法：
  *   node tools/workbench/server.mjs
  *   → http://127.0.0.1:4320（占用时自动 +1，打印实际地址）
@@ -20,14 +27,17 @@
  *   WORKBENCH_BOARD     看板 md 路径
  *   WORKBENCH_LEDGER    会话台账 md 路径
  *   WORKBENCH_PROGRESS  审批日志与快照目录（内含 审批.jsonl、snapshots/）
+ *   WORKBENCH_REPORTS   汇报 md 目录（默认 docs/汇报，只读）
+ *   WORKBENCH_TIMER_DIR 计时数据目录（默认 %USERPROFILE%\.workbench\timer；验收脚本用临时目录）
  *   PORT / HOST         起始端口 / 绑定地址（默认 4320 / 127.0.0.1）
  *
  * 原生 Node，零 npm 依赖。
  */
 import { createServer } from 'node:http';
-import { readFile, writeFile, appendFile, stat, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, appendFile, stat, mkdir, readdir, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +46,7 @@ const REPO_ROOT = path.resolve(HERE, '..', '..');
 const DEFAULT_BOARD = path.join(REPO_ROOT, 'docs', '任务看板.md');
 const DEFAULT_LEDGER = path.join(REPO_ROOT, 'docs', '会话台账.md');
 const DEFAULT_PROGRESS = path.join(REPO_ROOT, 'docs', '进度');
+const DEFAULT_REPORTS = path.join(REPO_ROOT, 'docs', '汇报');
 const BOARD_FILE = process.env.WORKBENCH_BOARD
   ? path.resolve(process.env.WORKBENCH_BOARD)
   : DEFAULT_BOARD;
@@ -45,6 +56,9 @@ const LEDGER_FILE = process.env.WORKBENCH_LEDGER
 const PROGRESS_DIR = process.env.WORKBENCH_PROGRESS
   ? path.resolve(process.env.WORKBENCH_PROGRESS)
   : DEFAULT_PROGRESS;
+const REPORTS_DIR = process.env.WORKBENCH_REPORTS
+  ? path.resolve(process.env.WORKBENCH_REPORTS)
+  : DEFAULT_REPORTS;
 const APPROVALS_FILE = path.join(PROGRESS_DIR, '审批.jsonl');
 const SNAPSHOT_DIR = path.join(PROGRESS_DIR, 'snapshots');
 
@@ -629,6 +643,144 @@ async function approvalsTail(limit = 5) {
   }
 }
 
+// ───────────────────────────── 汇报：只读 docs/汇报/ ─────────────────────────────
+
+const REPORT_EXT = '.md';
+const REPORTS_PREFIX = '/api/reports/';
+
+/**
+ * 请求行里的**原始**路径。必须用原串：`new URL()` 会把 `/api/reports/../x` 折叠成 `/api/x`，
+ * 那样就悄悄放过了穿越（验收要求是 400，不是 404）。
+ */
+function rawPathOf(reqUrl) {
+  const q = reqUrl.indexOf('?');
+  const raw = q >= 0 ? reqUrl.slice(0, q) : reqUrl;
+  if (raw.startsWith('/')) return raw;
+  try {
+    return new URL(raw).pathname; // 代理式绝对 URL（极少数客户端）
+  } catch {
+    return raw;
+  }
+}
+
+/** 从 `/api/reports/<名字>` 取文件名；穿越 / 绝对路径 / 非 .md 一律 400。 */
+function reportNameOf(rawPath) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(rawPath);
+  } catch {
+    throw new HttpError(400, 'bad_report_path', '汇报文件名不是合法 URL 编码');
+  }
+  const name = decoded.slice(REPORTS_PREFIX.length);
+  const reasons = [];
+  if (!name) reasons.push('文件名为空');
+  if (name.includes('..')) reasons.push('含 ..');
+  if (name.includes('/') || name.includes('\\')) reasons.push('含路径分隔符');
+  if (/^[A-Za-z]:/.test(name)) reasons.push('像绝对路径');
+  if (/[\u0000-\u001f\u007f]/.test(name)) reasons.push('含控制字符');
+  if (!name.toLowerCase().endsWith(REPORT_EXT)) reasons.push(`不是 ${REPORT_EXT} 文件`);
+  if (reasons.length) {
+    throw new HttpError(400, 'bad_report_path',
+      `拒绝这个汇报路径（${reasons.join('，')}）：只允许 docs/汇报/ 下的单个 .md 文件名`);
+  }
+  return name;
+}
+
+/** 名字 → 磁盘路径；再核一遍“解析后仍在汇报目录里”（防软链接跑出去）。 */
+async function resolveReport(name) {
+  const abs = path.resolve(REPORTS_DIR, name);
+  const rel = path.relative(REPORTS_DIR, abs);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || rel.includes(path.sep)) {
+    throw new HttpError(400, 'bad_report_path', '这个路径不在 docs/汇报/ 里，已拒绝');
+  }
+  const realDir = await realpath(REPORTS_DIR).catch(() => path.resolve(REPORTS_DIR));
+  const realFile = await realpath(abs).catch(() => null);
+  if (realFile && path.dirname(realFile) !== realDir) {
+    throw new HttpError(400, 'bad_report_path', '这个文件指向汇报目录之外，已拒绝');
+  }
+  return abs;
+}
+
+/** 标题 = 正文里第一行 `# ` 之后的内容；没有就退回文件名（不猜、不造标题）。 */
+function reportTitle(text, name) {
+  for (const line of String(text).split(/\r?\n/)) {
+    const m = /^#\s+(.+?)\s*#*\s*$/.exec(line);
+    if (m) return m[1].trim();
+  }
+  return name.replace(/\.md$/i, '');
+}
+
+async function reportsPayload() {
+  let entries;
+  try {
+    entries = await readdir(REPORTS_DIR, { withFileTypes: true });
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      return {
+        schema: 3, ok: true, generatedAt: new Date().toISOString(),
+        dir: relPath(REPORTS_DIR), absoluteDir: REPORTS_DIR,
+        available: false, count: 0, files: [],
+        reason: `还没有 ${relPath(REPORTS_DIR)}/ 目录`,
+        readPolicy: '每次请求重读目录与文件，不缓存',
+      };
+    }
+    throw err;
+  }
+  const files = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || entry.name.startsWith('.') || !entry.name.toLowerCase().endsWith(REPORT_EXT)) continue;
+    const abs = path.join(REPORTS_DIR, entry.name);
+    try {
+      const [info, text] = await Promise.all([stat(abs), readFile(abs, 'utf8')]);
+      files.push({
+        name: entry.name,
+        path: relPath(abs),
+        title: reportTitle(text, entry.name),
+        size: info.size,
+        bytes: info.size,
+        mtime: info.mtime.toISOString(),
+        _mtimeMs: info.mtimeMs,
+      });
+    } catch { /* 单个文件读不了不影响整份清单 */ }
+  }
+  files.sort((a, b) => b._mtimeMs - a._mtimeMs || a.name.localeCompare(b.name, 'zh'));
+  return {
+    schema: 3, ok: true, generatedAt: new Date().toISOString(),
+    dir: relPath(REPORTS_DIR), absoluteDir: REPORTS_DIR,
+    available: true,
+    count: files.length,
+    sort: 'mtime-desc',
+    files: files.map(({ _mtimeMs, ...rest }) => rest),
+    readPolicy: '每次请求重读目录与文件，不缓存',
+  };
+}
+
+/** 返回原文（text/markdown），不是 JSON：页面拿到什么就渲染什么。 */
+async function sendReport(res, rawPath) {
+  const name = reportNameOf(rawPath);
+  const abs = await resolveReport(name);
+  let text;
+  let info;
+  try {
+    [text, info] = await Promise.all([readFile(abs, 'utf8'), stat(abs)]);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      throw new HttpError(404, 'report_not_found', `docs/汇报/ 里没有这个文件：${name}`);
+    }
+    throw err;
+  }
+  const buf = Buffer.from(text, 'utf8');
+  res.writeHead(200, {
+    'Content-Type': 'text/markdown; charset=utf-8',
+    'Content-Length': buf.length,
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'X-Report-Name': encodeURIComponent(name),
+    'X-Report-Mtime': info.mtime.toISOString(),
+    'X-Report-Bytes': String(buf.length),
+  });
+  res.end(buf);
+}
+
 // ───────────────────────────── /api/board ─────────────────────────────
 
 async function boardPayload() {
@@ -961,6 +1113,393 @@ async function approveHandler(req, res) {
   sendJson(res, 200, { schema: 2, ok: true, ...result });
 }
 
+// ───────────────────────────── 工时计时器（T1） ─────────────────────────────
+/**
+ * 三条硬约束（用户原话）：
+ *   ① 数据只存本机，绝不上传、不进 git、不做考勤 → 落盘在 %USERPROFILE%\.workbench\timer\，
+ *      刻意放在仓库**外面**：工作台别的数据源都在 docs/ 里，只有这份"我今天怎么过的"不外流，
+ *      删掉这个目录就等于全部清零，`git status` 里也永远看不到它。
+ *   ② 不做 AI 时间统计，不标"谁打断的"：这里只有任务名与时间，没有别的维度。
+ *   ③ 界面上只有一条状态条（前端），服务端只负责事实。
+ *
+ * 日志一行一个事件（只追加，不改写）：
+ *   {"ts":"...","type":"start","task":"需求评审"}
+ *   {"ts":"...","type":"switch","from":"需求评审","to":"写 PRD"}
+ *   {"ts":"...","type":"stop","task":"写 PRD"}
+ *
+ * **不做空闲自动停止**（设计决定，也写进 README）：用户可能同时在两台电脑上工作，
+ * 自动停会把在另一台机器上的时间误判为离开。所以一段计时只会因为**手动切换 / 停止**而结束。
+ * 心跳（前端 15 秒一次）只用来回答"面板还连着没连着"（state.online），绝不拿来停计时。
+ */
+const HOME_DIR = process.env.USERPROFILE || homedir();
+const TIMER_DIR = process.env.WORKBENCH_TIMER_DIR
+  ? path.resolve(process.env.WORKBENCH_TIMER_DIR)
+  : path.join(HOME_DIR, '.workbench', 'timer');
+const TIMER_TASK_MAX = 60;
+const TIMER_RECENT_LIMIT = 20;
+/** 心跳 15 秒一次；连着 = 最近 20 秒内有心跳（一拍 + 一点网络抖动，避免刚好卡在两拍之间闪成灰的）。 */
+const TIMER_ONLINE_MS = 20000;
+
+const p2 = (n) => String(n).padStart(2, '0');
+
+/** 本机时区的 ISO（带 +08:00 这种偏移）。日志里就用它：人直接读得懂，也不丢时区。 */
+function localIso(date = new Date()) {
+  const off = -date.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const abs = Math.abs(off);
+  return `${date.getFullYear()}-${p2(date.getMonth() + 1)}-${p2(date.getDate())}` +
+    `T${p2(date.getHours())}:${p2(date.getMinutes())}:${p2(date.getSeconds())}` +
+    `${sign}${p2(Math.floor(abs / 60))}:${p2(abs % 60)}`;
+}
+const dayKey = (date = new Date()) => `${date.getFullYear()}-${p2(date.getMonth() + 1)}-${p2(date.getDate())}`;
+const dayStartOf = (date = new Date()) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+const hhmm = (ms) => { const d = new Date(ms); return `${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+const tsMs = (value) => { const t = new Date(value).getTime(); return Number.isFinite(t) ? t : NaN; };
+const timerFileFor = (ms) => path.join(TIMER_DIR, `${dayKey(new Date(ms))}.jsonl`);
+/** 路径里的家目录缩成 ~，给界面显示用（真实路径仍在 absolutePath 里）。 */
+function tilde(file) {
+  const rel = path.relative(HOME_DIR, file);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return file;
+  return '~' + path.sep + rel;
+}
+
+const TIMER_EVENT_LABEL = {
+  start: '开始',
+  switch: '切换',
+  stop: '停止',
+};
+
+function cleanTask(value) {
+  const s = String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) throw new HttpError(400, 'missing_task', 'task 不能为空：告诉我这段时间在做什么');
+  if (s.length > TIMER_TASK_MAX) throw new HttpError(400, 'task_too_long', `task 最多 ${TIMER_TASK_MAX} 字`);
+  return s;
+}
+
+async function readTimerEvents(file) {
+  let text;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return [];
+    throw err;
+  }
+  const events = [];
+  let broken = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const ev = JSON.parse(line);
+      if (ev && typeof ev === 'object' && ev.type) events.push(ev);
+      else broken += 1;
+    } catch {
+      broken += 1; // 坏行跳过：一行写坏了不该让整天的时间线消失
+    }
+  }
+  if (broken) events.broken = broken;
+  return events;
+}
+
+async function appendTimerEvent(ev) {
+  await mkdir(TIMER_DIR, { recursive: true });
+  const file = timerFileFor(Number.isFinite(tsMs(ev.ts)) ? tsMs(ev.ts) : Date.now());
+  await appendFile(file, JSON.stringify(ev) + '\n', 'utf8');
+  return file;
+}
+
+/** 只有内存里记「当前在做什么」；时间线一律从日志重放，所以服务重启也不编造时间。 */
+const timerState = { current: null, since: 0, lastBeat: 0 };
+let timerChain = Promise.resolve();
+function withTimerLock(fn) {
+  const run = timerChain.then(fn, fn);
+  timerChain = run.then(() => {}, () => {});
+  return run;
+}
+
+/**
+ * 从当天日志还原时间线。日志是唯一真相：进程重启、浏览器关掉，只要日志还在时间线就还在。
+ * 一段计时只会被 start / switch / stop 断开——**没有自动停**，所以最后一段没收到 stop 就一直算到现在。
+ */
+function replayTimer(events, now) {
+  const segments = [];
+  let cur = null;
+  const pushSeg = (task, from, to) => {
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to - from < 1000) return;
+    segments.push({ task, from, to, ms: to - from });
+  };
+  const closeCur = (to) => {
+    if (!cur) return;
+    pushSeg(cur.task, cur.from, to);
+    cur = null;
+  };
+
+  for (const ev of events) {
+    const t = tsMs(ev.ts);
+    if (!Number.isFinite(t)) continue;
+    if (ev.type === 'start' || ev.type === 'switch') {
+      closeCur(t);
+      // switch 事件写的是 from / to，start 写的是 task；两种都要认
+      const task = String((ev.type === 'switch' ? ev.to : ev.task) || ev.task || '').trim();
+      if (!task) continue;
+      cur = { task, from: t };
+    } else if (ev.type === 'stop') {
+      closeCur(t);
+    }
+  }
+  closeCur(now);
+  return { segments };
+}
+
+/** 日志里最后一段是不是还开着（= 还在计时）。启动时用它把"当前任务"接回来。 */
+function openSegmentOf(events) {
+  let cur = null;
+  for (const ev of events) {
+    const t = tsMs(ev.ts);
+    if (!Number.isFinite(t)) continue;
+    if (ev.type === 'start' || ev.type === 'switch') {
+      const task = String((ev.type === 'switch' ? ev.to : ev.task) || ev.task || '').trim();
+      cur = task ? { task, from: t } : null;
+    } else if (ev.type === 'stop') {
+      cur = null;
+    }
+  }
+  return cur;
+}
+
+function mergeIntervals(list) {
+  const out = [];
+  for (const it of [...list].sort((a, b) => a.from - b.from)) {
+    const last = out[out.length - 1];
+    if (last && it.from <= last.to) last.to = Math.max(last.to, it.to);
+    else out.push({ from: it.from, to: it.to });
+  }
+  return out;
+}
+
+/** 一行记录的说法。 */
+function describeTimerEvent(ev) {
+  const task = String(ev.task || '').trim();
+  if (ev.type === 'switch') return `${String(ev.from || '—')} → ${String(ev.to || ev.task || '—')}`;
+  if (ev.type === 'start') return `开始 · ${task || '（没写任务）'}`;
+  if (ev.type === 'stop') return `停止 · ${task || '（没写任务）'}`;
+  return TIMER_EVENT_LABEL[ev.type] || ev.type;
+}
+
+async function timerPayload() {
+  const now = Date.now();
+  const file = timerFileFor(now);
+  const events = await readTimerEvents(file);
+  const { segments } = replayTimer(events, now);
+  const dayStart = dayStartOf(new Date(now));
+
+  // 跨天：只留今天的部分
+  const todaySegments = segments
+    .map((s) => ({ ...s, from: Math.max(s.from, dayStart), to: Math.min(s.to, now) }))
+    .filter((s) => s.to - s.from >= 1000)
+    .map((s) => ({ ...s, ms: s.to - s.from }));
+
+  const covered = mergeIntervals(todaySegments.map((s) => ({ from: s.from, to: s.to })));
+
+  const firstAt = todaySegments.length ? Math.min(...todaySegments.map((s) => s.from)) : now;
+  // 时间线窗口：从第一段前 5 分钟画起；今天什么都还没记就画最近 1 小时。
+  // 不把"打开工作台之前"算成空白——那不是忘了记，那是没开始。
+  const from = todaySegments.length
+    ? Math.max(dayStart, Math.min(firstAt - 5 * 60000, now - 5 * 60000))
+    : Math.max(dayStart, now - 60 * 60000);
+  const windowMs = Math.max(now - from, 60000);
+  const holes = [];
+  let cursor = from;
+  for (const iv of covered) {
+    if (iv.from > cursor) holes.push({ from: cursor, to: Math.min(iv.from, now) });
+    cursor = Math.max(cursor, iv.to);
+  }
+  if (cursor < now) holes.push({ from: cursor, to: now });
+
+  const trackedMs = todaySegments.reduce((sum, s) => sum + s.ms, 0);
+  const holeMs = holes.reduce((sum, h) => sum + (h.to - h.from), 0);
+
+  const byTask = new Map();
+  for (const s of todaySegments) {
+    const row = byTask.get(s.task) || { task: s.task, ms: 0, count: 0, firstAt: s.from, lastAt: s.to };
+    row.ms += s.ms;
+    row.count += 1;
+    row.firstAt = Math.min(row.firstAt, s.from);
+    row.lastAt = Math.max(row.lastAt, s.to);
+    byTask.set(s.task, row);
+  }
+  const tasks = [...byTask.values()]
+    .sort((a, b) => b.ms - a.ms || a.task.localeCompare(b.task, 'zh'))
+    .map((row) => ({
+      ...row,
+      firstAt: localIso(new Date(row.firstAt)),
+      lastAt: localIso(new Date(row.lastAt)),
+      firstHhmm: hhmm(row.firstAt),
+      lastHhmm: hhmm(row.lastAt),
+      share: trackedMs ? Math.round((row.ms / trackedMs) * 100) : 0,
+    }));
+
+  // 最近 20 条：开始 / 切换 / 停止，一行一条
+  const recent = events.slice(-TIMER_RECENT_LIMIT).map((ev) => ({
+    ts: ev.ts,
+    at: Number.isFinite(tsMs(ev.ts)) ? hhmm(tsMs(ev.ts)) : '',
+    type: ev.type,
+    typeLabel: TIMER_EVENT_LABEL[ev.type] || ev.type,
+    task: String(ev.task || ev.to || ''),
+    text: describeTimerEvent(ev),
+  }));
+
+  // online 只说明"面板还连着没连着"，跟计时一点关系都没有：心跳停了，计时照跑。
+  const online = !!timerState.lastBeat && now - timerState.lastBeat <= TIMER_ONLINE_MS;
+
+  return {
+    schema: 1,
+    generatedAt: new Date(now).toISOString(),
+    now: localIso(new Date(now)),
+    date: dayKey(new Date(now)),
+    storage: {
+      dir: tilde(TIMER_DIR),
+      dirLabel: tilde(TIMER_DIR),
+      absoluteDir: TIMER_DIR,
+      logFile: tilde(file),
+      logLabel: tilde(file),
+      absoluteLogFile: file,
+      outsideRepo: !path.resolve(file).startsWith(REPO_ROOT + path.sep),
+      note: '只存本机：不上传、不进 git、不做考勤，删掉这个目录就全清了',
+    },
+    online,
+    lastHeartbeat: timerState.lastBeat ? localIso(new Date(timerState.lastBeat)) : null,
+    current: timerState.current
+      ? {
+        task: timerState.current.task,
+        since: localIso(new Date(timerState.since)),
+        sinceMs: timerState.since,
+        elapsedMs: Math.max(0, now - Math.max(timerState.since, dayStart)),
+      }
+      : null,
+    day: {
+      from: localIso(new Date(from)),
+      to: localIso(new Date(now)),
+      fromMs: from,
+      toMs: now,
+      fromHhmm: hhmm(from),
+      toHhmm: hhmm(now),
+      spanMs: windowMs,
+      segments: todaySegments.map((s) => ({
+        task: s.task,
+        from: localIso(new Date(s.from)),
+        to: localIso(new Date(s.to)),
+        fromHhmm: hhmm(s.from),
+        toHhmm: hhmm(s.to),
+        ms: s.ms,
+      })),
+      holes: holes.map((h) => ({
+        from: localIso(new Date(h.from)),
+        to: localIso(new Date(h.to)),
+        fromHhmm: hhmm(h.from),
+        toHhmm: hhmm(h.to),
+        ms: h.to - h.from,
+      })),
+    },
+    summary: { trackedMs, holeMs, sinceHhmm: hhmm(from), tasks },
+    recent,
+    brokenLines: events.broken || 0,
+    readPolicy: '每次请求重读当天日志，不缓存；事件只追加，不改写',
+  };
+}
+
+async function timerStartHandler(body, viaSwitch) {
+  const task = cleanTask(body.task);
+  return withTimerLock(async () => {
+    const now = Date.now();
+    const prev = timerState.current;
+    // 当前有任务 → 记 switch（日志里能看出是"切"过去的）；没有 → 记 start
+    const ev = prev
+      ? { ts: localIso(new Date(now)), type: 'switch', from: prev.task, to: task }
+      : { ts: localIso(new Date(now)), type: 'start', task };
+    await appendTimerEvent(ev);
+    timerState.current = { task };
+    timerState.since = now;
+    return { event: ev, changed: true, viaSwitch: !!viaSwitch };
+  });
+}
+
+async function timerStopHandler() {
+  return withTimerLock(async () => {
+    const now = Date.now();
+    const prev = timerState.current;
+    if (!prev) return { event: null, changed: false };
+    const ev = { ts: localIso(new Date(now)), type: 'stop', task: prev.task };
+    await appendTimerEvent(ev);
+    timerState.current = null;
+    timerState.since = 0;
+    return { event: ev, changed: true };
+  });
+}
+
+/**
+ * 心跳只为一件事：让状态条上的圆点知道"面板还连着"。它**不碰计时**——
+ * 用户可能在另一台电脑上干活，心跳停了不代表人走了，一段计时只有手动切换/停止才结束。
+ */
+async function timerBeatHandler() {
+  timerState.lastBeat = Date.now();
+  return { event: null, changed: false };
+}
+
+const TIMER_ROUTES = {
+  '/api/timer/state': ['GET'],
+  '/api/timer/start': ['POST'],
+  '/api/timer/switch': ['POST'],
+  '/api/timer/stop': ['POST'],
+  '/api/timer/heartbeat': ['POST'],
+};
+
+async function timerRoute(req, res, apiPath) {
+  const allow = TIMER_ROUTES[apiPath];
+  if (!allow) {
+    throw new HttpError(400, 'bad_api_path',
+      `没有这个计时器接口：${apiPath}。只认 ${Object.keys(TIMER_ROUTES).join('、')}`);
+  }
+  if (!allow.includes(req.method)) {
+    res.setHeader('Allow', allow.join(', '));
+    sendText(res, 405, 'method not allowed');
+    return;
+  }
+  const body = req.method === 'POST' ? await readJsonBody(req) : {};
+
+  let extra = { event: null, changed: false };
+  if (apiPath === '/api/timer/start') extra = await timerStartHandler(body, false);
+  else if (apiPath === '/api/timer/switch') extra = await timerStartHandler(body, true);
+  else if (apiPath === '/api/timer/stop') extra = await timerStopHandler();
+  else if (apiPath === '/api/timer/heartbeat') extra = await timerBeatHandler();
+
+  const payload = await timerPayload();
+  sendJson(res, 200, {
+    ...payload,
+    ok: true,
+    event: extra.event || null,
+    changed: extra.changed === true,
+  });
+}
+
+/**
+ * 启动自检：把日志里"还开着"的最后一段接回内存——因为计时**只由手动切换/停止结束**，
+ * 服务重启不该把正在跑的一段悄悄掐掉。只在内存里恢复，不写任何事件。
+ * 心跳从 0 开始（online=false），等页面打第一次心跳才点亮。
+ */
+async function bootTimer() {
+  const now = Date.now();
+  const events = await readTimerEvents(timerFileFor(now));
+  const open = openSegmentOf(events);
+  timerState.current = open ? { task: open.task } : null;
+  timerState.since = open ? open.from : 0;
+  timerState.lastBeat = 0;
+  if (open) {
+    console.log(`[workbench] 计时器：日志里「${open.task}」那段从 ${hhmm(open.from)} 起还开着，` +
+      '按"还在计时"接回来（要结束请手动切换或停止）');
+  }
+  return { events: events.length, dir: TIMER_DIR, current: open };
+}
+
 // ───────────────────────────── HTTP ─────────────────────────────
 
 function sendJson(res, status, body) {
@@ -1022,6 +1561,7 @@ function errorBody(err, fallbackHint) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || HOST}`);
+  const rawPath = rawPathOf(req.url || '/');
   try {
     if (url.pathname === '/api/approve') {
       if (req.method !== 'POST') {
@@ -1032,8 +1572,21 @@ const server = createServer(async (req, res) => {
       await approveHandler(req, res);
       return;
     }
+    // 计时器有自己的方法表：state 收 GET，其余收 POST（POST 一律回当前状态）
+    if (url.pathname.startsWith('/api/timer')) {
+      await timerRoute(req, res, url.pathname);
+      return;
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       sendText(res, 405, 'method not allowed');
+      return;
+    }
+    if (rawPath === '/api/reports') {
+      sendJson(res, 200, await reportsPayload());
+      return;
+    }
+    if (rawPath.startsWith(REPORTS_PREFIX)) {
+      await sendReport(res, rawPath);
       return;
     }
     if (url.pathname === '/api/board') {
@@ -1048,13 +1601,25 @@ const server = createServer(async (req, res) => {
       res.writeHead(204).end();
       return;
     }
+    // 不认识的 /api/ 路径一律 400（不是 404）：有的客户端会把 /api/reports/../x 先归一化成 /api/x，
+    // 那一层归一化服务端看不见；把它当"非法接口路径"挡掉，穿越在任何客户端下都不会变成 200。
+    if (url.pathname.startsWith('/api/')) {
+      throw new HttpError(400, 'bad_api_path',
+        `没有这个接口：${url.pathname}。工作台只认 GET /api/board、GET /api/sessions、` +
+        'GET /api/reports、GET /api/reports/<文件名>、POST /api/approve，' +
+        '以及 /api/timer/ 下的 state / start / switch / stop / heartbeat');
+    }
     await serveStatic(res, url.pathname);
   } catch (err) {
-    const hint = url.pathname === '/api/sessions'
-      ? `无法读取会话台账：${LEDGER_FILE}`
-      : url.pathname === '/api/approve'
-        ? `写看板失败：${BOARD_FILE}`
-        : `无法读取看板：${BOARD_FILE}`;
+    const hint = rawPath.startsWith('/api/reports')
+      ? `无法读取汇报目录：${REPORTS_DIR}`
+      : url.pathname.startsWith('/api/timer')
+        ? `计时数据目录不可用：${TIMER_DIR}`
+        : url.pathname === '/api/sessions'
+        ? `无法读取会话台账：${LEDGER_FILE}`
+        : url.pathname === '/api/approve'
+          ? `写看板失败：${BOARD_FILE}`
+          : `无法读取看板：${BOARD_FILE}`;
     const { status, body } = errorBody(err, hint);
     process.stderr.write(`[workbench] ${url.pathname} → ${status} ${body.error}: ${body.message}\n`);
     sendJson(res, status, body);
@@ -1079,8 +1644,10 @@ function listen(port, attempt) {
     console.log(`  任务看板工作台  ${url}`);
     console.log(`  任务数据源      ${BOARD_FILE}`);
     console.log(`  会话数据源      ${LEDGER_FILE}`);
+    console.log(`  汇报目录        ${REPORTS_DIR}`);
     console.log(`  审批日志/快照   ${APPROVALS_FILE}`);
-    console.log(`  写入策略        唯一写操作 POST /api/approve；写前备份、失败回滚`);
+    console.log(`  工时数据        ${TIMER_DIR}（${tilde(TIMER_DIR)}，仓库外、只存本机）`);
+    console.log(`  写入策略        审批 POST /api/approve；计时 POST /api/timer/*（只追加日志）`);
     console.log(`  读取策略        每次请求重读（无缓存、只读）`);
     console.log(`  端口            ${actual}${actual !== START_PORT ? `（${START_PORT} 被占用，自动顺延）` : ''}`);
     console.log('');
@@ -1100,9 +1667,14 @@ boardPayload()
     console.log(`[workbench] 已解析 ${payload.counts.total} 条任务（${line}）`);
     return sessionsPayload();
   })
-  .then((payload) => {
+  .then(async (payload) => {
     const line = payload.stages.map((s) => `${s.label} ${payload.counts.byStage[s.key] || 0}`).join(' / ');
     console.log(`[workbench] 已解析 ${payload.counts.total} 个现役会话（${line}）`);
+    const reports = await reportsPayload().catch(() => null);
+    if (reports) console.log(`[workbench] 汇报 ${reports.count} 份（${reports.dir}${reports.available ? '' : '，目录还没建'}）`);
+    await bootTimer().catch((err) => {
+      console.warn(`[workbench] 计时器启动自检跳过：${err && err.message ? err.message : err}（计时数据目录 ${TIMER_DIR}）`);
+    });
     listen(START_PORT, 0);
   })
   .catch((err) => {

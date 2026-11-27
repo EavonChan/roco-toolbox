@@ -215,4 +215,43 @@ describe('parseBackup', () => {
     // 没有 name 就没有可读标识，领域逻辑全部失明 → 直接丢弃，而不是留一只空名精灵
     expect(snapshot.pets.map((p) => p.name)).toEqual(['机械方方']);
   });
+
+  test('抓包导入保留三维原始字段：rawFields 只留 bytes["14"]，别的协议字段不存', () => {
+    const rawHex = '0a023800120238081a023809220238002a0238003202380a';
+    const raw = {
+      meta: { type: 'hatch-backup', playerName: '甲', gameId: 1 },
+      collections: {
+        petBackpack: {
+          items: [
+            {
+              speciesPetId: 3200,
+              name: '机械方方',
+              rawFields: {
+                int: { '1': [42] },
+                bytes: { '1': ['aabb'], '14': [rawHex] },
+                fieldCount: 3,
+                occurrences: 1,
+                source: { from: 'pcap' },
+              },
+            },
+            // 采集器老版本只给 raw 协议、没给 individualBonuses → 靠 rawFields 兜底解出三维
+            { speciesPetId: 3200, name: '机械方方', rawFields: { bytes: { '14': [rawHex] } } },
+            { speciesPetId: 3200, name: '机械方方', rawFields: {} },
+          ],
+        },
+      },
+    };
+    const parsed = parseBackup(raw, 'now');
+
+    // 原始 hex 留着：以后解码规则改进了还能重新解，不必重抓
+    expect(parsed.pets[0].rawFields).toEqual({ bytes: { '14': [rawHex] } });
+    expect(parsed.pets[0].individualBonuses).toEqual([
+      { name: '物攻', value: 8 },
+      { name: '魔攻', value: 9 },
+      { name: '速度', value: 10 },
+    ]);
+    expect(parsed.pets[1].rawFields).toEqual({ bytes: { '14': [rawHex] } });
+    // 没有 field 14 就不写空壳字段
+    expect(parsed.pets[2].rawFields).toBeUndefined();
+  });
 });

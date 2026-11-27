@@ -1,383 +1,660 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light dark">
 <title>任务看板 · 工作台</title>
+<script>
+  /* 主题：默认浅色；用户显式切过深色才用深色（localStorage 记住，首帧之前定好，避免闪白/闪黑） */
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem('workbench.theme'); } catch (_) { /* 隐私模式读不到就按浅色 */ }
+    document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light');
+  })();
+</script>
 <style>
+  /* 设计口径：字号 12/13/14/20，圆角 8/12，间距 4 的倍数；浅色默认，深色可选 */
   :root{
-    --bg:#0a0d12;
-    --panel:#111823;
-    --panel-2:#0d141d;
-    --line:#1e2a3a;
+    --fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-20:20px;
+    --r-8:8px;--r-12:12px;--pill:999px;
+    --p-4:4px;--p-8:8px;--p-12:12px;--p-16:16px;--p-20:20px;--p-24:24px;
+
+    color-scheme:light;
+    --bg:#F7F8FA;
+    --surface:#FFFFFF;
+    --surface-2:#F9FAFB;
+    --line:#E5E7EB;
+    --line-soft:#EEF0F3;
+    --line-strong:#D8DCE2;
+    --text:#1F2329;
+    --text-2:#4B5563;
+    --muted:#6B7280;
+    --muted-2:#7A8494;
+    --primary:#0F9D58;
+    --primary-ink:#0B7A44;
+    --doing:#D97706;    --doing-ink:#B45309;
+    --waiting:#2563EB;  --waiting-ink:#1D4ED8;
+    --done:#059669;     --done-ink:#047857;
+    --blocked:#DC2626;  --blocked-ink:#B91C1C;
+    --backlog:#6B7280;  --backlog-ink:#4B5563;
+    --accepted:#7C3AED; --accepted-ink:#6D28D9;
+    --bar-opacity:.95;
+    --shadow-sm:0 1px 2px rgba(16,24,40,.05);
+    --shadow:0 4px 14px rgba(16,24,40,.08);
+    --top-bg:rgba(247,248,250,.9);
+    --control:#FFFFFF;
+    --control-2:#F3F4F6;
+    --track:#EFF1F4;
+    --toast-bg:#FFFFFF;
+    --mark-bg:#EAF6EF;
+    /* 工时时间线：任务色只用在这条色带和汇总小方块上，不铺大面积 */
+    --seg-1:#0F9D58;--seg-2:#2563EB;--seg-3:#D97706;--seg-4:#7C3AED;
+    --seg-5:#0891B2;--seg-6:#DB2777;--seg-7:#65A30D;--seg-8:#EA580C;
+  }
+  html[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#0A0D12;
+    --surface:#111823;
+    --surface-2:#0D141D;
+    --line:#1E2A3A;
     --line-soft:#182333;
-    --text:#e6edf3;
-    --muted:#8b98a9;
-    --muted-2:#6b7787;
-    --doing:#f2b632;
-    --waiting:#4c9aff;
-    --done:#3fb950;
-    --backlog:#93a1b1;
-    --blocked:#f85149;
-    --accepted:#a371f7;
-    --radius:14px;
+    --line-strong:#2A3A50;
+    --text:#E6EDF3;
+    --text-2:#B8C6D6;
+    --muted:#8B98A9;
+    --muted-2:#6B7787;
+    --primary:#3FB950;
+    --primary-ink:#7EE787;
+    --doing:#F2B632;    --doing-ink:#F2B632;
+    --waiting:#4C9AFF;  --waiting-ink:#8CC0FF;
+    --done:#3FB950;     --done-ink:#7EE787;
+    --blocked:#F85149;  --blocked-ink:#FFB4AE;
+    --backlog:#93A1B1;  --backlog-ink:#B9C4D0;
+    --accepted:#A371F7; --accepted-ink:#C9A9FF;
+    --bar-opacity:.6;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.3);
     --shadow:0 10px 30px rgba(0,0,0,.35);
+    --top-bg:rgba(10,13,18,.86);
+    --control:rgba(255,255,255,.03);
+    --control-2:rgba(255,255,255,.07);
+    --track:rgba(255,255,255,.04);
+    --toast-bg:#16202E;
+    --mark-bg:rgba(63,185,80,.12);
+    --seg-1:#3FB950;--seg-2:#4C9AFF;--seg-3:#F2B632;--seg-4:#A371F7;
+    --seg-5:#39C5CF;--seg-6:#F778BA;--seg-7:#7EE787;--seg-8:#FF9B50;
   }
   *{box-sizing:border-box}
   html,body{margin:0}
   body{
     min-height:100vh;
-    background:
-      radial-gradient(1100px 520px at 50% -180px, #172231 0%, rgba(23,34,49,0) 70%),
-      var(--bg);
+    background:var(--bg);
     color:var(--text);
-    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    font:var(--fs-14)/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+
+  /* 状态色：data-col / data-status / data-stage 决定 --accent（色条·圆点）与 --accent-ink（文字） */
+  [data-col="doing"],[data-status="doing"],[data-stage="doing"]{--accent:var(--doing);--accent-ink:var(--doing-ink)}
+  [data-col="waiting"],[data-status="waiting"],[data-stage="waiting"],[data-stage="delivered"]{--accent:var(--waiting);--accent-ink:var(--waiting-ink)}
+  [data-col="done"],[data-status="done"],[data-stage="closed"]{--accent:var(--done);--accent-ink:var(--done-ink)}
+  [data-col="backlog"],[data-status="backlog"],[data-stage="backlog"]{--accent:var(--backlog);--accent-ink:var(--backlog-ink)}
+  [data-status="blocked"],[data-stage="blocked"]{--accent:var(--blocked);--accent-ink:var(--blocked-ink)}
+  [data-stage="accepted"]{--accent:var(--accepted);--accent-ink:var(--accepted-ink)}
 
   /* ── 顶栏 ── */
   .top{
     position:sticky;top:0;z-index:20;
     border-bottom:1px solid var(--line);
-    background:rgba(10,13,18,.86);
+    background:var(--top-bg);
     -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   }
   .top-inner{
-    max-width:1560px;margin:0 auto;padding:12px 24px;
-    display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    max-width:1560px;margin:0 auto;padding:var(--p-12) var(--p-24);
+    display:flex;align-items:center;gap:var(--p-16);flex-wrap:wrap;
   }
-  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brand{display:flex;align-items:center;gap:var(--p-12);min-width:0}
   .mark{
-    width:36px;height:36px;flex:none;border-radius:10px;
-    display:grid;place-items:center;font-size:17px;
-    color:#dbe7f3;background:linear-gradient(145deg,#1d2a3b,#131c28);
-    border:1px solid #2a3a50;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+    width:32px;height:32px;flex:none;border-radius:var(--r-8);
+    display:grid;place-items:center;font-size:16px;line-height:1;
+    color:var(--primary-ink);background:var(--mark-bg);
+    border:1px solid color-mix(in srgb,var(--primary) 22%,var(--line));
   }
-  .brand h1{margin:0;font-size:16px;font-weight:650;letter-spacing:.2px}
-  .brand p{margin:1px 0 0;font-size:11.5px;color:var(--muted);white-space:nowrap}
-  .brand p b{color:#aab8c8;font-weight:500}
+  .brand h1{margin:0;font-size:var(--fs-20);font-weight:600;letter-spacing:.2px;line-height:1.2}
+  .brand p{margin:var(--p-4) 0 0;font-size:var(--fs-12);color:var(--muted);white-space:nowrap}
+  .brand p b{color:var(--text-2);font-weight:500}
 
-  .tabs{display:flex;gap:4px;padding:3px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}
+  .tabs{display:flex;gap:var(--p-4);padding:var(--p-4);border:1px solid var(--line);border-radius:var(--r-12);background:var(--track)}
   .tab{
-    appearance:none;border:0;cursor:pointer;border-radius:7px;
-    padding:5px 12px;font:inherit;font-size:12.5px;font-weight:600;
-    color:var(--muted);background:transparent;transition:color .15s,background .15s;
+    appearance:none;border:0;cursor:pointer;border-radius:var(--r-8);
+    display:inline-flex;align-items:center;justify-content:center;
+    min-height:32px;padding:8px 12px;font:inherit;font-size:var(--fs-13);font-weight:600;
+    color:var(--muted);background:transparent;transition:color .15s,background .15s,box-shadow .15s;
   }
-  .tab:hover{color:#c8d5e3;background:rgba(255,255,255,.04)}
-  .tab[aria-selected="true"]{color:#0b1119;background:#c8d5e3}
-  .tab .n{margin-left:6px;font-size:11px;opacity:.75}
+  .tab:hover{color:var(--text-2)}
+  .tab[aria-selected="true"]{color:var(--text);background:var(--surface);box-shadow:var(--shadow-sm)}
+  .tab .n{margin-left:8px;font-size:var(--fs-12);font-weight:500;color:var(--muted-2)}
+  .tab[aria-selected="true"] .n{color:var(--primary-ink)}
+  .tab .n.on{color:var(--done)}
 
-  .chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .chips{display:flex;align-items:center;gap:var(--p-8);flex-wrap:wrap;margin-left:auto}
   .chip{
-    display:inline-flex;align-items:baseline;gap:6px;
-    padding:5px 10px;border:1px solid var(--line);border-radius:999px;
-    background:rgba(255,255,255,.02);font-size:11.5px;color:var(--muted);white-space:nowrap;
+    display:inline-flex;align-items:baseline;gap:8px;
+    padding:4px 12px;border:1px solid var(--line);border-radius:var(--pill);
+    background:var(--control);font-size:var(--fs-12);color:var(--muted);white-space:nowrap;
   }
-  .chip b{color:var(--text);font-weight:600;font-size:12px}
-  .chip.branch b{color:#c9d6e4}
-  .chip.dirty b{color:var(--doing)}
-  .chip.dirty.clean b{color:var(--done)}
+  .chip b{color:var(--text);font-weight:600;font-size:var(--fs-12)}
+  .chip.branch b{color:var(--text-2)}
+  .chip.dirty b{color:var(--doing-ink)}
+  .chip.dirty.clean b{color:var(--done-ink)}
   .live{
-    display:inline-flex;align-items:center;gap:7px;
-    padding:5px 11px;border-radius:999px;border:1px solid var(--line);
-    font-size:11.5px;color:var(--muted);white-space:nowrap;
+    display:inline-flex;align-items:center;gap:8px;
+    min-height:32px;padding:4px 12px;border-radius:var(--pill);border:1px solid var(--line);
+    background:var(--control);font-size:var(--fs-12);color:var(--muted);white-space:nowrap;
   }
-  .dot{width:7px;height:7px;border-radius:50%;background:var(--done);box-shadow:0 0 0 0 rgba(63,185,80,.5);animation:pulse 2.4s infinite}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--done);box-shadow:0 0 0 0 color-mix(in srgb,var(--done) 45%,transparent);animation:pulse 2.4s infinite}
   .live.is-down .dot{background:var(--blocked);animation:none}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,.45)}70%{box-shadow:0 0 0 7px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--done) 40%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+  .theme-toggle{
+    appearance:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    min-height:32px;padding:4px 12px;border:1px solid var(--line);border-radius:var(--pill);
+    background:var(--control);color:var(--text-2);font:inherit;font-size:var(--fs-12);font-weight:500;
+    transition:background .15s,border-color .15s,color .15s;
+  }
+  .theme-toggle:hover{background:var(--control-2);color:var(--text);border-color:var(--line-strong)}
+  .theme-toggle .ti{font-size:16px;line-height:1;color:var(--text-2)}
 
   /* ── 主体 ── */
-  .wrap{max-width:1560px;margin:0 auto;padding:20px 24px 34px}
+  .wrap{max-width:1560px;margin:0 auto;padding:var(--p-20) var(--p-24) var(--p-24)}
   .alert{
-    display:none;margin:0 0 16px;padding:11px 14px;border-radius:12px;
-    border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.1);
-    color:#ffb4ae;font-size:12.5px;
+    display:none;margin:0 0 var(--p-16);padding:12px 16px;border-radius:var(--r-12);
+    border:1px solid color-mix(in srgb,var(--blocked) 26%,var(--line));
+    background:color-mix(in srgb,var(--blocked) 8%,var(--surface));
+    color:var(--blocked-ink);font-size:var(--fs-13);
   }
   .alert.show{display:block}
   [hidden]{display:none !important}
 
-  .board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;align-items:start}
-  .col{
-    min-width:0;border:1px solid var(--line);border-radius:var(--radius);
-    background:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,0));
-    padding:13px 13px 15px;
-  }
+  .board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--p-16);align-items:start}
+  .col{min-width:0;padding:0}
   .col-head{
-    display:flex;align-items:center;gap:9px;padding:2px 2px 12px;
+    display:flex;align-items:center;gap:var(--p-8);
+    padding:0 var(--p-4) var(--p-12);margin-bottom:var(--p-12);
+    border-bottom:1px solid var(--line);
   }
-  .col-head .swatch{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
-  .col-head h2{margin:0;font-size:13.5px;font-weight:650;letter-spacing:.3px}
+  .col-head .swatch{width:8px;height:8px;flex:none;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent)}
+  .col-head h2{margin:0;font-size:var(--fs-13);font-weight:600;letter-spacing:.2px}
   .col-head .n{
-    margin-left:auto;min-width:22px;text-align:center;padding:1px 7px;border-radius:999px;
-    font-size:11.5px;font-weight:600;color:var(--accent);
-    background:color-mix(in srgb,var(--accent) 14%,transparent);
-    border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);
+    margin-left:auto;min-width:22px;text-align:center;padding:4px 8px;border-radius:var(--pill);
+    font-size:var(--fs-12);font-weight:600;color:var(--accent-ink);
+    background:color-mix(in srgb,var(--accent) 12%,transparent);
+    border:1px solid color-mix(in srgb,var(--accent) 26%,transparent);
   }
-  .col[data-col="doing"]{--accent:var(--doing)}
-  .col[data-col="waiting"]{--accent:var(--waiting)}
-  .col[data-col="done"]{--accent:var(--done)}
-  .col[data-col="backlog"]{--accent:var(--backlog)}
-  .cards{display:flex;flex-direction:column;gap:10px}
+  .cards{display:flex;flex-direction:column;gap:var(--p-8)}
 
   .card{
-    position:relative;padding:12px 13px 12px 14px;border-radius:12px;
-    background:var(--panel);border:1px solid var(--line-soft);
-    display:flex;flex-direction:column;gap:8px;
+    position:relative;padding:12px 16px;border-radius:var(--r-12);
+    background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow-sm);
+    display:flex;flex-direction:column;gap:var(--p-8);
     transition:border-color .18s,transform .18s,box-shadow .18s;
     overflow-wrap:anywhere;cursor:pointer;
   }
   .card::before{
-    content:"";position:absolute;left:0;top:11px;bottom:11px;width:2px;border-radius:2px;
-    background:var(--accent);opacity:.55;
+    content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 2px 2px 0;
+    background:var(--accent);opacity:var(--bar-opacity);
   }
-  .card:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line));transform:translateY(-1px);box-shadow:var(--shadow)}
-  .card:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 65%,transparent);outline-offset:2px}
-  .card[data-status="blocked"]{border-color:rgba(248,81,73,.42)}
-  .card[data-status="blocked"]::before{background:var(--blocked);opacity:.9}
-  .card.is-open{border-color:color-mix(in srgb,var(--accent) 46%,var(--line))}
-  .card.is-busy{opacity:.72;pointer-events:none}
+  .card:hover{border-color:color-mix(in srgb,var(--accent) 34%,var(--line-strong));transform:translateY(-1px);box-shadow:var(--shadow)}
+  .card:focus-visible{outline:2px solid color-mix(in srgb,var(--primary) 70%,transparent);outline-offset:2px}
+  .card[data-status="blocked"]{border-color:color-mix(in srgb,var(--blocked) 30%,var(--line))}
+  .card[data-status="blocked"]::before{background:var(--blocked);opacity:.95}
+  .card.is-open{border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+  .card.is-busy{opacity:.7;pointer-events:none}
 
-  .card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card-top{display:flex;align-items:center;gap:var(--p-8);flex-wrap:wrap}
   .code{
     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-    font-size:11px;font-weight:700;letter-spacing:.4px;padding:2px 7px;border-radius:6px;
-    color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);
-    border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);
+    font-size:var(--fs-12);font-weight:700;letter-spacing:.3px;padding:4px 8px;border-radius:var(--r-8);
+    color:var(--accent-ink);background:color-mix(in srgb,var(--accent) 10%,transparent);
+    border:1px solid color-mix(in srgb,var(--accent) 24%,transparent);
   }
-  .code.muted{color:var(--muted-2);background:rgba(255,255,255,.03);border-color:var(--line)}
+  .code.muted{color:var(--muted-2);background:var(--control);border-color:var(--line)}
   .badge{
-    margin-left:auto;display:inline-flex;align-items:center;gap:4px;
-    font-size:10.5px;padding:1px 7px;border-radius:999px;color:var(--muted);
-    border:1px solid var(--line);background:rgba(255,255,255,.02);white-space:nowrap;
+    margin-left:auto;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;
+    font-size:var(--fs-12);padding:4px 8px;border-radius:var(--pill);
+    color:var(--text-2);border:1px solid var(--line);background:var(--control);
   }
-  .badge[data-status="doing"]{color:var(--doing);border-color:rgba(242,182,50,.32);background:rgba(242,182,50,.08)}
-  .badge[data-status="waiting"]{color:var(--waiting);border-color:rgba(76,154,255,.32);background:rgba(76,154,255,.08)}
-  .badge[data-status="done"]{color:var(--done);border-color:rgba(63,185,80,.32);background:rgba(63,185,80,.08)}
-  .badge[data-status="backlog"]{color:var(--backlog);border-color:rgba(147,161,177,.3);background:rgba(147,161,177,.07)}
-  .badge[data-status="blocked"]{color:var(--blocked);border-color:rgba(248,81,73,.4);background:rgba(248,81,73,.1)}
+  .badge[data-status]{color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 26%,var(--line));background:color-mix(in srgb,var(--accent) 8%,transparent)}
 
-  .title{margin:0;font-size:14px;font-weight:600;line-height:1.45;letter-spacing:.1px}
-  .meta{display:flex;align-items:baseline;gap:7px;font-size:11.5px;color:var(--muted)}
-  .meta .k{flex:none;color:var(--muted-2)}
-  .meta .v{color:#b8c6d6;min-width:0}
-  .meta .v.rel{color:#c8d5e3}
-  .blocker{
-    display:flex;gap:6px;align-items:flex-start;
-    padding:6px 8px;border-radius:8px;font-size:11.5px;line-height:1.45;
-    color:#ffb3ad;background:rgba(248,81,73,.09);border:1px solid rgba(248,81,73,.28);
+  .title{
+    margin:0;font-size:var(--fs-14);font-weight:600;line-height:1.45;letter-spacing:.1px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   }
-  .blocker .tag{flex:none;font-weight:600;color:#ff8b82}
+  .meta{display:flex;align-items:baseline;gap:8px;font-size:var(--fs-12);color:var(--muted)}
+  .meta .k{flex:none;color:var(--muted-2)}
+  .meta .v{color:var(--text-2);min-width:0}
+  .meta .v.rel{color:var(--muted)}
+  .blocker{
+    display:flex;gap:8px;align-items:flex-start;
+    padding:8px;border-radius:var(--r-8);font-size:var(--fs-12);line-height:1.45;
+    color:var(--blocked-ink);background:color-mix(in srgb,var(--blocked) 8%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--blocked) 24%,var(--line));
+  }
+  .blocker .tag{flex:none;font-weight:600;color:var(--blocked-ink)}
   .detail{
-    margin:0;font-size:12px;line-height:1.55;color:#9fb0c2;
+    margin:0;font-size:var(--fs-13);line-height:1.55;color:var(--text-2);
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
   }
   /* 展开后完整字段在下面的 kv 里，摘要行就不再重复一遍 */
   .card.is-open .detail,.card.is-open .next{display:none}
-  .next{font-size:11.5px;color:var(--muted);display:flex;gap:6px}
-  .next .arrow{color:var(--accent);opacity:.85}
+  .next{font-size:var(--fs-12);color:var(--muted);display:flex;gap:8px}
+  .next .arrow{color:var(--accent);opacity:.9}
 
   /* ── 审批动作 ── */
-  .actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:2px}
+  .actions{display:flex;align-items:center;gap:var(--p-8);flex-wrap:wrap;margin-top:var(--p-4)}
   .btn{
-    appearance:none;cursor:pointer;font:inherit;font-size:11.5px;font-weight:600;
-    padding:4px 10px;border-radius:7px;line-height:1.5;
-    border:1px solid var(--line);background:rgba(255,255,255,.03);color:#c8d5e3;
+    appearance:none;cursor:pointer;font:inherit;font-size:var(--fs-12);font-weight:600;
+    display:inline-flex;align-items:center;justify-content:center;
+    min-height:32px;padding:4px 12px;border-radius:var(--r-8);line-height:1.4;
+    border:1px solid var(--line);background:var(--control);color:var(--text-2);
     transition:background .15s,border-color .15s,color .15s;
   }
-  .btn:hover{background:rgba(255,255,255,.07)}
-  .btn.ok{color:#7ee787;border-color:rgba(63,185,80,.38);background:rgba(63,185,80,.1)}
-  .btn.ok:hover{background:rgba(63,185,80,.18)}
-  .btn.no{color:#ff9d97;border-color:rgba(248,81,73,.34);background:rgba(248,81,73,.08)}
-  .btn.no:hover{background:rgba(248,81,73,.16)}
-  .btn[disabled]{opacity:.42;cursor:not-allowed}
-  .act-msg{font-size:11px;color:var(--muted-2);min-width:0}
-  .act-msg[data-kind="done"]{color:#7ee787}
-  .act-msg[data-kind="error"]{color:#ff9d97}
-  .act-msg[data-kind="pending"]{color:var(--waiting)}
+  .btn:hover{background:var(--control-2);color:var(--text)}
+  .btn.ok{color:var(--done-ink);border-color:color-mix(in srgb,var(--done) 30%,var(--line));background:color-mix(in srgb,var(--done) 8%,var(--surface))}
+  .btn.ok:hover{background:color-mix(in srgb,var(--done) 16%,var(--surface))}
+  .btn.no{color:var(--blocked-ink);border-color:color-mix(in srgb,var(--blocked) 26%,var(--line));background:color-mix(in srgb,var(--blocked) 7%,var(--surface))}
+  .btn.no:hover{background:color-mix(in srgb,var(--blocked) 14%,var(--surface))}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .act-msg{font-size:var(--fs-12);color:var(--muted-2);min-width:0}
+  .act-msg[data-kind="done"]{color:var(--done-ink)}
+  .act-msg[data-kind="error"]{color:var(--blocked-ink)}
+  .act-msg[data-kind="pending"]{color:var(--waiting-ink)}
 
   /* ── 卡片展开：完整字段 ── */
-  .card-more{display:none;border-top:1px dashed var(--line);padding-top:10px;cursor:default}
+  .card-more{display:none;border-top:1px dashed var(--line);padding-top:var(--p-12);cursor:default}
   .card.is-open .card-more{display:block}
-  .kv{display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px 10px;margin:0 0 10px;font-size:12px}
-  .kv dt{color:var(--muted-2);font-size:11.5px}
-  .kv dd{margin:0;color:#c8d5e3;overflow-wrap:anywhere}
+  .kv{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px 12px;margin:0 0 var(--p-12);font-size:var(--fs-12)}
+  .kv dt{color:var(--muted-2);font-size:var(--fs-12)}
+  .kv dd{margin:0;color:var(--text-2);overflow-wrap:anywhere}
   .kv dd.dim{color:var(--muted-2)}
   .linkbtn{
     appearance:none;border:0;background:transparent;padding:0;cursor:pointer;font:inherit;
-    font-size:12px;color:var(--waiting);text-decoration:underline;text-underline-offset:2px;
+    font-size:var(--fs-13);color:var(--waiting-ink);text-decoration:underline;text-underline-offset:2px;
   }
-  .linkbtn:hover{color:#8cc0ff}
+  .linkbtn:hover{color:color-mix(in srgb,var(--waiting) 82%,var(--text))}
   a.linkbtn{text-decoration:underline}
-  .note-row{display:block;margin-bottom:10px}
-  .note-row span{display:block;font-size:11px;color:var(--muted-2);margin-bottom:4px}
+  .note-row{display:block;margin-bottom:var(--p-12)}
+  .note-row span{display:block;font-size:var(--fs-12);color:var(--muted-2);margin-bottom:4px}
   .note{
-    width:100%;resize:vertical;font:inherit;font-size:12px;
-    padding:6px 8px;border-radius:8px;color:var(--text);
-    border:1px solid var(--line);background:var(--panel-2);
+    width:100%;resize:vertical;font:inherit;font-size:var(--fs-12);
+    padding:8px 12px;border-radius:var(--r-8);color:var(--text);
+    border:1px solid var(--line);background:var(--surface-2);
   }
-  .note:focus{outline:none;border-color:rgba(76,154,255,.5)}
-  details.raw{font-size:11.5px;color:var(--muted)}
+  .note:focus{outline:none;border-color:color-mix(in srgb,var(--primary) 55%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 12%,transparent)}
+  details.raw{font-size:var(--fs-12);color:var(--muted)}
   details.raw summary{cursor:pointer;color:var(--muted-2);user-select:none}
-  details.raw summary:hover{color:#c8d5e3}
-  table.fields{width:100%;border-collapse:collapse;margin-top:8px;font-size:11.5px}
+  details.raw summary:hover{color:var(--text-2)}
+  table.fields{width:100%;border-collapse:collapse;margin-top:var(--p-8);font-size:var(--fs-12)}
   table.fields th{
     text-align:left;font-weight:500;color:var(--muted-2);white-space:nowrap;
-    padding:3px 8px 3px 0;vertical-align:top;width:1%;
+    padding:4px 8px 4px 0;vertical-align:top;width:1%;
   }
-  table.fields td{padding:3px 0;color:#b8c6d6;overflow-wrap:anywhere}
+  table.fields td{padding:4px 0;color:var(--text-2);overflow-wrap:anywhere}
   table.fields tr+tr th,table.fields tr+tr td{border-top:1px solid var(--line-soft)}
 
   .empty{
-    padding:22px 10px;text-align:center;font-size:12px;color:var(--muted-2);
-    border:1px dashed var(--line);border-radius:10px;background:rgba(255,255,255,.008);
+    padding:var(--p-24) var(--p-12);text-align:center;font-size:var(--fs-13);color:var(--muted-2);
+    border:1px dashed var(--line);border-radius:var(--r-12);background:var(--control);
   }
 
   /* ── 会话视图 ── */
-  .shead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px}
-  .shead h2{margin:0;font-size:15px;font-weight:650}
-  .shead .hint{font-size:11.5px;color:var(--muted-2)}
-  .stages{display:flex;gap:7px;flex-wrap:wrap;margin-left:auto}
+  .shead{display:flex;align-items:center;gap:var(--p-12);flex-wrap:wrap;margin:0 0 var(--p-16)}
+  .shead h2{margin:0;font-size:var(--fs-14);font-weight:600}
+  .shead .hint{font-size:var(--fs-12);color:var(--muted)}
+  .stages{display:flex;gap:var(--p-8);flex-wrap:wrap;margin-left:auto}
   .stagebtn{
-    appearance:none;cursor:pointer;font:inherit;font-size:11.5px;
-    display:inline-flex;align-items:center;gap:6px;
-    padding:3px 10px;border-radius:999px;color:var(--muted);
-    border:1px solid var(--line);background:rgba(255,255,255,.02);
+    appearance:none;cursor:pointer;font:inherit;font-size:var(--fs-12);
+    display:inline-flex;align-items:center;gap:8px;min-height:32px;
+    padding:4px 12px;border-radius:var(--pill);color:var(--text-2);
+    border:1px solid var(--line);background:var(--control);
   }
   .stagebtn b{color:var(--text);font-weight:600}
-  .stagebtn[aria-pressed="true"]{border-color:#41546b;background:rgba(255,255,255,.08);color:#dbe7f3}
-  .stagebtn:disabled{opacity:.45;cursor:default}
-  .stagebtn::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--c,var(--muted))}
-  .stagebtn[data-stage="backlog"]{--c:var(--backlog)}
-  .stagebtn[data-stage="doing"]{--c:var(--doing)}
-  .stagebtn[data-stage="delivered"]{--c:var(--waiting)}
-  .stagebtn[data-stage="accepted"]{--c:var(--accepted)}
-  .stagebtn[data-stage="closed"]{--c:var(--done)}
+  .stagebtn[aria-pressed="true"]{
+    border-color:color-mix(in srgb,var(--accent) 40%,var(--line));
+    background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--text);
+  }
+  .stagebtn:disabled{opacity:.5;cursor:default}
+  .stagebtn::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent,var(--muted))}
 
-  .sessions{display:flex;flex-direction:column;gap:10px}
+  .sessions{display:flex;flex-direction:column;gap:var(--p-8)}
   .srow{
     position:relative;display:grid;grid-template-columns:64px minmax(0,1fr) auto;
-    gap:4px 14px;align-items:start;
-    padding:12px 14px 12px 16px;border-radius:12px;
-    background:var(--panel);border:1px solid var(--line-soft);
+    gap:4px 16px;align-items:start;
+    padding:12px 16px;border-radius:var(--r-12);
+    background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow-sm);
   }
   .srow::before{
-    content:"";position:absolute;left:0;top:12px;bottom:12px;width:2px;border-radius:2px;
-    background:var(--c,var(--muted));opacity:.65;
+    content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 2px 2px 0;
+    background:var(--accent,var(--muted));opacity:var(--bar-opacity);
   }
-  .srow[data-stage="backlog"]{--c:var(--backlog)}
-  .srow[data-stage="doing"]{--c:var(--doing)}
-  .srow[data-stage="delivered"]{--c:var(--waiting)}
-  .srow[data-stage="accepted"]{--c:var(--accepted)}
-  .srow[data-stage="closed"]{--c:var(--done)}
-  .srow .code{align-self:start;justify-self:start;text-align:center;color:var(--c);border-color:color-mix(in srgb,var(--c) 30%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent)}
+  .srow .code{
+    align-self:start;justify-self:start;text-align:center;
+    color:var(--accent-ink,var(--text-2));
+    border-color:color-mix(in srgb,var(--accent,var(--line)) 24%,transparent);
+    background:color-mix(in srgb,var(--accent,transparent) 10%,transparent);
+  }
   .srow-main{min-width:0;display:flex;flex-direction:column;gap:4px}
-  .srow-name{font-size:14px;font-weight:600;line-height:1.4}
-  .srow-name .sid{font-weight:400;font-size:11px;color:var(--muted-2);margin-left:8px}
-  .srow-meta{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+  .srow-name{font-size:var(--fs-14);font-weight:600;line-height:1.4}
+  .srow-name .sid{font-weight:400;font-size:var(--fs-12);color:var(--muted-2);margin-left:8px}
+  .srow-meta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:var(--fs-12);color:var(--muted)}
   .srow-meta .k{color:var(--muted-2);flex:none}
-  .srow-meta .v{color:#b8c6d6;flex:1 1 0;min-width:0;overflow-wrap:anywhere}
+  .srow-meta .v{color:var(--text-2);flex:1 1 0;min-width:0;overflow-wrap:anywhere}
   .srow-meta .tag{
-    font-size:10.5px;padding:0 6px;border-radius:999px;
+    font-size:var(--fs-12);padding:0 8px;border-radius:var(--pill);
     border:1px solid var(--line);color:var(--muted-2);
   }
-  .srow-stage{justify-self:end;display:flex;align-items:center;gap:6px}
+  .srow-stage{justify-self:end;display:flex;align-items:center;gap:8px}
   .stagechip{
-    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
-    font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;
-    color:var(--c);border:1px solid color-mix(in srgb,var(--c) 34%,transparent);
-    background:color-mix(in srgb,var(--c) 12%,transparent);
+    display:inline-flex;align-items:center;gap:8px;white-space:nowrap;
+    font-size:var(--fs-12);font-weight:600;padding:4px 12px;border-radius:var(--pill);
+    color:var(--accent-ink,var(--text-2));
+    border:1px solid color-mix(in srgb,var(--accent,var(--line)) 26%,transparent);
+    background:color-mix(in srgb,var(--accent,transparent) 9%,transparent);
   }
-  .stagechip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-  .stagechip[data-stage="backlog"]{--c:var(--backlog)}
-  .stagechip[data-stage="doing"]{--c:var(--doing)}
-  .stagechip[data-stage="delivered"]{--c:var(--waiting)}
-  .stagechip[data-stage="accepted"]{--c:var(--accepted)}
-  .stagechip[data-stage="closed"]{--c:var(--done)}
-  .srow-tasks{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+  .stagechip::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+  .srow-tasks{display:flex;gap:8px;flex-wrap:wrap;margin-top:var(--p-4)}
   .taskchip{
     display:inline-flex;align-items:center;gap:4px;max-width:100%;
-    font-size:11px;padding:1px 8px;border-radius:999px;
-    color:var(--muted);border:1px solid var(--line);background:rgba(255,255,255,.02);
+    font-size:var(--fs-12);padding:4px 8px;border-radius:var(--pill);
+    color:var(--muted);border:1px solid var(--line);background:var(--control);
   }
-  .taskchip[data-status="doing"]{color:var(--doing);border-color:rgba(242,182,50,.28)}
-  .taskchip[data-status="waiting"]{color:var(--waiting);border-color:rgba(76,154,255,.28)}
-  .taskchip[data-status="done"]{color:var(--done);border-color:rgba(63,185,80,.28)}
-  .taskchip[data-status="blocked"]{color:var(--blocked);border-color:rgba(248,81,73,.34)}
-  .srow-outs{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:11.5px;margin-top:2px}
+  .taskchip[data-status]{color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 26%,var(--line))}
+  .srow-outs{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:var(--fs-12);margin-top:var(--p-4)}
   .srow-outs .k{color:var(--muted-2)}
-  .srow-outs .linkbtn{font-size:11.5px;color:#8fb6e6}
+  .srow-outs .linkbtn{font-size:var(--fs-12)}
   .conflict{
-    display:flex;gap:6px;align-items:flex-start;
-    padding:6px 8px;border-radius:8px;font-size:11.5px;line-height:1.45;
-    color:#f6d98a;background:rgba(242,182,50,.08);border:1px solid rgba(242,182,50,.26);
+    display:flex;gap:8px;align-items:flex-start;
+    padding:8px;border-radius:var(--r-8);font-size:var(--fs-12);line-height:1.45;
+    color:var(--doing-ink);background:color-mix(in srgb,var(--doing) 8%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--doing) 24%,var(--line));
   }
-  .conflict .tag{flex:none;font-weight:600;color:#ffd479}
-  .srow .blocker{margin-top:2px}
+  .conflict .tag{flex:none;font-weight:600;color:var(--doing-ink)}
+  .srow .blocker{margin-top:var(--p-4)}
   .srow-block{grid-column:2 / -1}
+
+  /* ── 汇报视图（W4）：左列文件、右侧正文，Markdown 自渲染 ── */
+  .reports{display:grid;grid-template-columns:260px minmax(0,1fr);gap:var(--p-16);align-items:start}
+  .rlist{
+    display:flex;flex-direction:column;gap:var(--p-4);padding:var(--p-8);
+    border:1px solid var(--line);border-radius:var(--r-12);background:var(--surface);box-shadow:var(--shadow-sm);
+    position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto;
+  }
+  .rlist-head{
+    display:flex;align-items:baseline;gap:var(--p-8);padding:4px var(--p-8) var(--p-8);
+    margin-bottom:var(--p-4);border-bottom:1px solid var(--line-soft);
+    font-size:var(--fs-12);color:var(--muted-2);
+  }
+  .rlist-head b{color:var(--text-2);font-weight:600}
+  .ritems{display:flex;flex-direction:column;gap:var(--p-4)}
+  .ritem{
+    appearance:none;text-align:left;font:inherit;cursor:pointer;width:100%;
+    display:flex;flex-direction:column;gap:4px;
+    padding:var(--p-8) var(--p-12);border:1px solid transparent;border-radius:var(--r-8);
+    background:transparent;color:var(--text);transition:background .15s,border-color .15s;
+  }
+  .ritem:hover{background:var(--control-2)}
+  .ritem:focus-visible{outline:2px solid color-mix(in srgb,var(--primary) 70%,transparent);outline-offset:1px}
+  .ritem[aria-current="true"]{
+    background:color-mix(in srgb,var(--primary) 8%,var(--surface));
+    border-color:color-mix(in srgb,var(--primary) 26%,var(--line));
+  }
+  .ritem .rname{font-size:var(--fs-13);font-weight:600;line-height:1.4;overflow-wrap:anywhere}
+  .ritem .rtitle{
+    font-size:var(--fs-12);color:var(--muted);line-height:1.4;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .ritem .rmeta{display:flex;gap:var(--p-8);flex-wrap:wrap;font-size:var(--fs-12);color:var(--muted-2)}
+
+  .rbody{
+    min-width:0;padding:var(--p-24);
+    border:1px solid var(--line);border-radius:var(--r-12);background:var(--surface);box-shadow:var(--shadow-sm);
+  }
+  .rhead{
+    display:flex;align-items:baseline;gap:var(--p-12);flex-wrap:wrap;
+    padding-bottom:var(--p-12);margin-bottom:var(--p-16);border-bottom:1px solid var(--line);
+  }
+  .rhead h2{margin:0;font-size:var(--fs-14);font-weight:600;overflow-wrap:anywhere}
+  .rhead .hint{margin-left:auto;display:flex;gap:var(--p-8);flex-wrap:wrap;font-size:var(--fs-12);color:var(--muted-2)}
+  .rhead .hint code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted)}
+
+  /* Markdown 正文：只给汇报视图用 */
+  .md{font-size:var(--fs-14);line-height:1.7;color:var(--text-2);overflow-wrap:anywhere}
+  .md>*:first-child{margin-top:0}
+  .md>*:last-child{margin-bottom:0}
+  .md h1{font-size:var(--fs-20);line-height:1.35;font-weight:600;color:var(--text);margin:0 0 var(--p-16)}
+  .md h2{font-size:var(--fs-16);line-height:1.4;font-weight:600;color:var(--text);margin:var(--p-24) 0 var(--p-12);padding-bottom:var(--p-8);border-bottom:1px solid var(--line-soft)}
+  .md h3{font-size:var(--fs-14);line-height:1.45;font-weight:600;color:var(--text);margin:var(--p-20) 0 var(--p-8)}
+  .md p{margin:0 0 var(--p-12)}
+  .md ul,.md ol{margin:0 0 var(--p-12);padding-left:var(--p-24)}
+  .md li{margin:var(--p-4) 0}
+  .md li>p{margin:0}
+  .md blockquote{
+    margin:0 0 var(--p-16);padding:var(--p-8) var(--p-12);
+    border-left:3px solid color-mix(in srgb,var(--primary) 45%,var(--line));
+    border-radius:0 var(--r-8) var(--r-8) 0;
+    background:var(--surface-2);color:var(--muted);
+  }
+  .md blockquote p:last-child{margin-bottom:0}
+  .md code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    font-size:var(--fs-12);padding:2px 4px;border-radius:4px;
+    background:var(--control-2);border:1px solid var(--line-soft);color:var(--text);
+  }
+  .md pre{
+    margin:0 0 var(--p-16);padding:var(--p-12);overflow:auto;
+    border:1px solid var(--line);border-radius:var(--r-8);background:var(--surface-2);
+  }
+  .md pre code{padding:0;border:0;background:none;font-size:var(--fs-12);line-height:1.6;color:var(--text-2);white-space:pre}
+  .md-table{margin:0 0 var(--p-16);overflow-x:auto;border-radius:var(--r-8)}
+  .md table{width:100%;border-collapse:collapse;font-size:var(--fs-13);background:var(--surface)}
+  .md th,.md td{border:1px solid var(--line);padding:var(--p-8) var(--p-12);text-align:left;vertical-align:top}
+  .md th{font-size:var(--fs-12);font-weight:600;color:var(--text);background:var(--surface-2);white-space:nowrap}
+  .md td{color:var(--text-2)}
+  .md a{color:var(--waiting-ink);text-decoration:underline;text-underline-offset:2px}
+  .md a:hover{color:color-mix(in srgb,var(--waiting) 80%,var(--text))}
+  .md strong{color:var(--text);font-weight:600}
+  .md hr{border:0;border-top:1px solid var(--line);margin:var(--p-16) 0}
+  .md-raw{
+    margin:0;padding:var(--p-12);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;
+    font-size:var(--fs-12);line-height:1.6;color:var(--text-2);
+    border:1px solid var(--line);border-radius:var(--r-8);background:var(--surface-2);
+  }
+  details.rawreport{margin-top:var(--p-16);font-size:var(--fs-12);color:var(--muted)}
+  details.rawreport summary{cursor:pointer;color:var(--muted-2);user-select:none}
+  details.rawreport summary:hover{color:var(--text-2)}
+  details.rawreport[open] summary{margin-bottom:var(--p-8)}
 
   /* ── 底栏 ── */
   .foot{
-    max-width:1560px;margin:18px auto 0;padding:0;
-    display:flex;gap:16px;flex-wrap:wrap;align-items:center;
-    font-size:11.5px;color:var(--muted-2);
+    max-width:1560px;margin:var(--p-16) auto 0;padding:0;
+    display:flex;gap:var(--p-16);flex-wrap:wrap;align-items:center;
+    font-size:var(--fs-12);color:var(--muted-2);
   }
-  .legend{display:flex;gap:12px;flex-wrap:wrap}
-  .legend span{display:inline-flex;align-items:center;gap:5px;color:var(--muted)}
+  .legend{display:flex;gap:var(--p-12);flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}
   .legend i{font-style:normal}
   .foot .sep{flex:1}
-  .foot code{color:#9fb0c2;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-  .foot .appr{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .foot .appr .rec{color:#8b98a9}
-  .foot .appr .rec b{color:#c8d5e3;font-weight:600}
+  .foot code{color:var(--text-2);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .foot .appr{display:flex;gap:var(--p-8);align-items:center;flex-wrap:wrap}
+  .foot .appr .rec{color:var(--muted)}
+  .foot .appr .rec b{color:var(--text-2);font-weight:600}
 
   .toast{
-    position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);
+    position:fixed;left:50%;bottom:var(--p-24);transform:translate(-50%,16px);
     max-width:min(560px,calc(100vw - 28px));
-    padding:9px 14px;border-radius:10px;font-size:12.5px;line-height:1.5;
-    background:#16202e;border:1px solid var(--line);box-shadow:var(--shadow);
-    color:#dbe7f3;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:60;
+    padding:12px 16px;border-radius:var(--r-12);font-size:var(--fs-13);line-height:1.5;
+    background:var(--toast-bg);border:1px solid var(--line);box-shadow:var(--shadow);
+    color:var(--text);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:60;
   }
   .toast.show{opacity:1;transform:translate(-50%,0)}
-  .toast[data-kind="error"]{border-color:rgba(248,81,73,.5);background:#2a1517;color:#ffb4ae}
-  .toast[data-kind="done"]{border-color:rgba(63,185,80,.45);background:#12241a;color:#b7f0c0}
+  .toast[data-kind="error"]{border-color:color-mix(in srgb,var(--blocked) 42%,var(--line));color:var(--blocked-ink)}
+  .toast[data-kind="done"]{border-color:color-mix(in srgb,var(--done) 38%,var(--line));color:var(--done-ink)}
 
   .flash{animation:flash .6s ease-out}
-  @keyframes flash{0%{box-shadow:0 0 0 0 rgba(76,154,255,.35)}100%{box-shadow:0 0 0 14px rgba(76,154,255,0)}}
+  @keyframes flash{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--primary) 35%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
 
+  /* ── 工时（T1）：一条状态条 + 今日时间线 + 按任务汇总；不做考勤、不画复杂面板 ── */
+  .tbar{
+    display:flex;align-items:center;gap:var(--p-8);min-width:0;
+    padding:var(--p-12) var(--p-16);margin:0 0 var(--p-12);
+    border:1px solid var(--line);border-radius:var(--r-12);
+    background:var(--surface);box-shadow:var(--shadow-sm);
+  }
+  .tbar .tdot{width:10px;height:10px;flex:none;border-radius:50%;background:var(--line-strong)}
+  /* 圆点只说一件事：面板还连着没连着（心跳）；跟计时有没有在跑无关 */
+  .tbar[data-online="true"] .tdot{background:var(--done);animation:pulse 2.4s infinite}
+  .tbar .ttask{
+    flex:0 1 auto;min-width:0;font-size:var(--fs-14);font-weight:600;letter-spacing:.1px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .tbar .tsep{flex:none;color:var(--muted-2)}
+  .tbar .tclock{flex:none;font-size:var(--fs-14);font-weight:600;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .tbar[data-running="false"] .tclock{font-weight:500;color:var(--muted)}
+  .tbar .tacts{display:flex;gap:var(--p-8);flex:none;margin-left:auto}
+  .tbar .btn{min-height:32px;padding:4px 12px}
+  .tbar .btn.primary{
+    color:var(--primary-ink);border-color:color-mix(in srgb,var(--primary) 32%,var(--line));
+    background:color-mix(in srgb,var(--primary) 8%,var(--surface));
+  }
+  .tbar .btn.primary:hover{background:color-mix(in srgb,var(--primary) 15%,var(--surface))}
+
+  .pick{
+    display:flex;flex-direction:column;gap:var(--p-8);margin:0 0 var(--p-12);
+    padding:var(--p-12);border:1px solid var(--line);border-radius:var(--r-12);
+    background:var(--surface);box-shadow:var(--shadow-sm);
+  }
+  .pickin{
+    width:100%;font:inherit;font-size:var(--fs-13);padding:8px 12px;
+    border-radius:var(--r-8);color:var(--text);border:1px solid var(--line);background:var(--surface-2);
+  }
+  .pickin:focus{outline:none;border-color:color-mix(in srgb,var(--primary) 55%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 12%,transparent)}
+  .picklist{display:flex;gap:var(--p-8);flex-wrap:wrap}
+  .pickitem{
+    appearance:none;cursor:pointer;font:inherit;font-size:var(--fs-12);min-height:32px;padding:4px 12px;
+    border-radius:var(--pill);border:1px solid var(--line);background:var(--control);color:var(--text-2);
+  }
+  .pickitem:hover{background:var(--control-2);color:var(--text);border-color:var(--line-strong)}
+
+  .rec-head{display:flex;align-items:baseline;gap:var(--p-8);flex-wrap:wrap;margin:0 0 var(--p-8)}
+  .rec-head h2{margin:0;font-size:var(--fs-14);font-weight:600}
+  .rec-head .hint{font-size:var(--fs-12);color:var(--muted-2)}
+  .tl{
+    position:relative;height:16px;border-radius:var(--pill);overflow:hidden;
+    background:var(--track);border:1px solid var(--line-soft);
+  }
+  .tl .seg{position:absolute;top:0;bottom:0;background:var(--c,var(--muted-2));opacity:var(--bar-opacity)}
+  .tl-axis{display:flex;justify-content:space-between;gap:var(--p-8);margin:6px 0 var(--p-16);font-size:var(--fs-12);color:var(--muted-2)}
+
+  .sum{display:flex;flex-direction:column;max-width:760px}
+  .sumrow{
+    display:grid;grid-template-columns:10px minmax(0,1fr) auto auto auto;gap:4px 12px;align-items:center;
+    padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:var(--fs-13);
+  }
+  .sumrow .sc{width:10px;height:10px;border-radius:3px;background:var(--c,var(--muted-2))}
+  .sumrow .sn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:500}
+  .sumrow .sd{color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sumrow .ss{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;min-width:40px}
+  .sumrow .sk{color:var(--muted-2);white-space:nowrap;font-size:var(--fs-12)}
+  .sumfoot{padding:var(--p-8) 0 0;font-size:var(--fs-12);color:var(--muted-2)}
+
+  details.rawrec{margin-top:var(--p-16);font-size:var(--fs-12);color:var(--muted)}
+  details.rawrec summary{cursor:pointer;color:var(--muted-2);user-select:none}
+  details.rawrec summary:hover{color:var(--text-2)}
+  .reclist{margin:var(--p-8) 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+  .reclist li{display:flex;gap:var(--p-8);padding:4px 0;border-bottom:1px solid var(--line-soft);color:var(--text-2)}
+  .reclist time{flex:none;color:var(--muted-2);font-variant-numeric:tabular-nums}
+  .reclist li span{min-width:0;overflow-wrap:anywhere}
+
+  @media (max-width:1340px){
+    /* 中等宽度：仓库信息条单独一行，顶栏保持「标题 + 视图 + 刷新 + 主题」一行不折 */
+    .brand{order:1}
+    .tabs{order:2}
+    .theme-toggle{order:3}
+    .live{order:4}
+    .chips{order:5;width:100%;margin-left:0}
+  }
+  @media (max-width:900px){
+    /* 平板窄一点：标题下的数据源说明让位，保证顶栏不折成三行 */
+    .brand p{display:none}
+  }
   @media (max-width:1180px){
     .board{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .chips{margin-left:0}
   }
   @media (max-width:760px){
-    .top-inner{padding:12px 14px;gap:10px;position:relative}
-    .brand h1{font-size:15px}
-    .brand p{font-size:11px;white-space:normal;padding-right:104px}
-    .live{position:absolute;right:14px;top:12px;margin:0;font-size:11px;padding:4px 9px}
-    .tabs{order:3;width:100%}
-    .tab{flex:1;text-align:center;padding:6px 8px}
-    .chips{width:100%;gap:6px;margin-left:0;order:4}
-    .chip{padding:4px 8px;font-size:11px}
-    .chip.total,.chip.ver,.chip.commit{display:none}
-    .wrap{padding:14px 14px 24px}
-    .board{grid-template-columns:1fr;gap:14px}
-    .col{padding:12px}
-    .col-head{position:static;padding-bottom:10px}
-    .title{font-size:14.5px}
+    .top-inner{padding:var(--p-12) var(--p-16);gap:var(--p-8)}
+    .brand{flex:1 1 auto;min-width:0}
+    .brand h1{font-size:var(--fs-20)}
+    .live{order:2;padding:4px 12px}
+    .theme-toggle{order:3;min-height:40px;min-width:40px;padding:0 12px}
+    .theme-toggle .tl{display:none}
+    .tabs{order:4;width:100%}
+    .tab{flex:1;text-align:center;justify-content:center;min-height:40px;padding:8px}
+    /* 仓库信息条在窄屏没有决策价值，让位给内容 */
+    .chips{display:none}
+    .wrap{padding:var(--p-16) var(--p-16) var(--p-24)}
+    .board{grid-template-columns:1fr;gap:var(--p-20)}
+    .col-head{position:static;padding-bottom:var(--p-12)}
+    .card{padding:12px}
+    .card::before{top:12px;bottom:10px}
     .detail{-webkit-line-clamp:4}
+    .btn{min-height:40px;padding:8px 16px}
+    .stagebtn{min-height:40px;padding:8px 12px}
+    .linkbtn{min-height:40px;display:inline-flex;align-items:center}
     .foot{padding:0}
-    .alert{margin:0 0 12px}
-    .shead{margin-bottom:10px}
-    .shead h2{font-size:14px}
-    .stages{margin-left:0;width:100%;gap:6px}
-    .stagebtn{padding:2px 9px;font-size:11px}
-    .srow{grid-template-columns:52px minmax(0,1fr);gap:6px 10px;padding:11px 12px 11px 14px}
+    .alert{margin:0 0 var(--p-12)}
+    .shead{margin-bottom:var(--p-12)}
+    .shead h2{font-size:var(--fs-14)}
+    .stages{margin-left:0;width:100%;gap:8px}
+    .srow{grid-template-columns:52px minmax(0,1fr);gap:8px 12px;padding:12px}
     .srow-stage{grid-column:1 / -1;justify-self:start;order:-1}
     .srow-tasks,.srow-outs{grid-column:1 / -1}
     .srow .blocker,.srow .conflict{grid-column:1 / -1}
     .kv{grid-template-columns:56px minmax(0,1fr)}
-    .actions{gap:6px}
+    .actions{gap:var(--p-8)}
+    /* 汇报：列表在上、正文在下，列表限高，正文不用先滚过一整列文件 */
+    .reports{grid-template-columns:1fr;gap:var(--p-12)}
+    .rlist{position:static;max-height:38vh;padding:var(--p-8)}
+    .ritem{min-height:44px;padding:var(--p-8) var(--p-12)}
+    .rbody{padding:var(--p-16)}
+    .rhead{gap:var(--p-8);margin-bottom:var(--p-12)}
+    .rhead .hint{margin-left:0;width:100%}
+    .md h2{font-size:var(--fs-16)}
+    .md th,.md td{padding:var(--p-8)}
+    /* 工时：状态条仍是一行（任务名省略、时钟不换行），按钮保证 40px 可点 */
+    .tbar{padding:10px 12px;gap:6px}
+    .tbar .btn{min-height:40px;padding:8px 10px}
+    .tbar .tclock{font-size:var(--fs-13)}
+    .pick{padding:var(--p-8)}
+    .pickitem{min-height:40px}
+    .sumrow{grid-template-columns:10px minmax(0,1fr) auto auto}
+    .sumrow .sk{display:none}
+  }
+  @media (max-width:420px){
+    /* 极窄屏：时钟收一号，任务名照常省略，状态条仍是一行 */
+    .tbar .tclock{font-size:var(--fs-12)}
+  }
+  @media (max-width:560px){
+    /* 手机：顶栏压到两行（标题 + 视图切换），其余信息让位给内容 */
+    .brand p{display:none}
+    .top-inner{padding:var(--p-8) var(--p-16)}
+    .tabs{margin-top:var(--p-4)}
+    .live{padding:4px 8px}
+  }
+  @media (max-width:340px){
+    /* 极窄（<=320 的老机型）：刷新提示压缩成「圆点 + 省略号」，顶栏仍保持两行 */
+    .live{max-width:88px;padding:4px 8px}
+    .live #liveText{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   }
 </style>
 </head>
@@ -389,14 +666,19 @@
       <div class="mark" aria-hidden="true">▦</div>
       <div>
         <h1>任务看板</h1>
-        <p>任务 + 会话 · 数据源 <b>docs/任务看板.md</b> / <b>docs/会话台账.md</b></p>
+        <p>任务 + 会话 + 汇报 · 数据源 <b>docs/任务看板.md</b> / <b>docs/会话台账.md</b> / <b>docs/汇报/</b></p>
       </div>
     </div>
     <div class="tabs" role="tablist" aria-label="视图">
       <button class="tab" type="button" role="tab" data-view="board" aria-selected="true">任务视图<span class="n" id="tabCountBoard"></span></button>
       <button class="tab" type="button" role="tab" data-view="sessions" aria-selected="false">会话视图<span class="n" id="tabCountSessions"></span></button>
+      <button class="tab" type="button" role="tab" data-view="reports" aria-selected="false">汇报<span class="n" id="tabCountReports"></span></button>
+      <button class="tab" type="button" role="tab" data-view="timer" aria-selected="false">工时<span class="n" id="tabCountTimer"></span></button>
     </div>
     <div class="chips" id="chips" aria-label="仓库信息"></div>
+    <button class="theme-toggle" id="themeToggle" type="button" title="切换到深色主题" aria-label="切换浅色 / 深色主题">
+      <span class="ti" id="themeIcon" aria-hidden="true">☾</span><span class="tl" id="themeLabel">深色</span>
+    </button>
     <div class="live" id="live">
       <span class="dot" aria-hidden="true"></span>
       <span id="liveText">5 秒自动刷新</span>
@@ -432,6 +714,54 @@
       <span>台账 <code id="ledgerPath">docs/会话台账.md</code> · 读取 <code id="ledgerReadAt">—</code> · 哈希 <code id="ledgerSha">—</code></span>
     </div>
   </section>
+  <section id="view-reports" role="tabpanel" aria-label="汇报视图" hidden>
+    <div class="reports">
+      <nav class="rlist" id="reportList" aria-label="汇报文件" aria-busy="true">
+        <div class="rlist-head"><b>汇报</b><span id="reportDir">docs/汇报/</span></div>
+        <div class="ritems" id="reportItems">
+          <div class="empty" style="border:0;padding:16px 8px">正在读取目录…</div>
+        </div>
+      </nav>
+      <article class="rbody" id="reportBody" aria-live="polite" aria-busy="true">
+        <div class="empty">正在读取汇报…</div>
+      </article>
+    </div>
+    <div class="foot" id="reportsFoot">
+      <span>目录 <code id="reportsDirFoot">docs/汇报/</code> · 读取 <code id="reportsReadAt">—</code> · 文件清单按修改时间倒序 · 只读渲染，每次重读不缓存</span>
+    </div>
+  </section>
+
+  <section id="view-timer" role="tabpanel" aria-label="工时视图" hidden>
+    <div class="tbar" id="tbar" data-online="false" data-running="false">
+      <span class="tdot" id="timerDot" aria-hidden="true"></span>
+      <span class="ttask" id="timerTask">空闲</span>
+      <span class="tsep" aria-hidden="true">·</span>
+      <span class="tclock mono" id="timerClock">00:00:00</span>
+      <span class="tacts">
+        <button class="btn primary" type="button" id="timerSwitch" data-t="switch">开始</button>
+        <button class="btn" type="button" id="timerStop" data-t="stop" hidden>停止</button>
+      </span>
+    </div>
+
+    <div class="pick" id="timerPick" hidden>
+      <input class="pickin" id="pickInput" type="text" maxlength="60" autocomplete="off"
+        placeholder="在做什么？点下面的历史任务，或直接输入后回车">
+      <div class="picklist" id="pickList"></div>
+    </div>
+
+    <div class="rec-head">
+      <h2>今日</h2>
+      <span class="hint" id="timerHint">还没有记录</span>
+    </div>
+    <div class="tl" id="timeline" role="img" aria-label="今日时间线"></div>
+    <div class="tl-axis"><span id="tlFrom">—</span><span id="tlTo">—</span></div>
+    <div class="sum" id="timerSummary"></div>
+    <details class="rawrec"><summary>最近 20 条记录</summary><ol class="reclist" id="timerRecent"></ol></details>
+    <div class="foot" id="timerFoot">
+      <span>日志 <code id="timerLogPath">~/.workbench/timer/</code> · 只存本机，不上传、不进 git、不做考勤</span>
+    </div>
+  </section>
+
 </main>
 
 <div class="toast" id="toast" role="status"></div>
@@ -444,10 +774,34 @@
   const bodyEl = document.body;
   const viewBoardEl = document.getElementById('view-board');
   const viewSessionsEl = document.getElementById('view-sessions');
+  const viewReportsEl = document.getElementById('view-reports');
+  const viewTimerEl = document.getElementById('view-timer');
   const boardEl = document.getElementById('board');
   const sessionsEl = document.getElementById('sessions');
   const stagesEl = document.getElementById('stages');
   const sessionHintEl = document.getElementById('sessionHint');
+  const tbarEl = document.getElementById('tbar');
+  const timerDotEl = document.getElementById('timerDot');
+  const timerTaskEl = document.getElementById('timerTask');
+  const timerClockEl = document.getElementById('timerClock');
+  const timerSwitchBtn = document.getElementById('timerSwitch');
+  const timerStopBtn = document.getElementById('timerStop');
+  const timerPickEl = document.getElementById('timerPick');
+  const pickInputEl = document.getElementById('pickInput');
+  const pickListEl = document.getElementById('pickList');
+  const timelineEl = document.getElementById('timeline');
+  const tlFromEl = document.getElementById('tlFrom');
+  const tlToEl = document.getElementById('tlTo');
+  const timerSummaryEl = document.getElementById('timerSummary');
+  const timerRecentEl = document.getElementById('timerRecent');
+  const timerHintEl = document.getElementById('timerHint');
+  const timerLogPathEl = document.getElementById('timerLogPath');
+  const reportListEl = document.getElementById('reportList');
+  const reportItemsEl = document.getElementById('reportItems');
+  const reportBodyEl = document.getElementById('reportBody');
+  const reportDirEl = document.getElementById('reportDir');
+  const reportsDirFootEl = document.getElementById('reportsDirFoot');
+  const reportsReadAtEl = document.getElementById('reportsReadAt');
   const chipsEl = document.getElementById('chips');
   const liveEl = document.getElementById('live');
   const liveText = document.getElementById('liveText');
@@ -459,17 +813,29 @@
   const toastEl = document.getElementById('toast');
   const tabCountBoard = document.getElementById('tabCountBoard');
   const tabCountSessions = document.getElementById('tabCountSessions');
+  const tabCountReports = document.getElementById('tabCountReports');
+  const tabCountTimer = document.getElementById('tabCountTimer');
   const ledgerPathEl = document.getElementById('ledgerPath');
   const ledgerReadAtEl = document.getElementById('ledgerReadAt');
   const ledgerShaEl = document.getElementById('ledgerSha');
   const tabs = [...document.querySelectorAll('.tab')];
+  const themeToggle = document.getElementById('themeToggle');
+  const themeIcon = document.getElementById('themeIcon');
+  const themeLabel = document.getElementById('themeLabel');
+  const THEME_KEY = 'workbench.theme';
 
   const state = {
     view: 'board',
     board: null,
     sessions: null,
+    reports: null,
     fpBoard: null,
     fpSessions: null,
+    fpReports: null,
+    reportName: null,
+    reportTextName: null,
+    reportTextMtime: null,
+    reportText: null,
     lastReadAt: null,
     open: new Set(),
     notes: new Map(),
@@ -478,6 +844,9 @@
     taskTotal: 0,
     busy: false,
     renderedOnce: false,
+    timer: null,
+    timerFp: null,
+    pickOpen: false,
   };
 
   const SOURCE_LABEL = {
@@ -629,6 +998,172 @@
     return '打开详情';
   }
 
+  // ── Markdown 渲染（W4，零依赖；只为汇报视图服务）──
+  const MD_SEP = /^\s*\|?[\s:|-]+\|?\s*$/;
+
+  function mdSplitRow(line) {
+    let s = line.trim();
+    if (s.startsWith('|')) s = s.slice(1);
+    if (s.endsWith('|')) s = s.slice(0, -1);
+    return s.split('|').map((c) => c.trim());
+  }
+
+  /** 行内：`代码` / **加粗** / [文字](链接)。先整体转义，再按标记替换；代码内容不参与后续解析。 */
+  function mdInline(raw) {
+    const codes = [];
+    let out = esc(raw).replace(/`([^`]+)`/g, (_, code) => {
+      codes.push(code);
+      return '\u0001' + (codes.length - 1) + '\u0002';
+    });
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/\[([^\]]*)\]\(([^()\s]+)\)/g, (whole, text, href) => {
+      // 只给 http(s)/mailto/站内相对路径开口子；javascript: 之类退化成纯文字
+      if (!/^(?:https?:\/\/|mailto:|\/|\.{1,2}\/|#)/i.test(href)) return text;
+      return `<a href="${href}" target="_blank" rel="noreferrer noopener">${text}</a>`;
+    });
+    return out.replace(/\u0001(\d+)\u0002/g, (_, i) => `<code>${codes[Number(i)]}</code>`);
+  }
+
+  /** 块级：# ~ ### / 段落 / 列表 / 引用 / ``` 代码块 / | 表格。解析不了就抛错，由调用方退回原文。 */
+  function mdToHtml(src) {
+    const lines = String(src).replace(/\r\n?/g, '\n').split('\n');
+    const isStart = (l) => /^\s*(?:#{1,3}\s|>|```|\|)/.test(l) ||
+      /^\s*[-*+]\s+/.test(l) || /^\s*\d+[.)]\s+/.test(l);
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) { i += 1; continue; }
+      if (/^\s*```/.test(line)) {
+        const buf = [];
+        i += 1;
+        while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { buf.push(lines[i]); i += 1; }
+        i += 1; // 跳过收尾的 ```
+        out.push(`<pre><code>${esc(buf.join('\n'))}</code></pre>`);
+        continue;
+      }
+      const h = /^\s*(#{1,3})\s+(.*?)\s*$/.exec(line);
+      if (h) {
+        const n = h[1].length;
+        out.push(`<h${n}>${mdInline(h[2])}</h${n}>`);
+        i += 1;
+        continue;
+      }
+      if (/^\s*\|/.test(line) && i + 1 < lines.length && MD_SEP.test(lines[i + 1]) && lines[i + 1].includes('-')) {
+        const heads = mdSplitRow(line);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && /^\s*\|/.test(lines[i]) && !(MD_SEP.test(lines[i]) && lines[i].includes('-'))) {
+          rows.push(mdSplitRow(lines[i]));
+          i += 1;
+        }
+        const width = Math.max(heads.length, ...rows.map((r) => r.length), 1);
+        const tr = (cells, tag) => '<tr>' + Array.from({ length: width }, (_, k) =>
+          `<${tag}>${mdInline(cells[k] || '')}</${tag}>`).join('') + '</tr>';
+        out.push('<div class="md-table"><table><thead>' + tr(heads, 'th') + '</thead><tbody>' +
+          rows.map((r) => tr(r, 'td')).join('') + '</tbody></table></div>');
+        continue;
+      }
+      if (/^\s*>\s?/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+          buf.push(lines[i].replace(/^\s*>\s?/, ''));
+          i += 1;
+        }
+        out.push('<blockquote>' + buf.map((l) => (l.trim() ? `<p>${mdInline(l)}</p>` : '')).join('') + '</blockquote>');
+        continue;
+      }
+      const ordered = /^\s*\d+[.)]\s+/.test(line);
+      if (ordered || /^\s*[-*+]\s+/.test(line)) {
+        const re = ordered ? /^\s*\d+[.)]\s+(.*)$/ : /^\s*[-*+]\s+(.*)$/;
+        const items = [];
+        while (i < lines.length && re.test(lines[i])) {
+          // `- [ ] 待办` / `- [x] 已做` 渲染成 ☐ / ☑，别把方括号原样露出来
+          const text = re.exec(lines[i])[1].replace(/^\[([ xX])\]\s+/, (_, mark) => (mark.trim() ? '☑ ' : '☐ '));
+          items.push(mdInline(text));
+          i += 1;
+        }
+        const tag = ordered ? 'ol' : 'ul';
+        out.push(`<${tag}>${items.map((t) => `<li>${t}</li>`).join('')}</${tag}>`);
+        continue;
+      }
+      const para = [];
+      while (i < lines.length && lines[i].trim() && !(para.length && isStart(lines[i]))) {
+        para.push(lines[i].trim());
+        i += 1;
+      }
+      if (!para.length) { i += 1; continue; } // 兜底：绝不空转
+      out.push(`<p>${mdInline(para.join(' '))}</p>`);
+    }
+    return out.join('\n');
+  }
+
+  function sizeText(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  // ── 汇报视图 ──
+  function reportItem(file) {
+    const active = state.reportName === file.name;
+    return `<button type="button" class="ritem" data-report="${esc(file.name)}" ` +
+      `aria-current="${active ? 'true' : 'false'}" title="${esc(file.path || file.name)}">` +
+      `<span class="rname">${esc(file.title || file.name)}</span>` +
+      `<span class="rtitle mono">${esc(file.name)}</span>` +
+      `<span class="rmeta">` +
+        `<span class="rel" data-ts="${esc(file.mtime || '')}" title="${esc(exact(file.mtime))}">${esc(rel(file.mtime))}</span>` +
+        `<span>${esc(sizeText(file.size))}</span>` +
+      `</span>` +
+      `</button>`;
+  }
+
+  function renderReportList(data) {
+    const files = data.files || [];
+    const dir = data.dir || 'docs/汇报';
+    reportDirEl.textContent = dir + '/';
+    reportsDirFootEl.textContent = dir + '/';
+    reportListEl.setAttribute('aria-busy', 'false');
+    reportItemsEl.innerHTML = files.length
+      ? files.map(reportItem).join('')
+      : `<div class="empty" style="border:0;padding:16px 8px">${esc(data.reason || 'docs/汇报/ 里还没有 .md')}</div>`;
+    reportsReadAtEl.textContent = exact(data.generatedAt);
+  }
+
+  function renderReportBody(name, text, meta) {
+    const size = meta && meta.size != null ? meta.size : new TextEncoder().encode(text || '').length;
+    const title = (meta && meta.title) || name.replace(/\.md$/i, '');
+    let body;
+    let hasH1 = false;
+    if (!text || !text.trim()) {
+      body = `<div class="empty">这份汇报是空的（0 字节），正文不渲染，也不会白屏。</div>`;
+    } else {
+      let html = '';
+      try {
+        html = mdToHtml(text);
+      } catch (err) {
+        html = '';
+      }
+      if (html && html.trim()) {
+        hasH1 = /<h1[ >]/.test(html);
+        body = `<div class="md">${html}</div>`;
+      } else {
+        body = `<div class="empty">Markdown 没解析出来，下面原样显示原文。</div><pre class="md-raw">${esc(text)}</pre>`;
+      }
+    }
+    reportBodyEl.innerHTML =
+      // 正文自己有一级标题就不再重复一遍；没有才把文件名标题顶上来
+      `<div class="rhead">${hasH1 ? '' : `<h2>${esc(title)}</h2>`}` +
+      `<span class="hint"><code>${esc(name)}</code>` +
+      `<span>${esc(exact(meta && meta.mtime))}</span><span>${esc(sizeText(size))}</span></span></div>` +
+      body +
+      (text && text.trim()
+        ? `<details class="rawreport"><summary>看原文（Markdown 源）</summary><pre class="md-raw">${esc(text)}</pre></details>`
+        : '');
+    reportBodyEl.setAttribute('aria-busy', 'false');
+  }
+
   function card(task) {
     const status = task.statusKey || 'doing';
     const open = state.open.has(task.key);
@@ -776,6 +1311,11 @@
     boardEl.classList.add('flash');
   }
 
+  function viewFromHash() {
+    const hash = (location.hash || '').replace(/^#/, '');
+    return hash === 'sessions' || hash === 'reports' || hash === 'timer' ? hash : 'board';
+  }
+
   function setView(view, opts) {
     const silent = opts && opts.silent;
     state.view = view;
@@ -783,10 +1323,14 @@
     tabs.forEach((tab) => tab.setAttribute('aria-selected', tab.dataset.view === view ? 'true' : 'false'));
     viewBoardEl.hidden = view !== 'board';
     viewSessionsEl.hidden = view !== 'sessions';
+    viewReportsEl.hidden = view !== 'reports';
+    viewTimerEl.hidden = view !== 'timer';
     if (!silent && location.hash !== '#' + view) {
       history.replaceState(null, '', '#' + view);
     }
     if (view === 'sessions') loadSessions(true);
+    if (view === 'reports') loadReports(true);
+    if (view === 'timer') loadTimer();
   }
 
   function firstTaskByKey(key) {
@@ -936,10 +1480,352 @@
     }
   }
 
+  async function loadReports(force) {
+    try {
+      const res = await fetch('/api/reports', { cache: 'no-store' });
+      if (!res.ok) {
+        let detail = 'HTTP ' + res.status;
+        try {
+          const body = await res.json();
+          if (body && body.message) detail = body.message;
+        } catch (_) { /* 非 JSON 错误体 */ }
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      const files = data.files || [];
+      const fp = JSON.stringify(files);
+      const changed = force === true || fp !== state.fpReports;
+      state.reports = data;
+      state.fpReports = fp;
+      state.lastReadAt = Date.now();
+      liveEl.classList.remove('is-down');
+      hideAlert();
+      tabCountReports.textContent = files.length ? String(files.length) : '';
+      reportsDirFootEl.textContent = (data.dir || 'docs/汇报') + '/';
+      reportsReadAtEl.textContent = exact(data.generatedAt);
+
+      if (!files.length) {
+        state.reportName = null;
+        state.reportText = null;
+        state.reportTextName = null;
+        renderReportList(data);
+        reportBodyEl.setAttribute('aria-busy', 'false');
+        reportBodyEl.innerHTML = `<div class="empty">${esc(data.reason || 'docs/汇报/ 里还没有 .md 文件')}` +
+          `。把 Markdown 放进去，5 秒内会出现在左边的列表里。</div>`;
+        return;
+      }
+      if (!files.some((f) => f.name === state.reportName)) state.reportName = files[0].name;
+      if (changed) renderReportList(data);
+      const picked = files.find((f) => f.name === state.reportName) || files[0];
+      const stale = state.reportText == null || state.reportTextName !== picked.name ||
+        state.reportTextMtime !== picked.mtime;
+      if (stale) await loadReportText(picked.name);
+      tickRelative();
+    } catch (err) {
+      liveEl.classList.add('is-down');
+      liveText.textContent = '连不上服务，重试中';
+      showAlert('读不到汇报目录：' + (err && err.message ? err.message : '未知错误') +
+        '。面板只读，恢复服务后 5 秒内自动接上。');
+    }
+  }
+
+  async function loadReportText(name) {
+    const meta = ((state.reports && state.reports.files) || []).find((f) => f.name === name) || null;
+    try {
+      const res = await fetch('/api/reports/' + encodeURIComponent(name), { cache: 'no-store' });
+      if (!res.ok) {
+        let detail = 'HTTP ' + res.status;
+        try {
+          const body = await res.json();
+          if (body && body.message) detail = body.message;
+        } catch (_) { /* 非 JSON 错误体 */ }
+        throw new Error(detail);
+      }
+      const text = await res.text();
+      state.reportText = text;
+      state.reportTextName = name;
+      state.reportTextMtime = meta ? meta.mtime : null;
+      renderReportBody(name, text, meta);
+    } catch (err) {
+      state.reportText = null;
+      state.reportTextName = null;
+      reportBodyEl.setAttribute('aria-busy', 'false');
+      reportBodyEl.innerHTML = `<div class="rhead"><h2>${esc(name)}</h2></div>` +
+        `<div class="empty">读不到这份汇报：${esc(err && err.message ? err.message : String(err))}</div>`;
+    }
+  }
+
+  function selectReport(name) {
+    if (!name) return;
+    state.reportName = name;
+    if (state.reports) renderReportList(state.reports);
+    loadReportText(name);
+  }
+
+  // ── 工时计时器（T1）──
+  // 数据只在服务端本机 ~/.workbench/timer/ 里，前端只做三件事：打心跳、画今天、手动切任务。
+  // 文案口径：只回答"今天时间去哪了"，不排名、不考核、不标"谁打断的"。
+  // **不做空闲自动停**：用户可能同时在两台电脑上干活，自动停会把另一台的时间误判成离开。
+  // 心跳只用来点亮状态条上的圆点（面板连着没连着），绝不停计时——一段只在手动切换/停止时结束。
+  const BEAT_MS = 15000;
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+
+  function fmtClock(ms) {
+    const total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+    return `${pad2(Math.floor(total / 3600))}:${pad2(Math.floor((total % 3600) / 60))}:${pad2(total % 60)}`;
+  }
+
+  function fmtDur(ms) {
+    const total = Math.max(0, Math.round((Number(ms) || 0) / 60000));
+    if (total < 1) return '不到 1 分';
+    if (total < 60) return `${total} 分`;
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return m ? `${h} 小时 ${m} 分` : `${h} 小时`;
+  }
+
+  /** 任务配色：按今日汇总的顺序轮转 8 个色，色值全在 CSS 变量里（深浅色各一套）。 */
+  function timerColors(tasks) {
+    const map = new Map();
+    (tasks || []).forEach((t, i) => map.set(t.task, `var(--seg-${(i % 8) + 1})`));
+    return map;
+  }
+
+  function renderTimer(data) {
+    if (!data || data.schema !== 1) return;
+    state.timer = data;
+    const cur = data.current;
+    if (cur) {
+      timerTaskEl.textContent = cur.task;
+      timerTaskEl.title = cur.task;
+      timerSwitchBtn.textContent = '切换';
+      timerStopBtn.hidden = false;
+      timerClockEl.textContent = fmtClock(Date.now() - new Date(cur.since).getTime());
+    } else {
+      timerTaskEl.textContent = '空闲';
+      timerTaskEl.title = '';
+      timerSwitchBtn.textContent = '开始';
+      timerStopBtn.hidden = true;
+      timerClockEl.textContent = data.summary && data.summary.trackedMs > 0
+        ? fmtDur(data.summary.trackedMs)
+        : '00:00:00';
+    }
+    // 圆点只看"面板连着没连着"，跟计时无关：心跳停了计时照样跑
+    tbarEl.setAttribute('data-running', cur ? 'true' : 'false');
+    const online = data.online === true;
+    tbarEl.setAttribute('data-online', online ? 'true' : 'false');
+    timerDotEl.title = online
+      ? '面板连着（最近 15 秒内有心跳）· 计时不受心跳影响'
+      : '面板没连着（最近 15 秒内没心跳）· 计时照常继续，只有手动切换或停止才结束';
+    tabCountTimer.textContent = cur ? '●' : '';
+    tabCountTimer.classList.toggle('on', !!cur);
+    if (data.storage) {
+      timerLogPathEl.textContent = data.storage.logLabel || data.storage.logFile || '~/.workbench/timer/';
+      timerLogPathEl.title = data.storage.absoluteLogFile || '';
+    }
+
+    const fp = JSON.stringify([
+      cur ? [cur.task, cur.since] : null,
+      data.day && [data.day.from, data.day.to, data.day.segments],
+      data.summary,
+    ]);
+    if (fp !== state.timerFp) {
+      state.timerFp = fp;
+      renderTimeline(data);
+      renderSummary(data);
+      renderRecent(data);
+    }
+  }
+
+  function renderTimeline(data) {
+    const day = data.day || {};
+    const fromMs = Number(day.fromMs) || Date.now() - 3600000;
+    const toMs = Number(day.toMs) || Date.now();
+    const span = Math.max(60000, toMs - fromMs);
+    const colors = timerColors((data.summary && data.summary.tasks) || []);
+    const pos = (ms) => Math.min(100, Math.max(0, ((ms - fromMs) / span) * 100));
+    // 只画有人认领的段；没记录的时间（比如手动停之后没马上开始下一段）照实留成空隙（灰底）
+    timelineEl.innerHTML = (day.segments || []).map((s) => {
+      const a = pos(new Date(s.from).getTime());
+      const b = pos(new Date(s.to).getTime());
+      const width = Math.max(0.3, b - a);
+      const title = `${s.task} · ${s.fromHhmm}–${s.toHhmm} · ${fmtDur(s.ms)}`;
+      const color = `--c:${colors.get(s.task) || 'var(--muted-2)'};`;
+      return `<i class="seg" style="left:${a.toFixed(3)}%;width:${width.toFixed(3)}%;${color}" title="${esc(title)}"></i>`;
+    }).join('');
+    tlFromEl.textContent = day.fromHhmm || '—';
+    tlToEl.textContent = (day.toHhmm || '—') + '（现在）';
+    const sum = data.summary || {};
+    timerHintEl.textContent = (sum.trackedMs || 0) > 0
+      ? `${day.fromHhmm}–${day.toHhmm} · 已记 ${fmtDur(sum.trackedMs)}`
+      : '还没有记录';
+  }
+
+  function renderSummary(data) {
+    const sum = data.summary || {};
+    const tasks = sum.tasks || [];
+    const colors = timerColors(tasks);
+    const rows = tasks.map((t) => `<div class="sumrow">` +
+      `<i class="sc" style="--c:${colors.get(t.task)}"></i>` +
+      `<span class="sn" title="${esc(t.task)}">${esc(t.task)}</span>` +
+      `<span class="sd">${esc(fmtDur(t.ms))}</span>` +
+      `<span class="ss">${esc(String(t.share))}%</span>` +
+      `<span class="sk">${esc(String(t.count))} 段</span>` +
+      `</div>`);
+    if (!rows.length) {
+      timerSummaryEl.innerHTML = '<div class="empty">今天还没开始计时。点上面的「开始」记第一笔。</div>';
+      return;
+    }
+    const foot = `已记 ${fmtDur(sum.trackedMs)} · 空隙 ${fmtDur(sum.holeMs)}（${data.day.fromHhmm} 起）`;
+    timerSummaryEl.innerHTML = rows.join('') + `<div class="sumfoot">${esc(foot)}</div>`;
+  }
+
+  function renderRecent(data) {
+    const list = (data.recent || []).slice().reverse();
+    timerRecentEl.innerHTML = list.length
+      ? list.map((e) => `<li><time>${esc(e.at)}</time><span>${esc(e.text)}</span></li>`).join('')
+      : '<li><span>今天还没有事件</span></li>';
+  }
+
+  async function timerPost(apiUrl, payload) {
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.ok) throw new Error((data && data.message) || ('HTTP ' + res.status));
+      renderTimer(data);
+      return data;
+    } catch (err) {
+      toast('没记上：' + (err && err.message ? err.message : String(err)), 'error');
+      return null;
+    }
+  }
+
+  function timerHistory() {
+    const names = [];
+    const push = (value) => {
+      const name = String(value || '').trim();
+      if (name && !names.includes(name)) names.push(name);
+    };
+    const data = state.timer;
+    if (!data) return names;
+    if (data.current) push(data.current.task);
+    ((data.summary && data.summary.tasks) || []).forEach((t) => push(t.task));
+    (data.recent || []).slice().reverse().forEach((e) => push(e.task));
+    return names;
+  }
+
+  function openPicker() {
+    state.pickOpen = true;
+    timerPickEl.hidden = false;
+    const names = timerHistory();
+    pickListEl.innerHTML = names.length
+      ? names.map((n) => `<button type="button" class="pickitem" data-task="${esc(n)}">${esc(n)}</button>`).join('')
+      : '<span class="hint">还没有历史任务，直接输入名字后回车</span>';
+    pickInputEl.value = '';
+    pickInputEl.focus();
+  }
+  function closePicker() {
+    state.pickOpen = false;
+    timerPickEl.hidden = true;
+  }
+
+  /** 选中即开始：一次点击完成"切过去 + 开始计时"。 */
+  async function commitTask(name) {
+    const task = String(name == null ? '' : name).trim();
+    if (!task) {
+      toast('先写个任务名', 'error');
+      return;
+    }
+    const running = !!(state.timer && state.timer.current);
+    closePicker();
+    const data = await timerPost(running ? '/api/timer/switch' : '/api/timer/start', { task: task });
+    if (data) toast(running ? `已切到「${task}」` : `开始计时：${task}`, 'done');
+  }
+
+  let beatTimer = null;
+  async function timerBeat() {
+    if (document.visibilityState === 'hidden') return;
+    try {
+      const res = await fetch('/api/timer/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        cache: 'no-store',
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      if (data && data.ok) renderTimer(data);
+    } catch (_) {
+      /* 服务没起来就保持上次的状态条，不弹错打断干活 */
+    }
+  }
+  function startBeat() {
+    stopBeat();
+    if (document.visibilityState === 'hidden') return;
+    timerBeat();
+    beatTimer = setInterval(timerBeat, BEAT_MS);
+  }
+  function stopBeat() {
+    if (beatTimer) clearInterval(beatTimer);
+    beatTimer = null;
+  }
+
+  async function loadTimer() {
+    try {
+      const res = await fetch('/api/timer/state', { cache: 'no-store' });
+      if (!res.ok) {
+        let detail = 'HTTP ' + res.status;
+        try {
+          const body = await res.json();
+          if (body && body.message) detail = body.message;
+        } catch (_) { /* 非 JSON 错误体 */ }
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      state.lastReadAt = Date.now();
+      liveEl.classList.remove('is-down');
+      hideAlert();
+      renderTimer(data);
+    } catch (err) {
+      liveEl.classList.add('is-down');
+      liveText.textContent = '连不上服务，重试中';
+      showAlert('读不到工时数据：' + (err && err.message ? err.message : '未知错误') +
+        '。计时只写本机 ~/.workbench/timer/，服务恢复后自动接上。');
+    }
+  }
+
   function load() {
     if (state.view === 'sessions') return loadSessions();
+    if (state.view === 'reports') return loadReports();
+    if (state.view === 'timer') return loadTimer();
     return loadBoard();
   }
+
+  // ── 主题：浅色默认，深色是选项；只记在 localStorage，不落盘、不发给服务端 ──
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+  function syncThemeUI() {
+    const dark = currentTheme() === 'dark';
+    themeIcon.textContent = dark ? '☀' : '☾';
+    themeLabel.textContent = dark ? '浅色' : '深色';
+    themeToggle.setAttribute('aria-pressed', dark ? 'true' : 'false');
+    themeToggle.title = dark ? '切换到浅色主题' : '切换到深色主题';
+  }
+  function setTheme(next) {
+    const theme = next === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* 存不下就只影响这次 */ }
+    syncThemeUI();
+    toast(theme === 'dark' ? '已切到深色主题' : '已切到浅色主题', 'done');
+  }
+  themeToggle.addEventListener('click', () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
+  syncThemeUI();
 
   // ── 交互 ──
   tabs.forEach((tab) => {
@@ -992,6 +1878,11 @@
     copyText(value).then(() => toast('已复制：' + value, 'done'));
   });
 
+  reportItemsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-report]');
+    if (btn) selectReport(btn.getAttribute('data-report'));
+  });
+
   stagesEl.addEventListener('click', (e) => {
     const btn = e.target.closest('.stagebtn');
     if (!btn || btn.disabled) return;
@@ -1000,16 +1891,57 @@
     if (state.sessions) renderSessions(state.sessions);
   });
 
-  const initialView = location.hash === '#sessions' ? 'sessions' : 'board';
+  // ── 工时交互：状态条 / 切换面板 ──
+  viewTimerEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-t]');
+    if (!btn) return;
+    const act = btn.getAttribute('data-t');
+    if (act === 'switch') {
+      if (state.pickOpen) closePicker(); else openPicker();
+    } else if (act === 'stop') {
+      timerPost('/api/timer/stop', {}).then((data) => { if (data) toast('已停止计时', 'done'); });
+    }
+  });
+
+  pickListEl.addEventListener('click', (e) => {
+    const item = e.target.closest('[data-task]');
+    if (item) commitTask(item.getAttribute('data-task'));
+  });
+  pickInputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitTask(pickInputEl.value);
+    } else if (e.key === 'Escape') {
+      closePicker();
+    }
+  });
+
+  const initialView = viewFromHash();
   setView(initialView, { silent: true });
   load();
+  loadTimer();
+  startBeat();
   setInterval(load, REFRESH_MS);
   setInterval(tickRelative, 1000);
+  // 状态条上的秒数每秒走一格；页面隐藏时不走（那段时间我们不知道你在不在）
+  setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
+    const cur = state.timer && state.timer.current;
+    if (!cur) return;
+    const since = new Date(cur.since).getTime();
+    if (Number.isFinite(since)) timerClockEl.textContent = fmtClock(Date.now() - since);
+  }, 1000);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) load();
+    if (document.hidden) {
+      stopBeat();
+      return;
+    }
+    // 页面重新可见：立刻打一次心跳（把圆点点亮），再回到 15 秒节奏
+    load();
+    startBeat();
   });
   window.addEventListener('hashchange', () => {
-    const view = location.hash === '#sessions' ? 'sessions' : 'board';
+    const view = viewFromHash();
     if (view !== state.view) setView(view, { silent: true });
   });
 })();

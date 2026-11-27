@@ -285,6 +285,8 @@ test('同组同 UID 被他人占用时整次发布回滚，原摘要保留', asy
   assert.equal(clash.status, 409);
   assert.equal(clash.body.code, 'GAME_ACCOUNT_ALREADY_SHARED');
   assert.ok(clash.body.error.includes('B'), '说明已由哪位组员共享');
+  // 2026-11-27：最常见的撞车是「同一个人建了第二个小布助手账号」，文案要给「用原账号登录」这条自救路径
+  assert.ok(clash.body.error.includes('不用新建账号'), '冲突文案要指向原账号，而不是让用户再建号');
 
   const detail = await detailOf(A.token, group.id);
   const resource = memberOf(detail, A.accountId).resource;

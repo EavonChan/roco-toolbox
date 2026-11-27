@@ -1,5 +1,6 @@
 ﻿import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { compactPetName } from './petNameLabel';
+import { scheduleCardNameFit } from './fitCardName';
 
 export interface PetCardLayoutProps {
   name: string;
@@ -47,7 +48,7 @@ export interface PetCardLayoutProps {
 export type PetCardSize = 'default' | 'tall' | 'gap' | 'suggest' | 'compact';
 
 /** 收集页母本卡的收集状态：未收集 / 计划中 / 已收集（2026-11-21 用户口径）。 */
-export type PetCardStatus = 'uncollected' | 'planned' | 'collected';
+export type PetCardStatus = 'uncollected' | 'planned' | 'collected' | 'fillable';
 
 /** Shared card frame for pet displays across the app. */
 export function PetCardLayout({
@@ -92,13 +93,14 @@ export function PetCardLayout({
    */
   const compact = size === 'compact';
   /** 与配窝卡（NestPlanCard）同一套性别色：母粉、公蓝、未知灰；
-   *  收集页母本卡传 status 时按收集状态上色（未收集白底 / 计划中淡蓝 / 已收集淡绿） */
+   *  收集页母本卡传 status 时按收集状态上色（未收集白底 / 计划中淡蓝 / 已收集淡绿 /
+   *  可补浅绿，2026-11-24） */
   const statusTone =
     status === 'uncollected'
       ? 'border-slate-200 bg-white'
       : status === 'planned'
         ? 'border-sky-200 bg-sky-50'
-        : status === 'collected'
+        : status === 'collected' || status === 'fillable'
           ? 'border-emerald-200 bg-emerald-50'
           : null;
   const genderTone = academy
@@ -126,40 +128,24 @@ export function PetCardLayout({
   const nameTextRef = useRef<HTMLSpanElement | null>(null);
 
   /**
-   * 母本卡名字：默认 12px，只有超出卡片宽度时才逐档缩到 9px。
-   * 用元素实测宽度而不是按字数猜，375 / 390 屏宽切换都能各自贴合。
+   * 母本卡名字：默认 10px，只有超出卡片宽度时才逐档缩到 9px。
+   * 这里只**登记**，不做任何 DOM 读写；读宽度、量文字、写字号全部在
+   * `fitCardName` 的同一个微任务里批量完成（2026-11-25：原来每张卡一个
+   * `useLayoutEffect` + 每卡一个 ResizeObserver，165 张卡 495 次强制布局，
+   * 见 docs/分析-收集页卡顿-2026-11-25.md）。
    */
   useLayoutEffect(() => {
     if (!fitName) return;
     const heading = nameRef.current;
     const text = nameTextRef.current;
     if (!heading || !text) return;
-    const fit = () => {
-      const base = fitNameBase ?? 10;
-      text.style.fontSize = `${base}px`;
-      // 先放开宽度量出文字自然宽度，再交给 truncate 兜底
-      text.style.maxWidth = 'none';
-      text.style.width = 'max-content';
-      text.style.flexShrink = '0';
-      const width = text.getBoundingClientRect().width;
-      text.style.width = '';
-      text.style.flexShrink = '';
-      text.style.maxWidth = '';
-      const available = heading.clientWidth;
-      if (width > 0 && available > 0 && width > available) {
-        const scaled = Math.max(
-          fitNameMin ?? 10,
-          Math.floor(((base * available) / width) * 2) / 2,
-        );
-        text.style.fontSize = `${scaled}px`;
-      }
-    };
-    fit();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(fit);
-    observer.observe(heading);
-    return () => observer.disconnect();
-  }, [fitName, name, size]);
+    return scheduleCardNameFit({
+      heading,
+      text,
+      base: fitNameBase ?? 10,
+      min: fitNameMin ?? 10,
+    });
+  }, [fitName, name, size, fitNameBase, fitNameMin]);
 
   return (
     <article

@@ -80,6 +80,24 @@ describe('小组假后端', () => {
     ).rejects.toMatchObject({ status: 409 });
   });
 
+  test('蛋仓同步不吃版本；其他 action 仍然 409 并回带当前版本', async () => {
+    const first = await getEggMatching(MOCK_GROUP_ID);
+    state.eggVersion += 1;                                   // 模拟「别人 / 机器人刚写过」
+    // 换蛋动作仍然按版本乐观锁拒绝，并回带当前版本（线上 2026-11-26 的口径）。
+    await expect(
+      mutateEggMatching(MOCK_GROUP_ID, first.version, { type: 'list', id: 'egg-me-1', listed: true }),
+    ).rejects.toMatchObject({ status: 409, currentVersion: state.eggVersion });
+    // 蛋仓同步是幂等合并：拿着旧版本也必须能写进去（以前这里会 409，和线上行为不一致）。
+    const pushed = await mutateEggMatching(MOCK_GROUP_ID, first.version, {
+      type: 'stock-sync', gameAccountKey: 'uid:10001', capturedAt: Date.now(), complete: true, homeComplete: false,
+      eggs: [{ id: 'demo-egg', eggGameId: 3227, nature: '固执', body: '大块头', voice: '婉转声', kind: 'ordinary',
+        status: 'available', listed: false, provenance: 'unknown', confidence: 'manual', labelSource: 'unknown',
+        location: 'bag', lastConfirmedAt: Date.now() }],
+    });
+    expect(pushed.version).toBe(state.eggVersion);
+    expect(pushed.state.eggs.some((egg) => egg.id === 'demo-egg')).toBe(true);
+  });
+
   test('发布摘要后我的资源版本 +1，发布页不再是「需更新」', async () => {
     const before = await getCollectionGroup(MOCK_GROUP_ID);
     const mine = before.members.find((member) => member.accountId === state.me);

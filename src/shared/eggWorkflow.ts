@@ -2,6 +2,10 @@ import type { LegacyEggHistory } from './eggMigration';
 import type { PatrolTaskStatus } from './eggPatrol';
 import { isDemandBody, isDemandVoice } from './collectionGroups';
 import { canCirculateEgg, canMatchDemand, createDemand, type EggDemand, type EggParentInfo, type EggParentsInfo, type EggRecord } from './eggMatching';
+import {
+  CHANCE_PER_TRADE, PAIR_CHANCE_WINDOW_MS, chanceOf, exchangeKeyOf, giftClaimBlockedReason, memberPairKeyOf,
+  type EggChance, type EggGift,
+} from './eggGift';
 
 export interface WorkflowEgg extends EggRecord {
   gameAccountKey: string;
@@ -9,8 +13,29 @@ export interface WorkflowEgg extends EggRecord {
   listed: boolean;
   /** 游戏蛋数据里的获得时间（ISO 8601）。家园蛋与更新前的旧记录没有这个字段。 */
   obtainedAt?: string;
+  /** 家园蛋收进背包后对应的抓包实例 ID；用于后续同步继续合并，避免刷新后丢自产。 */
+  capturedEggId?: string;
+  /** 用户手动下架过这颗蛋；自动挂出必须尊重它。旧数据没有该字段 = 未下架。 */
+  listingOptOut?: boolean;
+  /**
+   * 这颗蛋是「本轮之后第一次被采集确认出现」的，允许自动挂出（2026-11-26 R4-01）。
+   *
+   * `listingOptOut` 是本轮新加的字段，升级前手动下架过的蛋在旧数据里只有 `listed=false`、
+   * 没有 `listingOptOut`——单看这两个字段无法区分「新采集的蛋」与「升级前手动下架的蛋」，
+   * 直接自动挂出会把用户私藏的蛋挂到组内广场。所以：**没有这个标记的历史行一律视为已下架**，
+   * 只有 stock-sync 里第一次出现的新行才由服务端写入 `true`。
+   *
+   * 不回填 `listingOptOut`（那是「用户下架过」的事实，不能凭空写）。
+   */
+  autoListEligible?: boolean;
   /** Last complete capture no longer contains this reserved instance. */
   missingFromCapture?: boolean;
+  /** 待认领（2026-11-25 用户口径）：家蛋已从家园完整快照里消失，但还没有对应的背包蛋可认。 */
+  claimPending?: boolean;
+  /** 首次进背包的抓包时间（ms）：认领页右列只列这批新蛋。 */
+  claimArrivedAt?: number;
+  /** 认领合并前的家蛋侧标签，拆开时原样还原（背包值只覆盖这几项）。 */
+  claimBackup?: { nature: string; body: EggRecord['body']; voice: EggRecord['voice'] };
 }
 export interface EggLine {
   eggGameId: number; nature: string; body: EggRecord['body']; voice: EggRecord['voice'];
@@ -28,6 +53,19 @@ export interface WorkflowTrade {
   returnLine?:EggLine; returnPlaced?:boolean;
   lineOfferId?:string; returnLineOfferId?:string;
   completedAt?:number; giveEggId?:string; returnEggId?:string;
+  /**
+   * 双向确认（方案 §2.1）：两个时间戳各记一侧。
+   * - `giveConfirmedAt`：需求方点了「已收到」（S 给的蛋到手）；
+   * - `returnConfirmedAt`：换出方点了「已收到」（D 给的蛋到手）。
+   * 两个都齐才 `finalize`；只有一个时单子停在「交接中」（可催、可取消）。
+   */
+  giveConfirmedAt?: number;
+  returnConfirmedAt?: number;
+  /** 本单已经发过免费领蛋次数（幂等标记：重放 / 重开都不再发）。 */
+  chanceGranted?: true;
+  chanceGrantedAt?: number;
+  /** 本单结单了但没发次数：同一对成员 24h 内的第 2 单，或同一对蛋已经发过。 */
+  chanceSuppressed?: 'pair-24h' | 'egg-pair';
 }
 export interface EggWorkflowState {
   demands: EggDemand[]; eggs: WorkflowEgg[]; trades: WorkflowTrade[];
@@ -36,8 +74,12 @@ export interface EggWorkflowState {
   legacyHistory?:LegacyEggHistory[];
   patrol?:PatrolTaskStatus[];
   reminders?:{tradeId:string;reminderAt:number;status:'pending'|'sent'|'failed'|'unbound'}[];
+  /** 广场送蛋（一期只有数据与动作，界面在二期）。 */
+  gifts?: EggGift[];
+  /** 免费领蛋次数余额（按成员）；GET 只下发自己的那一份。 */
+  chances?: Record<string, EggChance>;
 }
-export const emptyEggWorkflow = (): EggWorkflowState => ({ demands: [], eggs: [], trades: [], watermarks: {}, orders: {} });
+export const emptyEggWorkflow = (): EggWorkflowState => ({ demands: [], eggs: [], trades: [], watermarks: {}, orders: {}, gifts: [], chances: {} });
 
 const record = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('参数无效');
@@ -54,16 +96,40 @@ const obtainedAtOf = (value: unknown): string | undefined => {
   if (!text || text.length > 40 || Number.isNaN(Date.parse(text))) return undefined;
   return text;
 };
+/** 个体三维：只在形状对时保留前 3 项，坏值丢掉，不阻塞整条记录。 */
+function individualBonusesOf(value: unknown): { name: string; value: number }[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const list = value.slice(0, 3).flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const raw = item as Record<string, unknown>;
+    const name = typeof raw.name === 'string' ? raw.name.slice(0, 8) : '';
+    if (!name || typeof raw.value !== 'number' || !Number.isFinite(raw.value)) return [];
+    return [{ name, value: raw.value }];
+  });
+  return list.length ? list : undefined;
+}
 function parentInfoOf(value: unknown): EggParentInfo {
   const raw = record(value);
   // gameId 允许 0：抓包只拿到名字/窝时仍保留父母展示，不伪造物种。
   if (!Number.isSafeInteger(raw.gameId) || Number(raw.gameId) < 0) throw new Error('亲本物种无效');
+  const bonuses = individualBonusesOf(raw.individualBonuses);
   return { id: str(raw.id), gameId: Number(raw.gameId),
     name: typeof raw.name === 'string' ? raw.name.slice(0, 80) : '',
     nature: typeof raw.nature === 'string' ? raw.nature.slice(0, 32) : '',
     body: isDemandBody(raw.body) ? raw.body : '', voice: isDemandVoice(raw.voice) ? raw.voice : '',
+    ...(bonuses ? { individualBonuses: bonuses } : {}),
     ...(typeof raw.nestName === 'string' && raw.nestName ? { nestName: raw.nestName.slice(0, 40) } : {}),
     ...(raw.academy === true ? { academy: true } : {}) };
+}
+/** 认领前的家蛋侧标签：拆开时原样还原；形状不对就当没有（不阻塞同步）。 */
+function claimBackupOf(value: unknown): { nature: string; body: EggRecord['body']; voice: EggRecord['voice'] } | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  return {
+    nature: typeof raw.nature === 'string' ? raw.nature.slice(0, 32) : '',
+    body: isDemandBody(raw.body) ? raw.body : 'unknown',
+    voice: isDemandVoice(raw.voice) ? raw.voice : 'unknown',
+  };
 }
 /** 家园蛋的父母只作为展示与推算依据；形状不对直接拒绝，不保存半截数据。 */
 function parentsOf(value: unknown): EggParentsInfo | undefined {
@@ -107,9 +173,68 @@ function normalizeEgg(value: unknown, accountId: string, gameAccountKey: string,
     itemConfId: Number.isSafeInteger(raw.itemConfId) ? Number(raw.itemConfId) : undefined,
     weightGrams: typeof raw.weightGrams === 'number' && Number.isFinite(raw.weightGrams) ? raw.weightGrams : undefined,
     heightCm: typeof raw.heightCm === 'number' && Number.isFinite(raw.heightCm) ? raw.heightCm : undefined,
-    obtainedAt: obtainedAtOf(raw.obtainedAt) };
+    obtainedAt: obtainedAtOf(raw.obtainedAt),
+    capturedEggId: typeof raw.capturedEggId === 'string' && raw.capturedEggId.length > 0 && raw.capturedEggId.length <= 512
+      ? raw.capturedEggId : undefined,
+    // 只认显式 true：旧数据 / 老客户端没这个字段时保持 undefined（= 未下架）。
+    listingOptOut: raw.listingOptOut === true ? true : undefined,
+    // 待认领由客户端 reconcile 判定后随库存一起上来；只认显式 true，缺字段 = 不是待认领。
+    claimPending: raw.claimPending === true ? true : undefined,
+    ...(Number.isFinite(raw.claimArrivedAt) && Number(raw.claimArrivedAt) > 0
+      ? { claimArrivedAt: Number(raw.claimArrivedAt) } : {}),
+    ...(claimBackupOf(raw.claimBackup) ? { claimBackup: claimBackupOf(raw.claimBackup) } : {}) };
 }
 const active = (trade: WorkflowTrade) => trade.status === 'accepted';
+
+const hasMeasure = (value: number | undefined): boolean => typeof value === 'number' && Number.isFinite(value);
+/** 声音非空：`''`（未标）与 `'unknown'`（没解析出来）都算缺。 */
+const hasVoice = (egg: WorkflowEgg): boolean => !!egg.voice && egg.voice !== 'unknown';
+/** 性格非空：空串与纯空白都算缺。 */
+const hasNature = (egg: WorkflowEgg): boolean => !!egg.nature && !!egg.nature.trim();
+
+/**
+ * 父母里住在学院小窝（绿窝）的那只。
+ *
+ * 绿窝是「父母中只要有一只在学院小窝」就成立的事实（2026-11-25 用户截图：母本学院小窝 +
+ * 父本普通小窝，列表徽标没出来）。以前抓包入口把它绑在「恰好一只且它有性格」上，
+ * 入库漏写时也没有回填，所以这里给展示与合并回填共用一份判定。
+ */
+export function academyParentsOf(parents: EggParentsInfo | undefined): EggParentInfo[] {
+  return [parents?.mother, ...(parents?.fathers ?? [])]
+    .filter((parent): parent is EggParentInfo => !!parent && parent.academy === true);
+}
+export const hasAcademyParent = (parents: EggParentsInfo | undefined): boolean =>
+  academyParentsOf(parents).length > 0;
+
+/**
+ * 自动挂出：蛋在背包 **且** 信息完整（获得时间 / 蛋重 / 蛋高 / 声音 / 性格 五项都有）。
+ *
+ * 口径（用户 2026-11-24 定，别扩条件）：
+ * - 家园蛋一律不挂：蛋重要收进背包才知道，满重蛋挂出去会亏；
+ * - 只置 true，**永不置 false**——取消挂出只由用户手动下架或 reserved/transferred 状态机负责；
+ * - 尊重 `listingOptOut`（用户手动下架过，例如满重蛋、绿窝蛋要收藏）；
+ * - **只挂「本轮以后第一次采集确认出现」的蛋**（`autoListEligible`）。升级前就存在的行没有这个
+ *   标记：旧数据的 `listed=false` 分不清「还没挂过」还是「用户手动下架过」，一律当已下架，
+ *   不做批量回填（R4-01）。用户手动挂出不受这条限制（`list` 动作直接写 `listed`）；
+ * - 父母本**不是**门槛（后续支持用户自填）；
+ * - 已换出 / 不可交换按现有 `canCirculateEgg`（status available 且非异色/特殊）排除。
+ */
+export function autoListStock(state: EggWorkflowState, accountId: string, gameAccountKey: string): EggWorkflowState {
+  let changed = false;
+  const eggs = state.eggs.map(egg => {
+    if (egg.accountId !== accountId || egg.gameAccountKey !== gameAccountKey) return egg;
+    if (egg.listed || egg.listingOptOut || egg.missingFromCapture) return egg;
+    // 历史行（没有 autoListEligible）永远不自动挂出，见上面 R4-01 说明。
+    if (egg.autoListEligible !== true) return egg;
+    if ((egg.location ?? 'bag') !== 'bag') return egg;
+    if (!egg.obtainedAt || !hasMeasure(egg.weightGrams) || !hasMeasure(egg.heightCm) ||
+        !hasVoice(egg) || !hasNature(egg)) return egg;
+    if (!canCirculateEgg(egg)) return egg;
+    changed = true;
+    return { ...egg, listed: true };
+  });
+  return changed ? { ...state, eggs } : state;
+}
 const ownEgg = (state: EggWorkflowState, accountId: string, id: string) => {
   const egg = state.eggs.find(e => e.accountId === accountId && e.id === id);
   if (!egg) throw new Error('蛋不存在或不属于当前账号');
@@ -162,6 +287,171 @@ function checkParentCapacity(state:EggWorkflowState,trade:WorkflowTrade){
   }
 }
 
+/* ── 广场送蛋 + 免费领蛋（方案 V8 一期：数据与规则） ─────────────────── */
+
+const findGift = (state: EggWorkflowState, groupId: string, id: unknown): EggGift => {
+  const giftId = str(id);
+  const gift = (state.gifts ?? []).find(g => g.id === giftId && g.groupId === groupId);
+  if (!gift) throw new Error('送蛋记录不存在或小组不匹配');
+  return gift;
+};
+
+/** 撤回 / 放弃时把蛋放回可流通：`listed` 恢复成发布前的样子（方案 §11）。 */
+const releaseGiftEgg = (state: EggWorkflowState, gift: EggGift) => {
+  const egg = state.eggs.find(e => e.accountId === gift.giverAccountId && e.id === gift.eggId);
+  if (!egg) return;
+  egg.status = 'available';
+  egg.listed = gift.wasListed === true && canCirculateEgg(egg);
+};
+
+const bumpChance = (state: EggWorkflowState, accountId: string, delta: 1 | -1) => {
+  const current = chanceOf(state.chances, accountId);
+  state.chances = { ...(state.chances ?? {}), [accountId]: {
+    balance: Math.max(0, current.balance + delta * CHANCE_PER_TRADE),
+    grantedTotal: current.grantedTotal,
+    claimedTotal: Math.max(0, current.claimedTotal - delta * CHANCE_PER_TRADE),
+  } };
+};
+
+/**
+ * 送蛋三动作（方案 §8）：发布即锁蛋、领取先到先得且扣 1 次、撤回 / 放弃。
+ *
+ * 一期只做到「领取」：领取后的「已收到」结单（`gift-complete`）和界面一起在二期上，
+ * 所以现在没有把蛋记成 `transferred` 的入口，蛋保持 `reserved` 直到二期结单或放弃。
+ */
+function applyGiftAction(previous: EggWorkflowState, state: EggWorkflowState, groupId: string, actor: string,
+  action: Record<string, unknown>, now: number): EggWorkflowState {
+  const gifts = state.gifts ?? [];
+  if (action.type === 'gift-publish') {
+    const id = str(action.id);
+    if (gifts.some(g => g.id === id)) throw new Error('送蛋编号重复');
+    const egg = ownEgg(state, actor, str(action.eggId));
+    if ((egg.location ?? 'bag') !== 'bag') throw new Error('家园蛋不能送，先收进背包');
+    // 只拦「不可流通」：不要求五项齐全（五项齐全只是自动挂出的门槛）。
+    available(egg);
+    if (action.note !== undefined && (typeof action.note !== 'string' || action.note.length > 60)) throw new Error('说明最多 60 字');
+    const note = typeof action.note === 'string' ? action.note.trim() : '';
+    const gift: EggGift = {
+      id, groupId, giverAccountId: actor, eggId: egg.id, egg: { ...egg },
+      wasListed: egg.listed === true, status: 'open', createdAt: now,
+      ...(note ? { note } : {}),
+    };
+    egg.status = 'reserved';
+    egg.listed = false;
+    state.gifts = [...gifts, gift];
+    return state;
+  }
+  const gift = findGift(state, groupId, action.id);
+  if (action.type === 'gift-claim') {
+    const claimId = str(action.claimId);
+    // 同一笔领取重放：不重复扣次数。
+    if (gift.status === 'claimed' && gift.claimerAccountId === actor && gift.claimId === claimId) return previous;
+    const blocked = giftClaimBlockedReason(gift, actor);
+    if (blocked) throw new Error(blocked);
+    const chance = chanceOf(state.chances, actor);
+    if (chance.balance < 1) throw new Error('免费领蛋次数不足，先换一单 +1 次');
+    const egg = state.eggs.find(e => e.accountId === gift.giverAccountId && e.id === gift.eggId);
+    if (!egg || egg.status !== 'reserved') throw new Error('这颗蛋已经不在广场上了');
+    bumpChance(state, actor, -1);
+    gift.status = 'claimed';
+    gift.claimId = claimId;
+    gift.claimedAt = now;
+    gift.claimerAccountId = actor;
+    if (action.gameAccountKey !== undefined) gift.claimGameAccountKey = str(action.gameAccountKey);
+    return state;
+  }
+  // gift-cancel：送出方撤回（领取前）/ 领取人放弃（领取后，次数退回、蛋回广场）。
+  if (actor === gift.giverAccountId) {
+    if (gift.status === 'cancelled') return previous;
+    if (gift.status !== 'open') throw new Error('这颗蛋已经被领走了，7 天后才能回收');
+    releaseGiftEgg(state, gift);
+    gift.status = 'cancelled';
+    gift.cancelledAt = now;
+    return state;
+  }
+  if (gift.claimerAccountId === actor && gift.status === 'claimed') {
+    bumpChance(state, actor, 1);
+    gift.status = 'open';
+    gift.releasedAt = now;
+    gift.abandonCount = (gift.abandonCount ?? 0) + 1;
+    delete gift.claimId; delete gift.claimedAt; delete gift.claimerAccountId; delete gift.claimGameAccountKey;
+    return state;
+  }
+  throw new Error('无权撤回这颗送蛋');
+}
+
+/**
+ * 结单：两侧确认位齐了才走到这里（老单单边结单也走这里）。
+ * done、两侧蛋 transferred、两边需求 +1、双方各 +1 次（发次数见 `grantChances`）。
+ */
+function finalizeTrade(state: EggWorkflowState, trade: WorkflowTrade, demand: EggDemand, now: number) {
+  trade.status = 'done';
+  trade.completedAt = now;
+  demand.fulfilled++;
+  if (trade.returnDemandId) {
+    const backDemand = state.demands.find(d => d.id === trade.returnDemandId);
+    if (!backDemand) throw new Error('换回的需求不存在');
+    backDemand.fulfilled++;
+    if (backDemand.fulfilled >= backDemand.quantity) {
+      backDemand.status = 'fulfilled';
+      state.trades.filter(t => (t.demandId === backDemand.id || t.returnDemandId === backDemand.id) && t.status === 'proposed')
+        .forEach(t => { t.status = 'cancelled'; });
+    }
+  }
+  if (demand.fulfilled >= demand.quantity) {
+    demand.status = 'fulfilled';
+    state.trades.filter(t => (t.demandId === demand.id || t.returnDemandId === demand.id) && t.status === 'proposed')
+      .forEach(t => { t.status = 'cancelled'; });
+  }
+  for (const egg of state.eggs) {
+    if (same(egg, trade.give) || (trade.receive && same(egg, trade.receive))) {
+      egg.status = 'transferred';
+      egg.listed = false;
+    }
+  }
+  grantChances(state, trade, now);
+}
+
+/**
+ * 结单时发次数（方案 §4.4 / §10.1 #3 #6 #16）。
+ *
+ * 三条防刷都只靠 state 里的标记，一期不落表：
+ * 1. `trade.chanceGranted`：同一笔结单重放不再发；
+ * 2. `exchangeKeyOf(...)`：同一对蛋（取消后重开）只发一次；
+ * 3. 同一对成员 24h 内只给 1 次 —— 结单照常、次数不发（`chanceSuppressed = 'pair-24h'`）。
+ *
+ * 老单（R7）只有一颗蛋，既证明不了双向也凑不出对，**一发都不发**。
+ */
+function grantChances(state: EggWorkflowState, trade: WorkflowTrade, now: number) {
+  if (!trade.receive || trade.legacy) return;
+  if (trade.chanceGranted) return;
+  const exchangeKey = exchangeKeyOf(trade.give, trade.receive);
+  if (state.trades.some(t => t.id !== trade.id && t.chanceGranted === true && t.receive &&
+      exchangeKeyOf(t.give, t.receive) === exchangeKey)) {
+    trade.chanceSuppressed = 'egg-pair';
+    return;
+  }
+  const pair = memberPairKeyOf(trade.supplierAccountId, trade.demanderAccountId);
+  if (state.trades.some(t => t.id !== trade.id && t.status === 'done' &&
+      memberPairKeyOf(t.supplierAccountId, t.demanderAccountId) === pair &&
+      (t.completedAt ?? 0) > now - PAIR_CHANCE_WINDOW_MS)) {
+    trade.chanceSuppressed = 'pair-24h';
+    return;
+  }
+  const chances = { ...(state.chances ?? {}) };
+  for (const accountId of [trade.supplierAccountId, trade.demanderAccountId]) {
+    const current = chanceOf(chances, accountId);
+    chances[accountId] = {
+      balance: current.balance + CHANCE_PER_TRADE,
+      grantedTotal: current.grantedTotal + CHANCE_PER_TRADE,
+      claimedTotal: current.claimedTotal,
+    };
+  }
+  state.chances = chances;
+  trade.chanceGranted = true;
+  trade.chanceGrantedAt = now;
+}
+
 /** All identity arguments come from authenticated API; rejects raw field/role spoofing. */
 export function applyEggAction(previous: EggWorkflowState, groupId: string, actor: string, input: unknown, now: number): EggWorkflowState {
   const action = record(input);
@@ -176,6 +466,10 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
   if (action.type === 'publish-batch') {
     if (!Array.isArray(action.demands) || !action.demands.length || action.demands.length > 50) throw new Error('每批请选择1至50项需求');
     return action.demands.reduce((next,demand)=>applyEggAction(next,groupId,actor,{type:'publish',demand},now),state);
+  }
+  // 广场送蛋：发布 / 领取 / 撤回·放弃（方案 V8 一期只有数据与规则，界面在二期）。
+  if (action.type === 'gift-publish' || action.type === 'gift-claim' || action.type === 'gift-cancel') {
+    return applyGiftAction(previous, state, groupId, actor, action, now);
   }
   const getDemand = (id: unknown) => {
     const demand = state.demands.find(d => d.id === str(id));
@@ -232,6 +526,10 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         }
         // 新抓包偶尔缺时间时，保留已经记录过的获得时间。
         if (!egg.obtainedAt) egg.obtainedAt = before.obtainedAt;
+        if (!egg.capturedEggId) egg.capturedEggId = before.capturedEggId;
+        if (egg.listingOptOut === undefined && before.listingOptOut === true) egg.listingOptOut = true;
+        // 自动挂出资格跟行走：老行没有这个字段就永远没有（历史数据 = 已下架，R4-01）。
+        if (before.autoListEligible === true) egg.autoListEligible = true;
         if (!egg.parents) egg.parents = before.parents;
         if (egg.heightCm === undefined) egg.heightCm = before.heightCm;
         if (egg.weightGrams === undefined) egg.weightGrams = before.weightGrams;
@@ -239,19 +537,103 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
         const confirmed = Math.max(egg.lastConfirmedAt ?? 0, before.lastConfirmedAt ?? 0);
         if (confirmed > 0) egg.lastConfirmedAt = confirmed;
         egg.listed = before.listed && canCirculateEgg(egg);
+      } else {
+        // 本次采集第一次出现的蛋：从这一刻起允许自动挂出；历史行没有这个标记，永不自动挂出。
+        egg.autoListEligible = true;
       }
+    }
+    // 历史蛋可能只写了父母、漏了绿窝标记（rc 入库早期 / 抓包把绿窝绑在性格上）：
+    // 按父母回填 true；已有值（含用户手动取消的 false）一律不动。
+    for (const egg of accepted) {
+      if (egg.greenNest === undefined && hasAcademyParent(egg.parents)) egg.greenNest = true;
     }
     for (const egg of old) {
       if (sideApplied(egg) && sideComplete(egg) && !accepted.some(n => n.id === egg.id)) {
         egg.missingFromCapture = true; egg.listed = false;
       }
     }
-    state.eggs = state.eggs.filter(e => !(e.accountId === actor && e.gameAccountKey === key) || !sideApplied(e) ||
-      (!accepted.some(n => n.id === e.id) && (!sideComplete(e) || e.status === 'reserved' || e.status === 'transferred')));
+    state.eggs = state.eggs.filter(e => {
+      if (!(e.accountId === actor && e.gameAccountKey === key)) return true;
+      // 同一实例被本次快照明确接手（家园蛋收进背包后仍用原 id）：旧行不能再留第二份。
+      if (accepted.some(n => n.id === e.id)) return false;
+      if (!sideApplied(e)) return true;
+      return !sideComplete(e) || e.status === 'reserved' || e.status === 'transferred';
+    });
     state.eggs.push(...accepted);
     if (appliedBag) state.watermarks[sideKey('bag')] = timestamp;
     if (appliedHome) state.watermarks[sideKey('home')] = timestamp;
-    return state;
+    // 合并/状态继承之后才自动挂出：保留 reserved/transferred 的 listed=false，也只补 true。
+    return autoListStock(state, actor, key);
+  }
+  /**
+   * F5（2026-11-25）：待认领家蛋的四个出口——认领 / 作废 / 拆开 / 手动标注父母本。
+   * 家蛋行认领之前不会被删（保底），所以必须给这些显式动作，否则会一直挂着。
+   */
+  if (action.type === 'claim-egg' || action.type === 'claim-dismiss' ||
+      action.type === 'claim-split' || action.type === 'label-parents') {
+    const egg = ownEgg(state, actor, str(action.id));
+    if (action.type === 'claim-dismiss') {
+      if (!egg.claimPending) throw new Error('只有待认领的家蛋可以作废');
+      state.eggs = state.eggs.filter(e => e !== egg);
+      return state;
+    }
+    if (action.type === 'claim-split') {
+      const bagId = egg.capturedEggId;
+      if (!bagId) throw new Error('这颗蛋没有认领记录');
+      if (state.eggs.some(e => e.accountId === actor && e.id === bagId)) throw new Error('背包蛋已经存在');
+      const backup = egg.claimBackup;
+      const bag: WorkflowEgg = { ...egg, id: bagId, body: 'unknown', voice: 'unknown',
+        provenance: 'unknown', confidence: 'unknown', labelSource: 'unknown',
+        parents: undefined, greenNest: undefined, capturedEggId: undefined, claimPending: undefined,
+        claimBackup: undefined, claimArrivedAt: now, status: 'available', listed: false, location: 'bag' };
+      const home: WorkflowEgg = { ...egg,
+        nature: backup?.nature ?? '', body: backup?.body ?? 'unknown', voice: backup?.voice ?? 'unknown',
+        obtainedAt: undefined, heightCm: undefined, weightGrams: undefined, itemConfId: undefined,
+        capturedEggId: undefined, claimBackup: undefined, claimArrivedAt: undefined,
+        claimPending: true, listed: false, location: 'home' };
+      state.eggs = state.eggs.map(e => e === egg ? home : e);
+      state.eggs.push(bag);
+      state.orders = Object.fromEntries(Object.entries(state.orders)
+        .map(([key, ids]) => [key, ids.filter(id => id !== bagId)]));
+      return state;
+    }
+    if (action.type === 'label-parents') {
+      const mother = parentInfoOf(record(action.mother));
+      const father = parentInfoOf(record(action.father));
+      if (mother.id === father.id) throw new Error('父母不能是同一只');
+      egg.parents = { mother, fathers: [father], confirmed: false };
+      egg.labelSource = 'manual';
+      egg.confidence = 'manual';
+      if (egg.greenNest === undefined) egg.greenNest = hasAcademyParent(egg.parents);
+      return state;
+    }
+    // claim-egg：保留家蛋 id / 父母 / 自产，补上背包的时间、蛋重、蛋高、性格。
+    const bagId = str(action.capturedEggId);
+    if (!egg.claimPending || egg.location !== 'home') throw new Error('只有待认领的家蛋可以认领');
+    const bag = state.eggs.find(e => e.accountId === actor && e.id === bagId);
+    if (!bag) throw new Error('要认领的背包蛋不存在');
+    if ((bag.location ?? 'bag') !== 'bag') throw new Error('只能认领背包里的蛋');
+    if (egg.eggGameId !== bag.eggGameId) throw new Error('物种不一致，不能认领');
+    if (egg.status !== 'available' || bag.status !== 'available') throw new Error('蛋正在换蛋中，先取消任务再认领');
+    const merged: WorkflowEgg = { ...egg,
+      nature: bag.nature || egg.nature,
+      body: bag.body !== 'unknown' ? bag.body : egg.body,
+      voice: bag.voice !== 'unknown' ? bag.voice : egg.voice,
+      kind: bag.kind ?? egg.kind,
+      specialCategory: bag.specialCategory ?? egg.specialCategory,
+      obtainedAt: bag.obtainedAt ?? egg.obtainedAt,
+      heightCm: bag.heightCm ?? egg.heightCm,
+      weightGrams: bag.weightGrams ?? egg.weightGrams,
+      itemConfId: bag.itemConfId ?? egg.itemConfId,
+      location: 'bag', status: bag.status, listed: false,
+      capturedEggId: bagId, claimPending: undefined, claimArrivedAt: undefined, missingFromCapture: undefined,
+      claimBackup: { nature: egg.nature, body: egg.body, voice: egg.voice } };
+    const confirmed = Math.max(egg.lastConfirmedAt ?? 0, bag.lastConfirmedAt ?? 0);
+    if (confirmed > 0) merged.lastConfirmedAt = confirmed; else delete merged.lastConfirmedAt;
+    state.eggs = state.eggs.map(e => e === egg ? merged : e).filter(e => e !== bag);
+    state.orders = Object.fromEntries(Object.entries(state.orders)
+      .map(([key, ids]) => [key, ids.filter(id => id !== bagId)]));
+    return autoListStock(state, actor, merged.gameAccountKey);
   }
   if (action.type === 'list' || action.type === 'label' || action.type === 'label-many') {
     if (action.type === 'list') {
@@ -259,24 +641,46 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
       if (typeof action.listed !== 'boolean') throw new Error('挂出状态无效');
       if (action.listed) available(egg);
       egg.listed = action.listed;
+      // 手动下架 = 明确表达「别再自动挂上」；手动挂出 = 收回这条表达。
+      if (action.listed) delete egg.listingOptOut;
+      else egg.listingOptOut = true;
     } else {
       if (typeof action.nature !== 'string' || action.nature.length > 32 || !isDemandBody(action.body) || !isDemandVoice(action.voice)) throw new Error('标注无效');
       if (action.greenNest !== undefined && typeof action.greenNest !== 'boolean') throw new Error('绿窝标注无效');
-      const targets = action.type === 'label'
-        ? [ownEgg(state, actor, str(action.id))]
-        : (() => {
-            if (!Number.isSafeInteger(action.eggGameId) || Number(action.eggGameId) <= 0) throw new Error('蛋物种无效');
-            const matched = state.eggs.filter(egg => egg.accountId === actor && egg.eggGameId === Number(action.eggGameId));
-            if (!matched.length) throw new Error('同类蛋不存在');
-            return matched;
-          })();
-      for (const egg of targets) {
+      if (action.type === 'label') {
+        const egg = ownEgg(state, actor, str(action.id));
         available(egg);
         Object.assign(egg, {
           nature: action.nature, body: action.body, voice: action.voice,
           ...(action.greenNest === undefined ? {} : { greenNest: action.greenNest }),
           confidence: 'manual', labelSource: 'manual',
         });
+      } else {
+        /**
+         * 「标注所有同类蛋」的作用域 = 当前账号 + 当前游戏角色（`gameAccountKey`）+ 同物种（R4-10）。
+         *
+         * 以前只按 `accountId + eggGameId` 取全部同种蛋：会改到用户在蛋仓里根本看不见的另一个
+         * 角色的蛋（界面已经宣布「蛋仓按角色查看」）。现在带上角色就只改这个角色；旧客户端不带
+         * `gameAccountKey` 时保持原来的全角色行为，不破坏兼容。
+         *
+         * 另外两条（R4-10）：
+         * - 绿窝是「某一颗来自学院小窝」的逐颗事实，**不随批量写**（这里忽略 `action.greenNest`）；
+         * - 换蛋中 / 已换出 / 不可交换的蛋跳过，不整批回滚（某颗被占用不该让整批失败）。
+         */
+        if (!Number.isSafeInteger(action.eggGameId) || Number(action.eggGameId) <= 0) throw new Error('蛋物种无效');
+        const role = action.gameAccountKey === undefined ? undefined : str(action.gameAccountKey);
+        const matched = state.eggs.filter(egg => egg.accountId === actor && egg.eggGameId === Number(action.eggGameId) &&
+          (role === undefined || egg.gameAccountKey === role));
+        if (!matched.length) throw new Error('同类蛋不存在');
+        const editable = matched.filter(canCirculateEgg);
+        // 一颗都改不了：不写库、不推进版本（空操作；服务端按 next === previous 判定）。
+        if (!editable.length) return previous;
+        for (const egg of editable) {
+          Object.assign(egg, {
+            nature: action.nature, body: action.body, voice: action.voice,
+            confidence: 'manual', labelSource: 'manual',
+          });
+        }
       }
     }
     return state;
@@ -402,31 +806,38 @@ export function applyEggAction(previous: EggWorkflowState, groupId: string, acto
     egg.status='reserved';egg.listed=false;
     if(supplier){trade.give={...egg};trade.giveEggId=egg.id;}else{trade.receive={...egg};trade.returnEggId=egg.id;}
     state.eggs=state.eggs.filter(e=>!(e.status==='available'&&e.missingFromCapture));
-  } else if (action.type === 'receive') {
-    if (actor !== trade.demanderAccountId) throw new Error('仅需求方可以确认收到');
+  } else if (action.type === 'receive' || action.type === 'confirm-return') {
+    const fromDemander = action.type === 'receive';
+    if (fromDemander ? actor !== trade.demanderAccountId : actor !== trade.supplierAccountId) {
+      throw new Error(fromDemander ? '仅需求方可以确认收到' : '仅换出方可以确认收到');
+    }
     if (trade.status === 'done') return previous;
     if (trade.status !== 'accepted') throw new Error('任务尚未接受');
+    // 两侧确认套同一套前置条件（方案 §2.6）：该上窝的已上窝、该分配现蛋的已分配。
     if (((trade.line||trade.legacy)&&!trade.placed)||(trade.returnLine&&!trade.returnPlaced)) throw new Error('现孵任务尚未上窝');
     if((trade.line&&!trade.giveEggId)||(trade.returnLine&&!trade.returnEggId))throw new Error('请现孵方先分配现蛋');
-    trade.status = 'done';trade.completedAt=now; demand.fulfilled++;
-    if (trade.returnDemandId) {
-      const backDemand = getDemand(trade.returnDemandId);
-      backDemand.fulfilled++;
-      if (backDemand.fulfilled >= backDemand.quantity) {
-        backDemand.status = 'fulfilled';
-        state.trades.filter(t => (t.demandId === backDemand.id || t.returnDemandId === backDemand.id) && t.status === 'proposed').forEach(t => { t.status = 'cancelled'; });
-      }
+    // 老单（规则 R7）：数据里只有一颗蛋，换出方那一侧没有蛋可确认，也不发次数。
+    const legacySingle = !trade.receive || trade.legacy === true;
+    if (!fromDemander && legacySingle) throw new Error('老任务没有换回的蛋，无需确认');
+    // 同一侧重复点：空操作，不推进 version。
+    if (fromDemander ? trade.giveConfirmedAt != null : trade.returnConfirmedAt != null) return previous;
+    if (fromDemander) trade.giveConfirmedAt = now;
+    else trade.returnConfirmedAt = now;
+    // 老单单边结单；新单要两个确认位都齐（方案 §2.1）。
+    if (legacySingle || (trade.giveConfirmedAt != null && trade.returnConfirmedAt != null)) {
+      finalizeTrade(state, trade, demand, now);
     }
-    if (demand.fulfilled >= demand.quantity) {
-      demand.status = 'fulfilled';
-      state.trades.filter(t => (t.demandId === demand.id || t.returnDemandId === demand.id) && t.status === 'proposed').forEach(t => { t.status = 'cancelled'; });
-    }
-    for (const egg of state.eggs) if (same(egg, trade.give) || (trade.receive && same(egg, trade.receive))) { egg.status = 'transferred'; egg.listed = false; }
   } else if (action.type === 'cancel') {
     if (trade.status === 'done') throw new Error('已完成任务不可取消');
+    // 已有一方确认过：蛋已经交出去了，取消时直接 transferred，不能复活（方案 §2.2）。
+    const halfDone = trade.giveConfirmedAt != null || trade.returnConfirmedAt != null;
     trade.status = 'cancelled';
-    for (const egg of state.eggs) if (egg.status === 'reserved' && (same(egg, trade.give) || (trade.receive && same(egg, trade.receive))) &&
-      !state.trades.some(t => active(t) && (same(egg, t.give) || (t.receive && same(egg, t.receive))))) egg.status = 'available';
+    for (const egg of state.eggs) {
+      if (!(same(egg, trade.give) || (trade.receive && same(egg, trade.receive)))) continue;
+      if (halfDone) { egg.status = 'transferred'; egg.listed = false; continue; }
+      if (egg.status === 'reserved' &&
+        !state.trades.some(t => active(t) && (same(egg, t.give) || (t.receive && same(egg, t.receive))))) egg.status = 'available';
+    }
     state.eggs = state.eggs.filter(egg => !(egg.status === 'available' && egg.missingFromCapture));
   } else throw new Error('不支持的操作');
   return state;

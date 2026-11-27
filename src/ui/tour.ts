@@ -1,12 +1,19 @@
 /**
- * 新手引导（2026-11-01 第二轮：按场景分段，不再固定一条 15 步主线）。
+ * 新手引导（2026-11-25 第三轮：v5「任务式」大纲）。
  *
- * 分段规则：
- * - `start`：首次打开只讲「先采集一次数据」，采集/导入成功后收尾提示「教程」入口；
- * - 其余分段跟着页签走：用户第一次进入看板 / 收集 / 小组 / 家园 / 我的时各弹一次；
+ * 这一版不再做「界面导览」，而是带人做完一条任务线：
+ *   把数据导进来 → 看到自己的缺口 → 知道怎么补 → 知道蛋在哪、去哪换。
+ *
+ * 结构：
+ * - `start`：首启主线 6 步（5 步内容 + 收尾），跨「我的 · 游戏数据 → 看板 → 家园」三个页面；
+ *   第 2 步按平台二选一（有采集桥讲「开始采集」，网页讲「导入游戏数据」），由 `startStepsFor` 决定；
+ * - 其余分段跟着页签走：第一次进入看板 / 收集 / 附近 / 换蛋 / 家园时各弹一次；
  * - 顶部「教程」按钮 = 直接重播**当前页**那一段（文字教程已下线）。
  *
- * 已读按**分段 + 版本号**记：以后某段步骤大改，把 `TOUR_VERSION` +1 即可让该段再弹一次。
+ * 条件步骤：只有「已登录 + 已入组 / 有数据」才渲染的锚点（蛋仓、换蛋广场、雷达等）标
+ * `skipWhenMissing`，找不到锚点时由浮层自动跳到下一步，不把卡片飘在屏幕中间。
+ *
+ * 已读按**分段 + 版本号**记：改文案或步骤时把 `TOUR_VERSION` +1，让老用户再看一次。
  */
 import { readShared, syncShared, writeShared } from '../api/sharedPrefs';
 
@@ -14,10 +21,16 @@ import { readShared, syncShared, writeShared } from '../api/sharedPrefs';
 const LEGACY_TOUR_SEEN_KEY = 'roco.tourSeen';
 const TOUR_SEEN_PREFIX = 'roco.tourSeen.';
 
-/** 引导版本：改任一分段的步骤时 +1（1 = 固定 15 步；2 = 按场景分段；3 = 首启改为「开始采集」） */
-export const TOUR_VERSION = '4';
+/**
+ * 引导版本：改任一分段的步骤时 +1（4 = 按场景分段；5 = 任务式）。
+ *
+ * 2026-11-27 换蛋段补了「把游戏账号绑到小组」一步，但**有意不 +1**：
+ * 这一步只对「先导入后入组 / 从没导入过」的人有用，不值得让所有人重走一遍整段；
+ * 老用户仍是 22 步，新用户拿到 23 步。
+ */
+export const TOUR_VERSION = '5';
 
-/** 目标元素上挂的锚点属性；找不到时退化成居中说明卡。 */
+/** 目标元素上挂的锚点属性；找不到时退化成居中说明卡（除非该步标了 skipWhenMissing）。 */
 export const TOUR_ANCHOR_ATTR = 'data-tour';
 
 /** 收尾「从教程重看」这一步的固定 id：跳过时会先跳到它，再点一次才真正关闭。 */
@@ -41,23 +54,34 @@ export interface TourStep {
   id: string;
   title: string;
   body: string;
+  /** 要高亮的元素的 data-tour 值（与 selector 二选一，selector 优先） */
+  anchor?: string;
+  /**
+   * 直接用 CSS 选择器定位（2026-11-25）：页面里已有稳定的 `data-testid` 时用它，
+   * 这样不必为了教程去改别人的组件。只允许 `[data-tour="..."]` / `[data-testid="..."]`，
+   * 由 `tour.anchors.test.ts` 保证。
+   */
+  selector?: string;
+  /**
+   * 条件步骤（2026-11-25）：锚点只在「已登录 + 已入组 / 有数据」时渲染。
+   * 找不到锚点时自动跳下一步，不在空位置飘一张居中说明卡。
+   */
+  skipWhenMissing?: boolean;
   /** 进入该步骤前要切到的页签（不填 = 停在当前页） */
   page?: TourPage;
   /** 切到收集页的某个视图（隐含 page = collection） */
   collection?: TourCollection;
   /** 切到「我的」的某个分区（隐含 page = profile） */
   profileSection?: TourProfileSection;
-  /** 家园的两个分页由本机偏好记住，不属于导航合同 */
-  homeView?: 'nests' | 'demands';
-  /** 要高亮的元素的 data-tour 值 */
-  anchor?: string;
-  /** 本机还没有导入数据时停在这一步，导入成功后自动继续（「先导入一次」那步） */
+  /** 家园的三个分页由本机偏好记住，不属于导航合同 */
+  homeView?: 'nests' | 'demands' | 'stock';
+  /** 本机还没有导入数据时停在这一步，导入成功后自动继续 */
   waitForImport?: boolean;
   /** 收尾的「从教程重看」一步：按钮文案为「知道了」 */
   hint?: boolean;
 }
 
-/** 收尾步：高亮顶部「教程」，告诉用户随时可以重看引导（只在 start 段保留，其余分段不再重复）。 */
+/** 收尾步：高亮顶部「教程」，告诉用户随时可以重看引导（只在 start 段保留）。 */
 const hintStep = (body: string): TourStep => ({
   id: TOUR_HINT_STEP_ID,
   title: '随时能重看引导',
@@ -66,128 +90,248 @@ const hintStep = (body: string): TourStep => ({
   hint: true,
 });
 
-/**
- * 分段步骤。
- * - `start` 只确保「第一次完整导入一次数据」，其余功能等用户进页面再讲；
- * - 页签分段沿用原来的讲解，只在开头补一次明确的页面跳转，保证从任意页重播都能落到正确位置。
- */
-export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
-  start: [
-    {
-      id: 'start-profile',
-      title: '先采集一次游戏数据',
-      body: '第一次用，先到「我的 · 游戏数据」采集一次。看板的缺口、推荐种公、配窝建议都按这份数据算，没采集等于什么都看不到。',
-      anchor: 'tab-profile',
-    },
-    {
+/** 首启第 2 步要按环境二选一：有没有原生采集桥、是不是桌面壳。 */
+export interface TourStartEnv {
+  hasCapture: boolean;
+  desktop: boolean;
+}
+
+/** 读当前环境的采集能力：安卓壳 / 桌面 Npcap 都挂 `window.RocoCapture`，网页版没有。 */
+export function detectStartEnv(): TourStartEnv {
+  if (typeof window === 'undefined') return { hasCapture: false, desktop: false };
+  // 本文件要被 e2e 工程单独引用（只收自包含模块），所以不用 nativeCollector 里的
+  // `declare global` 增强，按结构读一下就好。
+  const bridge = window as unknown as { RocoCapture?: unknown; rocoDesktop?: unknown };
+  return { hasCapture: Boolean(bridge.RocoCapture), desktop: Boolean(bridge.rocoDesktop) };
+}
+
+/** 首启第 2 步：有采集桥就讲采集，没有就讲导入（网页版没有「开始采集」按钮）。 */
+function collectStep(env: TourStartEnv): TourStep {
+  if (!env.hasCapture) {
+    return {
+      id: 'start-collect',
+      title: '点「导入游戏数据」',
+      body: '我们到「我的 · 游戏数据」：点「导入游戏数据」，选采集器导出的 .pcap 或备份 .json；导入成功后这里会自动继续。',
+      profileSection: 'data',
+      anchor: 'profile-import',
+      waitForImport: true,
+    };
+  }
+  if (env.desktop) {
+    return {
       id: 'start-collect',
       title: '点「开始采集」',
-      body: '在安卓版小布助手里点「开始采集」，按提示同意 VPN 授权，再打开游戏依次看一遍精灵仓库、背包与蛋仓。进度走满会自动停止、保存并导入；采集成功后会自动继续。',
+      body: '我们到「我的 · 游戏数据」：先选抓包网卡（默认自动），再点「开始采集」；打开游戏走一遍精灵仓库、背包与蛋仓，进度走满会自动停止、保存并导入。',
       profileSection: 'data',
       anchor: 'collector-start',
       waitForImport: true,
+    };
+  }
+  return {
+    id: 'start-collect',
+    title: '点「开始采集」',
+    body: '我们到「我的 · 游戏数据」：点「开始采集」，同意 VPN 授权 → 打开游戏看一遍精灵仓库、背包与蛋仓；进度走满会自动停止、保存并导入。',
+    profileSection: 'data',
+    anchor: 'collector-start',
+    waitForImport: true,
+  };
+}
+
+/**
+ * 首启主线：5 步内容 + 收尾。
+ * `TOUR_SEGMENTS.start` 用本机环境渲染一份并缓存，App 仍然只取 `TOUR_SEGMENTS[segment]`。
+ */
+export function startStepsFor(env: TourStartEnv): TourStep[] {
+  return [
+    {
+      id: 'start-profile',
+      title: '先让数据进来',
+      body: '这个工具的一切都按你导入的那份数据算，没导入等于全空。先花一分钟把数据导进来（顶部「我的」页签）。',
+      // 顶部页签是动态渲染的（data-tour={`tab-${id}`}），框整条导航比框单个页签稳
+      anchor: 'tab-nav',
     },
-    hintStep('数据采集好后，看板会按它算缺口。随时点顶部「教程」，能重看当前页的分步引导；还没采集的话，也可以回「我的 · 游戏数据」再采一次。'),
-  ],
+    collectStep(env),
+    {
+      id: 'start-gap',
+      title: '这就是你的缺口',
+      body: '我们跳到「看板」：这块「种公全收集」和右边「母本全收集」就是你的缺口；上面的「追满分 / 追双牌」决定怎么算达标。',
+      page: 'dashboard',
+      selector: '[data-testid="progress-card-action-stud"]',
+    },
+    {
+      id: 'start-fix',
+      title: '点开一张卡看「怎么补」',
+      body: '点开任意一张配窝卡 →「怎么补」：本号直配、跨号传蛋、组里谁能补。',
+      anchor: 'dashboard-nest',
+    },
+    {
+      id: 'start-egg',
+      title: '你孵的蛋在这儿',
+      body: '我们跳到「家园」：右上角「蛋仓」要登录并加入小组才看得到；自产 / 绿窝会打标，点开能标注和挂出。',
+      page: 'home',
+      homeView: 'nests',
+      selector: '[data-testid="home-egg-stock"]',
+    },
+    hintStep(
+      '点顶部「教程」能重看当前页的引导；想从头再走一遍，到「我的 · 游戏数据」点入门卡上的「教程」。',
+    ),
+  ];
+}
+
+/** 首启按环境缓存一份：同一环境里 `TOUR_SEGMENTS.start` 始终是同一个数组。 */
+let cachedStart: { key: string; steps: TourStep[] } | null = null;
+
+function cachedStartSteps(): TourStep[] {
+  const env = detectStartEnv();
+  const key = `${env.hasCapture}:${env.desktop}`;
+  if (!cachedStart || cachedStart.key !== key) cachedStart = { key, steps: startStepsFor(env) };
+  return cachedStart.steps;
+}
+
+/**
+ * 分段步骤。
+ * - `start` 只保证「第一次完整导一次数据 + 知道缺口和蛋仓在哪」；
+ * - 页内分段讲这一页的进阶用法（目标模式、覆盖矩阵、蛋仓细节、换蛋流程…）。
+ */
+export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
+  get start() {
+    return cachedStartSteps();
+  },
   dashboard: [
     {
       id: 'dashboard-target',
-      title: '先定种公目标',
-      body: '全站按这里的当前模式和奖牌组合计算。四种组合选一项；追满分时声音须达到 +100 / -100，追双牌时按对应声音奖牌判定。',
+      title: '先定你的目标',
+      body: '追满分看声音 ±100，追双牌看声音奖牌；四档组合决定种公覆盖和配窝怎么算。右上角账号可多选，只看某几个号。',
       page: 'dashboard',
       anchor: 'dashboard-target',
     },
     {
-      id: 'dashboard-actions',
-      title: '今天该补什么',
-      body: '这里按推荐性格列出还缺的母本与种公，点进去能看到具体缺哪几个蛋组。',
-      anchor: 'dashboard-actions',
-    },
-    {
-      id: 'dashboard-nest',
-      title: '配窝建议',
-      body: '按账号给出 11 个窝怎么摆、谁和谁配、每条线在补什么。摆位按游戏的窝尺寸与配对距离画。',
-      anchor: 'dashboard-nest',
+      id: 'dashboard-transfer',
+      title: '跨号传蛋',
+      body: '多号时这里会列出「跨号传蛋」：窝记在出蛋号，记得去那个号勾占窝。',
+      selector: '[data-testid="transfer-task-list"]',
+      skipWhenMissing: true,
     },
   ],
   collection: [
     {
       id: 'collection-kinds',
       title: '收集页三个视图',
-      body: '母本全收集看还缺哪些蛋，种公全收集看覆盖度，精灵背包看自己现有的精灵。',
+      body: '精灵背包（现有的）/ 母本（还缺哪些蛋）/ 种公（覆盖度）。',
       collection: { kind: 'mothers', status: 'missing' },
       anchor: 'collection-kinds',
     },
     {
-      id: 'collection-studs',
-      title: '覆盖度矩阵',
-      body: '每个蛋组 × 每个要收的性格，绿色代表已有种公能覆盖。点一行展开看具体缺哪只。',
-      collection: { kind: 'studs', view: 'coverage' },
-      anchor: 'collection-studs',
-    },
-    {
       id: 'collection-mothers',
-      title: '母本全收集',
-      body: '按蛋统计还缺哪颗、缺什么性格。点开一颗蛋能看到组里谁有、怎么补最快。',
+      title: '母本三种状态',
+      body: '未收集（含「其他号可补」）/ 收集中（计划·需求·已接单）/ 已收集；点未收集的卡进「怎么补」。',
       collection: { kind: 'mothers', status: 'missing' },
       anchor: 'collection-mothers',
+    },
+    {
+      id: 'collection-studs',
+      title: '覆盖矩阵怎么读',
+      body: '绿 = 这个蛋组已有达标种公，点一行展开看缺哪只。',
+      collection: { kind: 'studs', view: 'coverage' },
+      anchor: 'collection-studs',
     },
   ],
   nearby: [
     {
-      id: 'nearby-radar',
-      title: '附近雷达',
-      body: '采集时把视野内的野生精灵画成雷达：圆点是精灵，越靠外越远。橙色/紫/粉色点代表稀有，红圈代表可主动提醒。',
+      id: 'nearby-status',
+      title: '附近在哪',
+      body: '在「我的 · 游戏数据 · 附近」：顶部筛选 全部/稀有/需求/目标，可切地图或列表。',
       page: 'nearby',
-      anchor: 'nearby-radar',
+      selector: '[data-testid="nearby-status"]',
     },
     {
-      id: 'nearby-filters',
-      title: '只看你要找的',
-      body: '顶部「稀有」只看稀有精灵，「需求」只看需求中心在找的种族，「目标」只蹲你点名勾选的那几只。普通精灵离开视野即清理，高价值会保留 10 分钟。',
-      anchor: 'nearby-filters',
+      id: 'nearby-radar',
+      title: '雷达怎么读',
+      body: '圆点 = 精灵，越靠外越远；橙 / 紫 / 粉是稀有，红圈是可主动提醒。普通精灵离开视野即清理，高价值保留 10 分钟。',
+      page: 'nearby',
+      anchor: 'nearby-radar',
+      skipWhenMissing: true,
     },
   ],
   groups: [
     {
-      id: 'group-setup',
-      title: '和朋友一起收集',
-      body: '登录后新建小组，或填邀请码加入。组内共享母本与种公清单，不用各自重复收集。',
-      profileSection: 'groups',
-      anchor: 'group-setup',
+      id: 'group-join',
+      title: '换蛋要先入组',
+      body: '点这里去「我的 · 小组」新建或加入；进组后才有组内广场和我的收集。',
+      page: 'groups',
+      selector: '[data-testid="group-feed-hint"]',
+      skipWhenMissing: true,
     },
     {
-      id: 'group-card',
-      title: '资源自动同步',
-      body: '导入数据后会自动同步到小组，不用手动发布；只想共享部分账号，可以在这里调选号。',
+      id: 'group-bind',
+      title: '把游戏账号绑到小组',
+      // 用户「不知道这个怎么操作」：写成编号步骤，并写明可以多选（一人多号是常态）
+      body:
+        '到「我的 · 小组」的组卡里点「绑定游戏账号」：' +
+        '① 勾上要用的游戏号（可以多选，绑几个都行）→ ② 点「发布我的资源」→ ③ 回群里查蛋，机器人就能把蛋同步进蛋仓。' +
+        '没列出你要的号？点列表下面「＋ 没有找到你的游戏号？」，先用那个号在「我的 · 游戏数据」导入一次。' +
+        '不绑的话机器人同步不了蛋仓——会回「这个 UID 还没绑定到小组成员」。',
+      // 按钮在「我的 · 小组」，不在换蛋页签
       profileSection: 'groups',
-      anchor: 'group-card',
+      selector: '[data-testid="group-edit-resources"]',
+      // 只在「已登录 + 已入组」时渲染
+      skipWhenMissing: true,
     },
     {
-      id: 'group-demands',
-      title: '我的收集 / 组内广场',
-      body: '「我的收集」管理想收的精灵，「组内广场」接别人的需求；蛋仓和我的换蛋也在这里。',
+      id: 'group-plaza',
+      title: '广场在哪',
+      body: '切「组内广场」看别人的需求（可「只看我能接」）；「我的收集」是你自己发的需求；右边「蛋仓」和家园里的蛋仓是同一份。',
       page: 'groups',
       anchor: 'egg-matching-hub',
+      skipWhenMissing: true,
+    },
+    {
+      id: 'group-trade',
+      title: '发起与成交',
+      body: '点一张广场卡 → 选「我能给蛋」或「我能孵」→ 确认发起；对方确认后，进度和成交都在「我的换蛋」。',
+      page: 'groups',
+      anchor: 'egg-matching-hub',
+      skipWhenMissing: true,
     },
   ],
   home: [
     {
       id: 'home-tabs',
-      title: '家园分两页',
-      body: '「家园现状」看窝和实际配对；「接单上窝」看你在需求中心接的单该怎么上窝。',
+      title: '家园分三块',
+      body: '家园现状（窝和实际配对）/ 接单上窝（接的单上哪个窝）/ 我的蛋仓（手上的蛋）。',
       page: 'home',
       homeView: 'nests',
       anchor: 'home-tabs',
     },
     {
-      id: 'home-placement',
-      title: '接单上窝',
-      body: '每个账号给出母本 / 种公和窝位，并标出大概能孵出多少符合要求的蛋；已在家园的会标绿。',
-      homeView: 'demands',
-      anchor: 'home-placement',
+      id: 'home-pairs',
+      title: '配窝卡',
+      body: '每对父母、窝位、预计能出几只；卡底三格是个体三维，没采到会显「—」。',
+      page: 'home',
+      homeView: 'nests',
+      selector: '[data-testid="home-pair-cards"]',
+      skipWhenMissing: true,
+    },
+    {
+      id: 'home-stock-character',
+      title: '蛋仓先选角色',
+      body: '一次只看一个角色：下拉里带每个号的蛋数，没有「全部角色」；主号没蛋也停在主号，免得以为丢蛋。',
+      page: 'home',
+      homeView: 'stock',
+      selector: '[aria-label="按游戏角色筛选"]',
+      skipWhenMissing: true,
+    },
+    {
+      id: 'home-stock-label',
+      title: '标注与挂出',
+      body: '点开一颗蛋 → 标注性格/体型/声音/绿窝，或「标注所有同类蛋」；「挂出」后才会进换蛋广场。五项齐全会自动挂出，你手动下架过的不会被挂回。',
+      page: 'home',
+      homeView: 'stock',
+      selector: '[data-testid="egg-stock-grid"]',
+      skipWhenMissing: true,
     },
   ],
+  // 2026-11-25 用户口径：本轮不动「我的」页教程，这里两步保持 v4 原文
   profile: [
     {
       id: 'profile-import',
@@ -253,7 +397,7 @@ export function startTourPending(): boolean {
 }
 
 /**
- * 测试版不自动弹新手引导（2026-11-09 用户口径）。
+ * 测试版不自动弹新手引导（2026-11-09 用户口径：故意设计，别改）。
  *
  * `test.` / `internal.` 子域是给自己验收用的，每个页签都弹一次很打断；
  * 只关自动弹，顶部「教程」入口保留，仍可手动重播。正式域名与本地开发不受影响。

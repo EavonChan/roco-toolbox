@@ -172,3 +172,203 @@ describe('MotherResourceEditor', () => {
     expect(screen.getByTestId('mother-preview-diff')).toHaveTextContent('新增 1 种');
   });
 });
+
+/* ------------------------------------------------------------------
+ * 2026-11-27 追加：找不到号的出口 / 四态勾选 / 解绑确认 / 「N 个游戏号」聚合
+ * ------------------------------------------------------------------ */
+
+/** 本机两个游戏号：1001 已发布，1002 是新号。 */
+const twoAccounts = [snapshot(1001, '主号', [mother(101)]), snapshot(1002, '小号', [])];
+
+const bindPreview = (uids: number[]) => ({
+  resource: {
+    schemaVersion: 1 as const,
+    criteriaId: motherResourceCriteriaIdOf('perfect'),
+    catalogVersion: FIXTURE_CATALOG_VERSION,
+    accounts: uids.map((uid) => sharedAccount(uid, [101])),
+  },
+  diff: null,
+  missingAccountKeys: [],
+  error: '',
+});
+
+const bindHookOf = (overrides: Partial<MotherGroupsHook> = {}) =>
+  hookOf({ myMember: null, draftSelection: [], publishPreview: bindPreview([]), ...overrides });
+
+const publishedMain = () =>
+  member(
+    'A',
+    resourceWith([101], {
+      accounts: [sharedAccount(1001, [101], { accountName: '主号' })],
+    }),
+  );
+
+describe('绑定面板：找不到游戏号的出口（2026-11-27）', () => {
+  test('列表下方有「＋ 没有找到你的游戏号？」并说明要先导入一次', () => {
+    const onGoImport = vi.fn();
+    render(
+      <MotherResourceEditor
+        hook={bindHookOf()}
+        snapshots={twoAccounts}
+        species={catalog}
+        onGoImport={onGoImport}
+      />,
+    );
+
+    const entry = screen.getByTestId('mother-add-account');
+    expect(entry).toHaveTextContent('没有找到你的游戏号');
+    expect(screen.getByTestId('mother-add-account-hint')).toHaveTextContent(
+      '需要先用这个游戏号在小布助手里导入一次数据',
+    );
+
+    fireEvent.click(entry.querySelector('button') as HTMLButtonElement);
+    expect(onGoImport).toHaveBeenCalledTimes(1);
+  });
+
+  test('没有本机数据时「去导入数据」走导入，而不是去登录（身份页）', () => {
+    const onGoImport = vi.fn();
+    const onGoAccount = vi.fn();
+    render(
+      <MotherResourceEditor
+        hook={bindHookOf()}
+        snapshots={[]}
+        species={catalog}
+        onGoImport={onGoImport}
+        onGoAccount={onGoAccount}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('去导入数据'));
+    expect(onGoImport).toHaveBeenCalledTimes(1);
+    expect(onGoAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe('绑定面板：勾选态看得出「新增 / 解绑」（2026-11-27）', () => {
+  test('已绑定的号勾着是「已绑定」，本次新勾的是「将绑定」', () => {
+    render(
+      <MotherResourceEditor
+        hook={bindHookOf({
+          myMember: publishedMain(),
+          draftSelection: ['uid:1001', 'uid:1002'],
+          publishPreview: bindPreview([1001, 1002]),
+        })}
+        snapshots={twoAccounts}
+        species={catalog}
+      />,
+    );
+
+    expect(screen.getByTestId('mother-account-state-uid:1001')).toHaveTextContent('已绑定');
+    expect(screen.getByTestId('mother-account-state-uid:1002')).toHaveTextContent('将绑定');
+  });
+
+  test('把已发布的号从选号里去掉 → 显示「将解绑」', () => {
+    render(
+      <MotherResourceEditor
+        hook={bindHookOf({
+          myMember: publishedMain(),
+          draftSelection: ['uid:1002'],
+          publishPreview: bindPreview([1002]),
+        })}
+        snapshots={twoAccounts}
+        species={catalog}
+      />,
+    );
+
+    expect(screen.getByTestId('mother-account-state-uid:1001')).toHaveTextContent('将解绑');
+    expect(screen.getByTestId('mother-account-state-uid:1002')).toHaveTextContent('将绑定');
+  });
+
+  test('从没发布过的号没勾时是「未绑定」', () => {
+    render(
+      <MotherResourceEditor
+        hook={bindHookOf({ draftSelection: [], publishPreview: bindPreview([]) })}
+        snapshots={twoAccounts}
+        species={catalog}
+      />,
+    );
+    expect(screen.getByTestId('mother-account-state-uid:1001')).toHaveTextContent('未绑定');
+    expect(screen.getByTestId('mother-account-state-uid:1002')).toHaveTextContent('未绑定');
+  });
+});
+
+describe('绑定面板：解绑前必须确认（2026-11-27）', () => {
+  test('取消发布中的号：确认框点取消就不发布；点确定才发布', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      const publish = vi.fn().mockResolvedValue(undefined);
+      render(
+        <MotherResourceEditor
+          hook={bindHookOf({
+            myMember: publishedMain(),
+            draftSelection: ['uid:1002'],
+            publishPreview: bindPreview([1002]),
+            publish,
+          })}
+          snapshots={twoAccounts}
+          species={catalog}
+        />,
+      );
+
+      confirm.mockReturnValueOnce(false);
+      fireEvent.click(screen.getByTestId('mother-publish'));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(String(confirm.mock.calls[0][0])).toContain('主号');
+      expect(String(confirm.mock.calls[0][0])).toContain('解绑');
+      expect(publish).not.toHaveBeenCalled();
+
+      confirm.mockReturnValueOnce(true);
+      fireEvent.click(screen.getByTestId('mother-publish'));
+      await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  test('只是新增、没有减少时不该弹确认框', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      const publish = vi.fn().mockResolvedValue(undefined);
+      render(
+        <MotherResourceEditor
+          hook={bindHookOf({
+            myMember: publishedMain(),
+            draftSelection: ['uid:1001', 'uid:1002'],
+            publishPreview: bindPreview([1001, 1002]),
+            publish,
+          })}
+          snapshots={twoAccounts}
+          species={catalog}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('mother-publish'));
+      await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+      expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+});
+
+describe('绑定面板：一人多号要聚合成「N 个游戏号」（2026-11-27）', () => {
+  test('面板写清一人可绑多个号、不用第二个账号；状态与预览都按「游戏号」计数', () => {
+    render(
+      <MotherResourceEditor
+        hook={bindHookOf({
+          myMember: publishedMain(),
+          draftSelection: ['uid:1001', 'uid:1002'],
+          publishPreview: bindPreview([1001, 1002]),
+        })}
+        snapshots={twoAccounts}
+        species={catalog}
+      />,
+    );
+
+    expect(screen.getByTestId('mother-bind-scope')).toHaveTextContent('一个人可以绑多个游戏号');
+    expect(screen.getByTestId('mother-bind-scope')).toHaveTextContent('不用再注册第二个账号');
+    expect(screen.getByTestId('mother-my-status')).toHaveTextContent('已绑定 1 个游戏号');
+    expect(screen.getByTestId('mother-preview')).toHaveTextContent('本次绑定 2 个游戏号');
+    expect(screen.getByTestId('mother-preview')).toHaveTextContent('机器人两个号都认');
+  });
+});

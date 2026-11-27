@@ -435,6 +435,20 @@ export type PublishResult = MotherApiSuccess<{
 }>;
 
 /**
+ * 同一个游戏号已被别的成员占用时的说明（2026-11-27）。
+ *
+ * 现场最常见的一类「撞车」其实是**同一个人建了两个小布助手账号**：第二个账号发布同一个 UID
+ * 会撞 409，而旧文案只说「已由 X 共享」，用户想不到 X 就是他自己。所以必须给
+ * 「用当初绑它的那个账号登录」这条自救路径，并明说不用新建账号。
+ */
+export function gameAccountConflictText(displayName: string | null): string {
+  if (!displayName) {
+    return '这个游戏号已被本组其他成员绑定；如果是你自己另一个账号，请用当初绑它的那个小布助手账号登录后再试（不用新建账号）';
+  }
+  return `这个游戏号已由「${displayName}」绑定；如果「${displayName}」是你自己，请用当初绑它的那个小布助手账号登录后再试（不用新建账号）`;
+}
+
+/**
  * 原子替换当前成员的摘要。
  *
  * 顺序：先读当前摘要做旧源/同源校验（不通过直接拒绝），再一次性 `batch()`：
@@ -546,9 +560,7 @@ export async function publishMemberResource(
       const holder = await findGameAccountHolder(db, groupId, accountId, resource.accounts);
       throw new MotherStoreError(
         'GAME_ACCOUNT_ALREADY_SHARED',
-        holder
-          ? `游戏账号已由 ${holder.displayName} 共享，不能重复占用`
-          : '游戏账号已被其他组员共享',
+        gameAccountConflictText(holder?.displayName ?? null),
       );
     }
     throw error;
@@ -557,8 +569,7 @@ export async function publishMemberResource(
   return { ok: true, resourceRevision: baseRevision + 1, publishedAt: published ? now : null };
 }
 
-/** 旧源与非同源覆盖的拒绝规则（设计第 5.4 节）。 */
-async function assertSourceNotStale(
+/** 旧源与非同源覆盖的拒绝规则（设计第 5.4 节）。 */async function assertSourceNotStale(
   db: D1Database,
   groupId: string,
   accountId: string,

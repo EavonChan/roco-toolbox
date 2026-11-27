@@ -26,6 +26,7 @@ import { useNearbyOverlayPush } from './nearby/useNearbyOverlayPush';
 import { Profile } from './ui/Profile';
 import { TabNav } from './ui/TabNav';
 import {
+  eggStockPending,
   focusPending,
   initialNavigation,
   legacyLocation,
@@ -271,6 +272,20 @@ export default function App() {
           onGoProfileGroups={() => navigate({ type: 'open-profile', section: 'groups' })}
           onGoAccount={() =>
             navigate({ type: 'open-profile', section: 'identity', returnToGroups: true })
+          }
+          onGoImport={() =>
+            navigate({ type: 'open-profile', section: 'data', returnToGroups: true })
+          }
+          openEggStock={eggStockPending(navigation)}
+          onEggStockOpened={() =>
+            navigate({ type: 'consume-egg-stock', revision: navigation.eggStockRevision })
+          }
+          // 从「我的 → 蛋仓」进来时，蛋仓的「返回」要回「我的」（2026-11-25 U3）；
+          // 普通从换蛋页进蛋仓不传，仍是回换蛋页。
+          onEggStockBack={
+            navigation.eggStockFromProfile
+              ? () => navigate({ type: 'tab', page: 'profile' })
+              : undefined
           }
         />
       ) : (

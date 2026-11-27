@@ -148,6 +148,14 @@ describe('buildMotherResource：共享全部母本（2026-10-28 去掉小组口�
     );
   });
 
+  test('账号没有游戏 UID（gameId=0）→ 拒绝并说清怎么补，不静默写成 name: 键', () => {
+    // ingest 查的是 `uid:<数字>`；若把它写成 `name:<账号名>`，界面显示「已发布」，
+    // 机器人却永远报「这个 UID 还没绑定到小组成员」，两边看不出区别。
+    const error = errorOf(() => build([snapshot(0, '无UID', [mother(101)])], ['name:无UID']));
+    expect(error?.code).toBe('MISSING_GAME_ID');
+    expect(error?.message).toContain('游戏 UID');
+  });
+
   test('共享全部母本，criteriaId 由目标模式派生', () => {
     const resource = buildMotherResource({
       snapshots: [

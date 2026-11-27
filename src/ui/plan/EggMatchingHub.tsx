@@ -17,12 +17,29 @@ import { EggStockPanel, EggMedals, EggArt } from './EggStockPanel';
 import { newUuid } from '../../shared/uuid';
 import { EggTasksPanel } from './EggTasksPanel';
 import { useEggStockSync } from './useEggStockSync';
+import { useLandscape } from '../useWideLandscape';
+import { RailLayout, RailAside, RailNav, RailNavItem, useRailCollapsed } from '../primitives/RailLayout';
+
+/** 换蛋页右侧筛选列是否收起（2026-11-22 规范：按设备记，收起后主区变宽）。 */
+const SWAP_RAIL_KEY = 'roco.swapRailCollapsed';
 
 export interface EggMatchingHubProps {
   groupId: string; viewerAccountId: string; species: readonly SpeciesEntry[];
   members: readonly { accountId: string; displayName: string; resource?:PublishedMotherResource|null }[];
   snapshots?: readonly AccountSnapshot[];
   onGoPlan?: () => void;
+  /** 「我的」页的蛋仓入口直达到这里（2026-11-25 U2）：请求一次 → 打开蛋仓屏 */
+  openStock?: boolean;
+  /** 打开后回报上层，避免用户返回后又被弹回蛋仓 */
+  onStockOpened?: () => void;
+  /**
+   * 蛋仓屏「返回」去哪（2026-11-25 U3）：**不传 = 回换蛋页**（本页内的现有行为）；
+   * 传了就把去向交给调用方——例如从「我的 → 蛋仓」进来时回「我的」，而不是掉回换蛋页。
+   * 只有蛋仓屏用它；「我的换蛋」那屏仍回换蛋页。
+   */
+  onStockBack?: () => void;
+  /** 蛋仓屏返回的文案（横屏右侧标题栏用）；默认「返回换蛋」，从别处进来时按来源给，如「返回我的」 */
+  stockBackLabel?: string;
 }
 const box = 'rounded-xl border border-slate-200 bg-white p-2.5';
 const empty = 'rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-500';
@@ -35,12 +52,23 @@ function localLinesForDemand(demand:EggDemand,snapshots:readonly AccountSnapshot
   return [...new Map(options.map(line=>[JSON.stringify(line),line])).values()].slice(0,6);
 }
 
-export function EggMatchingHub({ groupId, viewerAccountId: me, species, members, snapshots = [], onGoPlan }: EggMatchingHubProps) {
+export function EggMatchingHub({ groupId, viewerAccountId: me, species, members, snapshots = [], onGoPlan, openStock = false, onStockOpened, onStockBack, stockBackLabel }: EggMatchingHubProps) {
   const api = useEggMatching(groupId, me);
   const state = api.data?.state ?? emptyEggWorkflow();
+  // 横屏三栏：需求卡在左、搜索与条件收进右侧可折叠栏、最右纵向标题栏（2026-11-22 规范）
+  const landscape = useLandscape();
+  const swapRail = useRailCollapsed(SWAP_RAIL_KEY);
   const [tab, setTab] = useState<'mine' | 'square'>('mine');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState<'stock' | 'tasks' | null>(null);
+  /** 「我的」页蛋仓入口的直达请求：打开一次就回报，避免返回后被弹回来（2026-11-25 U2） */
+  const stockOpenedRef = useRef(onStockOpened);
+  stockOpenedRef.current = onStockOpened;
+  useEffect(() => {
+    if (!openStock) return;
+    setPage('stock');
+    stockOpenedRef.current?.();
+  }, [openStock]);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editor, setEditor] = useState<EggDemand | null>(null);
   const [withdraw, setWithdraw] = useState(false);
@@ -175,26 +203,96 @@ export function EggMatchingHub({ groupId, viewerAccountId: me, species, members,
     </div>;
   };
 
+  const tabBar = <div className="grid min-w-0 flex-1 grid-cols-2 rounded-lg bg-slate-100 p-1">{(['mine','square'] as const).map(t => <button key={t} type="button" aria-pressed={tab === t} onClick={() => { setTab(t); setQuery(''); }} className={'min-h-8 rounded-md text-xs ' + (tab === t ? 'bg-white font-semibold text-emerald-700 shadow-sm' : 'text-slate-500')}>{t === 'mine' ? '我的收集' : '组内广场'}</button>)}</div>;
+  const pageButtons = <>
+    <Button variant="secondary" size="sm" className="shrink-0 px-2" onClick={() => setPage('stock')}>蛋仓 <span className="ml-1 text-slate-400">{ownEggs.length}</span></Button>
+    <Button variant="secondary" size="sm" className="shrink-0 px-2" onClick={() => setPage('tasks')}>我的换蛋 <span className="ml-1 text-amber-600">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></Button>
+  </>;
+  const searchField = <SearchField label="搜索需求" value={query} onValueChange={setQuery} placeholder="搜索精灵名" className="text-left [&_input]:text-left" />;
+  const onlyAfford = tab === 'square' ? <div className="flex flex-wrap gap-1"><button type="button" aria-pressed={onlyAffordable} onClick={() => setOnlyAffordable(v => !v)} className={'min-h-7 rounded-md px-2 text-[11px] ' + (onlyAffordable ? 'bg-emerald-50 font-semibold text-emerald-700' : 'text-slate-500')}>只看我能接</button></div> : null;
+  // 「想收」不再占一行：我的收集直接铺卡；组内广场保留标题与数量
+  const headingRow = tab === 'square'
+    ? <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">组内需求</h3><span className="text-[10px] text-slate-400">{visible.length} 项</span></div>
+    : null;
+  // 去计划添加放在搜索框右下方；我的收集才有，组内广场不显示
+  const planAction = tab === 'mine'
+    ? <div className="flex items-center justify-end"><Button variant="text" size="sm" disabled={!onGoPlan} onClick={onGoPlan}>去计划添加</Button></div>
+    : null;
+  const cardList = api.loading ? <div className={empty}>正在读取…</div> : visible.length ? <div className="egg-demand-grid grid grid-cols-3 gap-[7px]">{visible.map(d => <EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} ownerLabel={tab === 'square' ? owner(d.demanderAccountId) : undefined}
+    statusLabel={tab === 'square' ? (supplyOf(d) === 'give' ? '我能给蛋' : supplyOf(d) === 'hatch' ? '我能孵' : '接不了') : statusOfMine(d)}
+    onOpen={d => { setDetailId(d.id); setError(''); }} />)}</div> : <div className={empty}>{tab === 'mine' ? '还没有想收的精灵' : '暂无组内需求'}</div>;
+  const completedList = tab==='mine'&&completed.length?<details className="rounded-xl border border-slate-200 p-2"><summary className="cursor-pointer text-xs text-slate-500">已完成 · {completed.length}</summary><div className="egg-demand-grid mt-2 grid grid-cols-3 gap-[7px]">{completed.map(d=><EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} statusLabel="已完成" onOpen={d=>setDetailId(d.id)}/>)}</div></details>:null;
+  // 我的收集 / 组内广场是换蛋页的两个视角，横屏进纵向标题栏（2026-11-22 规范）
+  const railTabs = <RailNav label="换蛋视图">
+    {(['mine','square'] as const).map(t => <RailNavItem
+      key={t}
+      active={tab === t}
+      title={t === 'mine' ? '我的收集' : '组内广场'}
+      testId={`egg-hub-tab-${t}`}
+      onClick={() => { setTab(t); setQuery(''); }}
+    >{t === 'mine' ? '我的收集' : '组内广场'}</RailNavItem>)}
+  </RailNav>;
+  // 蛋仓 / 我的换蛋也是换蛋页的一级入口，横屏同样进标题栏（纯文本，不画按钮）
+  const railPages = <RailNav label="换蛋页面">
+    <RailNavItem
+      active={false}
+      title="蛋仓"
+      testId="egg-hub-page-stock"
+      onClick={() => setPage('stock')}
+    >蛋仓<span className="rail-nav-count">{ownEggs.length}</span></RailNavItem>
+    <RailNavItem
+      active={false}
+      title="我的换蛋"
+      testId="egg-hub-page-tasks"
+      onClick={() => setPage('tasks')}
+    >我的换蛋<span className="rail-nav-count">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></RailNavItem>
+  </RailNav>;
+  const rail = <RailAside
+    title="换蛋"
+    hideTitle
+    collapse={{ collapsed: swapRail.collapsed, toggle: swapRail.toggle }}
+    testIds={{ aside: 'egg-hub-rail', toggle: 'egg-hub-rail-toggle' }}
+  >{railTabs}{railPages}</RailAside>;
+
+  /**
+   * 蛋仓屏的「返回」（2026-11-25 U3）：**默认回换蛋页**（现有行为）；
+   * 调用方传了 `onStockBack` 就按来源走——例如「我的 → 蛋仓」进来时要回「我的」，
+   * 否则用户一点返回就掉到换蛋页（U2 新入口会踩到）。「我的换蛋」那屏不受影响。
+   */
+  const leaveStock = () => {
+    if (onStockBack) {
+      onStockBack();
+      return;
+    }
+    setPage(null);
+  };
+
   return <div className="flex min-w-0 flex-col gap-2" data-testid="egg-matching-hub" data-tour="egg-matching-hub">
     {stock.syncError||lineError?<div role="alert" className="flex items-center justify-between rounded-lg bg-amber-50 p-2 text-xs text-amber-800"><span>{stock.syncError?`蛋仓同步失败：${stock.syncError}`:`产线同步失败：${lineError}`}</span><Button size="sm" variant="text" disabled={api.busy} onClick={()=>{lineAttempt.current='';setLineError('');setRetryTick(n=>n+1);stock.retrySync();}}>重试同步</Button></div>:null}
     {api.error || error ? <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 p-2 text-xs text-rose-700"><span>{error || api.error}</span><Button variant="text" size="sm" onClick={() => void api.refresh()}>重试</Button></div> : null}
     {notice ? <div role="status" className="text-xs text-emerald-700">{notice}<button type="button" aria-label="关闭提示" onClick={() => setNotice('')} className="ml-2 min-h-7 px-2">×</button></div> : null}
-    {page ? <div className="flex items-center gap-2"><Button variant="text" size="sm" onClick={() => setPage(null)}>‹ 返回</Button><h3 className="text-sm font-semibold">{page === 'stock' ? '我的蛋仓' : '我的换蛋'}</h3></div> : <>
+    {page ? (landscape && page === 'stock' ? null : <div className="flex items-center gap-2"><Button variant="text" size="sm" onClick={() => (page === 'stock' ? leaveStock() : setPage(null))}>‹ 返回</Button><h3 className="text-sm font-semibold">{page === 'stock' ? '我的蛋仓' : '我的换蛋'}</h3></div>) : landscape ? (
+      <RailLayout
+        collapsed={swapRail.collapsed}
+        filters={<>{searchField}{planAction}{onlyAfford}</>}
+        aside={rail}
+        testIds={{ scope: 'egg-hub-scope', main: 'egg-hub-main', filters: 'egg-hub-filters' }}
+      >
+        {headingRow}
+        {cardList}
+        {completedList}
+      </RailLayout>
+    ) : <>
       {/* 2026-11-21：蛋仓 / 我的换蛋 挪到「组内广场」右边，和视图切换同一行 */}
-      <div className="flex items-center gap-2">
-        <div className="grid min-w-0 flex-1 grid-cols-2 rounded-lg bg-slate-100 p-1">{(['mine','square'] as const).map(t => <button key={t} type="button" aria-pressed={tab === t} onClick={() => { setTab(t); setQuery(''); }} className={'min-h-8 rounded-md text-xs ' + (tab === t ? 'bg-white font-semibold text-emerald-700 shadow-sm' : 'text-slate-500')}>{t === 'mine' ? '我的收集' : '组内广场'}</button>)}</div>
-        <Button variant="secondary" size="sm" className="shrink-0 px-2" onClick={() => setPage('stock')}>蛋仓 <span className="ml-1 text-slate-400">{ownEggs.length}</span></Button>
-        <Button variant="secondary" size="sm" className="shrink-0 px-2" onClick={() => setPage('tasks')}>我的换蛋 <span className="ml-1 text-amber-600">{state.trades.filter(t => ['proposed','accepted'].includes(t.status)).length}</span></Button>
-      </div>
-      <SearchField label="搜索需求" value={query} onValueChange={setQuery} placeholder="搜索精灵名" className="text-left [&_input]:text-left" />
-      <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">{tab === 'mine' ? '想收' : '组内需求'}</h3>{tab === 'mine' ? <Button variant="text" size="sm" disabled={!onGoPlan} onClick={onGoPlan}>去计划添加</Button> : <span className="text-[10px] text-slate-400">{visible.length} 项</span>}</div>
-      {tab === 'square' ? <div className="flex flex-wrap gap-1"><button type="button" aria-pressed={onlyAffordable} onClick={() => setOnlyAffordable(v => !v)} className={'min-h-7 rounded-md px-2 text-[11px] ' + (onlyAffordable ? 'bg-emerald-50 font-semibold text-emerald-700' : 'text-slate-500')}>只看我能接</button></div> : null}
-      {api.loading ? <div className={empty}>正在读取…</div> : visible.length ? <div className="grid grid-cols-3 gap-[7px]">{visible.map(d => <EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} ownerLabel={tab === 'square' ? owner(d.demanderAccountId) : undefined}
-        statusLabel={tab === 'square' ? (supplyOf(d) === 'give' ? '我能给蛋' : supplyOf(d) === 'hatch' ? '我能孵' : '接不了') : statusOfMine(d)}
-        onOpen={d => { setDetailId(d.id); setError(''); }} />)}</div> : <div className={empty}>{tab === 'mine' ? '还没有想收的精灵' : '暂无组内需求'}</div>}
-      {tab==='mine'&&completed.length?<details className="rounded-xl border border-slate-200 p-2"><summary className="cursor-pointer text-xs text-slate-500">已完成 · {completed.length}</summary><div className="mt-2 grid grid-cols-3 gap-[7px]">{completed.map(d=><EggDemandCard key={d.id} demand={d} name={name(d.eggGameId)} statusLabel="已完成" onOpen={d=>setDetailId(d.id)}/>)}</div></details>:null}
+      <div className="flex items-center gap-2">{tabBar}{pageButtons}</div>
+      {searchField}
+      {headingRow}
+      {planAction}
+      {onlyAfford}
+      {cardList}
+      {completedList}
     </>}
-    {page === 'stock' ? <EggStockPanel eggs={ownEggs} species={species} busy={api.busy} mutate={act} /> : null}
+    {page === 'stock' ? <EggStockPanel eggs={ownEggs} species={species} busy={api.busy} mutate={act} collapsibleFilterRail railBack={{ label: stockBackLabel ?? '返回换蛋', onClick: leaveStock }} /> : null}
     {page === 'tasks' ? <EggTasksPanel state={state} me={me} snapshots={snapshots} species={species} members={members} busy={api.busy} mutate={act} /> : null}
     {demand ? <ModalSurface open title={mine?'需求详情':'接单详情'} onClose={() => { setDetailId(null); setProposal(null); }} size="lg"><div className="flex flex-col gap-2 p-3">
       <div className="flex items-center gap-2"><PetAvatar gameId={demand.eggGameId} name={name(demand.eggGameId)} size={44} /><div><strong className="text-sm">{name(demand.eggGameId)}</strong><div className="text-xs text-slate-500">{owner(demand.demanderAccountId)} · 已收 {demand.fulfilled}/{demand.quantity}</div><div className="flex items-center gap-1 text-[11px] text-slate-600">{demand.natures.join(' / ')}<EggMedals body={demand.body} voice={demand.voice}/></div></div></div>

@@ -1,5 +1,6 @@
 import type { TargetMode } from './petFilters';
-import { accountKeyOf, parseHomeSnapshot, type AccountSnapshot } from './parseBackup';
+import { accountKeyOf, parseHomeSnapshot, sanitizeRawFields, type AccountSnapshot } from './parseBackup';
+import { individualBonusesOfItem } from './individualBonuses';
 import type { OwnedPet } from './types';
 
 type UnknownRecord = Record<string, unknown>;
@@ -58,6 +59,10 @@ const sanitizePet = (value: unknown, accountName: string): OwnedPet | undefined 
     medalBody: asString(item.medalBody) || medalFromWeightPercent(weightPercent),
     weightPercent,
     heightPercent: asOptionalNumber(item.heightPercent),
+    individualBonuses: individualBonusesOfItem(item),
+    // 三维的原始 field 14（只留这一个键，见 sanitizeRawFields）：清理旧备份时也不能丢掉，
+    // 否则「导入一次 1.6.0 的备份」就把本机三维洗没了（2026-11-24）。
+    rawFields: sanitizeRawFields(item.rawFields),
     isShiny: asBoolean(item.isShiny),
     isColorful: item.isColorful === true,
     account: accountName,
@@ -222,13 +227,95 @@ const freshness = (snapshot: AccountSnapshot): number | null =>
  * 新数据没带家园（这次抓包没进家园场景）时，保留本机原有的家园（2026-11-01 用户反馈：
  * 导入一次背包数据后家园整个消失）。家园只能靠进场景重新采，丢了要用户再跑一趟；
  * 新数据带家园时仍以新的为准。
+ *
+ * 2026-11-24 追加：pets 的三维字段（`individualBonuses` / `rawFields`）也按宠物身份做字段级保留。
+ * 一份快照整体仍然取较新的那份（放生不复活），但「新快照没带三维」不能当成「三维被取消」——
+ * 正式版客户端（没有该功能）上传的快照会把本机的三维整份抹掉，正是用户报的「时有时无」。
  */
 export function mergeImportedSnapshot(
   incoming: AccountSnapshot,
   existing: AccountSnapshot | undefined,
 ): AccountSnapshot {
-  if (incoming.home || !existing?.home) return incoming;
-  return { ...incoming, home: existing.home };
+  if (!existing) return incoming;
+  const pets = mergePetBonusFields(incoming.pets ?? [], existing.pets ?? []);
+  return {
+    ...incoming,
+    pets,
+    ...(incoming.home || !existing.home ? {} : { home: existing.home }),
+  };
+}
+
+/** 宠物身份：优先抓包给的唯一编号 `captureId`；老数据没有时退回「物种 + 名字 + 盒子位置」。 */
+export const petIdentityOf = (pet: OwnedPet): string | undefined => {
+  if (pet.captureId) return `id:${pet.captureId}`;
+  if (!pet.name) return undefined;
+  return `slot:${pet.gameId}|${pet.name}|${pet.boxGroup ?? ''}|${pet.boxNumber ?? ''}|${pet.slotOrder ?? ''}`;
+};
+
+/**
+ * 按身份建索引。同一身份出现多次（两只同名、又都没有 `captureId`）时整组丢弃：
+ * 分不清是哪一只就宁可不补，也不把三维安到别的精灵头上。
+ */
+const indexPetsByIdentity = (pets: readonly OwnedPet[]): Map<string, OwnedPet> => {
+  const index = new Map<string, OwnedPet>();
+  const ambiguous = new Set<string>();
+  for (const pet of pets) {
+    const key = petIdentityOf(pet);
+    if (!key) continue;
+    if (index.has(key)) {
+      ambiguous.add(key);
+      continue;
+    }
+    index.set(key, pet);
+  }
+  for (const key of ambiguous) index.delete(key);
+  return index;
+};
+
+/**
+ * 三维字段级保留（2026-11-24）：新值有就用新值，新值没有才用旧值。
+ * 别的字段一律以 `preferred` 为准——快照仍是「整份取较新」，这里只补三维。
+ */
+const retainBonusFields = (preferred: OwnedPet, fallback: OwnedPet): OwnedPet => {
+  const individualBonuses =
+    (preferred.individualBonuses?.length ?? 0) > 0
+      ? preferred.individualBonuses
+      : fallback.individualBonuses;
+  const rawFields = preferred.rawFields ?? fallback.rawFields;
+  if (individualBonuses === preferred.individualBonuses && rawFields === preferred.rawFields) {
+    return preferred;
+  }
+  return {
+    ...preferred,
+    ...(individualBonuses ? { individualBonuses } : {}),
+    ...(rawFields ? { rawFields } : {}),
+  };
+};
+
+/**
+ * 把旧快照里同一只宠物的三维补到新快照上（`pets` 为采用的那份）。
+ *
+ * - **只补字段，不增删宠物**：旧快照独有的精灵不会被带回来（放生不复活，与既有口径一致）；
+ * - 身份在任意一边不唯一 → 跳过该只，不猜。
+ */
+export function mergePetBonusFields(
+  pets: readonly OwnedPet[],
+  previous: readonly OwnedPet[],
+): OwnedPet[] {
+  if (pets.length === 0 || previous.length === 0) return [...pets];
+  const previousByIdentity = indexPetsByIdentity(previous);
+  if (previousByIdentity.size === 0) return [...pets];
+  const counts = new Map<string, number>();
+  for (const pet of pets) {
+    const key = petIdentityOf(pet);
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return pets.map((pet) => {
+    const key = petIdentityOf(pet);
+    if (!key || counts.get(key) !== 1) return pet;
+    const old = previousByIdentity.get(key);
+    return old ? retainBonusFields(pet, old) : pet;
+  });
 }
 
 /**

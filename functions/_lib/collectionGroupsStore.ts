@@ -53,7 +53,7 @@ import {
   type StudResourceDraft,
   type StudSlotCoverage,
 } from '../../src/shared/collectionGroups';
-import { MotherStoreError, isMember, publishMemberResource } from './motherGroupsStore';
+import { MotherStoreError, isMember, publishMemberResource, gameAccountConflictText } from './motherGroupsStore';
 
 interface GroupRow {
   id: string;
@@ -764,10 +764,8 @@ export async function publishStudResource(
     if (error instanceof MotherStoreError) throw error;
     const message = String(error);
     if (message.includes('UNIQUE constraint failed: collection_group_stud_accounts')) {
-      throw new MotherStoreError(
-        'GAME_ACCOUNT_ALREADY_SHARED',
-        '游戏账号已被其他组员共享，不能重复占用',
-      );
+      // 种公摘要这里拿不到占用人显示名，给不带名字的版本（2026-11-27 同一措辞）
+      throw new MotherStoreError('GAME_ACCOUNT_ALREADY_SHARED', gameAccountConflictText(null));
     }
     throw error;
   }

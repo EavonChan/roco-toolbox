@@ -347,6 +347,32 @@ describe('家园页', () => {
     );
   });
 
+  test('刷新提示排在页头下面一行，不挤刷新按钮，也能手动关掉复原', async () => {
+    h.snapshots = [snapshotWithHome()];
+    const bridge = { startCapture: () => '请先允许小布助手使用 VPN' };
+    (window as unknown as { RocoCapture?: unknown }).RocoCapture = bridge;
+    try {
+      render(<HomeLand />);
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('home-refresh-start'));
+      });
+
+      // 2026-11-23 用户报障：文案原来挤在页头「刷新家园」下面，长句把页头撑宽，
+      // 刷新按钮被推到屏幕外、点不回来。现在提示单独一行放在页头下方。
+      const message = screen.getByTestId('home-refresh-message');
+      expect(message).toHaveTextContent('请先允许小布助手使用 VPN');
+      expect(screen.getByTestId('home-header').contains(message)).toBe(false);
+      expect(message.parentElement).toBe(screen.getByTestId('home-page'));
+      expect(message.className).toContain('max-w-full');
+
+      // 关掉提示，页头恢复成一行
+      fireEvent.click(within(message).getByRole('button', { name: '关闭提示' }));
+      expect(screen.queryByTestId('home-refresh-message')).toBeNull();
+    } finally {
+      delete (window as unknown as { RocoCapture?: unknown }).RocoCapture;
+    }
+  });
+
   test('家园分页：默认家园现状，可切到接单上窝并记住选择', () => {
     h.snapshots = [snapshotWithHome()];
     render(<HomeLand />);
@@ -409,5 +435,77 @@ describe('家园页', () => {
     expect(screen.getByTestId('home-view-nests')).toBeTruthy();
     expect(screen.getByTestId('home-demand-placements')).toBeTruthy();
     expect(screen.queryByTestId('home-pair-card-list')).toBeNull();
+  });
+});
+
+describe('家园横屏（2026-11-24 右侧纵向标题栏）', () => {
+  const original = window.matchMedia;
+  const setOrientation = (landscape: boolean) => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('landscape') ? landscape : false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+  };
+  afterEach(() => {
+    if (original) window.matchMedia = original;
+    else delete (window as unknown as { matchMedia?: typeof window.matchMedia }).matchMedia;
+    window.localStorage.removeItem('roco.homeView');
+  });
+
+  test('账号 / 接单上窝 / 蛋仓进右侧标题栏，刷新家园留在主区标题行', () => {
+    setOrientation(true);
+    h.snapshots = [snapshotWithHome()];
+    render(<HomeLand />);
+
+    const rail = screen.getByTestId('home-rail');
+    // 顶栏整行让给内容：竖屏那排按钮不再出现
+    expect(screen.queryByTestId('home-header')).toBeNull();
+    expect(within(rail).getByTestId('home-account-summary')).toHaveTextContent('测试甲');
+    expect(within(rail).getByTestId('home-rail-demands')).toHaveTextContent('接单上窝');
+    expect(within(rail).getByTestId('home-rail-stock')).toHaveTextContent('蛋仓');
+    // 2026-11-24 用户口径：刷新家园留在家园页，不进右侧栏
+    expect(within(rail).queryByTestId('home-refresh')).toBeNull();
+    expect(screen.getByTestId('home-refresh')).toBeTruthy();
+    expect(screen.getByTestId('home-pair-cards')).toBeTruthy();
+  });
+
+  test('横屏 + 这份数据里没有家园记录：卡里仍留可点的刷新入口', () => {
+    setOrientation(true);
+    const snapshot = snapshotWithHome();
+    snapshot.home = undefined;
+    h.snapshots = [snapshot];
+    const bridge = { startCapture: () => '' };
+    (window as unknown as { RocoCapture?: unknown }).RocoCapture = bridge;
+    try {
+      render(<HomeLand />);
+
+      // 横屏不渲染顶栏，所以刷新入口只能在空态卡里
+      expect(screen.queryByTestId('home-header')).toBeNull();
+      const card = screen.getByTestId('home-no-capture');
+      const refresh = within(card).getByTestId('home-refresh-start');
+      expect(refresh).toBeEnabled();
+      expect(refresh).toHaveTextContent('刷新家园');
+    } finally {
+      delete (window as unknown as { RocoCapture?: unknown }).RocoCapture;
+    }
+  });
+
+  test('右侧标题栏的蛋仓入口仍是页内一屏，返回家园回到家园', () => {
+    setOrientation(true);
+    h.snapshots = [snapshotWithHome()];
+    render(<HomeLand />);
+
+    fireEvent.click(screen.getByTestId('home-rail-stock'));
+    expect(screen.getByTestId('home-page')).toHaveAttribute('data-view', 'stock');
+    expect(screen.getByTestId('home-title')).toHaveTextContent('我的蛋仓');
+
+    fireEvent.click(screen.getByTestId('egg-stock-rail-back'));
+    expect(screen.getByTestId('home-page')).toHaveAttribute('data-view', 'nests');
   });
 });

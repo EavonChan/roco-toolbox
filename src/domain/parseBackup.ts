@@ -1,6 +1,7 @@
 import type { HomeEgg, HomeNest, HomePair, HomePosition, HomeResident, HomeSnapshot, OwnedPet } from './types';
 import { species } from '../data/catalog';
 import { bodyMedalOf, heightPercentOf } from '../shared/bodySize.js';
+import { individualBonusesOfItem } from './individualBonuses';
 
 const bodySizeByGameId = new Map(species.map((entry) => [entry.gameId, entry.bodySize]));
 const heightSizeByGameId = new Map(species.map((entry) => [entry.gameId, entry.heightSize]));
@@ -103,6 +104,26 @@ const asPosition = (value: unknown): HomePosition | undefined => {
 
 const asNestType = (value: unknown): HomeNest['nestType'] =>
   value === 'ordinary' || value === 'academy' ? value : null;
+
+/**
+ * 三维原始字段清洗（2026-11-24）：**只白名单保留 `bytes["14"]`**（三维 protobuf 的 hex）。
+ *
+ * 采集器导出的 `rawFields` 是全量协议记录（int / 其它 bytes / occurrences / source），
+ * 原样塞进快照会随精灵数量放大 IndexedDB 与云同步体积；领域层只需要 field 14。
+ * 没有 field 14 → 返回 undefined，不写空壳字段。
+ */
+export function sanitizeRawFields(value: unknown): OwnedPet['rawFields'] {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const bytes = asRecord(record.bytes);
+  if (!bytes) return undefined;
+  const raw = bytes['14'];
+  const list = (Array.isArray(raw) ? raw : [raw]).filter(
+    (entry): entry is string => typeof entry === 'string' && entry.length > 0,
+  );
+  if (list.length === 0) return undefined;
+  return { bytes: { '14': list } };
+}
 
 /**
  * 家园快照清洗：只接受「有住户或有小窝」的对象。
@@ -260,6 +281,10 @@ export function parseBackup(raw: unknown, importedAt: string): AccountSnapshot {
         asOptionalNumber(item.heightPercent) ??
         heightPercentOf(heightSizeByGameId.get(gameId), asOptionalNumber(item.heightCm)) ??
         undefined,
+      individualBonuses: individualBonusesOfItem(item),
+      // 三维的原始 field 14 也留在快照里（只这一个键）：跨版本合并时不至于被旧客户端抹掉，
+      // 以后解码规则改进也能重新解，不用再抓一次包。
+      rawFields: sanitizeRawFields(item.rawFields),
       isShiny: asBoolean(item.isShiny),
       // 炫彩：直接从导入内容读（备份 JSON 里是平铺的 isColorful 字段）——用户拍板不依赖采集器新字段
       isColorful: item.isColorful === true,

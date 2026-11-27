@@ -12,12 +12,9 @@ import { useNearbyFeed } from '../collector/useNearbyFeed';
 import { readNearbyOverlayPanels, resetNearbyOverlayPanelsForTest } from '../nearby/overlayPanels';
 import { resetNearbyFilterForTest, setNearbyFilter } from '../nearby/nearbyFilterStore';
 import { resetNearbyTargetsForTest, setNearbyTargets } from '../nearby/nearbyTargetStore';
-import type { DemandCenterItem } from './useDemandCenter';
-import { useDemandCenter } from './useDemandCenter';
 import { Nearby } from './Nearby';
 
 vi.mock('../collector/useNearbyFeed', () => ({ useNearbyFeed: vi.fn() }));
-vi.mock('./useDemandCenter', () => ({ useDemandCenter: vi.fn() }));
 vi.mock('../collector/rareAlertStore', () => ({ useRareAlert: vi.fn(() => false) }));
 vi.mock('../collector/autoImportFlow', () => ({
   useAutoImport: vi.fn(() => ({ session: null, stage: 'idle', completion: null, completionError: null, error: null })),
@@ -49,12 +46,6 @@ const encounter: SeasonEncounter = {
   gender: '公', height: 180, weight: 82000, heightPct: 45, weightPct: 30, voiceDb: 14,
 };
 
-const wantedDemand: DemandCenterItem = {
-  groupId: 'g1', groupName: '小组甲', demanderAccountId: 'a1', eggGameId: 3001,
-  nature: '', gender: '', body: '', voice: '', status: 'open',
-  claimerAccountId: null, version: 1, createdAt: 0, updatedAt: 0,
-};
-
 const feed = (
   value: NearbySnapshot | null = snapshot,
   phase: 'capturing' | 'idle' = 'capturing',
@@ -81,12 +72,6 @@ const readyProgress: CaptureProgress = {
   checkedAt: 0, stableSince: 0, remainingMs: 0, stage: 'ready',
 };
 
-const demandCenter = (items: DemandCenterItem[] = []) => {
-  vi.mocked(useDemandCenter).mockReturnValue({
-    accountId: 'a1', items, loading: false, error: '', reload: vi.fn(),
-  });
-};
-
 /** 安卓壳带悬浮面板桥（window.RocoCapture.updateNearbyOverlay）：返回推送 spy */
 const shellWithOverlay = () => {
   const updateNearbyOverlay = vi.fn((_json: string) => 'ok');
@@ -111,7 +96,6 @@ beforeEach(() => {
   vi.mocked(useRareAlert).mockReturnValue(false);
   vi.mocked(useAutoImport).mockReturnValue({ session: null, stage: 'idle', completion: null, completionError: null, error: null });
   vi.mocked(requestAutoImport).mockReset();
-  demandCenter();
   delete window.RocoCapture;
   delete window.rocoDesktop;
 });
@@ -147,12 +131,11 @@ describe('附近页', () => {
 
   test('切到列表后只显示高价值精灵（普通精灵不常驻）', () => {
     feed();
-    demandCenter([wantedDemand]);
     render(<Nearby onNavigate={vi.fn()} />);
     openList();
-    expect(screen.getAllByTestId('nearby-row')).toHaveLength(2);
+    expect(screen.getAllByTestId('nearby-row')).toHaveLength(1);
     expect(screen.getByText(/护主犬/)).toBeTruthy();
-    expect(screen.getAllByText(/喵喵/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/喵喵/)).toBeNull();
     expect(screen.queryByText(/蹦蹦种子/)).toBeNull();
   });
 
@@ -165,16 +148,66 @@ describe('附近页', () => {
     expect(screen.queryByText(/蹦蹦种子/)).toBeNull();
   });
 
-  test('只看需求时只留命中需求中心的精灵', () => {
-    feed();
-    demandCenter([wantedDemand]);
+  test('普通精灵也显示身高 / 体重百分比（不再等体型牌）', () => {
+    const shiny = {
+      key: 'shiny', cfgId: 10005, petId: 3010, name: '水蓝蓝', level: 22, voiceDb: 2,
+      weightPct: 61.4, heightPct: 38.2, kinds: ['shiny'], rare: true, alertReason: null,
+      distanceM: null, pos: { x: 30, y: 40, z: 0 },
+    };
+    feed({ ...snapshot, pets: [shiny], self: { x: 0, y: 0 } });
     render(<Nearby onNavigate={vi.fn()} />);
     openList();
-    fireEvent.click(screen.getByRole('button', { name: '需求' }));
-    const rows = screen.getAllByTestId('nearby-row');
-    expect(rows).toHaveLength(1);
-    expect(rows[0].textContent).toContain('喵喵');
-    expect(rows[0].textContent).toContain('需求中心');
+    const row = screen.getByTestId('nearby-row');
+    expect(row.textContent).toContain('高38.2%');
+    expect(row.textContent).toContain('重61.4%');
+  });
+
+  test('缺身高时显示「高—」，体重照常显示', () => {
+    const noHeight = {
+      key: 'no-height', cfgId: 10006, petId: 3011, name: '格兰花', level: 28, voiceDb: 96,
+      weightPct: 48.1, heightPct: null, kinds: ['high'], rare: true, alertReason: null,
+      distanceM: null, pos: { x: 0, y: 0, z: 0 },
+    };
+    feed({ ...snapshot, pets: [noHeight], self: { x: 0, y: 0 } });
+    render(<Nearby onNavigate={vi.fn()} />);
+    openList();
+    const row = screen.getByTestId('nearby-row');
+    expect(row.textContent).toContain('高—');
+    expect(row.textContent).toContain('重48.1%');
+  });
+
+  test('目标出现：不再写「可提醒 · +100dB」，+100dB 只出现一次', () => {
+    feed();
+    render(<Nearby onNavigate={vi.fn()} />);
+    openList();
+    const row = screen.getAllByTestId('nearby-row')[0];
+    expect(row.textContent).toContain('目标出现！');
+    expect(row.textContent).not.toContain('可提醒');
+    expect((row.textContent ?? '').match(/\+100dB/g) ?? []).toHaveLength(1);
+  });
+
+  test('点开一行能看到完整详情', () => {
+    feed();
+    render(<Nearby onNavigate={vi.fn()} />);
+    openList();
+    const row = screen.getAllByTestId('nearby-row')[0];
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    expect(row.textContent).toContain('首次');
+    expect(row.textContent).toContain('最近');
+    expect(row.textContent).toContain('坐标');
+    expect(row.textContent).toContain('#3002');
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('需求入口整体下线：没有需求筛选、需求 chip 或需求文案', () => {
+    feed();
+    render(<Nearby onNavigate={vi.fn()} />);
+    openList();
+    expect(screen.queryByRole('button', { name: '需求' })).toBeNull();
+    expect(screen.queryByText(/需求中心/)).toBeNull();
+    expect(screen.queryByText(/可叫发需求的人来抓/)).toBeNull();
   });
 
   test('目标档：搜索 + 勾选后只留蹲守目标（普通精灵也算高价值进列表）', () => {
@@ -210,17 +243,16 @@ describe('附近页', () => {
     expect(screen.getByText('目标的 1 只都不在视野内')).toBeTruthy();
   });
 
-  test('命中需求中心时弹强提示与系统通知', async () => {
+  test('目标出现时弹强提示与系统通知', async () => {
     const notify = vi.fn((_title: string, _body: string) => '');
     window.RocoCapture = { getState: () => '{}', notifyRareAlert: notify };
     vi.mocked(useRareAlert).mockReturnValue(true);
     feed();
-    demandCenter([wantedDemand]);
     render(<Nearby onNavigate={vi.fn()} />);
     await waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
-    expect(notify.mock.calls[0][0]).toBe('需求中心精灵出现！');
-    expect(String(notify.mock.calls[0][1])).toContain('喵喵');
-    expect(String(notify.mock.calls[0][1])).toContain('可叫「小组甲」发需求的人来抓');
+    expect(notify.mock.calls[0][0]).toBe('稀有精灵出现！');
+    expect(String(notify.mock.calls[0][1])).toContain('护主犬');
+    expect(String(notify.mock.calls[0][1])).toContain('+100dB');
     expect(screen.getByTestId('nearby-alert')).toBeTruthy();
   });
 
@@ -259,14 +291,6 @@ describe('附近页', () => {
     render(<Nearby onNavigate={vi.fn()} />);
     openList();
     expect(screen.getByText('还没有高价值精灵')).toBeTruthy();
-  });
-
-  test('筛选后为空给出提示', () => {
-    feed({ ...snapshot, pets: [pets[0]] });
-    render(<Nearby onNavigate={vi.fn()} />);
-    openList();
-    fireEvent.click(screen.getByRole('button', { name: '需求' }));
-    expect(screen.getByText('当前筛选下没有精灵')).toBeTruthy();
   });
 
   test('有采集桥：本页「开始采集」把会话标记为附近发起（不自动停止 / 导入）', async () => {

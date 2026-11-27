@@ -158,20 +158,55 @@ export function useEggMatching(groupId: string, accountId: string) {
   const mutate = useCallback(async (action: unknown) => {
     if (writing.current || !current.current) throw new Error('数据正在更新，请稍后重试');
     const requested = key;
+    // 蛋仓同步的失败由 `useEggStockSync` 统一展示；这里不再写一份 api.error，避免同一条 409 弹两个横幅。
+    const kind = (action as { type?: unknown } | null)?.type;
     writing.current = requested; setBusy(true);
-    try {
-      const next = await mutateEggMatching(groupId, current.current.version, action);
+    const install = (next: EggMatchingResponse) => {
       remember(requested, next);
       if (identity.current !== requested) return;
       current.current = next; setData(next); setError(null);
-    } catch (failure) {
-      if (identity.current === requested) {
-        setError(failure instanceof Error ? failure.message : '操作失败');
-        if (failure instanceof EggMatchingError && failure.status === 409) {
-          const next = await getEggMatching(groupId);
-          remember(requested, next);
-          if (identity.current === requested) { current.current = next; setData(next); }
+    };
+    /** 把服务端 409 回带的最新版本接过来（不补拉，省一次往返）。 */
+    const adoptHint = (hint: number): number => {
+      if (identity.current === requested && current.current && current.current.version !== hint) {
+        const next = { ...current.current, version: hint };
+        current.current = next;
+        setData(next);
+      }
+      return hint;
+    };
+    /** 409 之后要用的版本：优先用响应里回带的，没有才重新 GET 一次。 */
+    const latestVersion = async (hint?: number): Promise<number> => {
+      if (typeof hint === 'number') return adoptHint(hint);
+      const fetched = await getEggMatching(groupId);
+      remember(requested, fetched);
+      if (identity.current === requested) { current.current = fetched; setData(fetched); }
+      return fetched.version;
+    };
+    try {
+      const next = await mutateEggMatching(groupId, current.current.version, action);
+      install(next);
+      return next;
+    } catch (initial) {
+      let failure: unknown = initial;
+      if (failure instanceof EggMatchingError && failure.status === 409) {
+        /**
+         * 409 表示这次**没有落库**（版本校验 / CAS 都在写之前失败），所以用最新版本
+         * 自动重试一次是安全的；仍冲突才把错误交给界面（2026-11-26 R3）。
+         */
+        try {
+          const version = await latestVersion(failure.currentVersion);
+          const next = await mutateEggMatching(groupId, version, action);
+          install(next);
+          return next;
+        } catch (retryFailure) {
+          failure = retryFailure;
         }
+      }
+      if (identity.current === requested) {
+        if (failure instanceof EggMatchingError && failure.status === 409 &&
+            typeof failure.currentVersion === 'number') adoptHint(failure.currentVersion);
+        if (kind !== 'stock-sync') setError(failure instanceof Error ? failure.message : '操作失败');
       }
       throw failure;
     } finally { if(writing.current===requested)writing.current = null; if (identity.current === requested) setBusy(false); }

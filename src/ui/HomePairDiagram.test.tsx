@@ -220,6 +220,38 @@ describe('家园配窝图（摆位图画法）', () => {
     }
   });
 
+  test('住户报文没有名字时按 baseId 查图鉴物种名，不显示内部 id', () => {
+    const residents = [
+      resident({ actorId: 'f1', name: '', gender: '母', baseId: '3436' }),
+      resident({ actorId: 'm1', name: '柴渣虫', gender: '公', baseId: '3436' }),
+    ];
+
+    const clusters = buildHomePairClusters(
+      [{ femaleActorId: 'f1', maleActorIds: ['m1'] }],
+      residents,
+      new Map(),
+    );
+    expect(clusters[0].nodes[0].name).toBe('柴渣虫');
+    expect(clusters[0].nodes[0].hint).toContain('抓包');
+  });
+
+  test('住户没有名字、图鉴也查不到时写「未知精灵」，并提示完整导入一次抓包', () => {
+    const actorId = '9511622085510695294';
+    const residents = [
+      resident({ actorId, name: '', gender: '母', baseId: '9999' }),
+      resident({ actorId: 'm1', name: '柴渣虫', gender: '公', baseId: '3436' }),
+    ];
+
+    const clusters = buildHomePairClusters(
+      [{ femaleActorId: actorId, maleActorIds: ['m1'] }],
+      residents,
+      new Map(),
+    );
+    expect(clusters[0].nodes[0].name).toBe('未知精灵');
+    expect(clusters[0].nodes[0].name).not.toContain(actorId);
+    expect(clusters[0].nodes[0].hint).toContain('抓包');
+  });
+
   test('配对里的公本不在快照里时，用虚线占位块写「公本未知」', () => {
     const residents = [resident({ actorId: 'f1', name: '火花', gender: '母' })];
 

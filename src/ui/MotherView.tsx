@@ -36,6 +36,16 @@ import { GapFillDialog, type GapTargetView } from './GapFillDialog';
 import { MotherCollectingView } from './plan/MotherCollectingView';
 import type { NavigationIntent } from './navigation';
 
+/** 未收集母本的跨号/本号补法摘要（卡片角标与顶部统计共用）。 */
+export interface MotherFillRoute {
+  /** 真实概率：性格 × 出母 */
+  chance: number;
+  /** 跨号来源；本号直配为空 */
+  sourceAccount?: string;
+  /** 本号自己配（true）还是别的号传蛋（false） */
+  self: boolean;
+}
+
 /** 点「查看」带到精灵背包的筛选：进化链名 + 标签（不再带身高范围，见 jumpBase）。 */
 export interface MotherInventoryJump {
   name: string;
@@ -81,8 +91,46 @@ const CHAIN_FILTERS = [
   { value: 'collected', label: '已收集' },
 ] as const;
 type ChainFilter = (typeof CHAIN_FILTERS)[number]['value'];
+/** 没有推荐性格时的稳定空数组：避免每次查表都新建（保持引用一致） */
+const EMPTY_NATURES: readonly string[] = [];
 const INITIAL_CHAIN_SECTIONS = 2;
 const CHAIN_SECTION_BATCH = 5;
+
+/**
+ * 渐进渲染（2026-11-25 P1，用户口径：平板横着用）。
+ *
+ * 横屏「首屏多给蛋组」的内容**不削减**（宽横屏仍到 10 组、4:3 横屏 6 组），但不在首帧一次挂完：
+ * 首帧只挂 `FIRST_PAINT_SECTIONS` 组（和手机一个量级，点进去立刻有东西、没有长任务），
+ * 其余在空闲时间一片 1～2 组补上，补的过程中用等高骨架占位，页面高度不跳。
+ */
+const FIRST_PAINT_SECTIONS = 2;
+/** 一次空闲追加最多几张卡 / 几个组：追加本身也不能变成长任务 */
+const IDLE_SLICE_MAX_CARDS = 20;
+const IDLE_SLICE_MAX_SECTIONS = 2;
+/**
+ * 骨架高度：**和分区自己声明的占位高度一致**（`containIntrinsicSize: 'auto 180px'`）。
+ *
+ * 分区带 `content-visibility: auto`，没滚到视口里时浏览器按 180px 占位；
+ * 骨架也取 180px，那么「骨架 → 真分区」这一步在屏外高度完全不变，滚动条不会跳。
+ */
+const SECTION_SKELETON_HEIGHT_PX = 180;
+
+/**
+ * 空闲调度：有 `requestIdleCallback` 就用（带 300ms 超时兜底），
+ * 没有就退回 `setTimeout(0)`（jsdom、老 WebView）。返回值用于取消。
+ */
+function scheduleIdleTask(run: () => void): () => void {
+  const scope = globalThis as unknown as {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  if (typeof scope.requestIdleCallback === 'function') {
+    const handle = scope.requestIdleCallback(run, { timeout: 300 });
+    return () => scope.cancelIdleCallback?.(handle);
+  }
+  const timer = window.setTimeout(run, 0);
+  return () => window.clearTimeout(timer);
+}
 
 /**
  * 母本视角：
@@ -139,7 +187,6 @@ export function MotherView({
     : tabletLandscape
       ? 6
       : INITIAL_CHAIN_SECTIONS;
-  const [visibleSectionCount, setVisibleSectionCount] = useState(initialSections);
 
   // 收集页的「未收集 / 收集中 / 已收集」直达：同步到本页的状态开关
   useEffect(() => {
@@ -213,10 +260,26 @@ export function MotherView({
         ? '粗嗓门'
         : '婉转声';
 
+  /**
+   * 每颗蛋的推荐性格：**一次建表**，行渲染 / 缺口汇总 / 悬浮窗都查这一份
+   * （2026-11-25 P3：原来每渲染一次就按行现算一遍 `eggNatures`，
+   * `defaultEggNatures` 内部是 665 条线性扫，165 行一帧 11～21ms；
+   * 见 docs/分析-收集页卡顿-2026-11-25.md）。
+   */
+  const naturesByEgg = useMemo(() => {
+    const map = new Map<number, readonly string[]>();
+    for (const group of motherGroups) {
+      map.set(group.eggGameId, eggNatures(catalogSpecies, group.eggGameId, natureOverrides));
+    }
+    return map;
+  }, [motherGroups, natureOverrides]);
+  const naturesOfEgg = (eggGameId: number): readonly string[] =>
+    naturesByEgg.get(eggGameId) ?? EMPTY_NATURES;
+
   const missingNaturesByEgg = useMemo(() => {
     const map = new Map<number, readonly string[]>();
     for (const group of motherGroups) {
-      const natures = eggNatures(catalogSpecies, group.eggGameId, natureOverrides);
+      const natures = naturesByEgg.get(group.eggGameId) ?? EMPTY_NATURES;
       map.set(
         group.eggGameId,
         natures.filter(
@@ -230,7 +293,7 @@ export function MotherView({
       );
     }
     return map;
-  }, [motherGroups, owned, criteria, activeVoices.join(','), naturesOf, natureOverrides]);
+  }, [motherGroups, owned, criteria, activeVoices.join(','), naturesOf, naturesByEgg]);
 
   /** 搜索（进化链全员命中）+ 蛋组筛选：同时作用于已收集 / 计划 / 待补齐 */
   const keyword = query.trim().toLowerCase();
@@ -278,6 +341,59 @@ export function MotherView({
   const collectedChainCount = matchedGroups.filter(isChainCollected).length;
 
   /**
+   * 未收集母本的可补路线（2026-11-24 用户口径，A+B）：
+   *
+   * - 账号筛选只决定“看哪个号”，不能决定“谁能补”；建议本身已经用全部账号算过，
+   *   这里按选中的目标号汇总；
+   * - 本号直配（pairings）和跨号传蛋（tasks）都算可补；同一条蛋取概率最高的一条；
+   * - “其他号可补”只数跨号来源，用于顶部统计；卡片角标本号/跨号都显示。
+   */
+  const accountKey = accountNames.join('\u0000');
+  const fillRoutes = useMemo(() => {
+    const map = new Map<number, MotherFillRoute>();
+    const suggestions = motherSuggestions ?? new Map();
+    for (const account of accountKey ? accountKey.split('\u0000') : []) {
+      const entry = suggestions.get(account);
+      if (!entry) continue;
+      for (const pairing of entry.pairings) {
+        const current = map.get(pairing.eggGameId);
+        if (!current || pairing.motherGain > current.chance) {
+          map.set(pairing.eggGameId, { chance: pairing.motherGain, self: true });
+        }
+      }
+      for (const task of entry.tasks) {
+        const current = map.get(task.eggGameId);
+        if (!current || task.chance > current.chance) {
+          map.set(task.eggGameId, {
+            chance: task.chance,
+            sourceAccount: task.sourceAccount,
+            self: false,
+          });
+        }
+      }
+    }
+    return map;
+  }, [motherSuggestions, accountKey]);
+
+  /** 当前筛选下未收集、且其他号有跨号传蛋线的蛋数（同一条蛋只算一次） */
+  const otherFillCount = useMemo(() => {
+    const suggestions = motherSuggestions ?? new Map();
+    const uncollected = new Set(
+      matchedGroups.filter((group) => !isChainCollected(group)).map((group) => group.eggGameId),
+    );
+    const eggs = new Set<number>();
+    for (const account of accountKey ? accountKey.split('\u0000') : []) {
+      const entry = suggestions.get(account);
+      if (!entry) continue;
+      for (const task of entry.tasks) {
+        if (uncollected.has(task.eggGameId)) eggs.add(task.eggGameId);
+      }
+    }
+    return eggs.size;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motherSuggestions, accountKey, matchedGroups, owned, criteria, activeVoices.join(','), naturesOf]);
+
+  /**
    * 链清单（按蛋组分区、图鉴号排序；每行四张精灵卡）：
    * 按**主蛋组**（链的最小可孵蛋组）分区，组内按图鉴号排序；每条链一行。
    */
@@ -289,8 +405,7 @@ export function MotherView({
      * - 分子 = 该蛋组**实际已收集**的数量，与筛选无关。
      */
     const recommendedOnly = criteria.recommendedNatures === true;
-    const hasNatureTarget = (group: MotherGroup) =>
-      eggNatures(catalogSpecies, group.eggGameId, natureOverrides).length > 0;
+    const hasNatureTarget = (group: MotherGroup) => naturesOfEgg(group.eggGameId).length > 0;
     const byGroup = new Map<number, MotherGroup[]>();
     for (const group of matchedGroups) {
       const primary = group.eggGroups[0];
@@ -326,11 +441,60 @@ export function MotherView({
     return sections;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchedGroups, chainFilter, owned, criteria, activeVoices.join(','), naturesOf, plannedSet, natureOverrides, eggGroupNames]);
+  /**
+   * 目标组数（横屏 10 / 6，竖屏 2）与「已经挂上」的组数分开：
+   * 首帧只挂 `FIRST_PAINT_SECTIONS` 组，其余靠下面的空闲任务补齐到目标。
+   *
+   * 2026-11-26 PERF-01：**筛选签名一变，就在这一次渲染里直接按首帧窗口取数**，不等 useEffect。
+   * 原来重置写在 effect 里，换筛选/搜索后的**第一次提交**还会按上一次的组数（宽横屏 10）
+   * 把新结果整屏铺一遍，再塌回 2 组 + 骨架长回来 —— 宽横屏下每敲一个字抖一次，
+   * 那次整屏提交也白付了一遍成本（见 `docs/code-review/2026-11-26/R-04-性能与死代码.md` PERF-01）。
+   */
+  const sectionsKey = `${chainFilter}|${keyword}|${eggGroupFilter.join(',')}|${initialSections}`;
+  const firstPaintWindow = {
+    requested: Math.max(initialSections, FIRST_PAINT_SECTIONS),
+    mounted: Math.min(initialSections, FIRST_PAINT_SECTIONS),
+  };
+  const [sectionWindow, setSectionWindow] = useState(() => ({
+    key: sectionsKey,
+    ...firstPaintWindow,
+  }));
+  const sectionWindowStale = sectionWindow.key !== sectionsKey;
+  if (sectionWindowStale) {
+    // 渲染期同步（React「渲染期调整 state」写法）：这次按旧窗口的渲染结果会被丢弃，
+    // 立刻按新签名重渲染 —— 所以第一次提交就已经是首帧组数，不会先整屏再塌。
+    setSectionWindow({ key: sectionsKey, ...firstPaintWindow });
+  }
+  const requestedSections = sectionWindowStale ? firstPaintWindow.requested : sectionWindow.requested;
+  const mountedSections = sectionWindowStale ? firstPaintWindow.mounted : sectionWindow.mounted;
+
+  /** 空闲追加：一片最多 2 组 / 20 张卡，补到目标组数就停 */
   useEffect(() => {
-    setVisibleSectionCount(initialSections);
-  }, [chainFilter, keyword, eggGroupFilter.join(','), initialSections]);
-  const visibleChainSections = chainSections.slice(0, visibleSectionCount);
-  const hiddenChainSections = Math.max(0, chainSections.length - visibleChainSections.length);
+    if (chainFilter === 'collecting' || mountedSections >= requestedSections) return;
+    const cardsOf = (index: number) => chainSections[index]?.groups.length ?? 0;
+    const nextMounted = (current: number): number => {
+      let count = current;
+      let cards = 0;
+      while (count < requestedSections && count - current < IDLE_SLICE_MAX_SECTIONS) {
+        const sectionCards = cardsOf(count);
+        if (count > current && cards + sectionCards > IDLE_SLICE_MAX_CARDS) break;
+        cards += sectionCards;
+        count += 1;
+      }
+      return Math.min(requestedSections, count);
+    };
+    return scheduleIdleTask(() =>
+      setSectionWindow((current) =>
+        // 片还没跑就换了筛选：这次作废（新签名会自己从首帧窗口重来）
+        current.key === sectionsKey ? { ...current, mounted: nextMounted(current.mounted) } : current,
+      ),
+    );
+  }, [chainFilter, mountedSections, requestedSections, chainSections, sectionsKey]);
+
+  const visibleChainSections = chainSections.slice(0, mountedSections);
+  /** 目标组数内、还没挂上的：先用等高骨架占位（追加时页面不跳） */
+  const pendingChainSections = chainSections.slice(mountedSections, requestedSections);
+  const hiddenChainSections = Math.max(0, chainSections.length - requestedSections);
 
   /**
    * 三列蛋组（2026-11-21 用户口径）：收起筛选且屏幕够宽时，
@@ -404,7 +568,7 @@ export function MotherView({
         name,
         number: group.number,
         gameId: group.eggGameId,
-        natures: eggNatures(catalogSpecies, group.eggGameId, natureOverrides),
+        natures: [...naturesOfEgg(group.eggGameId)],
         eggGroupLabels: group.eggGroups.map((groupId) => eggGroupNames[groupId] ?? `蛋组${groupId}`),
         tag: '未收集',
         targetLabel: gapTarget.label,
@@ -486,6 +650,14 @@ export function MotherView({
             />
           </div>
         </div>
+        {otherFillCount > 0 && chainFilter === 'uncollected' ? (
+          <p
+            className="mx-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-700"
+            data-testid="mother-fill-summary"
+          >
+            未收集 {matchedGroups.length - collectedChainCount} · 其他号可补 {otherFillCount}
+          </p>
+        ) : null}
       </div>
 
       <div className="collection-main space-y-2">
@@ -573,7 +745,7 @@ export function MotherView({
                     eggName={group.formLabel || '未知精灵'}
                     eggGameId={group.eggGameId}
                     number={group.number}
-                    recommendedNatures={eggNatures(catalogSpecies, group.eggGameId, natureOverrides)}
+                    recommendedNatures={naturesOfEgg(group.eggGameId)}
                     mothers={mothersOf(group)}
                     eggGroupLabels={group.eggGroups.map(
                       (groupId) => eggGroupNames[groupId] ?? `蛋组${groupId}`,
@@ -581,6 +753,7 @@ export function MotherView({
                     planned={plannedSet.has(group.chainKey)}
                     onTogglePlan={() => toggleMotherPlan(group.chainKey)}
                     jumpBase={jumpBase}
+                    fill={fillRoutes.get(group.eggGameId) ?? null}
                     onOpenInventory={onOpenInventory}
                     onOpenGap={gapTarget ? () => openGapFor(group) : undefined}
                   />
@@ -589,14 +762,33 @@ export function MotherView({
             </div>
           ))
         )}
+        {/*
+          目标组数内还没挂上的分区：等高骨架占位（2026-11-25 P1）。
+          高度与分区自己声明的占位高度（containIntrinsicSize 180px）一致，
+          所以「骨架 → 真分区」在屏外高度不变，追加时页面不跳。
+        */}
+        {chainFilter !== 'collecting'
+          ? pendingChainSections.map((section) => (
+              <div
+                key={`skeleton-${section.groupId}`}
+                className="overflow-hidden rounded-2xl bg-white shadow-sm"
+                style={{ height: `${SECTION_SKELETON_HEIGHT_PX}px` }}
+                data-testid="mother-chain-skeleton"
+                aria-hidden
+              />
+            ))
+          : null}
         {chainFilter !== 'collecting' && hiddenChainSections > 0 ? (
           <button
             type="button"
-            onClick={() =>
-              setVisibleSectionCount((current) =>
-                Math.min(chainSections.length, current + CHAIN_SECTION_BATCH),
-              )
-            }
+            onClick={() => {
+              // 用户主动点的：目标组数和已挂组数一起加，立刻给出结果，不再等空闲片
+              const nextRequested = Math.min(
+                chainSections.length,
+                requestedSections + CHAIN_SECTION_BATCH,
+              );
+              setSectionWindow({ key: sectionsKey, requested: nextRequested, mounted: nextRequested });
+            }}
             className="min-h-[36px] w-full rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-600"
             data-testid="mother-chain-show-more"
           >
@@ -642,18 +834,21 @@ function MotherEggRow({
   planned,
   onTogglePlan,
   jumpBase,
+  fill,
   onOpenInventory,
   onOpenGap,
 }: {
   eggName: string;
   eggGameId: number;
   number: string;
-  recommendedNatures: string[];
+  recommendedNatures: readonly string[];
   mothers: OwnedPet[];
   eggGroupLabels: string[];
   planned: boolean;
   onTogglePlan: () => void;
   jumpBase: { tags: string[] };
+  /** 这条未收集母本怎么补（本号直配 / 其他号传蛋）；null = 没有过线的线 */
+  fill?: MotherFillRoute | null;
   onOpenInventory?: (jump: MotherInventoryJump) => void;
   /** 未收集的卡点开「怎么补」悬浮窗 */
   onOpenGap?: () => void;
@@ -665,8 +860,17 @@ function MotherEggRow({
     .filter((nature) => collectedNatures.has(nature))
     .map((nature) => `nature:${nature}`);
 
-  /** 三态底色（2026-11-21 用户口径）：未收集白底 / 计划中淡蓝 / 已收集淡绿 */
-  const cardStatus: PetCardStatus = collected ? 'collected' : planned ? 'planned' : 'uncollected';
+  /**
+   * 底色（2026-11-24 用户口径）：未收集白底 / 计划中淡蓝 / 已收集淡绿 /
+   * 可补浅绿（本号或其他号有能补的线）。计划中的卡仍用淡蓝，不抢计划状态。
+   */
+  const cardStatus: PetCardStatus = collected
+    ? 'collected'
+    : planned
+      ? 'planned'
+      : fill
+        ? 'fillable'
+        : 'uncollected';
 
   return (
     <li data-testid="mother-chain-row" data-mother-status={cardStatus} className="min-w-0">

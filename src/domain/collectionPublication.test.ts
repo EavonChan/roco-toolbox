@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { motherResourceCriteriaIdOf, type PublishedMotherResource } from '../shared/motherGroups';
 import { studSlotSetIdOf, type PublishedStudResource, type StudTargetConfig } from '../shared/collectionGroups';
-import { groupPublicationStatus } from './collectionPublication';
+import {
+  PUBLICATION_BIND_HINT,
+  groupPublicationStatus,
+  publicationActionLabel,
+} from './collectionPublication';
 
 const CATALOG = 'cat-1';
 
@@ -109,5 +113,36 @@ describe('小组共享资源发布状态', () => {
     expect(studStatus({ stud: studResource({ targetId: 'stud-other' }) })).toBe('需更新');
     expect(studStatus({ stud: studResource({ targetRevision: 2 }) })).toBe('需更新');
     expect(studStatus({ stud: studResource({ catalogVersion: 'cat-0' }) })).toBe('需更新');
+  });
+});
+
+/**
+ * 2026-11-27：用户说「没找到绑的地方，只登录了」——界面上叫「选号并发布」，
+ * 而机器人 ingest 查的是「这个游戏 UID 有没有绑到小组」。同一件事两个词，所以按钮改名。
+ */
+describe('组卡按钮文案（绑定口径）', () => {
+  test('未发布说「绑定」，已发布说「已绑定」，需更新说「更新绑定」', () => {
+    expect(publicationActionLabel('未发布', false)).toBe('绑定游戏账号');
+    expect(publicationActionLabel('已发布', false)).toBe('已绑定的账号');
+    expect(publicationActionLabel('需更新', false)).toBe('更新绑定');
+  });
+
+  test('展开编辑时统一是「收起」', () => {
+    for (const status of ['未发布', '已发布', '需更新'] as const) {
+      expect(publicationActionLabel(status, true)).toBe('收起');
+    }
+  });
+
+  test('改名后不再用「选号 / 发布」描述这个入口', () => {
+    for (const status of ['未发布', '已发布', '需更新'] as const) {
+      const label = publicationActionLabel(status, false);
+      expect(label).not.toContain('选号');
+      expect(label).not.toContain('发布');
+    }
+  });
+
+  test('按钮下的说明要点明「机器人靠这个同步蛋仓」', () => {
+    expect(PUBLICATION_BIND_HINT).toContain('机器人');
+    expect(PUBLICATION_BIND_HINT).toContain('蛋仓');
   });
 });

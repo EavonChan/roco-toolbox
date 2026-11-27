@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { CATALOG_VERSION, species } from '../../data/catalog';
 import type { AccountSnapshot } from '../../domain/parseBackup';
@@ -8,8 +8,8 @@ import { CARD } from '../primitives/styles';
 import { useMotherGroups } from '../useMotherGroups';
 import { EggCharacterSelect } from './EggCharacterSelect';
 import { EggStockPanel } from './EggStockPanel';
-import { eggCharactersOf } from './eggCharacter';
 import { useEggMatching } from './useEggMatching';
+import { useEggStockCharacter } from './useEggStockCharacter';
 import { useEggStockSync } from './useEggStockSync';
 import { useLandscape } from '../useWideLandscape';
 
@@ -30,23 +30,41 @@ function forgetEggStockView(): void {
 }
 
 /** 空态在横屏下复用蛋仓的纵向标题栏（竖屏顶栏有「返回家园」，不重复给）。 */
-function EmptyStockState({ testId, reason, action, onBack }: {
+function EmptyStockState({ testId, reason, action, onBack, hideReason = false }: {
   testId: string;
   reason: string;
   action?: { label: string; onClick: () => void };
   onBack?: () => void;
+  /** 横屏只留动作（未登录这种一句话说得清的空态，不再占两行说明） */
+  hideReason?: boolean;
 }) {
   const landscape = useLandscape();
+  /** 横屏说明只占 16rem、按钮 1/3 宽；hideReason 的空态把按钮居中。 */
+  const hideText = landscape && hideReason;
   const body = (
-    <div className="flex flex-col gap-2" data-testid={testId}>
-      <p className="text-xs text-slate-600">{reason}</p>
-      {action ? <Button size="sm" onClick={action.onClick}>{action.label}</Button> : null}
+    <div
+      className={`flex flex-col gap-2${landscape ? (hideText ? ' items-center' : ' items-start') : ''}`}
+      data-testid={testId}
+    >
+      {hideText ? null : (
+        <p className={`text-xs text-slate-600${landscape ? ' max-w-[16rem]' : ''}`}>{reason}</p>
+      )}
+      {action ? (
+        <Button
+          size="sm"
+          className={landscape ? `w-1/3${hideText ? ' mx-auto' : ''}` : undefined}
+          onClick={action.onClick}
+        >
+          {action.label}
+        </Button>
+      ) : null}
     </div>
   );
   if (!landscape || !onBack) return body;
   return (
     <div className="egg-stock-layout" data-collapsed="true">
-      <div className="egg-stock-main flex min-w-0 flex-col gap-2">{body}</div>
+      {/* 横屏空态（未登录 / 未入组 / 读失败）：卡片在整个内容区正中，不贴着左上角 */}
+      <div className="egg-stock-main stock-empty-center flex min-w-0 flex-col gap-2">{body}</div>
       <aside className="egg-stock-rail" data-testid="egg-stock-rail" aria-label="蛋仓标题栏">
         <button
           type="button"
@@ -92,19 +110,18 @@ function StockBody({ groupId, me, snapshots, onBack, headerSlot }: {
   const api = useEggMatching(groupId, me);
   const sync = useEggStockSync({ api, groupId, me, snapshots });
   const landscape = useLandscape();
-  /** '' = 全部角色；同一账号下多个游戏号时才有意义（2026-11-23 用户口径）。 */
-  const [character, setCharacter] = useState('');
   const myEggs = useMemo(
     () => (api.data?.state.eggs ?? []).filter((egg) => egg.accountId === me && egg.status !== 'transferred'),
     [api.data, me],
   );
-  const characters = useMemo(() => eggCharactersOf(myEggs, snapshots), [myEggs, snapshots]);
-  useEffect(() => {
-    // 换组 / 蛋换走了：选中的角色不在蛋仓里了就回到「全部角色」，别让屏幕空着。
-    if (character && !characters.some((item) => item.key === character)) setCharacter('');
-  }, [character, characters]);
+  /**
+   * 一次只显示一个角色（2026-11-24 用户口径）：默认账号角色列表的第一个（一般是主号），
+   * 有多个角色时标题行/筛选栏可切换，没有「全部角色」。
+   * 状态从 2026-11-25 起抽进 `useEggStockCharacter`，换蛋广场的蛋仓也用同一份（别再抄一遍）。
+   */
+  const { characters, activeCharacter, setCharacter } = useEggStockCharacter({ eggs: myEggs, snapshots });
   const characterSelect = characters.length > 1
-    ? <EggCharacterSelect value={character} characters={characters} onChange={setCharacter} />
+    ? <EggCharacterSelect value={activeCharacter} characters={characters} onChange={setCharacter} />
     : null;
   return (
     <div className="flex flex-col gap-2" data-testid="egg-stock-body">
@@ -131,7 +148,7 @@ function StockBody({ groupId, me, snapshots, onBack, headerSlot }: {
           mutate={api.mutate}
           collapsibleFilterRail
           railBack={onBack?{onClick:onBack}:undefined}
-          character={character}
+          character={activeCharacter}
           characters={characters}
           onCharacterChange={setCharacter}
         />
@@ -187,6 +204,7 @@ export function EggStockView({ snapshots, onGoGroups, onGoAccount, onBack, heade
           reason="蛋仓跟着账号走：先登录，蛋仓才会和组内广场那边对得上。"
           action={onGoAccount ? { label: '去登录', onClick: onGoAccount } : undefined}
           onBack={onBack}
+          hideReason
         />
       ) : groupId ? (
         <StockBody

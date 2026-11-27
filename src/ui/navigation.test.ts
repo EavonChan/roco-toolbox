@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import {
+  eggStockPending,
   focusPending,
   initialNavigation,
   legacyLocation,
   resolveNavigation,
   type AppNavigation,
   type CollectionLocation,
+  type NavigationIntent,
 } from './navigation';
 
 const EGG_LOCATION: CollectionLocation = { kind: 'studs', view: 'eggs' };
@@ -121,6 +123,63 @@ describe('resolveNavigation：意图', () => {
     expect(
       resolveNavigation(groups, { type: 'tab', page: 'groups' }).groupType,
     ).toBeUndefined();
+  });
+});
+
+describe('蛋仓直达（U2「我的」→ 换蛋 · 蛋仓，2026-11-25）', () => {
+  test('open-egg-stock 切到换蛋页并挂起一次蛋仓请求', () => {
+    const nav = resolveNavigation(initialNavigation('profile', null), { type: 'open-egg-stock' });
+    expect(nav.page).toBe('groups');
+    expect(eggStockPending(nav)).toBe(true);
+    expect(nav.eggStockRevision).toBe(1);
+  });
+
+  test('请求被消费后仍记住来源是「我的」，返回该回我的而不是换蛋页', () => {
+    const opened = resolveNavigation(initialNavigation('profile', null), { type: 'open-egg-stock' });
+    expect(opened.eggStockFromProfile).toBe(true);
+    const consumed = resolveNavigation(opened, {
+      type: 'consume-egg-stock',
+      revision: opened.eggStockRevision,
+    });
+    // 消费只影响「要不要再自动打开」，不影响来源：用户在蛋仓屏里点返回还得回「我的」
+    expect(eggStockPending(consumed)).toBe(false);
+    expect(consumed.eggStockFromProfile).toBe(true);
+  });
+
+  test('离开换蛋页（切页签 / 打开我的 / 打开小组 / 去收集）后来源作废', () => {
+    const opened = resolveNavigation(initialNavigation('profile', null), { type: 'open-egg-stock' });
+    const intents: NavigationIntent[] = [
+      { type: 'tab', page: 'groups' },
+      { type: 'open-profile', section: 'data' },
+      { type: 'open-groups' },
+      { type: 'open-collection', location: EGG_LOCATION },
+    ];
+    for (const intent of intents) {
+      expect(resolveNavigation(opened, intent).eggStockFromProfile).toBe(false);
+    }
+  });
+
+  test('重复直达同一目标也递增（第二次点也要重新打开蛋仓）', () => {
+    const first = resolveNavigation(initialNavigation('profile', null), { type: 'open-egg-stock' });
+    const consumed = resolveNavigation(first, {
+      type: 'consume-egg-stock',
+      revision: first.eggStockRevision,
+    });
+    expect(eggStockPending(consumed)).toBe(false);
+    const second = resolveNavigation(consumed, { type: 'open-egg-stock' });
+    expect(second.eggStockRevision).toBe(2);
+    expect(eggStockPending(second)).toBe(true);
+  });
+
+  test('晚到的旧消费不能清掉后来的新请求', () => {
+    const first = resolveNavigation(initialNavigation('profile', null), { type: 'open-egg-stock' });
+    const second = resolveNavigation(first, { type: 'open-egg-stock' });
+    const late = resolveNavigation(second, {
+      type: 'consume-egg-stock',
+      revision: first.eggStockRevision,
+    });
+    expect(late).toBe(second);
+    expect(eggStockPending(late)).toBe(true);
   });
 });
 

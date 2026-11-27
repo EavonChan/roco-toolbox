@@ -45,11 +45,14 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     render(<HomePairCards couples={couples} residents={residents} pets={pets} />);
     const cards = screen.getAllByTestId('home-pair-card');
     expect(cards).toHaveLength(1);
-    // 三个窝：两母 + 一公
-    const females = within(cards[0]).getByTestId('home-pair-females');
-    const males = within(cards[0]).getByTestId('home-pair-males');
-    expect(within(females).getAllByTestId('breed-pet-card')).toHaveLength(2);
-    expect(within(males).getAllByTestId('breed-pet-card')).toHaveLength(1);
+    // 三个窝：两母 + 一公，三只横排一行（2026-11-22 用户口径）
+    const row = within(cards[0]).getByTestId('home-pair-triple');
+    expect(row.children).toHaveLength(3);
+    const petsInRow = within(cards[0]).getAllByTestId('breed-pet-card');
+    expect(petsInRow).toHaveLength(3);
+    expect(petsInRow[0].className).toContain('bg-pink-50');
+    expect(petsInRow[1].className).toContain('bg-pink-50');
+    expect(petsInRow[2].className).toContain('bg-sky-50');
     // 学院 100%：卡头和第二个母本上方各一枚
     // 声音按每个母本自己那一行算（f1 97 → 98dB，f2 100 → 100dB），不能把两位母本混成同一份
     const heads = [
@@ -62,7 +65,7 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     expect(heads[1]).toHaveTextContent('100dB');
     expect(within(cards[0]).getAllByTestId('home-pair-nature')).toHaveLength(2);
     // 学院那只（公）绿框
-    expect(within(males).getByTestId('breed-pet-card').className).toContain('border-emerald-500');
+    expect(petsInRow[2].className).toContain('border-emerald-500');
   });
 
   test('1 公 2 母中只有一只母本缺失时，只隐藏这一只的概率和声音', () => {
@@ -340,6 +343,51 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     expect(petsInCard[1].className).toContain('border-sky-200');
   });
 
+  test('精灵卡底部显示个体三维（物攻+8·生命+9·速度+10），卡高 70 → 84', () => {
+    const residents = [
+      resident({ actorId: 'f1', name: '喵喵', gender: '母', nature: '胆小' }),
+      resident({ actorId: 'm1', name: '火花', gender: '公', nature: '固执' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      [
+        'ins_f1',
+        owned({
+          gameId: 3001,
+          name: '喵喵',
+          gender: '母',
+          individualBonuses: [
+            { name: '物攻', value: 8 },
+            { name: '生命', value: 9 },
+            { name: '速度', value: 10 },
+          ],
+        }),
+      ],
+      ['ins_m1', owned({ gameId: 3003, name: '火花', gender: '公' })],
+    ]);
+    render(
+      <HomePairCards
+        couples={[{ femaleActorId: 'f1', maleActorIds: ['m1'] }]}
+        residents={residents}
+        pets={pets}
+      />,
+    );
+    const cards = screen.getAllByTestId('breed-pet-card');
+    // 固定三格一行：按实际三维填，缺的那格留空
+    const stats = within(cards[0]).getByTestId('breed-pet-stats');
+    expect(stats.children).toHaveLength(3);
+    // 固定按 生命 → 物攻 → 魔攻 → 物防 → 魔防 → 速度 排
+    expect(within(cards[0]).getByTestId('breed-pet-stat-0')).toHaveTextContent('生命+9');
+    expect(within(cards[0]).getByTestId('breed-pet-stat-1')).toHaveTextContent('物攻+8');
+    expect(within(cards[0]).getByTestId('breed-pet-stat-2')).toHaveTextContent('速度+10');
+    expect(cards[0].className).toContain('h-[86px]');
+    // 没有三维的那只：行仍在，三格显示「—」并带「该快照未采集个体三维」提示
+    // （2026-11-24：区分「没采到」与「这三项真的没加成」，三格留白改为破折号）
+    expect(cards[1].className).toContain('h-[86px]');
+    expect(within(cards[1]).getByTestId('breed-pet-stats').children).toHaveLength(3);
+    expect(within(cards[1]).getByTestId('breed-pet-stat-0').textContent).toBe('—');
+    expect(within(cards[1]).getByTestId('breed-pet-stats').getAttribute('title')).toBe('该快照未采集个体三维');
+  });
+
   test('公母同性格：只写一枚 60%', () => {
     const residents = [
       resident({ actorId: 'f1', name: '喵喵', gender: '母', nature: '固执' }),
@@ -398,5 +446,126 @@ describe('家园配窝卡片（一个窝一只精灵）', () => {
     render(<HomePairCards couples={couples} residents={residents} pets={pets} />);
     expect(screen.getAllByTestId('home-pair-card')).toHaveLength(5);
     expect(screen.getAllByTestId('breed-pet-card')).toHaveLength(11);
+  });
+});
+
+describe('住户信息缺失时的兜底（2026-11-27）', () => {
+  const MOTHER_ACTOR_ID = '9511622085510695294';
+
+  test('住户没有名字、背包里也没有这只：显示「未知精灵」，不把内部 actorId 当名字', () => {
+    const residents = [
+      resident({ actorId: MOTHER_ACTOR_ID, name: '', gender: '母', baseId: '9999' }),
+      resident({ actorId: 'm1', name: '柴渣虫', gender: '公' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_m1', owned({ gameId: 3436, name: '柴渣虫', gender: '公' })],
+    ]);
+
+    render(
+      <HomePairCards
+        couples={[{ femaleActorId: MOTHER_ACTOR_ID, maleActorIds: ['m1'] }]}
+        residents={residents}
+        pets={pets}
+      />,
+    );
+
+    const card = screen.getByTestId('home-pair-card');
+    const motherCard = within(card).getAllByTestId('breed-pet-card')[0];
+    expect(motherCard).toHaveTextContent('未知精灵');
+    // 19 位 actorId 是内部 id，不能出现在界面上
+    expect(card).not.toHaveTextContent(MOTHER_ACTOR_ID);
+    // 一句提示：完整导入一次抓包就能补全
+    expect(within(card).getByTestId('home-pair-pet-hint')).toHaveTextContent('导入一次抓包');
+  });
+
+  test('住户没有名字但有 baseId：按图鉴物种名显示，并提示这次没匹配到背包', () => {
+    const residents = [
+      resident({ actorId: MOTHER_ACTOR_ID, name: '', gender: '母', baseId: '3436' }),
+      resident({ actorId: 'm1', name: '柴渣虫', gender: '公' }),
+    ];
+    const pets = new Map<string, OwnedPet>([
+      ['ins_m1', owned({ gameId: 3436, name: '柴渣虫', gender: '公' })],
+    ]);
+
+    render(
+      <HomePairCards
+        couples={[{ femaleActorId: MOTHER_ACTOR_ID, maleActorIds: ['m1'] }]}
+        residents={residents}
+        pets={pets}
+      />,
+    );
+
+    const card = screen.getByTestId('home-pair-card');
+    const motherCard = within(card).getAllByTestId('breed-pet-card')[0];
+    expect(motherCard).toHaveTextContent('柴渣虫');
+    expect(card).not.toHaveTextContent(MOTHER_ACTOR_ID);
+    expect(within(card).getByTestId('home-pair-pet-hint')).toHaveTextContent('导入一次抓包');
+  });
+});
+
+describe('三只组默认排在上方（2026-11-22 用户口径）', () => {
+  test('输入顺序是 2 只在前、3 只在后时，也把三只组排到最上面', () => {
+    const residents = [
+      resident({ actorId: 'f1', name: '三只母', gender: '母' }),
+      resident({ actorId: 'f2', name: '两只母', gender: '母' }),
+    ];
+    const couples: HomePair[] = [
+      { femaleActorId: 'f2', maleActorIds: ['m2'] },
+      { femaleActorId: 'f1', maleActorIds: ['m1a', 'm1b'] },
+    ];
+    const pets = new Map<string, OwnedPet>(
+      residents.map((item) => [
+        item.instanceId,
+        owned({ gameId: 3001, name: item.name, gender: '母' }),
+      ]),
+    );
+    render(<HomePairCards couples={couples} residents={residents} pets={pets} />);
+    const cards = screen.getAllByTestId('home-pair-card');
+    expect(cards[0].dataset.layout).toBe('triple');
+    expect(cards[1].dataset.layout).toBeUndefined();
+  });
+});
+
+describe('两列三只 + 右侧竖排两只（2026-11-22 用户口径）', () => {
+  test('横屏窄屏时第一组两只改成竖排，放到第二列', () => {
+    const original = window.matchMedia;
+    // 测试环境没有真实视口：直接把这份媒体查询固定成匹配
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const mothers = ['f1', 'f2', 'f3', 'f4'];
+      const residents = mothers.map((id) => resident({ actorId: id, name: `母${id}`, gender: '母' }));
+      const couples: HomePair[] = mothers.map((id, index) => ({
+        femaleActorId: id,
+        maleActorIds: [`m${index}a`, `m${index}b`],
+      }));
+      couples[3].maleActorIds = ['m3a']; // 最后一组只配一只：竖排两只
+      const pets = new Map<string, OwnedPet>(
+        residents.map((item) => [
+          item.instanceId,
+          owned({ gameId: 3001, name: item.name, gender: '母' }),
+        ]),
+      );
+      render(<HomePairCards couples={couples} residents={residents} pets={pets} />);
+
+      const list = screen.getByTestId('home-pair-card-list');
+      expect(list).toHaveAttribute('data-layout', 'split');
+      const cards = screen.getAllByTestId('home-pair-card');
+      expect(cards).toHaveLength(4);
+      expect(cards.filter((card) => card.dataset.layout === 'triple')).toHaveLength(3);
+      const vertical = cards.find((card) => card.dataset.layout === 'vertical');
+      expect(vertical).toBeTruthy();
+      expect(within(vertical!).getAllByTestId('breed-pet-card')).toHaveLength(2);
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });

@@ -43,7 +43,7 @@ describe('新手引导', () => {
     }
   });
 
-  test('分段覆盖：首启讲导入，其余按页签各一段；只有首启带「重看引导」收尾', () => {
+  test('分段覆盖：首启讲数据入口，其余按页签各一段；只有首启带「重看引导」收尾', () => {
     expect(TOUR_SEGMENT_ORDER).toEqual([
       'start',
       'dashboard',
@@ -53,17 +53,17 @@ describe('新手引导', () => {
       'home',
       'profile',
     ]);
+    // 首启（本机没有采集桥 → 导入版）：讲清楚「先导数据」并等导入完成
     const startTitles = TOUR_SEGMENTS.start.map((step) => step.title).join('|');
-    expect(startTitles).toContain('采集');
-    expect(startTitles).toContain('开始采集');
+    expect(startTitles).toContain('数据');
     expect(TOUR_SEGMENTS.start.some((step) => step.waitForImport)).toBe(true);
 
-    expect(TOUR_SEGMENTS.dashboard.map((step) => step.title).join('|')).toContain('种公目标');
-    expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('覆盖度');
-    expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('母本全收集');
+    expect(TOUR_SEGMENTS.dashboard.map((step) => step.title).join('|')).toContain('目标');
+    expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('视图');
+    expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('矩阵');
     expect(TOUR_SEGMENTS.nearby.map((step) => step.title).join('|')).toContain('雷达');
-    expect(TOUR_SEGMENTS.groups.map((step) => step.title).join('|')).toContain('组内广场');
-    expect(TOUR_SEGMENTS.home.map((step) => step.title).join('|')).toContain('接单上窝');
+    expect(TOUR_SEGMENTS.groups.map((step) => step.title).join('|')).toContain('广场');
+    expect(TOUR_SEGMENTS.home.map((step) => step.title).join('|')).toContain('三块');
     expect(TOUR_SEGMENTS.profile.map((step) => step.title).join('|')).toContain('云同步');
 
     const startSteps = TOUR_SEGMENTS.start;
@@ -75,6 +75,71 @@ describe('新手引导', () => {
       if (segment === 'start') continue;
       expect(TOUR_SEGMENTS[segment].some((step) => step.hint === true)).toBe(false);
     }
+  });
+
+  test('23 步逐条走通：标题都不为空，最后一步「开始用」并关闭', () => {
+    const steps = TOUR_SEGMENT_ORDER.flatMap((segment) => TOUR_SEGMENTS[segment]);
+    expect(steps).toHaveLength(23);
+    const onClose = vi.fn();
+    render(<TourOverlay steps={steps} onClose={onClose} importReady />);
+
+    const titles: string[] = [];
+    for (let index = 0; index < steps.length; index += 1) {
+      titles.push(screen.getByTestId('tour-title').textContent ?? '');
+      expect(screen.getByTestId('tour-progress')).toHaveTextContent(`${index + 1} / ${steps.length}`);
+      if (index < steps.length - 1) fireEvent.click(screen.getByTestId('tour-next'));
+    }
+    expect(titles).toHaveLength(23);
+    expect(titles.every((title) => title.trim().length > 0)).toBe(true);
+    // 整条链路的最后一步是「我的」（个人页，本轮不动），所以按钮是「开始用」而不是「知道了」
+    expect(screen.getByTestId('tour-done')).toHaveTextContent('开始用');
+    fireEvent.click(screen.getByTestId('tour-done'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('用 selector 定位（data-testid 也能框住）', async () => {
+    const target = document.createElement('div');
+    target.setAttribute('data-testid', 'selector-target');
+    document.body.appendChild(target);
+
+    render(
+      <TourOverlay
+        steps={[{ id: 's', title: '选择器定位', body: '按 data-testid 找元素', selector: '[data-testid="selector-target"]' }]}
+        onClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('tour-spotlight')).toBeTruthy());
+    expect(screen.getByTestId('tour-title')).toHaveTextContent('选择器定位');
+  });
+
+  test('skipWhenMissing：锚点一直不出现时自动跳到下一步，不留居中空卡', async () => {
+    const real = document.createElement('div');
+    real.setAttribute('data-tour', 'after-skip');
+    document.body.appendChild(real);
+
+    const steps = [
+      { id: 'missing', title: '这一步的元素不存在', body: '应该被跳过', anchor: 'never-rendered', skipWhenMissing: true },
+      { id: 'next', title: '下一步', body: '正常显示', anchor: 'after-skip' },
+    ];
+    render(<TourOverlay steps={steps} onClose={() => {}} />);
+
+    expect(screen.getByTestId('tour-title')).toHaveTextContent('这一步的元素不存在');
+    await waitFor(() => expect(screen.getByTestId('tour-title')).toHaveTextContent('下一步'), {
+      timeout: 5000,
+    });
+  });
+
+  test('没有 skipWhenMissing 的步骤：锚点缺失仍退化成居中卡（保持原行为）', async () => {
+    const steps = [
+      { id: 'a', title: '加载慢但不跳过', body: '退化成居中卡', anchor: 'slow-anchor' },
+      { id: 'b', title: '下一步', body: '正常', anchor: 'b-anchor' },
+    ];
+    render(<TourOverlay steps={steps} onClose={() => {}} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(screen.getByTestId('tour-title')).toHaveTextContent('加载慢但不跳过');
+    expect(screen.getByTestId('tour-card')).toBeTruthy();
   });
 
   test('下一步 / 上一步 / 最后一步收尾', () => {

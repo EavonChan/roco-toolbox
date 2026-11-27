@@ -76,11 +76,12 @@ export async function handleEggBotBridge(request: Request, env: Env, now = Date.
     const binding = await env.DB.prepare(
       'SELECT group_id AS groupId FROM egg_bot_bindings WHERE qq_group_id=? AND bot_id=? AND enabled=1',
     ).bind(input.qqGroupId, input.botId).first<{ groupId: string }>();
-    if (!binding) return json({ ok: false, error: '这个群还没接入换蛋提醒' }, 200, null);
+    // code 给机器人按码选引导文案（2026-11-27）；error 保留原句，旧机器人忽略新字段照常工作
+    if (!binding) return json({ ok: false, code: 'group-unbound', error: '这个群还没接入换蛋提醒' }, 200, null);
     const account = await env.DB.prepare(
       'SELECT member_account_id AS accountId FROM mother_group_accounts WHERE group_id=? AND game_account_key=?',
     ).bind(binding.groupId, `uid:${input.uid}`).first<{ accountId: string }>();
-    if (!account) return json({ ok: false, error: '这个 UID 还没绑定到小组成员' }, 200, null);
+    if (!account) return json({ ok: false, code: 'uid-unbound', error: '这个 UID 还没绑定到小组成员' }, 200, null);
     let scene: PatrolScene;
     try {
       scene = parsePatrolScene(input.scene, now);

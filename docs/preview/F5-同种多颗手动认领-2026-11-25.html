@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>F5 · 同种多颗：手动认领（方案稿 2026-11-25）</title>
+<style>
+  /* ------------------------------------------------------------------
+     这是「按线上蛋仓代码几何复刻」的可交互方案稿，不是真机截图。
+     375 / 390 两台手机共用一份状态：点任意一边，两边一起动。
+     本轮只出方案：没有改 src/、没有打包。
+
+     复刻依据：src/ui/plan/EggStockPanel.tsx（4 列网格、卡宽 81px、蛋图 43、
+     名称 10.5px、性格 10px、奖牌 16px、底栏 10px），CARD = p-4。
+     新增的三块用虚线框标出：① 顶部待认领横幅 ② 手动认领页 ③ 详情里的「拆开认领」。
+     ------------------------------------------------------------------ */
+  :root{
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155;
+    --slate-800:#1e293b; --slate-900:#0f172a;
+    --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-200:#a7f3d0; --emerald-500:#10b981;
+    --emerald-600:#059669; --emerald-700:#047857;
+    --amber-50:#fffbeb; --amber-100:#fef3c7; --amber-200:#fde68a; --amber-500:#f59e0b;
+    --amber-700:#b45309; --amber-800:#92400e;
+    --rose-50:#fff1f2; --rose-500:#f43f5e; --rose-700:#be123c;
+    --sky-50:#f0f9ff; --sky-700:#0369a1;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:20px 20px 60px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+    background:#eef2f7; color:var(--slate-700);
+  }
+  h1{font-size:17px; margin:0 0 6px; color:var(--slate-800);}
+  .lead{font-size:12px; line-height:1.75; color:var(--slate-500); margin:0 0 6px; max-width:1000px;}
+  .lead b{color:var(--slate-700);}
+  code{font-family:ui-monospace,"SFMono-Regular",Consolas,monospace; font-size:11px; background:var(--slate-200); padding:0 3px; border-radius:3px;}
+  .legend{display:flex; flex-wrap:wrap; gap:6px 14px; font-size:11px; color:var(--slate-500); margin:10px 0 16px;}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; vertical-align:-1px;}
+  .legend .a{background:var(--amber-100); border:1px dashed var(--amber-500);}
+  .legend .b{background:var(--emerald-100); border:1px solid var(--emerald-500);}
+  .legend .c{background:#fff; border:1px solid var(--slate-300);}
+
+  .demo-bar{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 14px; padding:8px 10px; background:#fff; border:1px solid var(--slate-200); border-radius:10px;}
+  .demo-bar span{font-size:11px; color:var(--slate-500);}
+  .demo-bar button{min-height:28px; padding:0 10px; font-size:11px; border:1px solid var(--slate-200); background:#fff; color:var(--slate-600); border-radius:7px; cursor:pointer;}
+  .demo-bar button:hover{border-color:var(--emerald-500); color:var(--emerald-700);}
+
+  .frames{display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;}
+  .slot{display:flex; flex-direction:column; gap:6px;}
+  .slot-label{font-size:11px; font-weight:700; letter-spacing:.04em; color:var(--slate-400);}
+
+  /* 手机框：高 780，内部纵向滚动 —— 首屏装得下多少，就是用户实际看到多少 */
+  .phone{
+    position:relative; width:375px; height:780px; overflow-y:auto; overflow-x:hidden;
+    background:#fff; border:1px solid var(--slate-300); border-radius:14px;
+    box-shadow:0 2px 10px rgb(15 23 42 / .08);
+  }
+  .phone[data-w="390"]{width:390px;}
+  .phone::-webkit-scrollbar{width:6px;}
+  .phone::-webkit-scrollbar-thumb{background:var(--slate-300); border-radius:3px;}
+
+  /* CARD = p-4 */
+  .screen{padding:16px; display:flex; flex-direction:column; gap:8px;}
+
+  /* ---- ① 待认领横幅（新增）：蛋仓顶部第一块 ---- */
+  .claim-banner{
+    display:flex; align-items:flex-start; gap:8px; width:100%; text-align:left;
+    padding:8px 10px; background:var(--amber-50); border:1px dashed var(--amber-500);
+    border-radius:10px; cursor:pointer; font:inherit;
+  }
+  .claim-banner:hover{background:#fef3c7;}
+  .banner-ico{flex:none; width:18px; height:18px; border-radius:50%; background:var(--amber-500); color:#fff;
+    font-size:12px; font-weight:700; line-height:18px; text-align:center;}
+  .banner-body{min-width:0; flex:1;}
+  .banner-title{display:block; font-size:12.5px; font-weight:700; color:var(--amber-800); line-height:17px;}
+  .banner-hint{display:block; font-size:10.5px; line-height:15px; color:var(--amber-700); margin-top:1px;}
+  .banner-go{flex:none; align-self:center; min-height:28px; padding:0 9px; border-radius:7px;
+    background:var(--amber-500); color:#fff; font-size:11px; font-weight:600; line-height:28px; white-space:nowrap;}
+
+  /* ---- 搜索 / 筛选（照现状） ---- */
+  .search{display:flex; align-items:center; gap:6px; min-height:36px; padding:0 10px; border:1px solid var(--slate-200); border-radius:8px; color:var(--slate-300); font-size:13px;}
+  .search svg{flex:none;}
+  .chips{display:flex; flex-wrap:wrap; gap:4px;}
+  .chips span{min-height:28px; display:inline-flex; align-items:center; padding:0 8px; border-radius:6px; font-size:11px; color:var(--slate-500);}
+  .chips span.on{background:var(--emerald-50); color:var(--emerald-700); font-weight:600;}
+
+  /* ---- 4 列蛋卡（照现状） ---- */
+  .egg-grid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px;}
+  .egg-card{
+    position:relative; display:flex; flex-direction:column; align-items:center; min-width:0;
+    padding:0; background:#fff; border:1px solid var(--slate-200); border-radius:8px;
+    cursor:pointer; font:inherit; overflow:hidden;
+  }
+  .egg-card.green{border-color:var(--emerald-500);}
+  .egg-card.is-pending{border:1px dashed var(--amber-500); background:#fffdf5;}
+  .egg-card.sel{outline:2px solid var(--emerald-500); outline-offset:-1px;}
+  .card-labels{display:flex; align-items:center; justify-content:space-between; gap:2px; width:100%; height:16px; padding:0 4px;}
+  .chip{font-size:8.5px; font-weight:600; line-height:12px; padding:0 3px; border-radius:3px; white-space:nowrap;}
+  .chip.pending{background:var(--amber-100); color:var(--amber-800);}
+  .chip.self{background:var(--emerald-50); color:var(--emerald-700);}
+  .nest-ico{width:12px; height:12px; flex:none;}
+  .art{display:flex; align-items:center; justify-content:center; height:43px;}
+  .egg-name{width:100%; padding:0 3px; font-size:10.5px; font-weight:700; color:var(--slate-800); text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .egg-nature{min-height:16px; font-size:10px; line-height:16px; color:var(--slate-500); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; padding:0 2px;}
+  .medals{display:flex; align-items:center; justify-content:center; gap:2px; height:20px;}
+  .medal{display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%;
+    font-size:9px; font-style:normal; font-weight:700; background:var(--slate-100); color:var(--slate-500); border:1px solid var(--slate-200);}
+  .medal.body{background:var(--sky-50); color:var(--sky-700); border-color:#bae6fd;}
+  .medal.voice{background:#fdf4ff; color:#a21caf; border-color:#f5d0fe;}
+  .egg-time{font-size:10px; line-height:16px; color:var(--slate-400); font-variant-numeric:tabular-nums;}
+  .egg-time.pending{color:var(--amber-700); font-weight:600;}
+  .egg-status{margin-top:2px; width:100%; text-align:center; font-size:10px; line-height:20px; background:var(--slate-50); color:var(--slate-500);}
+  .egg-status.self{background:var(--emerald-50); color:var(--emerald-700);}
+
+  /* ---- ② 手动认领页（新增） ---- */
+  .claim-head{display:flex; align-items:center; gap:8px;}
+  .claim-back{min-height:30px; padding:0 8px 0 4px; border:none; background:none; color:var(--emerald-700); font-size:12px; cursor:pointer;}
+  .claim-head strong{font-size:14px; color:var(--slate-900);}
+  .claim-head .count{margin-left:auto; font-size:11px; color:var(--amber-800); background:var(--amber-50); border-radius:5px; padding:1px 6px;}
+  .claim-hint{margin:0; font-size:10.5px; line-height:15px; color:var(--slate-500);}
+  .claim-hint b{color:var(--slate-700);}
+  .claim-cols{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;}
+  .col-head{display:flex; align-items:baseline; justify-content:space-between; gap:4px; font-size:10.5px; font-weight:700; color:var(--slate-500); padding:0 1px 4px;}
+  .col-head em{font-style:normal; font-weight:600; color:var(--slate-400);}
+  .claim-card{
+    position:relative; display:flex; flex-direction:column; gap:2px; width:100%; text-align:left;
+    padding:6px; margin-bottom:8px; background:#fff; border:1px solid var(--slate-200);
+    border-radius:9px; cursor:pointer; font:inherit;
+  }
+  .claim-card.home{border-style:dashed; border-color:var(--amber-500); background:#fffdf5;}
+  .claim-card[aria-pressed="true"]{border:2px solid var(--emerald-500); background:var(--emerald-50); padding:5px;}
+  .cc-top{display:flex; align-items:center; gap:5px; min-width:0;}
+  .cc-name{font-size:11.5px; font-weight:700; color:var(--slate-800); white-space:nowrap;}
+  .cc-sp{font-size:9px; color:var(--slate-400); font-variant-numeric:tabular-nums;}
+  .cc-row{display:flex; align-items:baseline; gap:3px; font-size:9.5px; line-height:14px; color:var(--slate-600); min-width:0;}
+  .cc-row .k{flex:none; color:var(--slate-400);}
+  .cc-row .v{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .cc-row .v.strong{font-weight:700; color:var(--slate-800); font-variant-numeric:tabular-nums;}
+  .cc-note{font-size:9px; line-height:13px; color:var(--amber-700);}
+  .cc-badges{display:flex; align-items:center; gap:3px;}
+  .cc-pick{position:absolute; top:5px; right:5px; font-size:9px; font-weight:700; color:var(--emerald-700); background:var(--emerald-100); border-radius:4px; padding:0 4px; line-height:13px;}
+  .cc-x{position:absolute; top:4px; right:4px; width:18px; height:18px; border:none; background:none; color:var(--slate-300); font-size:12px; line-height:18px; cursor:pointer; padding:0;}
+  .cc-x:hover{color:var(--rose-700);}
+
+  .claim-foot{position:sticky; bottom:0; margin-top:12px; padding:8px 0 2px; background:#fff; border-top:1px solid var(--slate-100);}
+  .sel-line{font-size:10.5px; line-height:15px; color:var(--slate-500); margin-bottom:6px;}
+  .sel-line b{color:var(--slate-800); font-weight:600;}
+  .sel-line.warn{color:var(--rose-700);}
+  .foot-actions{display:grid; grid-template-columns:1fr auto; gap:6px; align-items:center;}
+  .btn-main{min-height:36px; border:none; border-radius:8px; background:var(--emerald-600); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;}
+  .btn-main[disabled]{background:var(--slate-200); color:var(--slate-400); cursor:not-allowed;}
+  .btn-text{min-height:36px; padding:0 8px; border:none; background:none; color:var(--slate-500); font-size:11.5px; cursor:pointer;}
+  .done{display:flex; flex-direction:column; align-items:center; gap:8px; padding:28px 12px; text-align:center;}
+  .done strong{font-size:13px; color:var(--slate-800);}
+  .done p{margin:0; font-size:11px; line-height:16px; color:var(--slate-500);}
+
+  .claim-note{font-size:10px; line-height:15px; color:var(--slate-500); padding:6px 8px; background:var(--slate-50); border-radius:8px;}
+  .claim-note b{color:var(--slate-700); font-weight:600;}
+  .toast{margin:0; padding:6px 8px; border-radius:8px; background:var(--emerald-50); color:var(--emerald-700); font-size:10.5px; line-height:15px;}
+
+  /* ---- ③ 蛋详情（照现状 + 「拆开认领」） ---- */
+  .overlay{position:absolute; inset:0; z-index:9; display:flex; align-items:center; justify-content:center; padding:16px; background:rgb(15 23 42 / .4);}
+  .sheet{display:flex; flex-direction:column; width:100%; max-height:100%; background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 10px 30px rgb(15 23 42 / .3);}
+  .sheet-head{display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-bottom:1px solid var(--slate-100);}
+  .sheet-head h2{margin:0; font-size:15px; font-weight:600; color:var(--slate-900);}
+  .sheet-close{min-height:36px; min-width:36px; border:none; background:none; font-size:18px; color:var(--slate-400); cursor:pointer;}
+  .sheet-body{overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:6px;}
+  .dt-top{display:flex; align-items:center; gap:8px;}
+  .dt-name{display:flex; align-items:center; gap:4px; min-width:0;}
+  .dt-name strong{font-size:13px; color:var(--slate-900); white-space:nowrap;}
+  .dt-status{margin-left:auto; font-size:9px; line-height:16px; padding:0 4px; border-radius:4px; background:var(--slate-100); color:var(--slate-500);}
+  .dt-sub{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--slate-600);}
+  .dt-account{font-size:10px; color:var(--slate-400);}
+  .dt-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px 8px; padding:6px 8px; background:var(--slate-50); border-radius:9px;}
+  .dt-grid .cell{min-width:0;}
+  .dt-grid .k{display:block; font-size:9px; line-height:12px; color:var(--slate-400);}
+  .dt-grid .v{display:block; font-size:11px; line-height:16px; color:var(--slate-700); font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .dt-grid .span2{grid-column:span 2;}
+  .dt-parents{padding:6px 8px; background:var(--slate-50); border-radius:9px;}
+  .dt-parents h4{margin:0 0 4px; font-size:11px; font-weight:600; color:var(--slate-700); display:flex; align-items:center; justify-content:space-between; gap:6px;}
+  .dt-parents h4 em{font-style:normal; font-weight:400; font-size:9px; color:var(--slate-400);}
+  .parent-row{display:flex; align-items:center; gap:6px; padding:3px 4px; background:#fff; border:1px solid var(--slate-200); border-radius:7px; margin-bottom:3px;}
+  .parent-row .pfx{flex:none; width:16px; height:16px; border-radius:50%; font-size:9px; line-height:16px; text-align:center; background:var(--slate-100); color:var(--slate-600); font-weight:700;}
+  .parent-row .pn{font-size:10.5px; color:var(--slate-800); font-weight:600;}
+  .parent-row .pd{font-size:9.5px; color:var(--slate-500); margin-left:auto; text-align:right;}
+  .parent-row.academy{border-color:var(--emerald-500);}
+  .claim-link{display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 8px; border:1px dashed var(--slate-300); border-radius:8px; font-size:10px; line-height:14px; color:var(--slate-500);}
+  .claim-link b{font-weight:600; color:var(--slate-600);}
+  .claim-link button{flex:none; min-height:26px; padding:0 8px; border:1px solid var(--rose-500); border-radius:6px; background:#fff; color:var(--rose-700); font-size:10.5px; cursor:pointer;}
+  .dt-note{margin:0; font-size:9px; line-height:13px; color:var(--slate-400);}
+  .sheet-foot{display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:8px 10px; border-top:1px solid var(--slate-100);}
+  .sheet-foot button{min-height:32px; border:1px solid var(--slate-200); border-radius:8px; background:#fff; color:var(--slate-700); font-size:11.5px; cursor:pointer;}
+  .sheet-foot button.primary{background:var(--emerald-600); border-color:var(--emerald-600); color:#fff; font-weight:600;}
+  .sheet-foot button[disabled]{color:var(--slate-300); cursor:not-allowed;}
+  .confirm{padding:12px; display:flex; flex-direction:column; gap:8px;}
+  .confirm p{margin:0; font-size:11px; line-height:17px; color:var(--slate-600);}
+  .confirm .acts{display:grid; grid-template-columns:1fr 1fr; gap:6px;}
+  .confirm .acts button{min-height:34px; border-radius:8px; border:1px solid var(--slate-200); background:#fff; font-size:11.5px; cursor:pointer;}
+  .confirm .acts button.danger{border-color:var(--rose-500); color:var(--rose-700); font-weight:600;}
+</style>
+</head>
+<body>
+
+<h1>F5 · 同种多颗：手动认领（方案稿，2026-11-25）</h1>
+<p class="lead">
+  同种 2 颗同时收进背包时，协议上没有能把「家园蛋」和「背包蛋」串起来的字段（唯一共有的是物种）。
+  按你定的口径：<b>不做自动配对</b>——先保底不丢父母/自产，再让你自己按收蛋时看到的蛋重来认领。
+  两台手机共用一份状态，点任意一边，两边一起动；点右上角 <b>重置</b> 可以重来。
+</p>
+<div class="legend">
+  <span><i class="a"></i>新增：待认领（家园蛋，虚线框）</span>
+  <span><i class="b"></i>新增：手动认领页 / 已选中</span>
+  <span><i class="c"></i>现状：蛋仓卡片与详情原样</span>
+</div>
+
+<div class="demo-bar">
+  <span>演示：</span>
+  <button data-act="demo-stock">① 回到蛋仓（有 2 颗待认领）</button>
+  <button data-act="demo-claim">② 打开手动认领</button>
+  <button data-act="demo-merged">③ 全部认领之后的蛋仓</button>
+  <button data-act="demo-reset">重置</button>
+</div>
+
+<div class="frames">
+  <div class="slot">
+    <span class="slot-label">375</span>
+    <div class="phone" data-w="375"></div>
+  </div>
+  <div class="slot">
+    <span class="slot-label">390</span>
+    <div class="phone" data-w="390"></div>
+  </div>
+</div>
+
+<script>
+// ============================ 演示数据 ============================
+const SP = { 3103:'布是石', 3436:'柴渣虫', 3227:'菊花梨', 3754:'火豆丁', 1103:'草灵仙' };
+/** 家园地上、已经从完整快照里消失的家蛋（保底留下 → 待认领）。两颗都是 3103 布是石。 */
+const PENDING = [
+  { key:'h1', homeId:'["uid:293143","home","9511622085513841001"]', short:'…1001', sp:3103, self:true, greenNest:false,
+    mother:{name:'布是石', nature:'平和', nest:'普通小窝'}, father:{name:'火豆丁', nature:'勇敢', nest:'普通小窝'},
+    natureText:'平和 / 勇敢', body:'大块头', voice:'婉转声' },
+  { key:'h2', homeId:'["uid:293143","home","9511622085513841002"]', short:'…1002', sp:3103, self:true, greenNest:true,
+    mother:{name:'布是石', nature:'固执', nest:'学院小窝', academy:true}, father:{name:'火豆丁', nature:'固执', nest:'普通小窝'},
+    natureText:'固执', body:'', voice:'婉转声' },
+];
+/** 这次新进背包的蛋（provenance unknown、没有父母）。第 3 颗是别的物种，用来演示「选错物种不让合并」。 */
+const FRESH = [
+  { key:'b1', bagId:'["uid:293143","4559"]', short:'4559', sp:3103, obtainedAt:'11-25 00:06:50', weight:12886, height:25,
+    nature:'平和', body:'满体重', voice:'婉转声' },
+  { key:'b2', bagId:'["uid:293143","4560"]', short:'4560', sp:3103, obtainedAt:'11-25 00:06:56', weight:8902, height:23,
+    nature:'固执', body:'大块头', voice:'婉转声' },
+  { key:'b3', bagId:'["uid:293143","4561"]', short:'4561', sp:3436, obtainedAt:'11-25 00:07:02', weight:7397, height:23,
+    nature:'冷静', body:'小不点', voice:'粗嗓门' },
+];
+/** 蛋仓里本来就有的卡（用来体现「认领入口在蛋仓里」而不是独立页面）。 */
+const NORMAL = [
+  { key:'n1', sp:3754, nature:'开朗', body:'', voice:'', time:'11-24 15:20', self:true, greenNest:true },
+  { key:'n2', sp:3227, nature:'固执', body:'大块头', voice:'婉转声', time:'11-24 15:20', self:false },
+  { key:'n3', sp:1103, nature:'胆小', body:'小不点', voice:'', time:'11-23 09:02', self:false },
+  { key:'n4', sp:3227, nature:'', body:'', voice:'', time:'11-23 09:02', self:false },
+];
+
+const state = {
+  screen:'stock',        // stock | claim
+  selHome:null,          // 家蛋 key
+  selBag:null,           // 背包蛋 key
+  merges:[],             // [{ homeKey, bagKey }]
+  detail:null,           // 家蛋 key（合并后的行仍用家蛋 id 作主键）
+  confirmSplit:false,
+  toast:'',
+};
+
+const findHome = k => PENDING.find(p => p.key === k);
+const findBag  = k => FRESH.find(f => f.key === k);
+const isMergedHome = k => state.merges.some(m => m.homeKey === k);
+const isMergedBag  = k => state.merges.some(m => m.bagKey === k);
+const pendingLeft  = () => PENDING.filter(p => !isMergedHome(p.key));
+const freshLeft    = () => FRESH.filter(f => !isMergedBag(f.key));
+const mergedRow = m => {
+  const h = findHome(m.homeKey), b = findBag(m.bagKey);
+  return { key:h.key, sp:h.sp, nature:b.nature, body:b.body, voice:b.voice, obtainedAt:b.obtainedAt,
+    weight:b.weight, height:b.height, self:true, greenNest:h.greenNest, parents:[h.mother,h.father],
+    homeShort:h.short, bagShort:b.short };
+};
+const peso = g => (g/1000).toFixed(3) + ' kg';
+const metro = cm => (cm/100).toFixed(3) + ' m';
+
+/* ============================ 小片段 ============================ */
+function eggArt(sp, size){
+  const tint = {3103:'#fdf6e3',3436:'#eef7ee',3227:'#fff7e6',3754:'#fdeeee',1103:'#eef4fd'}[sp] || '#fdf6e3';
+  const line = {3103:'#e6d6b3',3436:'#cfe3cf',3227:'#efdcb8',3754:'#edcfcf',1103:'#cfdcf0'}[sp] || '#e6d6b3';
+  return `<span class="art"><svg width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true">
+    <ellipse cx="24" cy="27" rx="15" ry="18.5" fill="${tint}" stroke="${line}"/>
+    <ellipse cx="18.5" cy="19" rx="4.6" ry="6.4" fill="#fff" opacity=".85"/>
+    <circle cx="30" cy="22" r="2.1" fill="${line}" opacity=".55"/>
+    <circle cx="27.5" cy="30" r="1.5" fill="${line}" opacity=".45"/>
+    <circle cx="33" cy="31" r="1.2" fill="${line}" opacity=".35"/>
+  </svg></span>`;
+}
+const nestIcon = () => `<svg class="nest-ico" viewBox="0 0 16 16" aria-label="绿窝"><circle cx="8" cy="8" r="7" fill="#d1fae5" stroke="#059669"/><path d="M5 8.4l2.1 2.1L11 6.4" stroke="#047857" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`;
+const BODY_CH = {'大块头':'大','小不点':'小','满体重':'满','零体重':'零'};
+const VOICE_CH = {'+100':'满','-100':'零','婉转声':'婉','粗嗓门':'粗'};
+function medals(body, voice){
+  const b = BODY_CH[body] ? `<i class="medal body" title="${body}">${BODY_CH[body]}</i>` : '';
+  const v = VOICE_CH[voice] ? `<i class="medal voice" title="${voice}">${VOICE_CH[voice]}</i>` : '';
+  return `<span class="medals">${b}${v}</span>`;
+}
+function gridCard(o){
+  const spName = SP[o.sp] || '未收录精灵';
+  const isPending = !!o.pending;
+  const cls = ['egg-card', o.greenNest ? 'green' : '', isPending ? 'is-pending' : ''].filter(Boolean).join(' ');
+  const left = `${o.greenNest ? nestIcon() : ''}${isPending ? '<span class="chip pending">待认领</span>' : ''}`;
+  return `<button class="${cls}" data-act="open-card" data-id="${o.key}" data-pending="${isPending ? 1 : 0}">
+    <span class="card-labels"><span style="display:flex;align-items:center;gap:2px;min-width:0">${left}</span>
+      <span style="display:flex;align-items:center;justify-content:flex-end;min-width:0">${o.self ? '<span class="chip self">自产</span>' : ''}</span></span>
+    <span style="display:flex;flex-direction:column;align-items:center;width:100%;padding:0 2px 2px">
+      ${eggArt(o.sp, 43)}
+      <strong class="egg-name">${spName}</strong>
+      <span class="egg-nature">${o.natureText || o.nature || '—'}</span>
+      ${medals(o.body, o.voice)}
+      ${isPending ? '<span class="egg-time pending">待认领</span>' : `<span class="egg-time">${o.time || ''}</span>`}
+      ${isPending ? '' : `<span class="egg-status ${o.self ? 'self' : ''}">未挂出</span>`}
+    </span>
+  </button>`;
+}
+
+/* ============================ 蛋仓 ============================ */
+function stockScreen(){
+  const pend = pendingLeft();
+  const cards = [
+    ...pend.map(p => gridCard({ key:p.key, sp:p.sp, natureText:p.natureText, body:p.body, voice:p.voice,
+      self:true, greenNest:p.greenNest, pending:true })),
+    ...state.merges.map(m => { const r = mergedRow(m);
+      return gridCard({ key:r.key, sp:r.sp, nature:r.nature, body:r.body, voice:r.voice, time:r.obtainedAt.slice(0,11),
+        self:true, greenNest:r.greenNest }); }),
+    ...NORMAL.map(n => gridCard(n)),
+    ...freshLeft().map(f => gridCard({ key:f.key, sp:f.sp, nature:f.nature, body:f.body, voice:f.voice, time:f.obtainedAt.slice(0,11), self:false })),
+  ];
+  const banner = pend.length ? `<button class="claim-banner" data-act="open-claim">
+      <span class="banner-ico">!</span>
+      <span class="banner-body">
+        <span class="banner-title">有 ${pend.length} 颗自产蛋待认领</span>
+        <span class="banner-hint">已经收进背包，但分不清哪颗对哪颗。认领后两张卡会合成一张。</span>
+      </span>
+      <span class="banner-go">去认领</span>
+    </button>` : '';
+  return `<div class="screen">
+    ${state.toast ? `<p class="toast">${state.toast}</p>` : ''}
+    ${banner}
+    <div class="search"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>搜索蛋名</div>
+    <div class="chips"><span class="on">全部</span><span>已标注</span><span>未标注</span><span>自产</span><span>不可交换</span></div>
+    <div class="egg-grid">${cards.join('')}</div>
+  </div>`;
+}
+
+/* ============================ 手动认领页 ============================ */
+function claimCardHome(h){
+  const picked = state.selHome === h.key;
+  return `<div class="claim-card home" role="button" tabindex="0" aria-pressed="${picked}" data-act="pick-home" data-id="${h.key}">
+    ${picked ? '<span class="cc-pick">已选</span>' : `<button class="cc-x" data-act="dismiss-home" data-id="${h.key}" title="这颗已经不在了（作废，不再提醒）">✕</button>`}
+    <span class="cc-top">${eggArt(h.sp, 30)}<span class="cc-name">${SP[h.sp]}</span></span>
+    <span class="cc-badges"><span class="chip self">自产</span>${h.greenNest ? nestIcon() : ''}</span>
+    <span class="cc-row"><span class="k">母</span><span class="v">${h.mother.name} · ${h.mother.nature || '性格未采到'}${h.mother.academy ? '（学院）' : ''}</span></span>
+    <span class="cc-row"><span class="k">父</span><span class="v">${h.father.name} · ${h.father.nature || '性格未采到'}</span></span>
+    <span class="cc-note">无获得时间 · 无蛋重</span>
+  </div>`;
+}
+function claimCardBag(b){
+  const picked = state.selBag === b.key;
+  return `<div class="claim-card" role="button" tabindex="0" aria-pressed="${picked}" data-act="pick-bag" data-id="${b.key}">
+    ${picked ? '<span class="cc-pick">已选</span>' : ''}
+    <span class="cc-top">${eggArt(b.sp, 30)}<span class="cc-name">${SP[b.sp]}</span><span class="cc-sp">#${b.short}</span></span>
+    <span class="cc-row"><span class="k">获得</span><span class="v">${b.obtainedAt}</span></span>
+    <span class="cc-row"><span class="k">蛋重</span><span class="v strong">${peso(b.weight)}</span></span>
+    <span class="cc-row"><span class="k">蛋高</span><span class="v">${metro(b.height)}</span></span>
+    <span class="cc-row"><span class="k">性格</span><span class="v">${b.nature || '—'}</span></span>
+  </div>`;
+}
+function claimFoot(){
+  const h = state.selHome ? findHome(state.selHome) : null;
+  const b = state.selBag ? findBag(state.selBag) : null;
+  let line = '点左边一颗、右边一颗，再点「合并这两颗」。';
+  let warn = false;
+  let disabled = true;
+  if (h && b) {
+    if (h.sp !== b.sp) {
+      line = `物种不同：${SP[h.sp]} / ${SP[b.sp]}，这两颗不可能是同一颗。`;
+      warn = true;
+    } else {
+      line = `已选：家园 <b>${SP[h.sp]}</b> ↔ 背包 <b>#${b.short}</b>（${peso(b.weight)}）`;
+      disabled = false;
+    }
+  } else if (h) {
+    line = `已选家园 <b>${SP[h.sp]}</b>，再去右边点一颗背包蛋。`;
+  } else if (b) {
+    line = `已选背包 #${b.short}，再去左边点一颗家园蛋。`;
+  }
+  return `<div class="claim-foot">
+    <div class="sel-line ${warn ? 'warn' : ''}">${line}</div>
+    <div class="foot-actions">
+      <button class="btn-main" data-act="merge" ${disabled ? 'disabled' : ''}>合并这两颗</button>
+      <button class="btn-text" data-act="later">暂不认领</button>
+    </div>
+  </div>`;
+}
+function claimScreen(){
+  const homes = pendingLeft(), bags = freshLeft();
+  const body = (!homes.length && !bags.length)
+    ? `<div class="done"><strong>都认领完了</strong><p>蛋仓里不会再出现待认领的卡。<br/>如果认错了，去那张卡的详情里「拆开认领」。</p>
+        <button class="btn-main" style="width:60%" data-act="back-stock">返回蛋仓</button></div>`
+    : `<div class="claim-cols">
+        <div class="col">
+          <div class="col-head"><span>家园蛋</span><em>${homes.length}</em></div>
+          ${homes.map(claimCardHome).join('') || '<p class="claim-hint">没有待认领的家园蛋</p>'}
+        </div>
+        <div class="col">
+          <div class="col-head"><span>这次进背包</span><em>${bags.length}</em></div>
+          ${bags.map(claimCardBag).join('') || '<p class="claim-hint">这次没有新进背包的蛋</p>'}
+        </div>
+      </div>`;
+  return `<div class="screen" style="min-height:748px">
+    <div class="claim-head">
+      <button class="claim-back" data-act="back-stock">‹ 蛋仓</button>
+      <strong>手动认领</strong>
+      <span class="count">${homes.length} 组待认领</span>
+    </div>
+    <p class="claim-hint">左边是家园那几颗（有父母、自产），右边是这次新进背包的（有时间、蛋重、性格）。
+      <b>按你收蛋时看到的蛋重对一下</b>：我们不做自动配对，也不替你猜。</p>
+    ${state.toast ? `<p class="toast">${state.toast}</p>` : ''}
+    ${body}
+    ${(!homes.length && !bags.length) ? '' : `<div class="claim-note">
+      <b>对不上就先放着</b>：「暂不认领」只是离开这一页，两张卡都还在，下次导入还能接着对。<br/>
+      <b>认错了</b>：去那颗蛋的详情点「拆开认领」，家园蛋回到待认领、背包蛋变回新卡，两边都不删。
+    </div>`}
+    ${(!homes.length && !bags.length) ? '' : claimFoot()}
+  </div>`;
+}
+
+/* ============================ 蛋详情（合并后 + 拆开） ============================ */
+function detailSheet(){
+  const m = state.merges.find(x => x.homeKey === state.detail);
+  if (!m) return '';
+  const r = mergedRow(m), h = findHome(m.homeKey);
+  if (state.confirmSplit) {
+    return `<div class="overlay"><div class="sheet">
+      <div class="sheet-head"><h2>拆开认领</h2><button class="sheet-close" data-act="close-detail">×</button></div>
+      <div class="confirm">
+        <p>拆开之后：<br/>
+        · 家园这颗回到「待认领」，父母、自产、绿窝都还在；<br/>
+        · 背包 #${r.bagShort} 恢复成一张「这次进背包」的新卡，时间、蛋重、蛋高、性格都还在。<br/>
+        两张卡都不会被删，你可以重新认领。</p>
+        <div class="acts">
+          <button data-act="cancel-split">取消</button>
+          <button class="danger" data-act="do-split">确认拆开</button>
+        </div>
+      </div>
+    </div></div>`;
+  }
+  return `<div class="overlay"><div class="sheet">
+    <div class="sheet-head"><h2>蛋详情</h2><button class="sheet-close" data-act="close-detail">×</button></div>
+    <div class="sheet-body">
+      <div class="dt-top">
+        ${eggArt(r.sp, 40)}
+        <div style="min-width:0;flex:1">
+          <div class="dt-name">
+            <strong>${SP[r.sp]}的蛋</strong>
+            ${r.greenNest ? nestIcon() : ''}
+            <span class="dt-status">未挂出</span>
+          </div>
+          <div class="dt-sub"><span>${r.nature || '性格未标注'}</span>${medals(r.body, r.voice)}</div>
+          <div class="dt-account">uid:293143 · 自产</div>
+        </div>
+      </div>
+      <div class="dt-grid">
+        <div class="cell span2"><span class="k">获得时间</span><span class="v">2026-${r.obtainedAt.slice(0,11)}</span></div>
+        <div class="cell"><span class="k">蛋高</span><span class="v">${metro(r.height)}</span></div>
+        <div class="cell"><span class="k">蛋重</span><span class="v">${peso(r.weight)}</span></div>
+        <div class="cell"><span class="k">蛋组</span><span class="v">怪兽 / 昆虫</span></div>
+      </div>
+      <div class="dt-parents">
+        <h4>实际父母 <em>按采集时配对推算</em></h4>
+        ${r.parents.map((p, i) => `<div class="parent-row ${p.academy ? 'academy' : ''}">
+          <span class="pfx">${i === 0 ? '母' : '父'}</span>
+          <span class="pn">${p.name}</span>
+          <span class="pd">${p.nature || '性格未采到'} · ${p.nest}</span>
+        </div>`).join('')}
+        <p class="dt-note" style="margin-top:4px">游戏未确认亲子关系，收进背包后以实物为准。</p>
+      </div>
+      <div class="claim-link">
+        <span>已与家园蛋 <b>${r.homeShort}</b> 认领合并 · 背包 <b>#${r.bagShort}</b></span>
+        <button data-act="ask-split">拆开认领</button>
+      </div>
+    </div>
+    <div class="sheet-foot">
+      <button>标注此蛋</button>
+      <button>标注所有同类蛋</button>
+      <button class="primary">挂出</button>
+    </div>
+  </div></div>`;
+}
+
+/* ============================ 渲染 ============================ */
+const phones = [...document.querySelectorAll('.phone')];
+function render(){
+  for (const phone of phones) {
+    const sc = phone.scrollTop;
+    phone.innerHTML = (state.screen === 'claim' ? claimScreen() : stockScreen()) +
+      (state.screen === 'stock' && state.detail ? detailSheet() : '');
+    phone.scrollTop = sc;
+  }
+}
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-act]');
+  if (!t || t.hasAttribute('disabled')) return;
+  const act = t.dataset.act, id = t.dataset.id;
+  const scrollBack = () => { for (const p of phones) p.scrollTop = 0; };
+
+  if (act === 'open-claim') { state.screen='claim'; state.selHome=null; state.selBag=null; state.toast=''; scrollBack(); }
+  else if (act === 'back-stock') { state.screen='stock'; state.toast=''; scrollBack(); }
+  else if (act === 'later') { state.screen='stock'; state.selHome=null; state.selBag=null;
+    state.toast=`先放着：还有 ${pendingLeft().length} 颗待认领，下次再处理也行。`; scrollBack(); }
+  else if (act === 'pick-home') { ev.preventDefault(); state.selHome = state.selHome === id ? null : id; state.toast=''; }
+  else if (act === 'pick-bag') { ev.preventDefault(); state.selBag = state.selBag === id ? null : id; state.toast=''; }
+  else if (act === 'dismiss-home') {
+    ev.stopPropagation();
+    const h = findHome(id);
+    PENDING.splice(PENDING.indexOf(h), 1);
+    if (state.selHome === id) state.selHome = null;
+    state.toast = '已作废 1 颗（不再提醒）。它的卡不会再出现在蛋仓里。';
+  }
+  else if (act === 'merge') {
+    const h = findHome(state.selHome), b = findBag(state.selBag);
+    if (h && b && h.sp === b.sp) {
+      state.merges.push({ homeKey:h.key, bagKey:b.key });
+      state.selHome = null; state.selBag = null;
+      const left = pendingLeft().length;
+      state.toast = left ? `已合并 1 组，还剩 ${left} 组待认领。` : '已合并最后 1 组，全部认领完了。';
+    }
+  }
+  else if (act === 'open-card') {
+    if (t.dataset.pending === '1') { state.screen='claim'; state.selHome = id; state.selBag=null; state.toast=''; scrollBack(); }
+    else if (isMergedHome(id)) { state.detail = id; state.confirmSplit = false; }
+    else { state.toast = '这颗不是待认领的蛋：详情照现状不变。'; }
+  }
+  else if (act === 'close-detail') { state.detail = null; state.confirmSplit = false; }
+  else if (act === 'ask-split') { state.confirmSplit = true; }
+  else if (act === 'cancel-split') { state.confirmSplit = false; }
+  else if (act === 'do-split') {
+    state.merges = state.merges.filter(x => x.homeKey !== state.detail);
+    state.detail = null; state.confirmSplit = false; state.screen='stock';
+    state.toast = '已拆开：家园蛋回到待认领，背包蛋变回一张新卡，两张都还在。';
+    scrollBack();
+  }
+  else if (act === 'demo-stock') { Object.assign(state, { screen:'stock', selHome:null, selBag:null, detail:null, confirmSplit:false, toast:'' }); scrollBack(); }
+  else if (act === 'demo-claim') { Object.assign(state, { screen:'claim', selHome:null, selBag:null, detail:null, confirmSplit:false, toast:'' }); scrollBack(); }
+  else if (act === 'demo-merged') {
+    PENDING.forEach(p => { if (!isMergedHome(p.key)) {
+      const b = FRESH.find(f => f.sp === p.sp && !isMergedBag(f.key));
+      if (b) state.merges.push({ homeKey:p.key, bagKey:b.key });
+    }});
+    Object.assign(state, { screen:'stock', selHome:null, selBag:null, detail:null, confirmSplit:false, toast:'' });
+    scrollBack();
+  }
+  else if (act === 'demo-reset') {
+    PENDING.splice(0, PENDING.length, ...JSON.parse(JSON.stringify(SEED_PENDING)));
+    Object.assign(state, { screen:'stock', selHome:null, selBag:null, merges:[], detail:null, confirmSplit:false, toast:'' });
+    scrollBack();
+  }
+  render();
+});
+const SEED_PENDING = JSON.parse(JSON.stringify(PENDING));
+render();
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TargetMode } from '../domain/petFilters';
-import { groupPublicationStatus } from '../domain/collectionPublication';
+import { PUBLICATION_BIND_HINT, groupPublicationStatus, publicationActionLabel } from '../domain/collectionPublication';
 import { CATALOG_VERSION, species } from '../data/catalog';
 import {
   GROUP_TYPE_LABELS,
@@ -37,6 +37,8 @@ import {
 
 export interface CollectionGroupsProps {
   onGoAccount?: () => void;
+  /** 去「我的 · 游戏数据」导入（「没有找到你的游戏号？」走这条，不是去登录） */
+  onGoImport?: () => void;
   onDraftDirtyChange?: (dirty: boolean) => void;
   onNavigate?: (intent: import('./navigation').NavigationIntent) => void;
   /** 从看板 / 收集页直达：进入同类型的小组（个人求蛋已删除，2026-10-30）。 */
@@ -51,6 +53,15 @@ export interface CollectionGroupsProps {
   onGoProfileGroups?: () => void;
   /** 嵌在「我的」页里：不再自带外边距与最大宽度 */
   embedded?: boolean;
+  /** 「我的」页的蛋仓入口直达：打开换蛋页的蛋仓屏（2026-11-25 U2） */
+  openEggStock?: boolean;
+  /** 打开后回报上层，清掉这次请求 */
+  onEggStockOpened?: () => void;
+  /**
+   * 这次蛋仓是从「我的」进来的（2026-11-25 U3）：蛋仓屏的「返回」回「我的」，
+   * 不传 = 回换蛋页（`EggMatchingHub` 的默认行为）。
+   */
+  onEggStockBack?: () => void;
 }
 
 /**
@@ -61,12 +72,16 @@ export interface CollectionGroupsProps {
  */
 export function CollectionGroups({
   onGoAccount,
+  onGoImport,
   onDraftDirtyChange,
   onNavigate,
   focus,
   variant = 'feed',
   onGoProfileGroups,
   embedded = false,
+  openEggStock = false,
+  onEggStockOpened,
+  onEggStockBack,
 }: CollectionGroupsProps) {
   const { snapshots } = useSnapshots();
   const summary = useCollectionSummary();
@@ -299,6 +314,7 @@ export function CollectionGroups({
                   editing={editing}
                   onToggle={() => setEditingGroupId(editing ? null : hook.currentGroupId)}
                   onGoAccount={onGoAccount}
+                  onGoImport={onGoImport}
                   snapshots={snapshots}
                 />
               </div>
@@ -349,6 +365,7 @@ export function CollectionGroups({
               hook={hook as never}
               snapshots={snapshots}
               species={species}
+              onGoImport={onGoImport}
               onGoAccount={onGoAccount}
             />
           ) : null}
@@ -453,6 +470,10 @@ export function CollectionGroups({
                 location: { kind: 'mothers', status: 'collecting' },
               })
             }
+            openStock={openEggStock}
+            onStockOpened={onEggStockOpened}
+            onStockBack={onEggStockBack}
+            stockBackLabel={onEggStockBack ? '返回我的' : undefined}
           />
           </>
           ) : null}
@@ -575,12 +596,14 @@ function PublicationCard({
   editing,
   onToggle,
   onGoAccount,
+  onGoImport,
   snapshots,
 }: {
   hook: ReturnType<typeof useCollectionGroups>;
   editing: boolean;
   onToggle: () => void;
   onGoAccount?: () => void;
+  onGoImport?: () => void;
   snapshots: ReturnType<typeof useSnapshots>['snapshots'];
 }) {
   const mother = hook.myMember?.resource ?? null;
@@ -598,11 +621,11 @@ function PublicationCard({
   });
   const summary = hook.groupType === 'stud'
     ? stud
-      ? `${stud.accounts.length} 个账号 · ${new Set(stud.accounts.flatMap((account) => account.covered.map((slot) => `${slot.groupId}:${slot.natureId}:${slot.grade}`))).size} 个覆盖格`
-      : '尚未向本小组发布资源，选号并预览后再手动发布。'
+      ? `${stud.accounts.length} 个游戏号 · ${new Set(stud.accounts.flatMap((account) => account.covered.map((slot) => `${slot.groupId}:${slot.natureId}:${slot.grade}`))).size} 个覆盖格`
+      : '还没有绑定游戏账号：右边的按钮勾选后发布。'
     : mother
-      ? `${new Set(mother.accounts.flatMap((account) => account.eggGameIds)).size} 种母本 · ${mother.accounts.length} 个账号。`
-      : '尚未向本小组发布资源，选号并预览后再手动发布。';
+      ? `${new Set(mother.accounts.flatMap((account) => account.eggGameIds)).size} 种母本 · ${mother.accounts.length} 个游戏号。`
+      : '还没有绑定游戏账号：右边的按钮勾选后发布。';
 
   const badgeClass =
     status === '需更新'
@@ -633,7 +656,7 @@ function PublicationCard({
           {!hasLocalData ? (
             <button
               type="button"
-              onClick={onGoAccount}
+              onClick={onGoImport ?? onGoAccount}
               className="mt-1 min-h-[24px] text-[11px] font-medium text-emerald-700"
               data-testid="group-go-import"
             >
@@ -653,9 +676,16 @@ function PublicationCard({
           aria-expanded={editing}
           onClick={onToggle}
         >
-          {editing ? '收起选号' : status === '需更新' ? '去发布更新' : status === '已发布' ? '管理选号' : '选号并发布'}
+          {publicationActionLabel(status, editing)}
         </button>
       </div>
+      {/* 2026-11-27：点明这步和机器人的关系。放整行右侧，免得把左边的状态说明挤成一条 */}
+      <p
+        className="mt-1 text-right text-[10px] leading-snug text-slate-400"
+        data-testid="group-bind-hint"
+      >
+        {PUBLICATION_BIND_HINT}
+      </p>
     </div>
   );
 }

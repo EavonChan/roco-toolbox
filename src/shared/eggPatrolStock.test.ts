@@ -68,6 +68,41 @@ describe('recordPatrolProducedEgg', () => {
     expect(again.eggs[0].lastConfirmedAt).toBe(2000);
   });
 
+  /**
+   * 2026-11-25 核心回归：用户那颗就是「rc 生蛋了吗」入库的——母本学院小窝 + 父本普通小窝。
+   * 机器人两条入库函数以前完全不碰 greenNest，所以自动采进来的蛋永远没有绿窝标记。
+   */
+  test('green nest flag follows any academy parent, not exactly one and not the nature', () => {
+    const greenOf = (patrolEgg: PatrolEgg) =>
+      recordPatrolProducedEgg(emptyEggWorkflow(), task, produced, patrolEgg, 1000).eggs[0].greenNest;
+    const motherAcademy: PatrolEgg = { ...egg, mother: { ...egg.mother!, nestConfigId: 1001072 } };
+    // 母本学院 + 父本普通（用户截图那颗脆筒甜甜的组合）
+    expect(greenOf(motherAcademy)).toBe(true);
+    // 父本学院 + 母本普通：用户口径「亲本有一方」就算绿窝。
+    // 学院小窝一个家园只有一个，所以「双亲都在学院」不是有效状态，不要为它写分支。
+    expect(greenOf({ ...egg, mother: { ...egg.mother!, nestConfigId: 1001071 },
+      fathers: [{ ...egg.fathers[0], nestConfigId: 1001072 }] })).toBe(true);
+    // 双亲都普通小窝 → 不许误标
+    expect(greenOf({
+      ...egg,
+      mother: { ...egg.mother!, nestConfigId: 1001071 },
+      fathers: [{ ...egg.fathers[0], nestConfigId: 1001071 }],
+    })).toBe(false);
+  });
+
+  test('repeat patrol backfills a missing green flag but never flips an existing one', () => {
+    const academyEgg: PatrolEgg = { ...egg, mother: { ...egg.mother!, nestConfigId: 1001072 } };
+    const first = recordPatrolProducedEgg(emptyEggWorkflow(), task, produced, academyEgg, 1000);
+    expect(first.eggs[0].greenNest).toBe(true);
+    // 历史行（缺字段）→ 下一次巡查回填
+    const legacy = { ...first, eggs: first.eggs.map(({ greenNest, ...rest }) => rest) };
+    const backfilled = recordPatrolProducedEgg(legacy, task, produced, academyEgg, 2000);
+    expect(backfilled.eggs[0].greenNest).toBe(true);
+    // 用户手动取消（false）→ 不回填
+    const optedOut = { ...first, eggs: [{ ...first.eggs[0], greenNest: false }] };
+    expect(recordPatrolProducedEgg(optedOut, task, produced, academyEgg, 3000).eggs[0].greenNest).toBe(false);
+  });
+
   test('ambiguous observations never create stock', () => {
     const next = recordPatrolProducedEgg(
       emptyEggWorkflow(),
@@ -184,6 +219,32 @@ describe('recordIngestedHomeEggs', () => {
     });
   });
 
+  test('ingested green nest flag follows any academy parent and backfills legacy rows', () => {
+    const academyEgg: PatrolEgg = {
+      ...labeledEgg,
+      mother: { ...labeledEgg.mother!, nestConfigId: 1001072 },
+      fathers: [{ ...labeledEgg.fathers[0], nestConfigId: 1001071 }],
+    };
+    const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', [{ egg: academyEgg, eggGameId: 3062 }], 1000, index);
+    expect(first.state.eggs[0]).toMatchObject({ nature: '固执', greenNest: true });
+    // 反向：父本在学院小窝、母本普通小窝 → 仍算绿窝（学院小窝一个家园只有一个，双亲同在一个不可能出现）
+    const fatherAcademy = { ...academyEgg, mother: { ...academyEgg.mother!, nestConfigId: 1001071 }, fathers: [{ ...academyEgg.fathers[0], nestConfigId: 1001072 }] };
+    expect(recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', [{ egg: fatherAcademy, eggGameId: 3062 }], 1000, index)
+      .state.eggs[0].greenNest).toBe(true);
+    // 双亲都普通小窝 → 不许误标
+    const ordinary = { ...academyEgg, mother: { ...academyEgg.mother!, nestConfigId: 1001071 } };
+    expect(recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', [{ egg: ordinary, eggGameId: 3062 }], 1000, index)
+      .state.eggs[0].greenNest).toBe(false);
+    // 历史行（rc 入库早期没有 greenNest）→ 下一次上报回填
+    const legacy = { ...first.state, eggs: first.state.eggs.map(({ greenNest, ...rest }) => rest) };
+    const backfilled = recordIngestedHomeEggs(legacy, 'b', '293143', [{ egg: academyEgg, eggGameId: 3062 }], 1000 + 60 * 60_000, index);
+    expect(backfilled.state.eggs[0].greenNest).toBe(true);
+    // 用户手动取消过（false）→ 不回填
+    const optedOut = { ...first.state, eggs: [{ ...first.state.eggs[0], greenNest: false }] };
+    expect(recordIngestedHomeEggs(optedOut, 'b', '293143', [{ egg: academyEgg, eggGameId: 3062 }], 1000 + 60 * 60_000, index)
+      .state.eggs[0].greenNest).toBe(false);
+  });
+
   test('re-reporting the same egg within 30 minutes does not write', () => {
     const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000, index);
     const again = recordIngestedHomeEggs(first.state, 'b', '293143', ingested, 1000 + 60_000, index);
@@ -238,6 +299,25 @@ describe('recordIngestedHomeEggs', () => {
     );
     expect(state.eggs).toHaveLength(2);
     expect(new Set(state.eggs.map(value => value.id)).size).toBe(2);
+  });
+
+  test('a home egg is never auto-listed even with weight height voice and obtained time', () => {
+    const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000, index);
+    const measured = { ...first.state.eggs[0], weightGrams: 2320, heightCm: 34, voice: '婉转声' as const,
+      obtainedAt: '2026-11-17T22:31:00' };
+    const later = recordIngestedHomeEggs({ ...first.state, eggs: [measured] }, 'b', '293143', ingested, 1000 + 60 * 60_000, index);
+    expect(later.state.eggs[0]).toMatchObject({
+      location: 'home', listed: false, weightGrams: 2320, heightCm: 34, voice: '婉转声',
+      obtainedAt: '2026-11-17T22:31:00',
+    });
+  });
+
+  test('a merged home row that already sits in the bag is auto-listed on ingest', () => {
+    const first = recordIngestedHomeEggs(emptyEggWorkflow(), 'b', '293143', ingested, 1000, index);
+    const merged = { ...first.state.eggs[0], location: 'bag' as const, weightGrams: 2320, heightCm: 34,
+      voice: '婉转声' as const, obtainedAt: '2026-11-17T22:31:00' };
+    const later = recordIngestedHomeEggs({ ...first.state, eggs: [merged] }, 'b', '293143', ingested, 1000 + 60 * 60_000, index);
+    expect(later.state.eggs[0]).toMatchObject({ location: 'bag', listed: true });
   });
 
   test('mutation name maps 异色 to shiny and 炫彩 to special', () => {
