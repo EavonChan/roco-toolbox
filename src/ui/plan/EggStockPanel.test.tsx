@@ -102,11 +102,12 @@ test('stock details place egg height in metres and weight in kilograms below egg
   expect(screen.getByText('1.234 kg')).toBeTruthy();
 });
 
-test('蛋详情品种资料只显示大块头区间，实测 1.84 判满重',()=>{
+test('蛋详情品种资料只显示大块头区间（不再带实测档位）',()=>{
   render(<EggStockPanel eggs={[{...ordinary,eggGameId:3001,weightGrams:1840}]} species={[{gameId:3001,key:'p',name:'喵喵',number:'1',eggGroups:[2]}]} busy={false} mutate={vi.fn()}/>);
   fireEvent.click(screen.getByTestId('stock-card'));
   const dialog=screen.getByRole('dialog',{name:'蛋详情'});
-  expect(within(dialog).getByText('大块头 1.829–1.840（12 档） · 实测 1.84 kg 满重')).toBeTruthy();
+  expect(within(dialog).getByText('大块头 1.829–1.840（12 档）')).toBeTruthy();
+  expect(within(dialog).queryByText(/实测/)).toBeNull();
   expect(within(dialog).queryByText(/区间/)).toBeNull();
   expect(within(dialog).queryByText(/小不点/)).toBeNull();
   expect(within(dialog).queryByText(/孵蛋/)).toBeNull();
