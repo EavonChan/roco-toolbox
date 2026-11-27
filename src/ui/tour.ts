@@ -21,7 +21,13 @@ import { readShared, syncShared, writeShared } from '../api/sharedPrefs';
 const LEGACY_TOUR_SEEN_KEY = 'roco.tourSeen';
 const TOUR_SEEN_PREFIX = 'roco.tourSeen.';
 
-/** 引导版本：改任一分段的步骤时 +1（4 = 按场景分段；5 = 任务式 22 步） */
+/**
+ * 引导版本：改任一分段的步骤时 +1（4 = 按场景分段；5 = 任务式）。
+ *
+ * 2026-11-27 换蛋段补了「把游戏账号绑到小组」一步，但**有意不 +1**：
+ * 这一步只对「先导入后入组 / 从没导入过」的人有用，不值得让所有人重走一遍整段；
+ * 老用户仍是 22 步，新用户拿到 23 步。
+ */
 export const TOUR_VERSION = '5';
 
 /** 目标元素上挂的锚点属性；找不到时退化成居中说明卡（除非该步标了 skipWhenMissing）。 */
@@ -254,6 +260,18 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       body: '点这里去「我的 · 小组」新建或加入；进组后才有组内广场和我的收集。',
       page: 'groups',
       selector: '[data-testid="group-feed-hint"]',
+      skipWhenMissing: true,
+    },
+    {
+      id: 'group-bind',
+      title: '把游戏账号绑到小组',
+      body:
+        '到「我的 · 小组」的组卡里点「绑定游戏账号」，勾上你的号再发布。不绑的话机器人同步不了蛋仓——' +
+        '在群里查蛋会回「这个 UID 还没绑定到小组成员」。',
+      // 按钮在「我的 · 小组」，不在换蛋页签
+      profileSection: 'groups',
+      selector: '[data-testid="group-edit-resources"]',
+      // 只在「已登录 + 已入组」时渲染
       skipWhenMissing: true,
     },
     {
