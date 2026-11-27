@@ -102,6 +102,24 @@ test('stock details place egg height in metres and weight in kilograms below egg
   expect(screen.getByText('1.234 kg')).toBeTruthy();
 });
 
+test('蛋详情品种资料显示区间两行，实测 1.84 判满重',()=>{
+  render(<EggStockPanel eggs={[{...ordinary,eggGameId:3001,weightGrams:1840}]} species={[{gameId:3001,key:'p',name:'喵喵',number:'1',eggGroups:[2]}]} busy={false} mutate={vi.fn()}/>);
+  fireEvent.click(screen.getByTestId('stock-card'));
+  const dialog=screen.getByRole('dialog',{name:'蛋详情'});
+  expect(within(dialog).getByText('区间 1.267–1.840 kg（每档约 50g，共 12 档）')).toBeTruthy();
+  expect(within(dialog).getByText(/^大块头 1\.829–1\.840 · 小不点 1\.267–1\.278/))
+    .toHaveTextContent('大块头 1.829–1.840 · 小不点 1.267–1.278 · 实测 1.84 kg 满重');
+  expect(within(dialog).queryByText(/孵蛋/)).toBeNull();
+  expect(within(dialog).queryByText(/性别比/)).toBeNull();
+});
+
+test('没有品种资料时整块不渲染',()=>{
+  render(<EggStockPanel eggs={[{...ordinary,eggGameId:9999}]} species={[{gameId:9999,key:'p',name:'未收录',number:'9',eggGroups:[2]}]} busy={false} mutate={vi.fn()}/>);
+  fireEvent.click(screen.getByTestId('stock-card'));
+  expect(screen.queryByTestId('stock-guide')).toBeNull();
+  expect(screen.queryByText(/^区间 /)).toBeNull();
+});
+
 test('same-species bulk labelling is available from the annotation form',async()=>{
   const mutate=vi.fn().mockResolvedValue(undefined);
   render(<EggStockPanel eggs={[ordinary,{...ordinary,id:'e2'}]} species={[{gameId:3227,key:'p',name:'菊花梨',number:'1',eggGroups:[2]}]} busy={false} mutate={mutate}/>);

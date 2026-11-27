@@ -3,6 +3,7 @@ import type { SpeciesEntry } from '../../domain/types';
 import { academyParentsOf, hasAcademyParent, type WorkflowEgg } from '../../shared/eggWorkflow';
 import { canCirculateEgg, type EggParentInfo } from '../../shared/eggMatching';
 import { eggWeightOf } from '../../domain/eggWeight';
+import eggGuide from '../../data/eggGuide.json';
 import { DEMAND_NATURE_MAX, type DemandBody, type DemandVoice } from '../../shared/collectionGroups';
 import { bodyMedalIconByLabel, voiceMedalIconByLabel } from '../../domain/petIcons';
 import { BODY_LABELS, PICKABLE_BODIES, PICKABLE_VOICES, VOICE_LABELS } from '../DemandPublishSheet';
@@ -72,6 +73,36 @@ function formatEggHeight(heightCm?:number):string {
 function formatEggWeight(weightGrams?:number):string {
   if(typeof weightGrams!=='number'||!Number.isFinite(weightGrams)||weightGrams<=0)return '未采集';
   return `${Number((weightGrams/1000).toFixed(3))} kg`;
+}
+interface EggGuideEntry {
+  tier:number; eggGroups:string[]; genderRatio:string;
+  big:number; max:number; small:number; min:number;
+  ranges:number; hatchHours:number;
+}
+const eggGuideTable = eggGuide as Record<string, EggGuideEntry>;
+/** 品种静态资料（2026-11-27）：按 gameId 直接取，查不到返回 null，界面整块不渲染。 */
+function eggGuideOf(gameId:number):EggGuideEntry|null {
+  return eggGuideTable[String(gameId)] ?? null;
+}
+/** 详情只展示两行：完整区间 + 两个边界区间；有实测重量时在边界行末尾补档位。 */
+function eggGuideText(entry:EggGuideEntry, weightGrams?:number):{range:string;edges:string} {
+  const kg = (value:number) => value.toFixed(3);
+  // 步长按 10g 取整，避免 47.75g 这种伪精度；数据里实际范围 12.5~50g。
+  const step = Math.max(10, Math.round((entry.max - entry.min) * 1000 / entry.ranges / 10) * 10);
+  let edges = `大块头 ${kg(entry.big)}–${kg(entry.max)} · 小不点 ${kg(entry.min)}–${kg(entry.small)}`;
+  if (typeof weightGrams === 'number' && Number.isFinite(weightGrams) && weightGrams > 0) {
+    const weight = weightGrams / 1000;
+    const band = weight >= entry.max ? '满重'
+      : weight >= entry.big ? '大块头'
+      : weight <= entry.min ? '满轻'
+      : weight <= entry.small ? '小不点'
+      : '普通';
+    edges += ` · 实测 ${formatEggWeight(weightGrams)} ${band}`;
+  }
+  return {
+    range: `区间 ${kg(entry.min)}–${kg(entry.max)} kg（每档约 ${step}g，共 ${entry.ranges} 档）`,
+    edges,
+  };
 }
 
 export function EggArt({ eggGameId, name, size=43, kind='ordinary', itemConfId }: {
@@ -151,6 +182,8 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const visible=eggs.filter(e=>e.status!=='transferred'&&(!character||e.gameAccountKey===character)&&(!query||name(e.eggGameId).includes(query))&&matchesFilter(e))
     .sort((a,b)=>Number(selfProduced(b))-Number(selfProduced(a))||Number(isGreenNestEgg(b))-Number(isGreenNestEgg(a)));
   const egg=eggs.find(e=>e.id===selected);
+  const guide=egg?eggGuideOf(egg.eggGameId):null;
+  const guideText=guide&&egg?eggGuideText(guide,egg.weightGrams):null;
   /**
    * 待认领 = 家蛋行已从家园完整快照消失（`claimPending`），但还没认出对应背包蛋。
    * 计数按「当前账号 + 当前角色」来（用户口径 2026-11-27），换角色横幅跟着变。
@@ -477,6 +510,10 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
             <span className="block truncate text-[11px] leading-4 text-slate-700" title={species.find(s=>s.gameId===egg.eggGameId)?.eggGroups.map(g=>eggGroupNames[g]??String(g)).join(' / ')||'暂无记录'}>{species.find(s=>s.gameId===egg.eggGameId)?.eggGroups.map(g=>eggGroupNames[g]??String(g)).join(' / ')||'暂无记录'}</span>
           </div>
         </div>
+        {guideText?<div data-testid="stock-guide" className="rounded-lg bg-slate-50 px-2 py-1.5 text-[10px] leading-4 text-slate-500">
+          <p className="tabular-nums">{guideText.range}</p>
+          <p className="tabular-nums">{guideText.edges}</p>
+        </div>:null}
         </div>
 
         <div className="flex min-w-0 flex-col gap-1.5">
