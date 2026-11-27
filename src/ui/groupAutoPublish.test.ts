@@ -167,6 +167,22 @@ describe('导入后自动发布到小组', () => {
     expect(getCollectionGroup).not.toHaveBeenCalled();
   });
 
+  test('本机有个账号没读到游戏 UID：跳过它，别把其它账号的自动发布一起拖死', async () => {
+    const count = await autoPublishGroups({
+      // snapshot(0, …) 的身份会退化成 `name:`，机器人永远认不出，也不该挡住 uid:1001
+      snapshots: [...localSnapshots([1001]), snapshot(0, '无UID', [mother(101)])],
+      species: catalog,
+      catalogVersion: FIXTURE_CATALOG_VERSION,
+    });
+    expect(count).toBe(1);
+    const [, input] = vi.mocked(publishCollectionResources).mock.calls[0];
+    expect(
+      (input.resource as { accounts: Array<{ accountKey: string }> }).accounts.map(
+        (item) => item.accountKey,
+      ),
+    ).toEqual(['uid:1001']);
+  });
+
   test('种公组按目标自动发布', async () => {
     vi.mocked(listCollectionGroups).mockResolvedValue([summary('stud')]);
     vi.mocked(getCollectionGroup).mockResolvedValue(studDetail());

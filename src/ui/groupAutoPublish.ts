@@ -19,7 +19,7 @@ import {
   type MotherTargetConfig,
   type StudTargetConfig,
 } from '../shared/collectionGroups';
-import type { MotherResourceDraft } from '../shared/motherGroups';
+import { isCanonicalMotherAccountKey, type MotherResourceDraft } from '../shared/motherGroups';
 import type { StudResourceDraft } from '../shared/collectionGroups';
 import { eggGroupNames } from '../data/catalog';
 import { isGroupSharingOff } from './collectionGroupStore';
@@ -164,16 +164,24 @@ async function run(input: AutoPublishInput): Promise<number> {
   const accountId = readAccountId();
   if (!accountId || input.snapshots.length === 0) return 0;
 
+  /**
+   * 2026-11-27：没有游戏 UID 的账号发布不了（`accountKeyOf()` 会退化成 `name:`，
+   * 机器人 ingest 查的是 `uid:<数字>`）。它既不该被发上去，也不该让整组自动发布失败——
+   * 否则同一个人其它正常账号也永远同步不进蛋仓。
+   */
+  const localKeys = input.snapshots
+    .map((snapshot) => snapshot.accountKey ?? accountKeyOf(snapshot))
+    .filter(isCanonicalMotherAccountKey);
+  if (localKeys.length === 0) return 0;
+  const localKeySet = new Set(localKeys);
+  const touched = (input.touchedAccountKeys ?? []).filter((key) => localKeySet.has(key));
+
   let groups: Awaited<ReturnType<typeof listCollectionGroups>>;
   try {
     groups = await listCollectionGroups();
   } catch {
     return 0;
   }
-
-  const localKeys = input.snapshots.map((snapshot) => snapshot.accountKey ?? accountKeyOf(snapshot));
-  const localKeySet = new Set(localKeys);
-  const touched = (input.touchedAccountKeys ?? []).filter((key) => localKeySet.has(key));
 
   let published = 0;
   for (const summary of groups) {

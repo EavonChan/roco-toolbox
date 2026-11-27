@@ -165,6 +165,20 @@ describe('buildStudResource：种公摘要按个体自身蛋组计算', () => {
       'INVALID_EXPORTED_AT',
     );
   });
+  test('账号没有游戏 UID（gameId=0）→ 拒绝并说清怎么补，不静默写成 name: 键', () => {
+    const error = errorOf(() =>
+      buildStudResource({
+        snapshots: [snapshot(0, '无UID', [male(102)])],
+        selectedAccountKeys: ['name:无UID'],
+        species: catalog,
+        catalogVersion: FIXTURE_CATALOG_VERSION,
+        target: targetOf(),
+        targetRevision: 3,
+      }),
+    );
+    expect(error?.code).toBe('MISSING_GAME_ID');
+    expect(error?.message).toContain('游戏 UID');
+  });
 });
 
 describe('studResourceSignature / diffStudResources', () => {

@@ -28,6 +28,7 @@ import type { SpeciesEntry } from './types';
 export type StudResourceErrorCode =
   | 'NO_SELECTED_ACCOUNTS'
   | 'INVALID_ACCOUNT_KEY'
+  | 'MISSING_GAME_ID'
   | 'ACCOUNT_NOT_FOUND'
   | 'INVALID_EXPORTED_AT'
   | 'INVALID_CATALOG_VERSION'
@@ -79,15 +80,25 @@ export function buildStudResource(input: BuildStudResourceInput): StudResourceDr
   if (keys.length > STUD_RESOURCE_MAX_ACCOUNTS) {
     throw new StudResourceError('TOO_MANY_ACCOUNTS', '共享的游戏账号超过上限');
   }
-  for (const key of keys) {
-    if (!isCanonicalMotherAccountKey(key)) {
-      throw new StudResourceError('INVALID_ACCOUNT_KEY', `账号键不是规范的 uid 形式：${key}`);
-    }
-  }
 
   const snapshotsByKey = new Map<string, AccountSnapshot>();
   for (const snapshot of snapshots) {
     snapshotsByKey.set(snapshot.accountKey ?? accountKeyOf(snapshot), snapshot);
+  }
+
+  for (const key of keys) {
+    // 2026-11-27：没有游戏 UID 的账号会退化成 `name:` 键，机器人 ingest 永远认不出，
+    // 所以发布前直接拒绝并说清怎么补，而不是静默发布成功。
+    const snapshot = snapshotsByKey.get(key);
+    if (snapshot && !(snapshot.gameId > 0)) {
+      throw new StudResourceError(
+        'MISSING_GAME_ID',
+        `账号「${snapshot.accountName}」还没有游戏 UID：先在采集 / 导入里读一次，再发布`,
+      );
+    }
+    if (!isCanonicalMotherAccountKey(key)) {
+      throw new StudResourceError('INVALID_ACCOUNT_KEY', `账号键不是规范的 uid 形式：${key}`);
+    }
   }
 
   const eggGroupsByGameId = new Map<number, number[]>();
