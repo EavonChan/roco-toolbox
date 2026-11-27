@@ -1,6 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+// 设计 tokens（DESIGN1，2026-11-28）：只定义 :root 变量，不加任何选择器规则，
+// 现有页面的 class 生成结果与渲染结果都不变；原语（src/ui/kit）与后续区块从这里取值。
+import './ui/kit/tokens.css';
 import './index.css';
 import { reloadWhenUpdated } from './pwa/autoUpdate';
 

@@ -1,0 +1,134 @@
+/* ==========================================================================
+   DESIGN1 · 设计 tokens（2026-11-28）
+   ==========================================================================
+   三层，与 docs/设计系统/组件库建设指南-2026-11-22.md §二 一致：
+     ① primitive  原值（调色板）——只允许 ②③ 引用，页面/原语不许直接用
+     ② semantic   用途（文字/底/线/状态/字号/间距/圆角）
+     ③ component  组件级（含「具名例外」，见下）
+   规矩：原语（src/ui/kit/*）只许用 ②③ 对应的 Tailwind 名字；
+        出现 `text-[10px]`、`#059669` 这类裸值视为违规。
+
+   数值口径：注释按 px 写（375 竖屏根字号 16px 的等效值），落地用 rem。
+   原因：横屏把 html 字号整体放大（src/index.css 的 landscape 规则），
+        px 会让新原语在横屏不跟着放大，与现有页面不一致；rem 在竖屏完全等价。
+   ========================================================================== */
+
+:root {
+  /* ---------- ① primitive：原值 ---------- */
+  --c-white: #ffffff;
+  --c-slate-50: #f8fafc;
+  --c-slate-100: #f1f5f9;
+  --c-slate-200: #e2e8f0;
+  --c-slate-300: #cbd5e1;
+  --c-slate-400: #94a3b8;
+  --c-slate-500: #64748b;
+  --c-slate-600: #475569;
+  --c-slate-700: #334155;
+  --c-slate-800: #1e293b;
+  --c-slate-900: #0f172a;
+  --c-emerald-50: #ecfdf5;
+  --c-emerald-200: #a7f3d0;
+  --c-emerald-500: #10b981;
+  --c-emerald-600: #059669;
+  --c-emerald-700: #047857;
+  --c-amber-50: #fffbeb;
+  --c-amber-200: #fde68a;
+  --c-amber-700: #b45309;
+  --c-rose-50: #fff1f2;
+  --c-rose-200: #fecdd3;
+  --c-rose-600: #e11d48;
+  --c-rose-700: #be123c;
+  --c-sky-50: #f0f9ff;
+  --c-sky-200: #bae6fd;
+  --c-sky-600: #0284c7;
+  --c-sky-700: #0369a1;
+  --c-pink-50: #fdf2f8;
+  --c-pink-200: #fbcfe8;
+
+  /* ---------- ② semantic · 字号与行高 ----------
+     收敛自现状 19 种字号（见 docs/设计系统/DESIGN1-tokens与原语-2026-11-28.md）：
+     常规层级只留 5 档，卡片内部微缩字号走 ③ 具名例外。 */
+  --fs-caption: 0.625rem; /* 10px 说明文字 */
+  --fs-meta: 0.6875rem; /* 11px 次要信息 / 数值 */
+  --fs-body: 0.8125rem; /* 13px 正文 */
+  --fs-title: 0.9375rem; /* 15px 区块标题 */
+  --fs-hero: 1.125rem; /* 18px 数字 / 主标 */
+
+  --lh-caption: 0.875rem; /* 14px */
+  --lh-meta: 0.9375rem; /* 15px */
+  --lh-body: 1.125rem; /* 18px */
+  --lh-title: 1.3125rem; /* 21px */
+  --lh-hero: 1.5rem; /* 24px */
+
+  /* ---------- ② semantic · 间距（4px 栅格） ---------- */
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+
+  /* ---------- ② semantic · 圆角 ---------- */
+  --radius-sm: 0.375rem; /* 6px 标签 */
+  --radius-md: 0.5rem; /* 8px 小卡 / 输入 */
+  --radius-lg: 0.75rem; /* 12px 卡片 / 区块 */
+  --radius-pill: 9999px;
+
+  /* ---------- ② semantic · 颜色 ----------
+     对比度按 WCAG AA 算过（白底）：
+       ink 14.6 / ink-soft 7.6 / ink-muted 4.8 / accent-strong 5.5 / warn 5.0
+       ink-faint 2.6 —— 只用于占位、装饰、禁用，不承载正文
+       accent 3.8 —— 只用于填充/描边/图标，不做小字文本色 */
+  --color-ink: var(--c-slate-800);
+  --color-ink-strong: var(--c-slate-900);
+  --color-ink-soft: var(--c-slate-600);
+  --color-ink-muted: var(--c-slate-500);
+  --color-ink-faint: var(--c-slate-400);
+
+  --color-surface: var(--c-white);
+  --color-surface-sunken: var(--c-slate-50);
+  --color-surface-raised: var(--c-slate-100);
+
+  --color-line: var(--c-slate-200);
+  --color-line-strong: var(--c-slate-300);
+
+  --color-accent: var(--c-emerald-600);
+  --color-accent-strong: var(--c-emerald-700);
+  --color-accent-soft: var(--c-emerald-50);
+  --color-accent-line: var(--c-emerald-200);
+
+  --color-warn: var(--c-amber-700);
+  --color-warn-soft: var(--c-amber-50);
+  --color-warn-line: var(--c-amber-200);
+
+  --color-danger: var(--c-rose-700);
+  --color-danger-strong: var(--c-rose-600);
+  --color-danger-soft: var(--c-rose-50);
+  --color-danger-line: var(--c-rose-200);
+
+  --color-info: var(--c-sky-700);
+  --color-info-soft: var(--c-sky-50);
+  --color-info-line: var(--c-sky-200);
+
+  /* 性别底色：沿用现有卡片的粉 / 蓝，避免同一事实两种颜色 */
+  --color-female-soft: var(--c-pink-50);
+  --color-female-line: var(--c-pink-200);
+  --color-male-soft: var(--c-sky-50);
+  --color-male-line: var(--c-sky-200);
+
+  /* ---------- ③ component：控件 / 骨架 / 卡片 ----------
+     最小触区按移动端 32px；现有 28px 的旧芯片保持原样（这次不改老页面）。 */
+  --size-touch: 2rem; /* 32px 最小触区 */
+  --size-skeleton-card: 6rem; /* 96px 骨架卡高度 */
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.06);
+
+  /* ---------- ③ component · 具名例外（布局硬约束，不进常规层级） ----------
+     每一条都必须写明理由；原语（Card/Row/Chip/Section/Skeleton/EmptyState）不许引用。
+     这四档对应现状 6~10.5px 的卡片内微缩字号：合并时允许 0.5px 级差异（肉眼不可辨）。 */
+  --fs-sim-cell: 0.375rem; /* 6px：仿真背包一页 30 格（6×5）不滚动，6px 已是上限 */
+  --lh-sim-cell: 0.5rem;
+  --fs-card-index: 0.5rem; /* 8px：图鉴 / 种公矩阵卡内的编号与层数，卡宽不足 6rem */
+  --lh-card-index: 0.625rem;
+  --fs-pet-card-micro: 0.5625rem; /* 9px：精灵背包卡 375 宽 4 列时，蛋组 / 性格一行放不下 11px */
+  --lh-pet-card-micro: 0.75rem;
+  --fs-egg-card: 0.625rem; /* 10px：蛋卡固定 5.1rem 宽，横屏一屏要多列；12px 时蛋名 / 编号会被裁 */
+  --lh-egg-card: 0.875rem;
+}
