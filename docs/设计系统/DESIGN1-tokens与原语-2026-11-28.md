@@ -7,7 +7,8 @@
 
 把现有页面里散着的 19 种字号、51 种内边距写法、7 种圆角、12 个色系，收敛成 **一套 tokens**；
 再用这套 tokens 做了 **6 个原语**（Card / Row / Chip / Section / Skeleton / EmptyState）。
-本轮**没有页面引用它们**，所以现有外观零变化；不想要了，删掉 `src/ui/kit/` 即回退。
+本轮**没有页面引用它们**：DESIGN1 自己的改动不改现有外观；不想要了，删掉 `src/ui/kit/` 即回退。
+（本次提交里另混入了一行别人的 `src/index.css` 改动，见下方「提交说明」，不计入 DESIGN1。）
 
 ## 边界（本轮只做了什么）
 
@@ -17,6 +18,12 @@
 | 根 `tailwind.config.js` 只**新增** token 名字（没覆盖任何旧档位） | 没有打包、没有发版、没碰线上 |
 | `src/main.tsx` 加一行 `import './ui/kit/tokens.css'`（只定义变量，无选择器规则） | 没有动 `src/ui/plan/*`、`Profile*`、`Nearby*` |
 | 新增静态画廊 `docs/preview/DESIGN-kit/index.html` + 截图 | 没有接入配方 / 区块层（第 2 步） |
+
+> **提交说明（重要）**：提交 `f93ccfa` 里混进了 `src/index.css` 的 1 行改动
+> （`.egg-parent-grid` 的 `auto-fill` → `auto-fit`）——**这不是 DESIGN1 的改动**：
+> 提交时另一个会话的改动已在暂存区，被 `git commit` 一并带上。
+> DESIGN1 自己的代码改动只有：新增 `src/ui/kit/`、`src/main.tsx` 两行 import、`tailwind.config.js` 的 `theme.extend`。
+> 是否保留那行 `auto-fit` 由助理会话与该会话确认，本会话没有回滚它（回滚会删掉别人的在制品）。
 
 证明「没改现有页面」的两个命令（输出见 §5）：
 
