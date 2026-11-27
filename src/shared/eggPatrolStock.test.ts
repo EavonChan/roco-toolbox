@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { emptyEggWorkflow, type WorkflowEgg } from './eggWorkflow';
-import { recordIngestedHomeEggs, recordPatrolProducedEgg, type EggLabelIndex } from './eggPatrolStock';
+import { mutationKindOf, recordIngestedHomeEggs, recordPatrolProducedEgg, type EggLabelIndex } from './eggPatrolStock';
 import type { PatrolEgg, PatrolObservation, PatrolTask } from './eggPatrol';
 
 const task: PatrolTask = {
@@ -318,5 +318,28 @@ describe('recordIngestedHomeEggs', () => {
       voice: '婉转声' as const, obtainedAt: '2026-11-17T22:31:00' };
     const later = recordIngestedHomeEggs({ ...first.state, eggs: [merged] }, 'b', '293143', ingested, 1000 + 60 * 60_000, index);
     expect(later.state.eggs[0]).toMatchObject({ location: 'bag', listed: true });
+  });
+
+  test('mutation name maps 异色 to shiny and 炫彩 to special', () => {
+    expect(mutationKindOf('普通')).toEqual({ kind: 'ordinary' });
+    expect(mutationKindOf('')).toEqual({ kind: 'ordinary' });
+    expect(mutationKindOf('异色')).toEqual({ kind: 'shiny', specialCategory: 'shiny' });
+    expect(mutationKindOf('炫彩')).toEqual({ kind: 'special', specialCategory: 'special' });
+  });
+
+  test('ingest stores the mutation kind and upgrades an ordinary row', () => {
+    const shiny: PatrolEgg = { ...egg, mutationName: '异色' };
+    const first = recordIngestedHomeEggs(
+      emptyEggWorkflow(), 'b', '293143', [{ egg: shiny, eggGameId: 3062 }], 1000,
+    );
+    expect(first.state.eggs[0]).toMatchObject({ kind: 'shiny', specialCategory: 'shiny' });
+
+    const plain = recordIngestedHomeEggs(
+      emptyEggWorkflow(), 'b', '293143', [{ egg, eggGameId: 3062 }], 1000,
+    );
+    const colorful = recordIngestedHomeEggs(
+      plain.state, 'b', '293143', [{ egg: { ...egg, mutationName: '炫彩' }, eggGameId: 3062 }], 1000 + 60_000,
+    );
+    expect(colorful.state.eggs[0]).toMatchObject({ kind: 'special', specialCategory: 'special' });
   });
 });

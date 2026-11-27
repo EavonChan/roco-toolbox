@@ -22,6 +22,17 @@ export interface EggLabelIndex {
 /** 同一颗蛋重复上报时，确认时间至少间隔这么久才更新，避免每次都写库。 */
 const INGEST_CONFIRM_REFRESH_MS = 30 * 60 * 1000;
 
+/** 家园蛋的变异名 → 蛋仓分类：异色 = shiny，炫彩等其它非普通 = special。 */
+export function mutationKindOf(name: string | undefined): {
+  kind: WorkflowEgg['kind'];
+  specialCategory?: WorkflowEgg['specialCategory'];
+} {
+  const text = (name ?? '').trim();
+  if (!text || text === '普通') return { kind: 'ordinary' };
+  if (text.includes('异色')) return { kind: 'shiny', specialCategory: 'shiny' };
+  return { kind: 'special', specialCategory: 'special' };
+}
+
 function natureOf(parent: PatrolParent, index?: EggLabelIndex): string {
   if (parent.natureId === null || !index) return '';
   return index.natureNameById.get(parent.natureId) ?? '';
@@ -130,6 +141,7 @@ export function recordPatrolProducedEgg(
   const parents = parentsInfo(egg);
   const greenNest = isGreenNestEgg(egg, parents);
   const existing = previous.eggs.find(value => value.accountId === accountId && value.id === id);
+  const mutation = mutationKindOf(egg.mutationName);
   if (!existing) {
     const next: WorkflowEgg = {
       id,
@@ -142,7 +154,8 @@ export function recordPatrolProducedEgg(
       provenance: 'self-bred',
       greenNest,
       confidence: 'unknown',
-      kind: 'ordinary',
+      kind: mutation.kind,
+      ...(mutation.specialCategory ? { specialCategory: mutation.specialCategory } : {}),
       status: 'available',
       location: 'home',
       listed: false,
@@ -163,6 +176,9 @@ export function recordPatrolProducedEgg(
     ...(!existing.parents && parents ? { parents } : {}),
     // 历史行缺绿窝标记（rc 入库早期）→ 按父母补；已有 true / 手动取消的 false 一律不动。
     ...(existing.greenNest === undefined && greenNest ? { greenNest: true } : {}),
+    ...(existing.kind === 'ordinary' && mutation.kind !== 'ordinary'
+      ? { kind: mutation.kind, specialCategory: mutation.specialCategory }
+      : {}),
   };
   return autoListStock({
     ...previous,
@@ -236,6 +252,7 @@ export function recordIngestedHomeEggs(
     const greenNest = isGreenNestEgg(input.egg, parents);
     const labels = index ? inferEggLabels(input.egg, index) : { nature: '', body: 'unknown' as const, voice: 'unknown' as const };
     const hasLabel = !!labels.nature || labels.body !== 'unknown' || labels.voice !== 'unknown';
+    const mutation = mutationKindOf(input.egg.mutationName);
 
     if (position === undefined) {
       nextEggs.push({
@@ -249,7 +266,8 @@ export function recordIngestedHomeEggs(
         provenance: 'self-bred',
         greenNest,
         confidence: hasLabel ? 'system' : 'unknown',
-        kind: 'ordinary',
+        kind: mutation.kind,
+        ...(mutation.specialCategory ? { specialCategory: mutation.specialCategory } : {}),
         status: 'available',
         location: 'home',
         listed: false,
@@ -267,6 +285,10 @@ export function recordIngestedHomeEggs(
 
     const existing = nextEggs[position];
     let next = existing;
+    if (existing.kind === 'ordinary' && mutation.kind !== 'ordinary') {
+      next = { ...next, kind: mutation.kind, specialCategory: mutation.specialCategory };
+      changed = true;
+    }
     if (existing.labelSource !== 'manual') {
       const nature = existing.nature || labels.nature;
       const body = existing.body === 'unknown' ? labels.body : existing.body;
