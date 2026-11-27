@@ -124,6 +124,40 @@ console.log(`产物目录 : ${DIST}`);
 console.log(`bundle   : ${bundleRel}`);
 console.log(`SHA-256  : ${hash}`);
 console.log(`大小     : ${bundle.length} 字节`);
+
+// 构建源（2026-11-28 事故后新增）：2026-11-28 用落后的 release 构建发版，
+// 一次把 test 的 117 个提交从线上回退，所以这里必须把「这份产物是哪次提交构建的、
+// 相对 test / release 领先落后多少」打出来，发版人不看也得看见。
+const git = (gitArgs) => {
+  try {
+    return execFileSync('git', gitArgs, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return null;
+  }
+};
+const headSha = git(['rev-parse', '--short', 'HEAD']);
+const headBranch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+if (headSha) {
+  console.log('--- 构建源 ---');
+  console.log(`HEAD     : ${headSha}${headBranch && headBranch !== 'HEAD' ? `（分支 ${headBranch}）` : '（detached）'}`);
+  for (const ref of ['origin/test', 'origin/release']) {
+    const ahead = git(['rev-list', '--count', `${ref}..HEAD`]);
+    const behind = git(['rev-list', '--count', `HEAD..${ref}`]);
+    if (ahead === null || behind === null) continue;
+    const warn = ref === 'origin/test' && Number(behind) > 0
+      ? `  ← 落后 test ${behind} 个提交，可能把别人的改动回退掉`
+      : '';
+    console.log(`${ref.padEnd(14)}: 领先 ${ahead} / 落后 ${behind}${warn}`);
+  }
+  if (branch === 'main') {
+    const behindTest = git(['rev-list', '--count', `HEAD..origin/test`]);
+    if (behindTest && Number(behindTest) > 0) {
+      fail(`这份产物落后 origin/test ${behindTest} 个提交：用旧分支发正式会把已经上线的改动回退。先合回 test 再发。`);
+    }
+  }
+} else {
+  console.log('--- 构建源 ---\n（读不到 git，跳过构建源检查）');
+}
 for (const c of checks) {
   console.log(`${c.ok === c.need ? '✓' : '✗'} ${c.name}: ${c.ok ? '存在' : '不存在'}（要求${c.need ? '存在' : '不存在'}）`);
 }
