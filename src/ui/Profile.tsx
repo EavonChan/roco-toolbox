@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import { appUpdateSnapshot, checkAppUpdate, hasAppUpdateShell, installAppUpdateBridge, seedAppUpdate, subscribeAppUpdate } from '../collector/appUpdate';
 import { readAccountId, subscribeSession } from '../api/session';
 import { AccountPanel } from './AccountPanel';
+import { useAccountName } from './accountMe';
 import { CollectionGroups } from './CollectionGroups';
 import { Nearby } from './Nearby';
 import { NearbyErrorBoundary } from './NearbyErrorBoundary';
@@ -101,6 +102,8 @@ export function Profile({
   const { snapshots, loaded } = useSnapshots();
   // 登录态（本机模式 / 已登录）：概览卡与蛋仓入口都要用；只读，不在这里做登录
   const accountId = useSyncExternalStore(subscribeSession, readAccountId, () => null);
+  // 用户名：与账号面板共用一份 /api/me 缓存（2026-11-28 RUI P1-02），读不到就退回「已登录」
+  const accountName = useAccountName(accountId);
   // 更新入口（1.3.6）：壳负责检查 / 下载 / 安装，这里只显示状态与触发
   const update = useSyncExternalStore(subscribeAppUpdate, appUpdateSnapshot);
   const [updateSupported] = useState(hasAppUpdateShell);
@@ -217,6 +220,7 @@ export function Profile({
           <ProfileHeader
             snapshots={snapshots}
             accountId={accountId}
+            accountName={accountName}
             onGoAccount={() => goSection('identity')}
             onSync={scrollToSync}
           />
@@ -289,7 +293,7 @@ export function Profile({
             <ProfileRow
               testId="profile-section-identity"
               label="我的身份"
-              value={accountId ? '已登录' : '未登录'}
+              value={accountId ? accountName || '已登录' : '未登录'}
               onClick={() => goSection('identity')}
             />
           </ProfileList>

@@ -53,6 +53,18 @@ describe('ProfileHeader（账号概览卡）', () => {
     expect(screen.getByTestId('profile-header-action')).toHaveTextContent('同步');
   });
 
+  test('头像取用户名首字；老账号没有用户名时头像与标题都写「已」', () => {
+    const first = render(
+      <ProfileHeader snapshots={[]} accountId="acc-1" accountName="阿布" onGoAccount={vi.fn()} />,
+    );
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('阿');
+    first.unmount();
+
+    render(<ProfileHeader snapshots={[]} accountId="acc-1" onGoAccount={vi.fn()} />);
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('已');
+    expect(screen.getByTestId('profile-header-name')).toHaveTextContent('已登录');
+  });
+
   test('本机还没有数据：不编造采集时间，改成一句「还没采集」', () => {
     render(<ProfileHeader snapshots={[]} accountId={null} onGoAccount={vi.fn()} />);
 

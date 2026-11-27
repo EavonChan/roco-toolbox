@@ -16,6 +16,7 @@ import {
   subscribeSession,
 } from '../api/session';
 import { applySnapshot, downloadSnapshot, syncNow, uploadSnapshot } from '../api/sync';
+import { cacheMe, clearCachedMe, loadMe, readCachedMe } from './accountMe';
 import { recordSyncedPets } from './syncAdditions';
 import { useSnapshots } from './useSnapshots';
 
@@ -33,12 +34,6 @@ import { useSnapshots } from './useSnapshots';
  * 「用本机覆盖云端」保留为逃生口（合并只增不减，删掉的账号得靠它推上去）。
  */
 const timeText = (ms: number): string => (ms ? new Date(ms).toLocaleString() : '—');
-
-/**
- * 最近一次云端账号信息（进程内缓存）。
- * 切到「我的」会重挂本组件：先显示上次结果，再后台刷新，不再先闪「云端版本 暂无」。
- */
-let meCache: { accountId: string; me: MeResult } | null = null;
 
 export interface AccountPanelProps {
   /**
@@ -61,10 +56,7 @@ export function AccountPanel({
   section,
 }: AccountPanelProps = {}) {
   const [accountId, setAccountId] = useState(() => readAccountId());
-  const [me, setMe] = useState<MeResult | null>(() => {
-    const id = readAccountId();
-    return id && meCache?.accountId === id ? meCache.me : null;
-  });
+  const [me, setMe] = useState<MeResult | null>(() => readCachedMe(readAccountId()));
   const [mode, setMode] = useState<'login' | 'register'>('register');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
@@ -80,10 +72,11 @@ export function AccountPanel({
   // 同步前的本机快照（同步后用来算「本次新增」）；订阅式读取，导入/同步后自动跟着更新
   const { snapshots, loaded } = useSnapshots();
 
-  /** 写回 me 时同步进程内缓存；账号切换 / 退出时清掉。 */
+  /** 写回 me 时同步进程内缓存（概览卡也读它）；账号切换 / 退出时清掉。 */
   const rememberMe = (next: MeResult | null) => {
     const id = readAccountId();
-    meCache = next && id ? { accountId: id, me: next } : null;
+    if (next && id) cacheMe(id, next);
+    else clearCachedMe();
     setMe(next);
   };
 
@@ -102,19 +95,17 @@ export function AccountPanel({
 
   useEffect(() => {
     if (!accountId) {
-      meCache = null;
-      rememberMe(null);
+      clearCachedMe();
+      setMe(null);
       return;
     }
-    // 先显示上一次的云端状态，再后台刷新；只有换身份时才清空
-    const cached = meCache?.accountId === accountId ? meCache.me : null;
-    setMe(cached);
+    // 先显示上一次的云端状态，再后台刷新；只有换身份时才清空。
+    // 走共用缓存：概览卡同时挂载时只会真正发一次 /api/me。
+    setMe(readCachedMe(accountId));
     let alive = true;
-    void fetchMe()
+    void loadMe(accountId, { refresh: true })
       .then((result) => {
-        if (!alive) return;
-        meCache = { accountId, me: result };
-        setMe(result);
+        if (alive) setMe(result);
       })
       .catch((err: unknown) => {
         if (alive) setError(errorText(err));

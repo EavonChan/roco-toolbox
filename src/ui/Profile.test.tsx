@@ -1,9 +1,31 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Profile } from './Profile';
 import type { ProfileSection } from './navigation';
+import { resetMeCacheForTest } from './accountMe';
 import { beginImport, resetImportOutcomeForTest, updateImportOutcome } from './importOutcomeStore';
 import { clearSyncFeedback } from './syncNoticeStore';
+
+/** 只关心 /api/me 的桩：返回指定用户名，其余接口一律 ok（避免单测真的打线上）。 */
+const stubMe = (username: string | null): string[] => {
+  const calls: string[] = [];
+  vi.stubGlobal('fetch', (url: string) => {
+    const path = String(url).replace(/^https?:\/\/[^/]+/, '');
+    calls.push(path);
+    const body = path.startsWith('/api/me')
+      ? { ok: true, accountId: 'acc-1', createdAt: 1, username, snapshot: null }
+      : { ok: true };
+    return Promise.resolve(
+      new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+  });
+  return calls;
+};
+
+beforeEach(() => {
+  resetMeCacheForTest();
+  stubMe(null);
+});
 
 afterEach(() => {
   cleanup();
@@ -12,6 +34,8 @@ afterEach(() => {
   window.localStorage.clear();
   delete window.RocoServer;
   delete window.RocoUpdate;
+  vi.unstubAllGlobals();
+  resetMeCacheForTest();
 });
 
 const renderProfile = (section: ProfileSection = 'data') =>
@@ -109,6 +133,54 @@ describe('Profile（我的）', () => {
     expect(screen.queryByTestId('profile-header')).toBeNull();
     fireEvent.click(screen.getByTestId('profile-section-data'));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'data' });
+  });
+
+  test('已登录：概览卡与「我的身份」行都写用户名，头像取用户名首字', async () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    stubMe('训练家小明');
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-header-name')).toHaveTextContent('训练家小明');
+    });
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('训');
+    // 设置列表里的账号行同样不能再写死「已登录」
+    expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('训练家小明');
+  });
+
+  test('老账号没有用户名：概览卡仍写「已登录」，头像写「已」，账号行也写「已登录」', () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    expect(screen.getByTestId('profile-header-name')).toHaveTextContent('已登录');
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('已');
+    expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('已登录');
+  });
+
+  test('未登录：概览卡写「本机模式 · 未登录」，账号行写「未登录」', () => {
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    expect(screen.getByTestId('profile-header-name')).toHaveTextContent('本机模式 · 未登录');
+    expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('未登录');
+  });
+
+  test('用户名只查一次 /api/me：概览卡与账号面板共用同一份缓存', async () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    const calls = stubMe('训练家小明');
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-header-name')).toHaveTextContent('训练家小明');
+    });
+    // 让账号面板的后台刷新也落定，再数请求
+    await act(async () => {});
+    expect(calls.filter((path) => path.startsWith('/api/me'))).toHaveLength(1);
   });
 
   test('小组分区：未登录时给登录入口，身份面板保持隐藏', () => {

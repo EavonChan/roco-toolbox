@@ -49,6 +49,7 @@ export function ProfileHeader({ snapshots, accountId, accountName, onGoAccount, 
     <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="profile-header">
       <div className="flex items-center gap-3">
         <div
+          data-testid="profile-header-avatar"
           className={`flex size-11 shrink-0 items-center justify-center rounded-full border text-base font-semibold ${
             loggedIn
               ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
