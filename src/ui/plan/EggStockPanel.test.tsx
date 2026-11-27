@@ -358,7 +358,7 @@ test('竖屏不出现右侧折叠栏，搜索与条件仍在蛋卡上方', () =>
 /**
  * 口径来源：`docs/方案-同种多颗手动认领-2026-11-25.md` + 2026-11-27 用户拍板 5 条。
  * 关键约束：入口是蛋仓顶部琥珀横幅；待认领卡留在网格里；认领页左右各点一张；
- * 物种不同直接禁用；不作废横幅永远消不掉；合并后可拆开（两张都不删）。
+ * 物种不同直接不显示；不作废横幅永远消不掉；合并后可拆开（两张都不删）。
  */
 const claimSpecies = [
   { gameId: 3227, key: 'p', name: '菊花梨', number: '1', eggGroups: [2] },
@@ -450,16 +450,30 @@ test('左一张 + 右一张同种 → 「合并这两颗」走 claim-egg', async
   await waitFor(() => expect(mutate).toHaveBeenCalledWith({ type: 'claim-egg', id: 'home1', capturedEggId: 'bag1' }));
 });
 
-test('物种不同的背包蛋直接禁用：选不了，合并按钮不可点', () => {
+test('选中家园蛋后右列只留同物种：不同物种的背包蛋不显示', () => {
+  const different = freshBag({ id: 'bag2', eggGameId: 3436 });
+  renderStock([pendingClaim(), pendingClaim({ id: 'home2' }), different, freshBag({ id: 'bag1' })], vi.fn(), 'uid:1');
+  enterClaim();
+  // 未选左卡：本次新进的两颗都列出来（选择还没收窄）。
+  expect(screen.getAllByTestId('claim-bag-card').map((card) => card.getAttribute('data-claim-bag-id')).sort())
+    .toEqual(['bag1', 'bag2']);
+  fireEvent.click(screen.getAllByTestId('claim-home-card')[0]);
+  // 选中「白发懒人」后，右列只剩同物种；柴渣虫那颗直接不出现，也没有灰态 / 红字。
+  expect(screen.getAllByTestId('claim-bag-card').map((card) => card.getAttribute('data-claim-bag-id')))
+    .toEqual(['bag1']);
+  expect(screen.queryByTestId('claim-species-block')).toBeNull();
+  expect(screen.queryByText('物种不同，不能合并')).toBeNull();
+});
+
+test('右列过滤成空时给「这次没有同物种的新蛋」，不白屏', () => {
   const different = freshBag({ id: 'bag2', eggGameId: 3436 });
   renderStock([pendingClaim(), different], vi.fn(), 'uid:1');
   enterClaim();
-  const bagCard = screen.getByTestId('claim-bag-card');
-  expect(bagCard).toBeDisabled();
-  expect(within(bagCard).getByTestId('claim-species-block')).toHaveTextContent('物种不同');
+  // 只有 1 颗待认领 → 自动选中它，右列按物种收窄为空。
+  expect(screen.getByTestId('claim-home-card')).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.queryAllByTestId('claim-bag-card')).toHaveLength(0);
+  expect(screen.getByTestId('claim-bag-column')).toHaveTextContent('这次没有同物种的新蛋');
   expect(screen.getByRole('button', { name: '合并这两颗' })).toBeDisabled();
-  fireEvent.click(bagCard);
-  expect(bagCard).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('「✕ 这颗不在了」把该行标记为不再等待，走 claim-dismiss', async () => {

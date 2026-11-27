@@ -44,10 +44,11 @@ const SHOTS = [
   { file: '1-蛋仓-待认领入口', screen: 'stock' },
   { file: '2-手动认领-未选', screen: 'claim', clicks: ['去认领'] },
   { file: '3-手动认领-已选同种', screen: 'pick', clicks: ['去认领', 'home:home-1002', 'bag:bag-4559'] },
-  { file: '4-手动认领-物种不同禁用', screen: 'blocked', clicks: ['去认领', 'home:home-1002'] },
+  { file: '4-手动认领-只显示同种', screen: 'same-species', clicks: ['去认领', 'home:home-1002'] },
   { file: '5-详情-拆开认领', screen: 'detail', clicks: ['card:home-1002', 'dialog'] },
   { file: '6-拆开-确认', screen: 'split', clicks: ['card:home-1002', 'dialog', '拆开认领'] },
   { file: '7-蛋仓-认领后', screen: 'after' },
+  { file: '8-手动认领-没有同种新蛋', screen: 'empty', clicks: ['去认领'] },
 ];
 const SIZES = [
   { width: 375, height: 812 },
@@ -87,10 +88,20 @@ try {
       const file = path.join(OUT, `F6-${size.width}-${shot.file}.png`);
       await page.screenshot({ path: file });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      // 认领页：滚到底后，左列最后一张卡要能完整落在 sticky 操作条上方（底部留白是否够）。
+      const clearance = await page.evaluate(() => {
+        const column = document.querySelector('[data-testid="claim-home-column"]');
+        const foot = document.querySelector('[data-testid="claim-foot"]');
+        if (!column || !foot) return null;
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        const cards = column.querySelectorAll('[data-testid="claim-home-card"]');
+        const last = cards[cards.length - 1];
+        return last ? Math.round(foot.getBoundingClientRect().top - last.getBoundingClientRect().bottom) : null;
+      });
       const banner = await page.locator('[data-testid="claim-banner"]').count();
       const pending = await page.locator('[data-testid="stock-pending-badge"]').count();
       const claimView = await page.locator('[data-testid="claim-view"]').count();
-      console.log(`${size.width}  ${shot.file.padEnd(20)} 横幅 ${banner} 待认领卡 ${pending} 认领页 ${claimView}  横向溢出 ${overflow ? '有' : '无'}  ${path.relative(ROOT, file)}`);
+      console.log(`${size.width}  ${shot.file.padEnd(20)} 横幅 ${banner} 待认领卡 ${pending} 认领页 ${claimView}  横向溢出 ${overflow ? '有' : '无'}${clearance === null ? '' : `  末卡距操作条 ${clearance}px`}  ${path.relative(ROOT, file)}`);
       if (errors.length) console.log(`  [页面错误] ${errors.join(' | ')}`);
       await page.close();
     }

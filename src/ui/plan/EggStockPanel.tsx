@@ -162,11 +162,12 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
   const claimHome=claimableHomes.find(e=>e.id===claimHomeId)??null;
   /**
    * 认领页右列 = 本次新进背包的蛋（`claimArrivedAt` 只由「第一次进背包」的那次采集写入）。
-   * 选中左边某一颗时再收窄到「它在离开家园之后才进包」的蛋：更早进包的不可能是它。
+   * 选中左边某一颗时再收窄到「**同物种**、且在它离开家园之后才进包」的蛋：
+   * 不同物种根本不可能是同一颗，直接不显示（2026-11-27 用户纠正，不做灰态/红字）。
    * 已链接到家园行的背包行（`capturedEggId`）不再当候选。
    */
   const freshBags=eggs.filter(e=>e.status!=='transferred'&&inGameCharacter(e)&&(e.location??'bag')!=='home'&&
-    !!e.claimArrivedAt&&!e.capturedEggId&&
+    !!e.claimArrivedAt&&!e.capturedEggId&&(!claimHome||e.eggGameId===claimHome.eggGameId)&&
     (!claimHome?.lastConfirmedAt||(e.claimArrivedAt??0)>claimHome.lastConfirmedAt));
   const claimBag=freshBags.find(e=>e.id===claimBagId)??null;
   const sameClaimSpecies=!!claimHome&&!!claimBag&&claimHome.eggGameId===claimBag.eggGameId;
@@ -324,14 +325,13 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
       </span>
     </div>;
   };
-  /** 认领页右卡：这次新进背包的那颗（时间 / 蛋重 / 蛋高 / 性格）。物种不同直接禁用。 */
+  /** 认领页右卡：这次新进背包的那颗（时间 / 蛋重 / 蛋高 / 性格）。不同物种不会出现在这一列。 */
   const claimBagCard=(b:WorkflowEgg)=>{
     const picked=claimBag?.id===b.id;
-    const blocked=!!claimHome&&claimHome.eggGameId!==b.eggGameId;
     return <button key={b.id} type="button" data-testid="claim-bag-card" data-claim-bag-id={b.id}
-      aria-pressed={picked} disabled={blocked}
+      aria-pressed={picked}
       onClick={()=>{setClaimBagId(b.id);setNotice('');setError('');}}
-      className={`relative flex w-full min-w-0 flex-col gap-0.5 rounded-lg border bg-white p-1.5 text-left ${picked?'border-emerald-500 ring-1 ring-emerald-500':blocked?'border-slate-200 opacity-50':'border-slate-200'}`}>
+      className={`relative flex w-full min-w-0 flex-col gap-0.5 rounded-lg border bg-white p-1.5 text-left ${picked?'border-emerald-500 ring-1 ring-emerald-500':'border-slate-200'}`}>
       {picked?<span className="absolute right-1 top-1 rounded bg-emerald-600 px-1 py-px text-[8.5px] font-semibold leading-none text-white">已选</span>:null}
       <span className="flex min-w-0 items-center gap-1 pr-6">
         <EggArt eggGameId={b.eggGameId} name={name(b.eggGameId)} size={30}/>
@@ -342,7 +342,6 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
       {claimRow('蛋重',claimWeightText(b))}
       {claimRow('蛋高',formatEggHeight(b.heightCm))}
       {claimRow('性格',eggNatureText(b)||'—')}
-      {blocked?<span data-testid="claim-species-block" className="text-[9.5px] leading-4 text-rose-500">物种不同，不能合并</span>:null}
     </button>;
   };
   const claimBanner=claimCount>0?<div data-testid="claim-banner" className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5">
@@ -369,19 +368,19 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
           <Button size="sm" className="mt-3" onClick={closeClaim}>返回蛋仓</Button>
         </div>
       : <div className="grid grid-cols-2 items-start gap-2" data-testid="claim-columns">
-          <section className="flex min-w-0 flex-col gap-1.5" data-testid="claim-home-column">
+          {/* 底部操作条是 sticky 的：左列留出一屏底部空间，最后一张卡能完整滚到操作条上方。 */}
+          <section className="flex min-w-0 flex-col gap-1.5 pb-20" data-testid="claim-home-column">
             <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600"><span>家园蛋</span><em className="font-normal not-italic text-slate-400">{claimCount}</em></div>
             {claimableHomes.map(claimHomeCard)}
           </section>
           <section className="flex min-w-0 flex-col gap-1.5" data-testid="claim-bag-column">
             <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600"><span>这次进背包</span><em className="font-normal not-italic text-slate-400">{freshBags.length}</em></div>
             {freshBags.map(claimBagCard)}
-            {!freshBags.length?<p className="rounded-lg border border-dashed border-slate-200 p-2 text-[10px] text-slate-400">这次没有新进背包的蛋</p>:null}
+            {!freshBags.length?<p className="rounded-lg border border-dashed border-slate-200 p-2 text-[10px] text-slate-400">{claimHome?'这次没有同物种的新蛋':'这次没有新进背包的蛋'}</p>:null}
           </section>
         </div>}
     {claimCount?<div className="sticky bottom-0 flex flex-col gap-1.5 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_-4px_12px_rgba(15,23,42,0.06)]" data-testid="claim-foot">
       <p data-testid="claim-selection" className="text-[10.5px] leading-4 text-slate-600">{selectionText}</p>
-      {claimHome&&claimBag&&!sameClaimSpecies?<p className="text-[10px] leading-4 text-rose-500">物种不同，不能合并。</p>:null}
       <div className="flex gap-1.5">
         <Button size="sm" disabled={!sameClaimSpecies} busy={busy} onClick={mergeClaim}>合并这两颗</Button>
         <Button size="sm" variant="secondary" onClick={closeClaim}>暂不认领</Button>

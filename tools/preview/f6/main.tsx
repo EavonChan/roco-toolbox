@@ -3,14 +3,15 @@
  *   node tools/preview/f6/build.mjs && node tools/preview/f6/shot.mjs
  *   → docs/preview/F6-<宽>-*.png
  *
- * 七屏（每屏 375 / 390 各一张）：
+ * 八屏（每屏 375 / 390 各一张）：
  * - `stock`   蛋仓顶部琥珀横幅 + 网格里的虚线「待认领」卡；
  * - `claim`   手动认领 · 未选（左家蛋 / 右本次进背包）；
  * - `pick`    左一张 + 右一张同种 → 「合并这两颗」可点；
- * - `blocked` 物种不同的背包蛋直接禁用；
+ * - `same-species` 选中左卡后右列只留同物种（不同物种不显示）；
  * - `detail`  认领合并后的详情：「已与家园蛋 … 认领合并 · 拆开认领」；
  * - `split`   拆开确认；
- * - `after`   认领完：横幅消失，两张卡合成一张。
+ * - `after`   认领完：横幅消失，两张卡合成一张；
+ * - `empty`   右列按物种过滤为空：「这次没有同物种的新蛋」。
  *
  * 只出现在 tools/ 下，不进 `src/`、不参与应用构建。
  */
@@ -119,7 +120,10 @@ function App() {
     ? [MERGED, ...FRESH.filter((egg) => egg.id !== 'bag-4559'), ...NORMAL]
     : screen === 'detail' || screen === 'split'
       ? [MERGED, ...FRESH, ...NORMAL]
-      : [...PENDING, ...FRESH, ...NORMAL];
+      : screen === 'empty'
+        // 待认领的家园蛋只有 3049；本次新进背包的只有 3001 → 右列按物种过滤后为空。
+        ? [PENDING[0], FRESH[2], ...NORMAL]
+        : [...PENDING, ...FRESH, ...NORMAL];
   return (
     <StockScreen>
       <EggStockPanel eggs={eggs} species={species} busy={false} mutate={noop} />

@@ -2904,6 +2904,10 @@ video {
   padding-bottom: 0.5rem;
 }
 
+.pb-20 {
+  padding-bottom: 5rem;
+}
+
 .pb-3 {
   padding-bottom: 0.75rem;
 }
@@ -15803,7 +15807,7 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
     const claimableHomes = eggs.filter((e) => e.status !== "transferred" && inGameCharacter(e) && e.claimPending === true);
     const claimCount = claimableHomes.length;
     const claimHome = claimableHomes.find((e) => e.id === claimHomeId) ?? null;
-    const freshBags = eggs.filter((e) => e.status !== "transferred" && inGameCharacter(e) && (e.location ?? "bag") !== "home" && !!e.claimArrivedAt && !e.capturedEggId && (!claimHome?.lastConfirmedAt || (e.claimArrivedAt ?? 0) > claimHome.lastConfirmedAt));
+    const freshBags = eggs.filter((e) => e.status !== "transferred" && inGameCharacter(e) && (e.location ?? "bag") !== "home" && !!e.claimArrivedAt && !e.capturedEggId && (!claimHome || e.eggGameId === claimHome.eggGameId) && (!claimHome?.lastConfirmedAt || (e.claimArrivedAt ?? 0) > claimHome.lastConfirmedAt));
     const claimBag = freshBags.find((e) => e.id === claimBagId) ?? null;
     const sameClaimSpecies = !!claimHome && !!claimBag && claimHome.eggGameId === claimBag.eggGameId;
     const shortId = (id) => id.length > 6 ? "\u2026" + id.slice(-4) : id;
@@ -15979,7 +15983,6 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
     };
     const claimBagCard = (b) => {
       const picked = claimBag?.id === b.id;
-      const blocked = !!claimHome && claimHome.eggGameId !== b.eggGameId;
       return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
         "button",
         {
@@ -15987,13 +15990,12 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
           "data-testid": "claim-bag-card",
           "data-claim-bag-id": b.id,
           "aria-pressed": picked,
-          disabled: blocked,
           onClick: () => {
             setClaimBagId(b.id);
             setNotice("");
             setError("");
           },
-          className: `relative flex w-full min-w-0 flex-col gap-0.5 rounded-lg border bg-white p-1.5 text-left ${picked ? "border-emerald-500 ring-1 ring-emerald-500" : blocked ? "border-slate-200 opacity-50" : "border-slate-200"}`,
+          className: `relative flex w-full min-w-0 flex-col gap-0.5 rounded-lg border bg-white p-1.5 text-left ${picked ? "border-emerald-500 ring-1 ring-emerald-500" : "border-slate-200"}`,
           children: [
             picked ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "absolute right-1 top-1 rounded bg-emerald-600 px-1 py-px text-[8.5px] font-semibold leading-none text-white", children: "\u5DF2\u9009" }) : null,
             /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "flex min-w-0 items-center gap-1 pr-6", children: [
@@ -16007,8 +16009,7 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
             claimRow("\u83B7\u5F97", formatEggObtainedAt(b.obtainedAt) || "\u672A\u91C7\u96C6"),
             claimRow("\u86CB\u91CD", claimWeightText(b)),
             claimRow("\u86CB\u9AD8", formatEggHeight(b.heightCm)),
-            claimRow("\u6027\u683C", eggNatureText(b) || "\u2014"),
-            blocked ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { "data-testid": "claim-species-block", className: "text-[9.5px] leading-4 text-rose-500", children: "\u7269\u79CD\u4E0D\u540C\uFF0C\u4E0D\u80FD\u5408\u5E76" }) : null
+            claimRow("\u6027\u683C", eggNatureText(b) || "\u2014")
           ]
         },
         b.id
@@ -16034,7 +16035,7 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
           " \u9897\u5F85\u8BA4\u9886"
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "text-[10px] leading-4 text-slate-500", children: "\u5DE6\u8FB9\u662F\u5BB6\u56ED\u91CC\u7684\u86CB\uFF08\u6709\u7236\u6BCD\u3001\u81EA\u4EA7\uFF09\uFF0C\u53F3\u8FB9\u662F\u8FD9\u6B21\u65B0\u8FDB\u80CC\u5305\u7684\u86CB\uFF08\u65F6\u95F4 / \u86CB\u91CD / \u86CB\u9AD8 / \u6027\u683C\uFF09\u3002\u6309\u4F60\u6536\u86CB\u65F6\u770B\u5230\u7684\u86CB\u91CD\u5BF9\u4E00\u4E0B\u2014\u2014\u6211\u4EEC\u4E0D\u81EA\u52A8\u914D\u5BF9\uFF0C\u4E5F\u4E0D\u66FF\u4F60\u731C\u3002" }),
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "text-[10px] leading-4 text-slate-500", children: "\u5DE6\u8FB9\u5BB6\u56ED\u86CB\uFF08\u6709\u7236\u6BCD\u3001\u81EA\u4EA7\uFF09\uFF0C\u53F3\u8FB9\u65B0\u8FDB\u80CC\u5305\u86CB\uFF08\u65F6\u95F4 / \u86CB\u91CD / \u86CB\u9AD8 / \u6027\u683C\uFF09\uFF1B\u6309\u86CB\u91CD\u5BF9\u4E00\u4E0B\u3002" }),
       error ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { role: "alert", className: "text-xs text-rose-600", children: error }) : null,
       notice ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { role: "status", className: "text-xs text-emerald-700", children: notice }) : null,
       !claimCount ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "py-8 text-center", "data-testid": "claim-done", children: [
@@ -16042,7 +16043,7 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
         /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "mt-1 text-[11px] text-slate-500", children: "\u86CB\u4ED3\u91CC\u4E0D\u4F1A\u518D\u6709\u5F85\u8BA4\u9886\u7684\u5361\uFF1B\u8BA4\u9519\u53EF\u4EE5\u53BB\u90A3\u5F20\u5361\u7684\u8BE6\u60C5\u91CC\u300C\u62C6\u5F00\u8BA4\u9886\u300D\u3002" }),
         /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Button, { size: "sm", className: "mt-3", onClick: closeClaim, children: "\u8FD4\u56DE\u86CB\u4ED3" })
       ] }) : /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "grid grid-cols-2 items-start gap-2", "data-testid": "claim-columns", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("section", { className: "flex min-w-0 flex-col gap-1.5", "data-testid": "claim-home-column", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("section", { className: "flex min-w-0 flex-col gap-1.5 pb-20", "data-testid": "claim-home-column", children: [
           /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "flex items-center justify-between text-[10px] font-semibold text-slate-600", children: [
             /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: "\u5BB6\u56ED\u86CB" }),
             /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("em", { className: "font-normal not-italic text-slate-400", children: claimCount })
@@ -16055,12 +16056,11 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
             /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("em", { className: "font-normal not-italic text-slate-400", children: freshBags.length })
           ] }),
           freshBags.map(claimBagCard),
-          !freshBags.length ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "rounded-lg border border-dashed border-slate-200 p-2 text-[10px] text-slate-400", children: "\u8FD9\u6B21\u6CA1\u6709\u65B0\u8FDB\u80CC\u5305\u7684\u86CB" }) : null
+          !freshBags.length ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "rounded-lg border border-dashed border-slate-200 p-2 text-[10px] text-slate-400", children: claimHome ? "\u8FD9\u6B21\u6CA1\u6709\u540C\u7269\u79CD\u7684\u65B0\u86CB" : "\u8FD9\u6B21\u6CA1\u6709\u65B0\u8FDB\u80CC\u5305\u7684\u86CB" }) : null
         ] })
       ] }),
       claimCount ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "sticky bottom-0 flex flex-col gap-1.5 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_-4px_12px_rgba(15,23,42,0.06)]", "data-testid": "claim-foot", children: [
         /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { "data-testid": "claim-selection", className: "text-[10.5px] leading-4 text-slate-600", children: selectionText }),
-        claimHome && claimBag && !sameClaimSpecies ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "text-[10px] leading-4 text-rose-500", children: "\u7269\u79CD\u4E0D\u540C\uFF0C\u4E0D\u80FD\u5408\u5E76\u3002" }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "flex gap-1.5", children: [
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Button, { size: "sm", disabled: !sameClaimSpecies, busy, onClick: mergeClaim, children: "\u5408\u5E76\u8FD9\u4E24\u9897" }),
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Button, { size: "sm", variant: "secondary", onClick: closeClaim, children: "\u6682\u4E0D\u8BA4\u9886" })
@@ -16413,7 +16413,7 @@ new MutationObserver(function(list){list.forEach(function(m){m.addedNodes.forEac
   function App() {
     const params = new URLSearchParams(window.location.search);
     const screen = params.get("screen") ?? "stock";
-    const eggs = screen === "after" ? [MERGED, ...FRESH.filter((egg) => egg.id !== "bag-4559"), ...NORMAL] : screen === "detail" || screen === "split" ? [MERGED, ...FRESH, ...NORMAL] : [...PENDING, ...FRESH, ...NORMAL];
+    const eggs = screen === "after" ? [MERGED, ...FRESH.filter((egg) => egg.id !== "bag-4559"), ...NORMAL] : screen === "detail" || screen === "split" ? [MERGED, ...FRESH, ...NORMAL] : screen === "empty" ? [PENDING[0], FRESH[2], ...NORMAL] : [...PENDING, ...FRESH, ...NORMAL];
     return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(StockScreen, { children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(EggStockPanel, { eggs, species, busy: false, mutate: noop }) });
   }
   (0, import_client.createRoot)(document.getElementById("root")).render(/* @__PURE__ */ (0, import_jsx_runtime11.jsx)(App, {}));
