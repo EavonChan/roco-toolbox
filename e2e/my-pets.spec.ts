@@ -1,9 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { importFixtures } from './helpers/importFixture';
 
 test('我的精灵页：卡片展示与标签叠加筛选', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
 
   await page.getByRole('button', { name: '收集', exact: true }).click();
@@ -43,7 +44,7 @@ test('我的精灵页：卡片展示与标签叠加筛选', async ({ page }) => 
 
 test('种公入口落到种公阵列：只列覆盖目标的种公，档位跟全局目标', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
 
@@ -63,7 +64,7 @@ test('种公入口落到种公阵列：只列覆盖目标的种公，档位跟�
 
 test('种公阵列：性格筛选决定阵列的列，清空后回到未选提示', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
 
@@ -87,7 +88,7 @@ test('种公阵列：性格筛选决定阵列的列，清空后回到未选提�
 
 test('母本页：四列卡与三页签；未收集点卡看怎么补、可加计划，收集中按状态筛，已收集空态给出口', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-mothers').click();
@@ -134,7 +135,7 @@ test('母本页：四列卡与三页签；未收集点卡看怎么补、可加�
 });
 test('精灵背包搜索：按进化链全员命中，搜不到给空态', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-inventory').click();
@@ -167,7 +168,7 @@ test('精灵背包搜索：按进化链全员命中，搜不到给空态', async
 
 test('账号同类取并集；大块头筛选与零命中档位置灰', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles([
+  await importFixtures(page, [
     'src/domain/__fixtures__/backup-sample.json',
     'src/domain/__fixtures__/backup-sample-2.json',
   ]);

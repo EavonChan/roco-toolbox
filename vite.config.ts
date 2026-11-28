@@ -95,17 +95,8 @@ export default defineConfig({
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
-        // 采集器里点「分享」→ 选「小布助手」，数据 JSON 直接进来自动导入，不用再手动选文件。
-        // 采集器分享时用的是宽泛的 */* 类型，Chrome 会拿它来和 accept 逐条比对，
-        // 只写 application/json 会导致「小布助手」压根不出现在分享面板里，所以必须带上 */*。
-        share_target: {
-          action: 'share-target',
-          method: 'POST',
-          enctype: 'multipart/form-data',
-          params: {
-            files: [{ name: 'file', accept: ['application/json', '.json', '*/*'] }],
-          },
-        },
+        // 2026-11-28 CLEAN2：网页 Share Target 已删除（数据入口收为壳内采集 + 同账号同步），
+        // manifest 不再声明分享目标，避免分享进来「什么都没发生」。
       },
       injectManifest: {
         // 应用外壳（含图鉴 json 与图标）全部缓存，断网也能打开。

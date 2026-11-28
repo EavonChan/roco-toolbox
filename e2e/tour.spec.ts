@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { TOUR_SEGMENT_ORDER, TOUR_VERSION } from '../src/ui/tour';
+import { importFixtures } from './helpers/importFixture';
 import { GROUP_ID, loginAs, mockMotherGroups } from './helpers/motherGroupsMock';
 
 // 覆盖 config 里「引导已读」的预置，才能看到首启自动弹出的引导
@@ -38,30 +39,31 @@ const CLAIMED_DEMAND = {
   updatedAt: 1_760_000_000_000,
 };
 
-test('首启先讲「把数据导进来」：数据没到位不能下一步，数据到齐后逐条走到教程提示', async ({ page }) => {
+test('首启任务线：采集 → 登录同步 → 缺口 → 怎么补 → 蛋仓 → 收尾（7 步）', async ({ page }) => {
   await page.goto('/');
 
   const root = page.getByTestId('tour-root');
   await expect(root).toBeVisible();
-  await expect(page.getByTestId('tour-progress')).toHaveText('第 1 / 6 步');
+  await expect(page.getByTestId('tour-progress')).toHaveText('第 1 / 7 步');
   await expect(page.getByTestId('tour-title')).toHaveText('先让数据进来');
   // 第 1 步框住顶部页签导航
   await expect(page.getByTestId('tour-spotlight')).toBeVisible();
 
   await page.getByTestId('tour-next').click();
-  // preview 没有采集桥 → 走「导入游戏数据」版（有采集桥才是「开始采集」）
-  await expect(page.getByTestId('tour-title')).toHaveText('点「导入游戏数据」');
-  await expect(page.getByTestId('tour-next')).toBeDisabled();
-  await expect(page.getByTestId('tour-wait')).toBeVisible();
+  // preview 没有采集桥 → 讲「网页版怎么拿到数据」；不卡在等导入
+  await expect(page.getByTestId('tour-title')).toHaveText('网页版怎么拿到数据');
+  await expect(page.getByTestId('tour-next')).toBeEnabled();
+  await expect(page.getByTestId('tour-wait')).toHaveCount(0);
 
-  // 导入一份数据 → 自动继续到「缺口」那步
-  await page
-    .getByTestId('import-input')
-    .setInputFiles('src/domain/__fixtures__/backup-breed-pair.json');
-  await expect(page.getByTestId('tour-title')).toHaveText('这就是你的缺口', { timeout: 10_000 });
-  await expect(page.getByTestId('tour-spotlight')).toBeVisible();
+  // 第 3 步：登录同一账号同步（会切到「我的身份」）
+  await page.getByTestId('tour-next').click();
+  await expect(page.getByTestId('tour-title')).toHaveText('登录同一账号同步');
+  await expect(page.getByTestId('profile-identity-intro')).toBeVisible();
 
   // 缺口 → 怎么补 → 蛋仓入口 → 收尾
+  await page.getByTestId('tour-next').click();
+  await expect(page.getByTestId('tour-title')).toHaveText('这就是你的缺口', { timeout: 10_000 });
+  await expect(page.getByTestId('tour-spotlight')).toBeVisible();
   await page.getByTestId('tour-next').click();
   await expect(page.getByTestId('tour-title')).toHaveText('点开一张卡看「怎么补」');
   await page.getByTestId('tour-next').click();
@@ -122,8 +124,8 @@ test('引导进行中点「教程」：结束当前段并重播当前页，不�
 
   await page.getByTestId('guide-open').click();
   await expect(page.getByTestId('tour-root')).toHaveCount(1);
-  // 落在「我的」页 → 重播「我的」那一段
-  await expect(page.getByTestId('tour-title')).toHaveText('先导入一次数据');
+  // 落在「我的」页 → 重播「我的」那一段（CLEAN2：改成采集 / 登录同步）
+  await expect(page.getByTestId('tour-title')).toHaveText('采集与登录同步');
 });
 
 test('家园段讲「三块」并框住家园页头（蛋仓入口在页头右侧）', async ({ page }) => {
@@ -131,11 +133,7 @@ test('家园段讲「三块」并框住家园页头（蛋仓入口在页头右�
   await mockMotherGroups(page, { demands: [CLAIMED_DEMAND] });
   await presetSeen(page, ['home']);
   await page.goto('/');
-
-  await page
-    .getByTestId('import-input')
-    .setInputFiles('src/domain/__fixtures__/backup-breed-pair.json');
-  await expect(page.getByTestId('import-outcome')).toContainText('已保存到本机');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-breed-pair.json']);
 
   await page.getByRole('button', { name: '家园', exact: true }).click();
   await expect(page.getByTestId('tour-title')).toHaveText('家园分三块');

@@ -1,15 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
+import { importFixtures } from './helpers/importFixture';
 
 /**
- * 导入 fixture 并切到看板。
+ * 播种 fixture 并切到看板。
  *
- * 2026-10-25 起导入后不再自动跳看板；断言导入真正落盘再点页签，
- * 否则导入中的导航会被拦住（点了不动）。
+ * 2026-11-28 CLEAN2：文件导入 UI 已删除，e2e 统一走壳内采集的 roco-share 路径；
+ * 断言导入真正落盘再点页签，否则导入中的导航会被拦住（点了不动）。
  */
 const openDashboardWith = async (page: Page, fixture: string) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles(fixture);
-  await expect(page.getByTestId('import-outcome')).toContainText('已保存到本机');
+  await importFixtures(page, [fixture]);
   await page.getByRole('button', { name: '看板', exact: true }).click();
 };
 

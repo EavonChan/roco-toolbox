@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { importFixtures } from './helpers/importFixture';
 
 const importSample = async (page: import('@playwright/test').Page) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-studs').click();
@@ -113,14 +114,16 @@ test('覆盖度页：分母只随蛋组变化（14 → 13），档位不再改�
   await expect(page.getByTestId('coverage-group-row')).toHaveCount(14);
 });
 
-test('导入数据页保留 CC BY-SA 署名（看板/种公的来源说明块已按 2026-11-22 口径移除）', async ({
+test('CC BY-SA 署名保留在「设置 · 导出 / 数据来源」弹层（看板 / 种公不再放来源块）', async ({
   page,
 }) => {
   await page.goto('/');
 
-  // 2026-11-22 用户口径：看板与种公页去掉「数据来源」说明块，署名统一留在导入数据页
-  await expect(page.getByText('CC BY-SA 4.0')).toBeVisible();
-  await expect(page.getByRole('link', { name: '洛克王国：世界 Wiki' })).toBeVisible();
+  // 2026-11-28 CLEAN2：来源说明跟着导出一起收进设置弹层
+  await page.getByTestId('profile-settings-more').click();
+  const dialog = page.getByTestId('profile-settings-dialog');
+  await expect(dialog.getByText('CC BY-SA 4.0')).toBeVisible();
+  await expect(dialog.getByRole('link', { name: '洛克王国：世界 Wiki' })).toBeVisible();
 });
 
 test('覆盖度页：空数据给出可读空状态且不出现 NaN', async ({ page }) => {
