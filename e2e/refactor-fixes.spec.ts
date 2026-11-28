@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { importFixtures } from './helpers/importFixture';
 import { enterGroup, groupDetail, groupSummary, loginAs, mockMotherGroups } from './helpers/motherGroupsMock';
 
 async function editSelection(page: Page) {
@@ -15,6 +16,8 @@ test('小组草稿离开主导航可取消、Esc 继续编辑、确认后才离�
   await enterGroup(page);
   await mockMotherGroups(page);
   await page.goto('/');
+  // 2026-11-28：「我的」页把小组入口放在有数据才出现的入口格；先播种一份本机数据
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await editSelection(page);
   await page.getByRole('button', { name: '看板', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('有未发布的选号修改');
@@ -40,6 +43,7 @@ test('切组取消保留原组草稿，确认后才切到另一组', async ({ pa
     ok: true, ...groupDetail, group: { ...groupDetail.group, id: 'g2', name: '另一组' },
   } }));
   await page.goto('/');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await editSelection(page);
   await page.getByTestId('group-chip-g2').click();
   await page.getByRole('button', { name: '继续编辑', exact: true }).click();
@@ -51,9 +55,10 @@ test('切组取消保留原组草稿，确认后才切到另一组', async ({ pa
   await expect(page.getByTestId('mother-draft-dirty')).toHaveCount(0);
 });
 
-test('导入页不再显示旧的外部文件导入指引', async ({ page }) => {
+test('文件导入入口已删除，也不再显示旧的外部文件导入指引', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('import-input')).toHaveCount(1);
+  await expect(page.getByTestId('import-input')).toHaveCount(0);
+  await expect(page.getByTestId('import-button')).toHaveCount(0);
   await expect(page.getByRole('link', { name: /下载安卓采集器/ })).toHaveCount(0);
 });
 
@@ -66,7 +71,7 @@ test('主导航键盘顺序、弹层焦点循环与 Esc 返焦', async ({ page }
   }
   // 2026-11-22：「调整」入口已从看板移到 收集 · 种公（筛选改动后出现「编辑目标」）
   // 种公页的筛选栏要有数据才渲染，先导样本
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-studs').click();
@@ -88,7 +93,7 @@ test('主导航键盘顺序、弹层焦点循环与 Esc 返焦', async ({ page }
 test('缩短视口后目标弹层正文可滚动，完成按钮留在视口内', async ({ page }) => {
   await page.goto('/');
   // 2026-11-22：同上，弹层入口改到 收集 · 种公（先导样本，筛选栏才会渲染）
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await page.getByRole('button', { name: '收集', exact: true }).click();
   await page.getByTestId('collection-kind-studs').click();
@@ -118,7 +123,7 @@ for (const width of [320, 375, 390, 1280]) {
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
     await page.goto('/');
-    await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+    await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
     for (const name of ['看板', '家园', '收集', '换蛋', '我的']) {
       await page.getByRole('button', { name, exact: true }).click();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);

@@ -660,7 +660,7 @@ function PublicationCard({
               className="mt-1 min-h-[24px] text-[11px] font-medium text-emerald-700"
               data-testid="group-go-import"
             >
-              去导入数据
+              去登录同步
             </button>
           ) : null}
           {hook.draftDirty && !editing ? (

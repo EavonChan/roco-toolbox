@@ -1,4 +1,4 @@
-import type { MotherGroupResourcesProps } from '../MotherGroupResources';
+import type { MotherGroupResourcesProps } from './groupPlanHubTypes';
 import { EggMatchingHub } from './EggMatchingHub';
 export interface GroupPlanHubProps extends MotherGroupResourcesProps {
   className?:string;

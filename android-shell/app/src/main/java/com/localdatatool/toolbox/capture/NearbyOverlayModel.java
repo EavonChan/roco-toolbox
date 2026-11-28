@@ -51,6 +51,8 @@ public final class NearbyOverlayModel {
     public static final int FOOT_ROW_GAP = 20;
 
     public static final String ESTIMATED_BADGE = "中心为估算";
+    /** 数据停更时的状态行：保留最后一帧，只在脚注位显示这一句（不弹窗、不前红字，2026-11-28）。 */
+    public static final String STATUS_PAUSED = "已暂停 · 采集未在刷新";
     public static final String EMPTY_NEARBY_TITLE = "附近暂时没有精灵";
     public static final String EMPTY_NEARBY_HINT = "进入野外后自动出现";
     public static final String WAITING_LOGIN = "登录后显示附近精灵";
@@ -81,6 +83,11 @@ public final class NearbyOverlayModel {
     public final int rareTotal;
     public final int alertTotal;
     public final long updatedAt;
+    /**
+     * 数据已停更（采集还在，但网页超过 TTL 没刷新）：保留最后一帧数据，
+     * 只在脚注位显示「已暂停 · 采集未在刷新」（2026-11-28）。旧网页没有该字段时为 false。
+     */
+    public final boolean paused;
     /**
      * 网页侧解码轮询实测（2026-11-10）：随 payload 带上来，由壳端 RocoPerf 打印。
      * 旧网页没有 perf 字段时全部为 -1（表示「没有数据」，不是 0ms）。
@@ -157,6 +164,7 @@ public final class NearbyOverlayModel {
         rareTotal = payload.has("rareTotal") ? payload.optInt("rareTotal", countRare()) : countRare();
         alertTotal = payload.has("alertTotal") ? payload.optInt("alertTotal", countAlert()) : countAlert();
         updatedAt = payload.optLong("updatedAt", 0L);
+        paused = payload.optBoolean("paused", false);
     }
 
     public static NearbyOverlayModel parse(JSONObject payload) {
@@ -264,11 +272,21 @@ public final class NearbyOverlayModel {
      */
     public static int panelHeight(boolean showBattle, boolean hasHit, boolean showNearby,
                                   int rows, boolean hasMap, int hidden) {
+        return panelHeight(showBattle, hasHit, showNearby, rows, hasMap, hidden, false);
+    }
+
+    /**
+     * 面板总高度（2026-11-28 加停更状态行）。
+     *
+     * @param paused 数据停更：脚注位固定显示状态行，高度按「有脚注」预留
+     */
+    public static int panelHeight(boolean showBattle, boolean hasHit, boolean showNearby,
+                                  int rows, boolean hasMap, int hidden, boolean paused) {
         int hitHeight = 0;
         if (showBattle) hitHeight = hasHit ? HIT_HEIGHT : HIT_EMPTY_HEIGHT;
         if (!showNearby) return hitHeight;
         int bodyHeight = bodyHeight(rows, hasMap);
-        int footGap = hidden > 0 ? FOOT_ROW_GAP : FOOT_GAP;
+        int footGap = hidden > 0 || paused ? FOOT_ROW_GAP : FOOT_GAP;
         return hitHeight + BODY_TOP_GAP + bodyHeight + footGap;
     }
 

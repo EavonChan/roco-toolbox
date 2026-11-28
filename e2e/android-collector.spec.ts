@@ -48,16 +48,15 @@ test('新版安卓入口从采集保存到真实 Worker 解析、账号持久化
   await expect(card.getByRole('button', { name: '解析并导入', exact: true })).toBeDisabled();
   await card.getByRole('button', { name: '停止并保存', exact: true }).click();
   await card.getByRole('button', { name: '解析并导入', exact: true }).click();
-  // 2026-10-25：导入后不再自动跳看板，结果留在「导入数据」页
-  await expect(page.getByTestId('data-message')).toContainText('已解析并导入本机采集数据');
+  // 2026-11-28 CLEAN2：文件导入 toast 已删除，入库结果统一看三阶段反馈与概览卡
   await expect(page.getByTestId('import-outcome')).toContainText('已保存到本机');
-  await expect(page.getByText('1 个账号')).toBeVisible();
+  await expect(page.getByTestId('profile-header-state')).toContainText('1 个角色');
   await expect(page.getByRole('heading', { name: '种公全收集' })).toHaveCount(0);
   // The raw file is still present; reloading does not need another import.
   await expect(card.getByText('capture-123.pcap')).toBeVisible();
   await page.reload();
-  await expect(page.getByText('1 个账号')).toBeVisible();
-  await expect(page.getByText(/测试玩家/).first()).toBeVisible();
+  await expect(page.getByTestId('profile-header-state')).toContainText('1 个角色');
+  // 账号名不再在「导入数据」页展示（导入历史已删除），持久化由下面的 IndexedDB 断言保证
   const stored = await page.evaluate(() => new Promise<{ gameId: number; pets: unknown[] }[]>((resolve, reject) => {
     const request = indexedDB.open('locke-toolbox', 2);
     request.onerror = () => reject(request.error);
@@ -129,7 +128,7 @@ test('解析失败保留原包，手机宽度无横向溢出，删除需明确�
   await page.goto('/');
   const card = page.getByTestId('native-collector');
   await card.getByRole('button', { name: '解析并导入', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: /抓包|pcap|PCAP/ }).first()).toBeVisible();
+  await expect(page.getByTestId('import-outcome')).toContainText('导入失败');
   await expect(card.getByText('capture-123.pcap')).toBeVisible();
   for (const width of [375, 390]) {
     await page.setViewportSize({ width, height: 844 });

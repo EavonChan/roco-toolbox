@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+﻿import { render, screen, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import type { HomePair, HomeResident, OwnedPet } from '../domain/types';
 import { HomePairCards } from './HomePairCards';
@@ -474,8 +474,8 @@ describe('住户信息缺失时的兜底（2026-11-27）', () => {
     expect(motherCard).toHaveTextContent('未知精灵');
     // 19 位 actorId 是内部 id，不能出现在界面上
     expect(card).not.toHaveTextContent(MOTHER_ACTOR_ID);
-    // 一句提示：完整导入一次抓包就能补全
-    expect(within(card).getByTestId('home-pair-pet-hint')).toHaveTextContent('导入一次抓包');
+    // 一句提示：完整采集一次抓包就能补全
+    expect(within(card).getByTestId('home-pair-pet-hint')).toHaveTextContent('采集一次抓包');
   });
 
   test('住户没有名字但有 baseId：按图鉴物种名显示，并提示这次没匹配到背包', () => {
@@ -499,7 +499,7 @@ describe('住户信息缺失时的兜底（2026-11-27）', () => {
     const motherCard = within(card).getAllByTestId('breed-pet-card')[0];
     expect(motherCard).toHaveTextContent('柴渣虫');
     expect(card).not.toHaveTextContent(MOTHER_ACTOR_ID);
-    expect(within(card).getByTestId('home-pair-pet-hint')).toHaveTextContent('导入一次抓包');
+    expect(within(card).getByTestId('home-pair-pet-hint')).toHaveTextContent('采集一次抓包');
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { LiveNearbyPet } from '../collector/captureProgress';
-import { isHighValuePet, pruneRetained } from './nearbyRetain';
+import { composeNearbyRows, isHighValuePet, pruneRetained, retainablePets } from './nearbyRetain';
 
 const pet = (key: string, rare = false): LiveNearbyPet => ({
   key, cfgId: 10000, petId: 3001, name: key, level: 10, voiceDb: 0,
@@ -45,6 +45,42 @@ describe('常驻列表清理', () => {
     const many = Array.from({ length: 80 }, (_, index) => pet(`p${index}`, true));
     const rows = pruneRetained([], many, 1000, classify, { ttlMs: TTL, maxEntries: 60 });
     expect(rows).toHaveLength(60);
+  });
+});
+
+describe('列表 = 当前全部精灵 ∪ 已离开的高价值常驻', () => {
+  test('当前快照里的普通精灵也进列表，已离开的高价值按「已离开」追加', () => {
+    const retained = pruneRetained([], [pet('rare', true)], 1000, classify, { ttlMs: TTL });
+    // rare 已离开视野，current 里只剩普通精灵
+    const rows = composeNearbyRows([], retained, [pet('normal')], 2000, classify);
+    expect(rows.map((row) => [row.key, row.present])).toEqual([
+      ['normal', true],
+      ['rare', false],
+    ]);
+  });
+
+  test('普通精灵离开视野后不会留在列表里', () => {
+    const shown = composeNearbyRows([], [], [pet('normal')], 1000, classify);
+    const retained = pruneRetained([], [], 2000, classify, { ttlMs: TTL });
+    expect(composeNearbyRows(shown, retained, [], 2000, classify)).toEqual([]);
+  });
+
+  test('普通精灵的首次出现时间沿用上一轮展示，不会每次刷新都变成 now', () => {
+    const first = composeNearbyRows([], [], [pet('normal')], 1000, classify);
+    const second = composeNearbyRows(first, [], [pet('normal')], 5000, classify);
+    expect(second[0]).toMatchObject({ firstSeenAt: 1000, lastSeenAt: 5000, present: true });
+  });
+
+  test('已离开的高价值超过 10 分钟后不再出现在列表里', () => {
+    const retained = pruneRetained([], [pet('rare', true)], 1000, classify, { ttlMs: TTL });
+    const expired = pruneRetained(retained, [], 1000 + TTL + 1, classify, { ttlMs: TTL });
+    expect(expired).toEqual([]);
+    expect(composeNearbyRows([], expired, [], 1000 + TTL + 1, classify)).toEqual([]);
+  });
+
+  test('常驻表只收高价值：普通精灵不写进常驻', () => {
+    const current = [pet('normal'), pet('rare', true)];
+    expect(retainablePets(current, classify).map((item) => item.key)).toEqual(['rare']);
   });
 });
 

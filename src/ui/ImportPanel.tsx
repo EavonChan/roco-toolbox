@@ -1,382 +1,32 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { analyticsEnabled, setAnalyticsEnabled, track } from '../api/analytics';
-import { readAccountId } from '../api/session';
-import { syncNow } from '../api/sync';
-import { analyzeImport } from '../domain/importDiff';
-import { accountKeyOf, parseBackup, type AccountSnapshot } from '../domain/parseBackup';
-import { groupMothersByEgg, plannedAchievements } from '../domain/petFilters';
-import { eggGroupNames, species } from '../data/catalog';
-import { saveSnapshot, writeSnapshots } from '../storage/snapshots';
-import {
-  backupFileName,
-  buildBackup,
-  isToolboxBackup,
-  mergeImportedSnapshot,
-  mergeSnapshots,
-  parseToolboxBackup,
-  type MergeResult,
-  type ToolboxBackup,
-} from '../domain/backup';
+import { useState } from 'react';
 import { CATALOG_VERSION } from '../data/catalog';
-import { refreshSnapshots } from '../storage/snapshotStore';
-import {
-  setLastImportResult,
-} from '../storage/lastImportStore';
-import { ImportResultCard } from './ImportResultCard';
-import { SourceNotice } from './SourceNotice';
+import { backupFileName, buildBackup } from '../domain/backup';
+import { shareToNative } from '../share/nativeShare';
 import { useSnapshots } from './useSnapshots';
-import { useLastImportHistory } from './useLastImportResult';
-import { takeSharedFile } from '../share/shareTarget';
-import { fetchShellCapture, shareToNative, takeNativeShare } from '../share/nativeShare';
-import { readCaptureFile } from '../pcap/readCaptureFile';
-import { isCollectorCaptureUrl } from '../pcap/collectorUrl';
-import { decodeUrlInWorker } from '../pcap/decodeInWorker';
-import {
-  adoptBackupTargetMode,
-  getTargetMode,
-  useTargetMode,
-} from './targetModeStore';
-import { getMotherPlan, mergeMotherPlan } from './motherPlanStore';
+import { getTargetMode } from './targetModeStore';
+import { getMotherPlan } from './motherPlanStore';
 import { setImportMessage, useImportMessage } from './importMessageStore';
-import { beginImport, updateImportOutcome, useImportOutcome } from './importOutcomeStore';
-import { setSyncConflict, setSyncNotice, useSyncFeedback } from './syncNoticeStore';
-import { resetImportedData } from './resetImportedData';
-import { recordSyncedPets } from './syncAdditions';
-import { autoPublishGroups, collectPendingDemandClaims } from './groupAutoPublish';
+import { SourceNotice } from './SourceNotice';
 
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** 「导入数据」页：抓包导入 / 合并导入 / 导出全部 / 重置，以及导入结果汇报。 */
-export interface ImportPanelProps {
-  /** 匿名统计下方、数据来源前给调用方留的一块（2026-11-21：私有同步卡片）。 */
-  afterAnalytics?: ReactNode;
-}
-
-export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
-  const { snapshots, loaded } = useSnapshots();
-  // 历史入口常驻：只要有导入历史，卡片就渲染（重启后入口仍在，2026-10-05 用户拍板）
-  const importHistory = useLastImportHistory();
-  // 全局目标模式：追满分 / 追双牌，「本次新增」的分类口径读它
-  const mode = useTargetMode();
-  // 导入的本机 / 私有云 / 小组三阶段反馈放模块级 store：切页或导入中离开本页也不丢（2026-10-24）
-  const outcome = useImportOutcome();
-  const importing = outcome.local === 'importing';
-  const importError = outcome.local === 'failed' ? outcome.message : null;
-  // 合并 / 导出 / 分享处理这类非导入动作的错误：留在本页即可（导入本体的反馈已进 store）
-  const [actionError, setActionError] = useState<string | null>(null);
-  const currentOp = useRef(0);
+/**
+ * 「设置」里的数据与来源（2026-11-28 CLEAN2）。
+ *
+ * 数据入口收敛为「壳内采集 + 同账号登录同步」后，这里只保留：
+ * - 导出（只做备份 / 排障，收在「更多」里；本应用不再提供文件导入）
+ * - 数据来源署名（CC BY-SA 4.0 的合规要求）
+ *
+ * 匿名统计开关已移到设置分组的「使用统计」一行（见 SettingsSection）。
+ * 文件导入 / 合并导入 / 导入历史 / 重置入口已删除，入库链路见 `src/import/captureIngest.ts`。
+ */
+export function ImportPanel() {
+  const { snapshots } = useSnapshots();
   const dataMessage = useImportMessage();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const backupInputRef = useRef<HTMLInputElement>(null);
-  const [analyticsOn, setAnalyticsOn] = useState(() => analyticsEnabled());
-  // 导入后自动云同步的反馈（409 冲突 / 设置已跟随云端）放模块级 store：
-  // 分享导入后本组件会被卸载，放 useState 里这两条提示会永久丢失（见 syncNoticeStore）
-  const { conflict: autoConflict, notice: syncNotice } = useSyncFeedback();
-  // 底部「更多」折叠区（导出 / 合并导入 / 重置）：低频操作收起来，默认收起
+  // 导出是低频操作：默认收起，避免设置里一进来就是一排按钮
   const [moreOpen, setMoreOpen] = useState(false);
-
-  const speciesByGameId = useMemo(() => new Map(species.map((entry) => [entry.gameId, entry])), []);
-
-  const lastImportedAt = useMemo(() => {
-    if (snapshots.length === 0) return null;
-    return snapshots.reduce((latest, s) => (s.importedAt > latest ? s.importedAt : latest), '');
-  }, [snapshots]);
-
-  const stale = useMemo(() => {
-    if (!lastImportedAt) return false;
-    const ts = Date.parse(lastImportedAt);
-    return Number.isFinite(ts) && Date.now() - ts > SEVEN_DAYS_MS;
-  }, [lastImportedAt]);
-
-  /** 导入后把"本次新增里符合看板分类的"记下来，给顶部那张卡片用 */
-  const reportNewPets = (
-    previous: AccountSnapshot[],
-    imported: AccountSnapshot[],
-    operationId: number,
-  ) => {
-    setLastImportResult(
-      analyzeImport({
-        previous,
-        imported,
-        species,
-        eggGroupNames,
-        mode,
-      }),
-    );
-    // 埋点：只报规模，不报内容（账号数 / 精灵数）
-    track('import_success', {
-      accounts: imported.length,
-      pets: imported.reduce((sum, snapshot) => sum + snapshot.pets.length, 0),
-    });
-    // 开了云同步的话，导入成功后直接做一次「云同步」（拉云端 → 与本机合并 → 推回云端，
-    // 2026-10-07）：分享导入是跨设备的主路径，顺手对齐就不必让用户再去「云同步」点一次。
-    // 尽力而为：失败不影响本地，也不打断用户操作。
-    // 2026-10-06 修：遇 409 是**正常返回 `{ok:false}` 而不是抛异常**，
-    // 原来的 `.catch(() => {})` 因此永远不触发 → 冲突被静默吞掉，用户以为同步好了。
-    // 现在把冲突交给「云同步」面板展示（用户在那里二选一），并在顶部给一条提示。
-    if (readAccountId()) {
-      updateImportOutcome(operationId, { cloud: 'syncing' });
-      void syncNow()
-        .then((result) => {
-          if (!result.ok) {
-            updateImportOutcome(operationId, { cloud: 'conflict' });
-            setSyncConflict(result.conflict);
-            return;
-          }
-          updateImportOutcome(operationId, { cloud: 'synced' });
-          // 从云端补上了本机没有的设置键：这些键是模块级 store 启动时读的，刷新才生效。
-          // 这里**不刷新**——分享导入后还要跳看板看「本次新增」，刷新会把它冲掉；
-          // 所以只给一条提示，用户想立刻生效就自己刷新。
-          if (result.prefsAdopted.length > 0) {
-            setSyncNotice('设置已按云端更新，刷新页面后生效。');
-          }
-          // 同步带进来的精灵也算进「本次新增」：比的是**这次导入前**的本机快照，
-          // 所以导入 + 同步合并起来一起展示（覆盖掉上面只按导入内容写的卡片）
-          if (result.added.length > 0 || result.updated.length > 0) {
-            void recordSyncedPets(previous);
-          }
-        })
-        // 网络/服务端异常也要留一条提示：这是导入后自动触发的，用户没主动点过任何按钮
-        .catch(() => {
-          updateImportOutcome(operationId, { cloud: 'failed' });
-          setSyncNotice('自动同步没成功（网络异常），到「我的 · 私有同步」点一次「立即同步」重试。');
-        });
-    }
-  };
-
-  /** 合并结果的反馈文案，两个入口（手选 / 分享）共用 */
-  const mergeMessage = (name: string, merged: MergeResult): string =>
-    `已合并导入「${name}」：新增 ${merged.added.length} 个账号 · 更新 ${merged.updated.length} 个 · 保留本地较新的 ${merged.kept.length} 个`;
-
-  /**
-   * 备份里的「规划数据」：目标模式（本地优先，本机没选过才采用备份的值）+ 计划收集（并集）。
-   * 返回给用户的说明文案。
-   */
-  const applyBackupPlanning = (backup: ToolboxBackup): string[] => {
-    adoptBackupTargetMode(backup.targetMode);
-    const addedCount = mergeMotherPlan(backup.motherPlan ?? []);
-    return addedCount > 0 ? [`计划收集新增 ${addedCount} 条`] : [];
-  };
-
-  /** 计划收集的达成提示：只报这次导入「从不合格变合格」的链 */
-  const achievementMessages = (
-    previous: AccountSnapshot[],
-    next: AccountSnapshot[],
-    planBefore: readonly string[],
-  ): string[] => {
-    if (planBefore.length === 0) return [];
-    const modeNow = getTargetMode();
-    const groupsOf = (list: AccountSnapshot[]) =>
-      groupMothersByEgg(list.flatMap((item) => item.pets), speciesByGameId, species, modeNow);
-    const beforeKeys = new Set(
-      plannedAchievements(groupsOf(previous), planBefore).map((group) => group.chainKey),
-    );
-    const achieved = plannedAchievements(groupsOf(next), planBefore).filter(
-      (group) => !beforeKeys.has(group.chainKey),
-    );
-    if (achieved.length === 0) return [];
-    const names = achieved.slice(0, 3).map((group) => group.formLabel || '未知精灵');
-    return [
-      `计划收集达成 ${achieved.length} 个：${names.join('、')}${achieved.length > 3 ? ' 等' : ''}`,
-    ];
-  };
-
-  /**
-   * 导入后的尽力而为收尾：把资源同步到已加入的小组 + 看看有没有人接了我的需求。
-   * 主入口与「合并导入」共用，避免两条导入路径行为不一致。
-   * 失败不影响本机与云同步，也不打断用户操作。
-   */
-  const afterImport = (
-    operationId: number,
-    working: AccountSnapshot[],
-    touched: Set<string>,
-  ) => {
-    void Promise.all([
-      autoPublishGroups({
-        snapshots: working,
-        species,
-        catalogVersion: CATALOG_VERSION,
-        touchedAccountKeys: [...touched],
-      }).catch(() => 0),
-      // 顺带看看有没有人接了我的需求，且这次导入的数据里确实已经有这颗蛋
-      collectPendingDemandClaims({ snapshots: working, species }).catch(() => []),
-    ]).then(([count, claims]) => {
-      if (count === 0 && claims.length === 0) return;
-      updateImportOutcome(operationId, {
-        ...(count > 0 ? { group: 'updated' as const, groupCount: count } : {}),
-        ...(claims.length > 0 ? { claims } : {}),
-      });
-    });
-  };
-
-  /**
-   * 导入入口。一个入口认两种文件：
-   * - 采集器抓包（.pcap / 抓包 JSON）→ 按账号替换该账号的快照（「重新抓了一次」的正确语义）
-   * - 工具箱备份（自己导出的）→ **合并**，多设备同步靠它
-   *
-   * 之所以不分成两个按钮：微信收到备份后「分享给小布助手」时走的就是这条入口，
-   * 那时用户没机会选按钮，只能靠内容自己认。
-   */
-  const handleImport = async (
-    files: File[],
-    sourceLabel?: string,
-    readFile: (file: File) => Promise<unknown> = readCaptureFile,
-  ): Promise<AccountSnapshot[] | null> => {
-    const operationId = beginImport();
-    currentOp.current = operationId;
-    try {
-      // 先记住导入前的数据，"本次新增"才有得比
-      const previous = snapshots;
-      // 计划收集的达成判定要用「导入前」的计划（备份带进来的新计划不参与本次判定）
-      const planBefore = [...getMotherPlan()];
-      // 合并以「当前写进去的状态」为准，多文件时后一个能看见前一个的结果
-      let working = [...snapshots];
-      const imported: AccountSnapshot[] = [];
-      /** 这次导入涉及的账号：自动发布时并进小组的选号（手动取消过的旧账号不会被加回来） */
-      const touched = new Set<string>();
-      const messages: string[] = [];
-
-      for (const file of files) {
-        // 抓包文件（.pcap）会自动交给采集器那套解析器解成 JSON，其余按 JSON 读
-        const raw = await readFile(file);
-
-        if (isToolboxBackup(raw)) {
-          const backup = parseToolboxBackup(raw);
-          const merged = mergeSnapshots(working, backup.accounts);
-          working = merged.snapshots;
-          await writeSnapshots(working);
-          for (const account of backup.accounts) touched.add(account.accountKey ?? accountKeyOf(account));
-          messages.push(mergeMessage(file.name, merged));
-          messages.push(...applyBackupPlanning(backup));
-          continue;
-        }
-
-        const parsed = parseBackup(raw, new Date().toISOString());
-        // 按**账号身份（游戏 UID）**替换：重名但不同 UID 的两个账号是两个账号，互不顶掉
-        const key = accountKeyOf(parsed);
-        // 这次抓包没进家园场景时不要丢掉本机已有的家园（2026-11-01 用户反馈）
-        const snapshot = mergeImportedSnapshot(
-          parsed,
-          working.find((item) => accountKeyOf(item) === key),
-        );
-        await saveSnapshot(snapshot);
-        working = [...working.filter((item) => accountKeyOf(item) !== key), snapshot];
-        imported.push(snapshot);
-        touched.add(key);
-      }
-
-      await refreshSnapshots();
-      reportNewPets(previous, working, operationId);
-      // 抓包导入也可能让计划里的链达标
-      messages.push(...achievementMessages(previous, working, planBefore));
-      // 分享进来的来源说明放最前面，后面接合并/计划的说明（合并结果不在「本次新增」卡片里）
-      const parts = sourceLabel ? [sourceLabel, ...messages] : messages;
-      const text = parts.length > 0 ? parts.join('；') : null;
-      if (text) setImportMessage(text);
-      updateImportOutcome(operationId, {
-        local: 'saved',
-        message: text,
-        cloud: readAccountId() ? 'syncing' : 'not-enabled',
-      });
-      // 导入后直接把资源同步到已加入的小组（发布不再是用户必须记得的一步）。
-      afterImport(operationId, working, touched);
-      return imported;
-    } catch (error) {
-      updateImportOutcome(operationId, {
-        local: 'failed',
-        message: error instanceof Error ? error.message : '导入失败',
-      });
-      return null;
-    }
-  };
-
-  // 晚到的分享要用最新的 handleImport，否则「本次新增」是拿旧快照在比
-  const importRef = useRef(handleImport);
-  importRef.current = handleImport;
-
-  /**
-   * 分享进来的数据有三个来源：
-   * 1. 浏览器里走系统分享（Web Share Target）→ Service Worker 存进缓存，见 shareTarget.ts
-   * 2. 原生壳接住分享的 JSON → 壳直接注入文本，见 nativeShare.ts
-   * 3. 原生壳接住分享的抓包（采集器的「分享文件」）→ 壳拦下请求返回字节，页面自己去取
-   * 等本机数据读完（loaded）再导，否则「本次新增」是在和空数据比。
-   */
-  useEffect(() => {
-    if (!loaded) return;
-
-    const consume = async () => {
-      // 来源说明交给 handleImport 一起拼：这里再 setImportMessage 会把
-      // 「已合并导入…新增/更新/保留」这句覆盖掉，用户就看不到这次到底动了什么
-      const importOne = async (file: File, done: string, readFile?: (file: File) => Promise<unknown>) => {
-        return importRef.current([file], done, readFile);
-      };
-
-      const fromBrowser = await takeSharedFile();
-      if (fromBrowser) {
-        const name = fromBrowser.name || 'shared.json';
-        // 原始字节交给 readCaptureFile 按魔数分流：JSON 走解析、PCAP 走采集器解析器
-        const result = await importOne(
-          new File([fromBrowser.blob], name),
-          `已导入分享进来的采集数据（${name}）`,
-        );
-        return result;
-      }
-
-      const fromShell = takeNativeShare();
-      if (!fromShell) return;
-      try {
-        if (fromShell.kind === 'capture') {
-          const name = fromShell.name || 'capture.pcap';
-          if (isCollectorCaptureUrl(fromShell.url)) {
-            // Metadata only on the UI thread: Worker streams the native file and decodes there.
-            const result = await importOne(new File([], name), `已解析并导入本机采集数据（${name}）`,
-              async () => (await decodeUrlInWorker(fromShell.url, name)).payload);
-            return result;
-          }
-          const bytes = await fetchShellCapture(fromShell.url);
-          const result = await importOne(
-            new File([bytes], name, { type: 'application/octet-stream' }),
-            `已解析并导入分享进来的抓包数据（${name}）`,
-          );
-          return result;
-        } else {
-          const name = fromShell.name || 'shared.json';
-          const result = await importOne(
-            new File([fromShell.text], name, { type: 'application/json' }),
-            `已导入分享进来的采集数据（${name}）`,
-          );
-          return result;
-        }
-      } catch (error) {
-        setActionError(error instanceof Error ? error.message : '导入分享的数据失败');
-      }
-    };
-
-    // 消费分享数据；失败也要给提示，不能让它变成未处理的 rejection（数据会静默丢掉）
-    const runConsume = () => {
-      void consume().catch((error) => {
-        setActionError(error instanceof Error ? error.message : '处理分享进来的数据失败');
-      });
-    };
-    runConsume();
-    // 应用已经开着的时候分享进来，壳会派发这个事件
-    window.addEventListener('roco-share', runConsume);
-    return () => window.removeEventListener('roco-share', runConsume);
-  }, [loaded]);
-
-  const handleReset = async () => {
-    const confirmed = window.confirm(
-      '确定清空本机已导入的所有账号数据吗？此操作不可撤销。\n\n' +
-        '会清空：导入的账号、导入历史、本次新增、种公推荐里勾选的「已换到」、母本计划、账号与清单筛选。\n' +
-        '会保留：种公奖牌目标与母本达标条件、我的身份、已发布的小组资源（要撤回请到小组页停止共享）。',
-    );
-    if (!confirmed) return;
-    await resetImportedData();
-  };
 
   /** 导出：把本机全部账号数据打包，优先「分享」出去（网页 navigator.share / 壳 JS Bridge），
    *  不支持时兜底下载文件。2026-10-04 用户拍板：APK 里 blob 下载被 WebView 忽略，
-   *  改为直接分享到 QQ/微信等，另一台设备再「用其他应用打开」分享回工具箱导入。 */
+   *  改为直接分享到 QQ/微信等。导出只用于备份与排障，换设备请用同账号登录同步。 */
   const handleExport = async () => {
     const backup = buildBackup(snapshots, {
       exportedAt: new Date().toISOString(),
@@ -390,7 +40,6 @@ export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
     try {
       // 1) 壳 JS Bridge：调起系统分享面板（QQ/微信等）
       if (shareToNative(text, fileName)) {
-        setActionError(null);
         setImportMessage(`已发起分享 ${snapshots.length} 个账号的数据`);
         return;
       }
@@ -399,16 +48,12 @@ export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
         const file = new File([text], fileName, { type: 'application/json' });
         if (navigator.canShare?.({ files: [file] })) {
           await navigator.share({ files: [file], title: '小布助手数据备份' });
-          setActionError(null);
           setImportMessage(`已分享 ${snapshots.length} 个账号的数据`);
           return;
         }
       }
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        setActionError(null);
-        return; // 用户取消分享，什么都不提示
-      }
+      if (error instanceof Error && error.name === 'AbortError') return; // 用户取消分享，什么都不提示
       // 分享失败（如权限）不打断，继续走下载兜底
     }
 
@@ -420,150 +65,11 @@ export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
     link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
-    setActionError(null);
     setImportMessage(`已导出 ${snapshots.length} 个账号的数据`);
   };
 
-  /** 合并导入：把另一台设备的备份合并进本地（本地独有的账号不会被清掉） */
-  const handleImportBackup = async (file: File) => {
-    try {
-      const raw = JSON.parse(await file.text()) as unknown;
-      const backup = parseToolboxBackup(raw);
-      const previous = snapshots;
-      const planBefore = [...getMotherPlan()];
-      const merged = mergeSnapshots(snapshots, backup.accounts);
-      const confirmed = window.confirm(
-        `合并导入：本地独有的账号会保留；两边都有的账号取导入时间较新的那份。\n\n` +
-          `备份里 ${backup.accounts.length} 个账号 → 新增 ${merged.added.length} · ` +
-          `更新 ${merged.updated.length} · 保留本地较新 ${merged.kept.length}\n\n确定继续吗？`,
-      );
-      if (!confirmed) return;
-      const operationId = beginImport();
-      currentOp.current = operationId;
-
-      await writeSnapshots(merged.snapshots);
-      await refreshSnapshots();
-      reportNewPets(previous, merged.snapshots, operationId);
-      setActionError(null);
-      const text = [
-        mergeMessage(file.name, merged),
-        ...applyBackupPlanning(backup),
-        ...achievementMessages(previous, merged.snapshots, planBefore),
-      ].join('；');
-      setImportMessage(text);
-      updateImportOutcome(operationId, {
-        local: 'saved',
-        message: text,
-        cloud: readAccountId() ? 'syncing' : 'not-enabled',
-      });
-      // 合并导入也可能带进新蛋：与主入口一样跑自动发布与待结单提醒
-      afterImport(
-        operationId,
-        merged.snapshots,
-        new Set(backup.accounts.map((account) => account.accountKey ?? accountKeyOf(account))),
-      );
-    } catch (error) {
-      // JSON.parse 的 SyntaxError 是英文原文（"Unexpected token..."），换成用户能看懂的提示
-      setActionError(
-        error instanceof SyntaxError
-          ? '备份文件不是有效的 JSON：请确认选的是小布助手导出的备份'
-          : error instanceof Error
-            ? error.message
-            : '合并导入失败',
-      );
-    }
-  };
-
   return (
-    <main className="mx-auto max-w-md space-y-3 p-4">
-      {/* 用真正的 button 触发隐藏 input：部分手机内置浏览器对 label 包裹 hidden input 支持不佳 */}
-      <button
-        type="button"
-        data-testid="import-button"
-        data-tour="profile-import"
-        onClick={() => fileInputRef.current?.click()}
-        className="flex min-h-[44px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 text-base font-medium text-white"
-      >
-        {importing ? '导入中…' : '导入游戏数据'}
-      </button>
-      <p className="-mt-1 text-center text-xs text-slate-400">
-        采集器分享到「小布助手」会自动导入；也可手选 .pcap / .json（可多选）
-      </p>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/json,.json,.pcap,application/vnd.tcpdump.pcap"
-        multiple
-        className="hidden"
-        data-testid="import-input"
-        onChange={(event) => {
-          const files = Array.from(event.target.files ?? []);
-          if (files.length > 0) void handleImport(files);
-          event.target.value = '';
-        }}
-      />
-
-      {/* 导入结果 / 错误紧跟主按钮：导入失败、合并结果都在这里第一时间看到 */}
-      {importError || actionError ? (
-        <div className="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700">
-          {importError ?? actionError}
-        </div>
-      ) : null}
-      {dataMessage ? (
-        <p className="-mt-1 text-xs text-emerald-700" data-testid="data-message">
-          {dataMessage}
-        </p>
-      ) : null}
-
-      {!loaded ? (
-        <div className="min-h-[44px] rounded-lg bg-slate-50 p-3" aria-busy="true" data-testid="import-loading">
-          <div className="h-3 w-24 animate-pulse rounded bg-slate-200" />
-          <div className="mt-1.5 h-3 w-3/4 animate-pulse rounded bg-slate-200" />
-        </div>
-      ) : snapshots.length === 0 ? (
-        <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500" data-testid="import-empty">
-          还没有数据。用上面的「导入游戏数据」或本机采集导入一次，看板会自动算出两块进度。
-        </div>
-      ) : null}
-
-      {/* 当前数据状态放在主按钮下面：有几个账号、上次什么时候导的 */}
-      {loaded && snapshots.length > 0 ? (
-        <p className="text-xs text-slate-400">
-          <span>{snapshots.length} 个账号</span>
-          {lastImportedAt ? <span> · 上次导入 {new Date(lastImportedAt).toLocaleString()}</span> : null}
-        </p>
-      ) : null}
-
-      {stale ? (
-        <div className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800">
-          数据已超过一周未更新，请重新导入抓包数据。
-        </div>
-      ) : null}
-
-      {autoConflict ? (
-        <div
-          className="rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700"
-          data-testid="sync-conflict-notice"
-        >
-          已保存到本机。云端刚被别的设备改过，这次自动同步没完成——到下面「云同步」点一次「立即同步」即可。
-        </div>
-      ) : null}
-
-      {syncNotice ? (
-        <div
-          className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800"
-          data-testid="sync-adopted-notice"
-        >
-          {syncNotice}
-        </div>
-      ) : null}
-
-      {/* 云同步面板已移到「我的 · 工具箱身份 / 私有同步」（2026-10-24）：这里不再重复挂载认证与同步 */}
-      {/* 导入历史入口（「本次新增」明细在看板，2026-10-05 用户拍板） */}
-      {importHistory.length > 0 ? <ImportResultCard /> : null}
-
-      {/* 低频操作收在底部、默认收起：导出 / 合并导入 / 重置。
-          合并导入与主按钮、分享导入重复度很高（换设备也已经有云同步），所以下沉到这里。 */}
+    <div className="space-y-3" data-testid="import-settings">
       <section className="rounded-2xl bg-white shadow-sm" data-testid="import-more">
         <button
           type="button"
@@ -572,91 +78,35 @@ export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
           data-testid="import-more-toggle"
           className="flex min-h-[36px] w-full items-center justify-between px-3 text-left text-sm font-medium text-slate-500"
         >
-          <span>更多（导出 / 合并导入 / 重置）</span>
+          <span>更多（导出）</span>
           <span className="text-xs text-slate-300" aria-hidden>
             {moreOpen ? '▲' : '▼'}
           </span>
         </button>
         {moreOpen ? (
           <div className="px-3 pb-3" data-testid="import-more-body">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                data-testid="export-button"
-                disabled={snapshots.length === 0}
-                onClick={() => void handleExport()}
-                className="flex min-h-[36px] flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 disabled:text-slate-300"
-              >
-                导出全部数据
-              </button>
-              <button
-                type="button"
-                data-testid="import-backup-button"
-                onClick={() => backupInputRef.current?.click()}
-                className="flex min-h-[36px] flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700"
-              >
-                合并导入
-              </button>
-            </div>
-            <input
-              ref={backupInputRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              data-testid="backup-input"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void handleImportBackup(file);
-                event.target.value = '';
-              }}
-            />
+            <button
+              type="button"
+              data-testid="export-button"
+              disabled={snapshots.length === 0}
+              onClick={() => void handleExport()}
+              className="flex min-h-[36px] w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 disabled:text-slate-300"
+            >
+              导出全部数据
+            </button>
             <p className="mt-1 text-xs text-slate-400">
-              导出自己的账号数据；换设备首选上面的「云同步」。
+              导出只用于离线备份 / 排障；本应用不能再导入，换设备请用同账号登录同步。
             </p>
-            {snapshots.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => void handleReset()}
-                className="mt-2 flex min-h-[36px] w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600"
-              >
-                重置导入数据
-              </button>
+            {dataMessage ? (
+              <p className="mt-1 text-xs text-emerald-700" data-testid="data-message">
+                {dataMessage}
+              </p>
             ) : null}
           </div>
         ) : null}
       </section>
 
-      {/* 匿名统计开关（2026-10-06）：只报「设备 + 用了哪个功能」，可随时关掉 */}
-      <section className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-700">匿名使用统计</p>
-          <p className="mt-0.5 text-xs text-slate-400">
-            只记录「哪台设备用了哪个功能」，不含精灵内容；用来知道哪些功能真有人用
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={analyticsOn}
-          data-testid="analytics-toggle"
-          onClick={() => {
-            const next = !analyticsOn;
-            setAnalyticsEnabled(next);
-            setAnalyticsOn(next);
-          }}
-          className={`min-h-[28px] shrink-0 rounded-md border px-2.5 text-xs font-medium ${
-            analyticsOn
-              ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-              : 'border-slate-200 bg-white text-slate-400'
-          }`}
-        >
-          {analyticsOn ? '已开启' : '已关闭'}
-        </button>
-      </section>
-
-      {afterAnalytics}
-
       <SourceNotice />
-    </main>
+    </div>
   );
 }

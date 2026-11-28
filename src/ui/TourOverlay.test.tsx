@@ -8,6 +8,7 @@ import {
   markSegmentSeen,
   migrateLegacyTourSeen,
   segmentPending,
+  startStepsFor,
   startTourPending,
 } from './tour';
 import { TourOverlay } from './TourOverlay';
@@ -53,10 +54,11 @@ describe('新手引导', () => {
       'home',
       'profile',
     ]);
-    // 首启（本机没有采集桥 → 导入版）：讲清楚「先导数据」并等导入完成
+    // 首启（本机没有采集桥 → 登录同步版）：讲清楚「先让数据进来」；网页不卡在等导入
     const startTitles = TOUR_SEGMENTS.start.map((step) => step.title).join('|');
     expect(startTitles).toContain('数据');
-    expect(TOUR_SEGMENTS.start.some((step) => step.waitForImport)).toBe(true);
+    expect(TOUR_SEGMENTS.start.some((step) => step.waitForImport)).toBe(false);
+    expect(startStepsFor({ hasCapture: true, desktop: false }).some((step) => step.waitForImport)).toBe(true);
 
     expect(TOUR_SEGMENTS.dashboard.map((step) => step.title).join('|')).toContain('目标');
     expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('视图');
@@ -77,9 +79,9 @@ describe('新手引导', () => {
     }
   });
 
-  test('23 步逐条走通：标题都不为空，最后一步「开始用」并关闭', () => {
+  test('24 步逐条走通：标题都不为空，最后一步「开始用」并关闭', () => {
     const steps = TOUR_SEGMENT_ORDER.flatMap((segment) => TOUR_SEGMENTS[segment]);
-    expect(steps).toHaveLength(23);
+    expect(steps).toHaveLength(24);
     const onClose = vi.fn();
     render(<TourOverlay steps={steps} onClose={onClose} importReady />);
 
@@ -89,7 +91,7 @@ describe('新手引导', () => {
       expect(screen.getByTestId('tour-progress')).toHaveTextContent(`${index + 1} / ${steps.length}`);
       if (index < steps.length - 1) fireEvent.click(screen.getByTestId('tour-next'));
     }
-    expect(titles).toHaveLength(23);
+    expect(titles).toHaveLength(24);
     expect(titles.every((title) => title.trim().length > 0)).toBe(true);
     // 整条链路的最后一步是「我的」（个人页，本轮不动），所以按钮是「开始用」而不是「知道了」
     expect(screen.getByTestId('tour-done')).toHaveTextContent('开始用');

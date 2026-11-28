@@ -27,5 +27,5 @@ export async function recordSyncedPets(previous: AccountSnapshot[]): Promise<voi
   });
   const total = results.reduce((sum, account) => sum + countOf(account), 0);
   if (total === 0) return;
-  setLastImportResult(results, { history: false });
+  setLastImportResult(results);
 }

@@ -38,7 +38,7 @@ describe('ProfileHeader（账号概览卡）', () => {
     expect(screen.getByTestId('profile-header-action')).toHaveTextContent('登录');
   });
 
-  test('已登录：写清已登录与同步动作，多个账号按个数写', () => {
+  test('已登录：写清已登录，多个账号按个数写；右上角不再放按钮', () => {
     render(
       <ProfileHeader
         snapshots={[snapshot({}), snapshot({ gameId: 2 })]}
@@ -50,7 +50,22 @@ describe('ProfileHeader（账号概览卡）', () => {
 
     expect(screen.getByTestId('profile-header-name')).toHaveTextContent('阿布');
     expect(screen.getByTestId('profile-header-state')).toHaveTextContent('2 个角色');
-    expect(screen.getByTestId('profile-header-action')).toHaveTextContent('同步');
+    // 2026-11-28 FX1：概览卡的「同步」名不副实（只滚动、不执行同步），删掉；
+    // 首屏的绿色强调只剩「导入游戏数据」一个落点，同步只留在「私有同步」卡里。
+    expect(screen.queryByTestId('profile-header-action')).toBeNull();
+    expect(screen.getByTestId('profile-header')).not.toHaveTextContent('同步');
+  });
+
+  test('头像取用户名首字；老账号没有用户名时头像与标题都写「已」', () => {
+    const first = render(
+      <ProfileHeader snapshots={[]} accountId="acc-1" accountName="阿布" onGoAccount={vi.fn()} />,
+    );
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('阿');
+    first.unmount();
+
+    render(<ProfileHeader snapshots={[]} accountId="acc-1" onGoAccount={vi.fn()} />);
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('已');
+    expect(screen.getByTestId('profile-header-name')).toHaveTextContent('已登录');
   });
 
   test('本机还没有数据：不编造采集时间，改成一句「还没采集」', () => {
@@ -69,22 +84,13 @@ describe('ProfileHeader（账号概览卡）', () => {
     expect(onGoAccount).toHaveBeenCalledTimes(1);
   });
 
-  test('已登录时点「同步」走同步落点（不去账号页，那里没有同步按钮）', () => {
+  test('已登录时不渲染右侧动作：没有「同步」，也没有任何会滚动的按钮', () => {
     const onGoAccount = vi.fn();
-    const onSync = vi.fn();
     render(
-      <ProfileHeader
-        snapshots={[snapshot()]}
-        accountId="acc-1"
-        onGoAccount={onGoAccount}
-        onSync={onSync}
-      />,
+      <ProfileHeader snapshots={[snapshot()]} accountId="acc-1" onGoAccount={onGoAccount} />,
     );
 
-    const action = screen.getByTestId('profile-header-action');
-    expect(action).toHaveTextContent('同步');
-    action.click();
-    expect(onSync).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('profile-header-action')).toBeNull();
     expect(onGoAccount).not.toHaveBeenCalled();
   });
 });

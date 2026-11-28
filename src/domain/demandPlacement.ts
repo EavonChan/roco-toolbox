@@ -417,7 +417,7 @@ const REASON_MESSAGES: Record<DemandPlacementReason, string> = {
   'no-father': '本机没有满足条件的种公',
   nature: '没有带目标性格的亲本',
   'no-room': '窝位不够，或可用的精灵已经被别的单占用',
-  'no-data': '本机还没有账号数据：先导入游戏数据，或把账号勾回来',
+  'no-data': '本机还没有账号数据：先采集一次或登录同步，或把账号勾回来',
 };
 
 const REASON_RANK: Record<DemandPlacementReason, number> = {

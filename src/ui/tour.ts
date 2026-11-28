@@ -5,8 +5,8 @@
  *   把数据导进来 → 看到自己的缺口 → 知道怎么补 → 知道蛋在哪、去哪换。
  *
  * 结构：
- * - `start`：首启主线 6 步（5 步内容 + 收尾），跨「我的 · 游戏数据 → 看板 → 家园」三个页面；
- *   第 2 步按平台二选一（有采集桥讲「开始采集」，网页讲「导入游戏数据」），由 `startStepsFor` 决定；
+ * - `start`：首启主线 7 步（6 步内容 + 收尾），跨「我的 · 游戏数据 → 我的身份 → 看板 → 家园」四个页面；
+ *   第 2 步按平台二选一（有采集桥讲「开始采集」，网页讲「网页不能采集」），第 3 步讲同账号登录同步；
  * - 其余分段跟着页签走：第一次进入看板 / 收集 / 附近 / 换蛋 / 家园时各弹一次；
  * - 顶部「教程」按钮 = 直接重播**当前页**那一段（文字教程已下线）。
  *
@@ -28,7 +28,7 @@ const TOUR_SEEN_PREFIX = 'roco.tourSeen.';
  * 这一步只对「先导入后入组 / 从没导入过」的人有用，不值得让所有人重走一遍整段；
  * 老用户仍是 22 步，新用户拿到 23 步。
  */
-export const TOUR_VERSION = '5';
+export const TOUR_VERSION = '6';
 
 /** 目标元素上挂的锚点属性；找不到时退化成居中说明卡（除非该步标了 skipWhenMissing）。 */
 export const TOUR_ANCHOR_ATTR = 'data-tour';
@@ -75,7 +75,7 @@ export interface TourStep {
   profileSection?: TourProfileSection;
   /** 家园的三个分页由本机偏好记住，不属于导航合同 */
   homeView?: 'nests' | 'demands' | 'stock';
-  /** 本机还没有导入数据时停在这一步，导入成功后自动继续 */
+  /** 本机还没有数据时停在这一步，数据到位后自动继续 */
   waitForImport?: boolean;
   /** 收尾的「从教程重看」一步：按钮文案为「知道了」 */
   hint?: boolean;
@@ -105,16 +105,16 @@ export function detectStartEnv(): TourStartEnv {
   return { hasCapture: Boolean(bridge.RocoCapture), desktop: Boolean(bridge.rocoDesktop) };
 }
 
-/** 首启第 2 步：有采集桥就讲采集，没有就讲导入（网页版没有「开始采集」按钮）。 */
+/** 首启第 2 步：有采集桥就讲「开始采集」；网页版没有采集桥，只讲「装壳 + 登录同步」。 */
 function collectStep(env: TourStartEnv): TourStep {
   if (!env.hasCapture) {
     return {
       id: 'start-collect',
-      title: '点「导入游戏数据」',
-      body: '我们到「我的 · 游戏数据」：点「导入游戏数据」，选采集器导出的 .pcap 或备份 .json；导入成功后这里会自动继续。',
+      title: '网页版怎么拿到数据',
+      body: '网页版不能采集，也不再有文件导入：装安卓版 / 电脑版采集一次，或到下一步用同一账号登录同步。',
       profileSection: 'data',
-      anchor: 'profile-import',
-      waitForImport: true,
+      anchor: 'profile-sync',
+      // 网页版没有采集桥：不卡在这一步等数据，让用户继续看后面的页面
     };
   }
   if (env.desktop) {
@@ -138,7 +138,7 @@ function collectStep(env: TourStartEnv): TourStep {
 }
 
 /**
- * 首启主线：5 步内容 + 收尾。
+ * 首启主线（v6 任务线：采集 → 登录同步 → 看缺口）：6 步内容 + 收尾。
  * `TOUR_SEGMENTS.start` 用本机环境渲染一份并缓存，App 仍然只取 `TOUR_SEGMENTS[segment]`。
  */
 export function startStepsFor(env: TourStartEnv): TourStep[] {
@@ -146,11 +146,18 @@ export function startStepsFor(env: TourStartEnv): TourStep[] {
     {
       id: 'start-profile',
       title: '先让数据进来',
-      body: '这个工具的一切都按你导入的那份数据算，没导入等于全空。先花一分钟把数据导进来（顶部「我的」页签）。',
+      body: '这个工具的一切都按你采集 / 同步进来的数据算，没有数据等于全空。先花一分钟到「我的」：装壳采集，或登录同一账号同步（顶部页签）。',
       // 顶部页签是动态渲染的（data-tour={`tab-${id}`}），框整条导航比框单个页签稳
       anchor: 'tab-nav',
     },
     collectStep(env),
+    {
+      id: 'start-sync',
+      title: '登录同一账号同步',
+      body: '多设备 / 换手机：到「我的身份」用同一账号登录，点「立即同步」拉云端快照。不用再传抓包文件或备份了。',
+      profileSection: 'identity',
+      anchor: 'profile-account',
+    },
     {
       id: 'start-gap',
       title: '这就是你的缺口',
@@ -269,7 +276,7 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       body:
         '到「我的 · 小组」的组卡里点「绑定游戏账号」：' +
         '① 勾上要用的游戏号（可以多选，绑几个都行）→ ② 点「发布我的资源」→ ③ 回群里查蛋，机器人就能把蛋同步进蛋仓。' +
-        '没列出你要的号？点列表下面「＋ 没有找到你的游戏号？」，先用那个号在「我的 · 游戏数据」导入一次。' +
+        '没列出你要的号？点列表下面「＋ 没有找到你的游戏号？」，先在那个号上采集一次（或登录同步）。' +
         '不绑的话机器人同步不了蛋仓——会回「这个 UID 还没绑定到小组成员」。',
       // 按钮在「我的 · 小组」，不在换蛋页签
       profileSection: 'groups',
@@ -331,14 +338,14 @@ export const TOUR_SEGMENTS: Record<TourSegment, TourStep[]> = {
       skipWhenMissing: true,
     },
   ],
-  // 2026-11-25 用户口径：本轮不动「我的」页教程，这里两步保持 v4 原文
+  // 2026-11-28 CLEAN2：文件导入已删除，「我的」段改为「采集 + 登录同步」任务线
   profile: [
     {
-      id: 'profile-import',
-      title: '先导入一次数据',
-      body: '点这里采集或选文件导入。导入结果留在本页，不会自动跳走；数据旧了随时可以再导一次。',
+      id: 'profile-collect',
+      title: '采集与登录同步',
+      body: '点这里开始采集（安卓 / 电脑版）；网页版登录同一账号后点「立即同步」。入库结果留在本页，不会自动跳走。',
       profileSection: 'data',
-      anchor: 'profile-import',
+      anchor: 'profile-sync',
     },
     {
       id: 'profile-account',

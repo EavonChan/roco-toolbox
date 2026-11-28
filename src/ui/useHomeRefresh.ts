@@ -73,7 +73,7 @@ export function useHomeRefresh(): HomeRefreshController {
         }
         const merged = await saveRefreshedHome(incoming);
         if (!merged) {
-          fail('本机还没有这个账号的游戏数据：先导入一次游戏数据，再用刷新家园。');
+          fail('本机还没有这个账号的游戏数据：先采集一次或登录同步，再用刷新家园。');
           return;
         }
         clearTimer();

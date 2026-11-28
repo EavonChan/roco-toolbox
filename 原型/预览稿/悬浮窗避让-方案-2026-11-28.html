@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手机悬浮窗避让悬浮球 · 方案示意 2026-11-28</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #eef1f4;
+    color: #0f172a;
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { width: 980px; margin: 0 auto; padding: 34px 0 60px; }
+
+  .hero { background: #fff; border: 1px solid #e3e8ee; border-radius: 18px; padding: 24px 26px 22px; }
+  .hero-top { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .pill {
+    font-size: 11px; letter-spacing: .02em; color: #475569; background: #f1f5f9;
+    border: 1px solid #e2e8f0; border-radius: 999px; padding: 4px 10px;
+  }
+  .pill.soft { background: #fff; color: #64748b; }
+  .hero h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.3; letter-spacing: -.01em; }
+  .hero .lead { margin: 0; font-size: 13px; line-height: 1.8; color: #475569; max-width: 880px; }
+  .notice {
+    margin-top: 16px; border-left: 3px solid #0d9488; background: #f8fafc;
+    border-radius: 0 10px 10px 0; padding: 10px 14px; font-size: 12px; line-height: 1.8; color: #334155;
+  }
+  .notice b { color: #0f172a; }
+
+  .card { background: #fff; border: 1px solid #e3e8ee; border-radius: 18px; padding: 20px 24px 22px; margin-top: 22px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  .card-head h2 { margin: 0; font-size: 16px; }
+  .card-head span { font-size: 11px; color: #94a3b8; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { text-align: left; padding: 11px 12px; border-top: 1px solid #eef2f6; vertical-align: top; font-size: 12px; line-height: 1.65; }
+  th { border-top: 0; background: #f8fafc; color: #64748b; font-weight: 600; font-size: 11px; }
+  th:first-child { border-radius: 8px 0 0 8px; }
+  th:last-child { border-radius: 0 8px 8px 0; }
+  td:first-child { font-weight: 700; color: #1e293b; }
+  td .sub { display: block; font-weight: 400; color: #94a3b8; font-size: 10px; margin-top: 2px; }
+  .bad { color: #be123c; font-weight: 600; }
+  .muted { color: #94a3b8; }
+
+  .legend { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; margin: 16px 2px 0; font-size: 11px; color: #64748b; }
+  .legend i { display: inline-block; vertical-align: -2px; margin-right: 6px; }
+  .sw-red { width: 14px; height: 10px; border: 1px solid #e11d48; background: rgba(225,29,72,.25); border-radius: 2px; }
+  .sw-dash { width: 18px; height: 0; border-top: 1px dashed #64748b; }
+  .sw-ghost { width: 12px; height: 12px; border: 1px dashed #475569; border-radius: 50%; }
+
+  main { margin-top: 26px; }
+  .shot { width: max-content; margin: 0 auto 16px; padding: 24px; background: #f4f6f8; }
+  .row-inner {
+    background: #fff; border: 1px solid #e6ebf1; border-radius: 16px;
+    padding: 16px 20px 14px; box-shadow: 0 1px 2px rgba(15,23,42,.04);
+  }
+  .row-head { margin-bottom: 12px; }
+  .row-title { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .row-name { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+  .row-size {
+    font-size: 10px; color: #64748b; background: #f1f5f9; border: 1px solid #e2e8f0;
+    border-radius: 999px; padding: 2px 8px; font-variant-numeric: tabular-nums;
+  }
+  .row-sub { margin-top: 5px; font-size: 11px; line-height: 1.6; color: #64748b; }
+  .phones { display: flex; gap: 30px; align-items: flex-start; }
+  .phone-cell { margin: 0; width: 375px; flex: none; }
+  .phone-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #334155; margin: 0 0 7px 2px; }
+  .phone-label .dot { width: 5px; height: 5px; border-radius: 50%; background: #64748b; }
+  .phone-label .edge { margin-left: 4px; font-size: 10px; font-weight: 400; color: #94a3b8; }
+  .phone-cap { margin-top: 7px; font-size: 10px; line-height: 1.55; color: #64748b; font-variant-numeric: tabular-nums; }
+  .takeaway {
+    display: flex; align-items: baseline; gap: 8px; margin-top: 14px; padding-top: 11px;
+    border-top: 1px dashed #e2e8f0; font-size: 12px; line-height: 1.7;
+  }
+  .tk-label {
+    flex: none; font-size: 9px; font-weight: 700; letter-spacing: .08em; color: #64748b;
+    background: #f1f5f9; border-radius: 4px; padding: 2px 5px;
+  }
+  .tk-text { color: #334155; }
+
+  /* ===== 手机画面 ===== */
+  .phone {
+    position: relative; overflow: hidden; border-radius: 28px;
+    background: #6f8c79;
+    box-shadow: 0 14px 34px rgba(15,23,42,.18), 0 0 0 1px rgba(15,23,42,.06);
+    isolation: isolate;
+  }
+  .scene { position: absolute; inset: 0; overflow: hidden; background:
+    radial-gradient(120% 80% at 74% 6%, rgba(235,238,214,.6), transparent 62%),
+    radial-gradient(90% 70% at 12% 92%, rgba(30,55,45,.4), transparent 72%),
+    linear-gradient(166deg, #aab99f 0%, #8ba48d 36%, #71907b 66%, #5c7969 100%);
+  }
+  .scene .blob { position: absolute; border-radius: 50%; filter: blur(11px); opacity: .55; }
+  .scene .b1 { left: -70px; top: 90px; width: 240px; height: 240px; background: #4b6a58; }
+  .scene .b2 { right: -90px; top: 150px; width: 260px; height: 260px; background: #5b7a62; opacity: .5; }
+  .scene .b3 { left: 30px; bottom: -90px; width: 260px; height: 240px; background: #3f5d4c; opacity: .5; }
+  .scene .b4 { right: 30px; bottom: -60px; width: 220px; height: 200px; background: #466452; opacity: .45; }
+  .scene .path {
+    position: absolute; left: -70px; bottom: 70px; width: 560px; height: 120px;
+    background: linear-gradient(90deg, rgba(206,198,166,0), rgba(214,205,172,.5), rgba(206,196,166,.1));
+    transform: rotate(-17deg); filter: blur(9px);
+  }
+  .scene .light {
+    position: absolute; left: -40px; top: -90px; width: 420px; height: 300px;
+    background: radial-gradient(closest-side, rgba(255,251,226,.35), transparent 72%);
+  }
+  .scene .grain { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(15,23,42,.10), transparent 22%, transparent 78%, rgba(15,23,42,.16)); }
+  .scene-tag {
+    position: absolute; left: 10px; bottom: 9px; z-index: 3;
+    font-size: 8px; letter-spacing: .08em; color: rgba(255,255,255,.72);
+    text-shadow: 0 1px 2px rgba(15,23,42,.35);
+  }
+
+  /* ===== 悬浮球 ===== */
+  .ball {
+    position: absolute; z-index: 5; width: 52px; height: 52px; border-radius: 50%;
+    background: rgba(15,23,42,.26); border: 1px solid rgba(255,255,255,.42);
+    box-shadow: 0 5px 12px rgba(15,23,42,.28);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ball-icon {
+    width: 44px; height: 44px; border-radius: 13px;
+    background: linear-gradient(145deg, #2dd4bf 0%, #14b8a6 48%, #0d9488 100%);
+    color: #fff; font-size: 18px; font-weight: 800; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 7px rgba(13,148,136,.45), inset 0 1px 0 rgba(255,255,255,.35);
+  }
+
+  /* ===== 面板 ===== */
+  .panel {
+    position: absolute; z-index: 6; width: 214px; height: 182px;
+    background: #fff; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 7px 22px rgba(15,23,42,.24), 0 0 0 1px rgba(15,23,42,.04);
+    display: flex; flex-direction: column; padding-bottom: 16px;
+  }
+  .p-head {
+    height: 44px; flex: none; display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 6px; padding: 0 8px 8px;
+  }
+  .p-title { font-size: 11px; font-weight: 700; color: #1e293b; letter-spacing: -.01em; white-space: nowrap; }
+  .p-badge { font-size: 8px; color: #94a3b8; background: #f1f5f9; border-radius: 4px; padding: 1px 4px; white-space: nowrap; }
+  .p-body { height: 90px; flex: none; display: flex; gap: 10px; padding: 0 6px; }
+  .p-map {
+    position: relative; width: 90px; height: 90px; flex: none; border-radius: 8px;
+    background: #0d1a26; overflow: hidden;
+  }
+  .p-map .ring { position: absolute; border: 1px solid rgba(94,234,212,.18); border-radius: 50%; }
+  .p-map .r1 { left: 26px; top: 26px; width: 38px; height: 38px; }
+  .p-map .r2 { left: 16px; top: 16px; width: 58px; height: 58px; border-color: rgba(94,234,212,.13); }
+  .p-map .r3 { left: 6px; top: 6px; width: 78px; height: 78px; border-color: rgba(94,234,212,.08); }
+  .p-map .cross-h { position: absolute; left: 8px; right: 8px; top: 44px; border-top: 1px dashed rgba(148,163,184,.14); }
+  .p-map .cross-v { position: absolute; top: 8px; bottom: 8px; left: 44px; border-left: 1px dashed rgba(148,163,184,.14); }
+  .p-map .me {
+    position: absolute; left: 41px; top: 41px; width: 8px; height: 8px; border-radius: 50%;
+    background: #e2e8f0; box-shadow: 0 0 0 4px rgba(226,232,240,.12);
+  }
+  .p-map .dot { position: absolute; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,.35); }
+  .p-map .d1 { left: 60px; top: 24px; width: 6px; height: 6px; background: #34d399; }
+  .p-map .d2 { left: 28px; top: 62px; width: 5px; height: 5px; background: #60a5fa; }
+  .p-map .d3 { left: 70px; top: 57px; width: 4px; height: 4px; background: #fbbf24; }
+  .p-map .d4 { left: 22px; top: 26px; width: 4px; height: 4px; background: #f472b6; }
+  .p-map .sweep {
+    position: absolute; left: 45px; top: 45px; width: 44px; height: 44px;
+    background: conic-gradient(from 200deg, rgba(45,212,191,.22), transparent 62%);
+    transform-origin: 0 0;
+  }
+  .p-list { width: 102px; flex: none; display: flex; flex-direction: column; gap: 3px; }
+  .p-row { height: 28px; flex: none; background: #f1f5f9; border-radius: 6px; padding: 3px 5px; overflow: hidden; }
+  .p-row-top { display: flex; align-items: center; justify-content: space-between; gap: 3px; }
+  .p-name { font-size: 9px; font-weight: 700; color: #1e293b; line-height: 11px; white-space: nowrap; overflow: hidden; }
+  .p-tag { flex: none; font-size: 6px; line-height: 8px; color: #475569; background: #e2e8f0; border-radius: 3px; padding: 1px 3px; }
+  .p-row-meta { display: flex; align-items: center; gap: 3px; margin-top: 1px; font-size: 7.5px; line-height: 9px; color: #64748b; white-space: nowrap; }
+  .p-arrow { color: #94a3b8; font-size: 9px; line-height: 9px; }
+  .p-foot { margin-top: auto; height: 20px; line-height: 20px; flex: none; padding: 0 8px; font-size: 9px; color: #94a3b8; }
+
+  /* ===== 标注 ===== */
+  .dim-x { position: absolute; z-index: 12; height: 0; border-top: 1px dashed #64748b; }
+  .dim-x::before, .dim-x::after { content: ""; position: absolute; top: -4px; width: 1px; height: 8px; background: #64748b; }
+  .dim-x::before { left: 0; }
+  .dim-x::after { right: 0; }
+  .dim-cap, .rail-cap {
+    position: absolute; top: -15px; transform: translateX(-50%); white-space: nowrap;
+    font-size: 8px; line-height: 12px; padding: 0 3px; border-radius: 3px;
+    background: rgba(248,250,252,.94); color: #475569; font-variant-numeric: tabular-nums;
+  }
+  .dim-cap { left: 50%; }
+  .rail { position: absolute; z-index: 12; height: 0; border-top: 1px dashed #64748b; }
+  .rail .tick { position: absolute; top: -4px; width: 1px; height: 8px; background: #64748b; }
+  .rail .rail-cap { color: #475569; }
+
+  .overlap {
+    position: absolute; z-index: 10; border: 1px solid #e11d48;
+    background: rgba(225,29,72,.20);
+    background-image: repeating-linear-gradient(45deg, rgba(225,29,72,.16) 0 4px, rgba(225,29,72,.05) 4px 8px);
+    border-radius: 3px; box-shadow: 0 0 0 1px rgba(255,255,255,.35) inset;
+  }
+  .overlap-tag {
+    position: absolute; z-index: 11; font-size: 8px; line-height: 12px; font-weight: 700;
+    color: #be123c; background: #fff1f2; border: 1px solid #e11d48; border-radius: 4px;
+    padding: 1px 4px; white-space: nowrap;
+  }
+  .ghost {
+    position: absolute; z-index: 7; width: 52px; height: 52px; border-radius: 50%;
+    border: 1px dashed rgba(71,85,105,.62); background: rgba(248,250,252,.08);
+    display: flex; align-items: center; justify-content: center; color: rgba(71,85,105,.26);
+    font-size: 15px; font-weight: 800;
+  }
+  .ghost-tag {
+    position: absolute; z-index: 11; right: 8px; font-size: 7px; line-height: 10px;
+    color: #475569; background: rgba(248,250,252,.9); border-radius: 3px; padding: 0 3px;
+  }
+  .up-arrow { position: absolute; z-index: 9; width: 0; border-left: 2px solid #475569; }
+  .up-arrow::before {
+    content: ""; position: absolute; top: 0; left: -5px;
+    border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid #475569;
+  }
+  .move-tag {
+    position: absolute; z-index: 11; font-size: 8px; line-height: 13px; font-weight: 600;
+    color: #334155; background: rgba(248,250,252,.94); border: 1px dashed #64748b;
+    border-radius: 4px; padding: 1px 5px; white-space: nowrap;
+  }
+
+  footer { margin-top: 30px; font-size: 11px; line-height: 1.9; color: #64748b; padding: 0 4px; }
+  footer b { color: #475569; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="hero">
+    <div class="hero-top">
+      <span class="pill">UI 方案示意 · 2026-11-28</span>
+      <span class="pill soft">不改源码 · 仅供评审</span>
+    </div>
+    <h1>手机悬浮窗避让悬浮球</h1>
+    <p class="lead">安卓悬浮面板固定 214dp 宽，悬浮球 52dp。现状是「永远从球右侧展开，放不下就整体夹回屏内」，所以球贴右边缘时面板会压住球。下面用 375×812 与 390×844 两种画面，对比现状和 3 个避让方案。</p>
+    <div class="notice"><b>说明</b>：本页是方案示意图，背景为 CSS 绘制的示意游戏画面，<b>不是真机截图</b>；所有尺寸单位为 <b>dp</b>，画面按 1dp = 1px 绘制。</div>
+  </header>
+
+  <section class="card">
+    <div class="card-head"><h2>方案对比</h2><span>面板 214 × 182dp · 球 52dp · 屏幕边距 8dp</span></div>
+    <table>
+      <colgroup><col style="width:19%"><col style="width:27%"><col style="width:27%"><col style="width:27%"></colgroup>
+      <thead><tr><th>方案</th><th>右贴边效果</th><th>左贴边效果</th><th>代价</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>现状<span class="sub">向右展开后夹回</span></td>
+          <td><span class="bad">压球 44dp</span><span class="sub">375：x=153；390：x=168</span></td>
+          <td>面板在球右侧，正常<span class="sub">间隙 8dp</span></td>
+          <td>球被盖住 84%<span class="sub">点开即压住球</span></td>
+        </tr>
+        <tr>
+          <td>方案 A<span class="sub">贴球展开 · 留 12dp</span></td>
+          <td>面板在球左侧，间隙 12dp<span class="sub">375：x=97；390：x=112</span></td>
+          <td>面板在球右侧，间隙 12dp<span class="sub">375 / 390：x=64</span></td>
+          <td>要先判断左右可用空间<span class="sub">面板贴球，靠边时略挤</span></td>
+        </tr>
+        <tr>
+          <td>方案 B<span class="sub">窗口居中 · 不跟球</span></td>
+          <td>居中，离球 29dp<span class="sub">375：x=80；390：x=88</span></td>
+          <td>居中，离球 28dp<span class="sub">375：x=80；390：x=88</span></td>
+          <td>球动窗口不动，容易觉得脱节<span class="sub">390 左右间距均为 36dp</span></td>
+        </tr>
+        <tr>
+          <td>方案 C<span class="sub">球让位</span></td>
+          <td>面板在现状位置，球上移 64dp<span class="sub">375：x=153；390：x=168</span></td>
+          <td>面板在球右侧，球不动<span class="sub">间隙 8dp</span></td>
+          <td>点开瞬间球跳 64dp<span class="sub">面板更高时跳更多</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="legend">
+      <span><i class="sw-red"></i>现状重叠区（红）</span>
+      <span><i class="sw-dash"></i>1px 虚线尺寸标注（dp）</span>
+      <span><i class="sw-ghost"></i>虚线幽灵球 = 球原位置</span>
+    </div>
+  </section>
+
+  <main>
+
+  <section class="shot" id="shot-current-375">
+    <div class="row-inner">
+      <div class="row-head">
+        <div class="row-title"><span class="row-name">现状</span><span class="row-size">375 × 812 dp</span></div>
+        <div class="row-sub">面板固定从球右侧展开；右侧放不下时整体夹回屏内，于是压住球。</div>
+      </div>
+      <div class="phones">
+        
+    <figure class="phone-cell" style="width:375px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴左边缘<span class="edge">球 x = 0</span></figcaption>
+      <div class="phone" style="width:375px;height:812px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:60px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:0px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:0px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:0px;top:540px;width:274px"><span class="tick" style="left:0px"></span><span class="tick" style="left:52px"></span><span class="tick" style="left:60px"></span><span class="tick" style="left:274px"></span><span class="rail-cap" style="left:26px">52dp</span><span class="rail-cap" style="left:56px">8dp</span><span class="rail-cap" style="left:167px">214dp</span></div></div>
+      <div class="phone-cap">面板 x=60–274 · 球 x=0–52</div>
+    </figure>
+        
+    <figure class="phone-cell" style="width:375px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴右边缘<span class="edge">球 x = 屏宽 − 52</span></figcaption>
+      <div class="phone" style="width:375px;height:812px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:153px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:323px;top:340px"><div class="ball-icon">布</div></div><div class="overlap" style="left:323px;top:340px;width:44px;height:52px"></div><div class="overlap-tag" style="right:4px;top:318px">重叠 44dp</div><div class="dim-x" style="left:323px;top:286px;width:52px"><span class="dim-cap">52dp</span></div><div class="dim-x" style="left:153px;top:540px;width:214px"><span class="dim-cap">214dp</span></div></div>
+      <div class="phone-cap">面板 x=153–367 · 球 x=323–375 · 重叠 44×52dp</div>
+    </figure>
+      </div>
+      <div class="takeaway"><span class="tk-label">要点</span><span class="tk-text">右贴边被压 44dp，等于球被盖住 84%</span></div>
+    </div>
+  </section>
+
+  <section class="shot" id="shot-a-375">
+    <div class="row-inner">
+      <div class="row-head">
+        <div class="row-title"><span class="row-name">方案 A · 贴球展开 · 留 12dp</span><span class="row-size">375 × 812 dp</span></div>
+        <div class="row-sub">面板放到球的另一侧，与球保持 12dp 间隙；左右都成立。</div>
+      </div>
+      <div class="phones">
+        
+    <figure class="phone-cell" style="width:375px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴左边缘<span class="edge">球 x = 0</span></figcaption>
+      <div class="phone" style="width:375px;height:812px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:64px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:0px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:0px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:0px;top:540px;width:278px"><span class="tick" style="left:0px"></span><span class="tick" style="left:52px"></span><span class="tick" style="left:64px"></span><span class="tick" style="left:278px"></span><span class="rail-cap" style="left:26px">52dp</span><span class="rail-cap" style="left:58px">12dp</span><span class="rail-cap" style="left:171px">214dp</span></div></div>
+      <div class="phone-cap">面板 x=64–278 · 球 x=0–52 · 间隙 12dp</div>
+    </figure>
+        
+    <figure class="phone-cell" style="width:375px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴右边缘<span class="edge">球 x = 屏宽 − 52</span></figcaption>
+      <div class="phone" style="width:375px;height:812px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:97px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:323px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:323px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:97px;top:540px;width:278px"><span class="tick" style="left:0px"></span><span class="tick" style="left:214px"></span><span class="tick" style="left:226px"></span><span class="tick" style="left:278px"></span><span class="rail-cap" style="left:107px">214dp</span><span class="rail-cap" style="left:220px">12dp</span><span class="rail-cap" style="left:252px">52dp</span></div></div>
+      <div class="phone-cap">面板 x=97–311 · 球 x=323–375 · 间隙 12dp</div>
+    </figure>
+      </div>
+      <div class="takeaway"><span class="tk-label">要点</span><span class="tk-text">贴球、间隙 12dp，视线连续，球在左右都成立</span></div>
+    </div>
+  </section>
+
+  <section class="shot" id="shot-b-375">
+    <div class="row-inner">
+      <div class="row-head">
+        <div class="row-title"><span class="row-name">方案 B · 窗口居中 · 不跟球</span><span class="row-size">375 × 812 dp</span></div>
+        <div class="row-sub">面板固定在屏幕水平中心，纵向与球同高；球在左右都不影响窗口位置。</div>
+      </div>
+      <div class="phones">
+        
+    <figure class="phone-cell" style="width:375px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴左边缘<span class="edge">球 x = 0</span></figcaption>
+      <div class="phone" style="width:375px;height:812px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:80px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:0px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:0px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:0px;top:540px;width:294px"><span class="tick" style="left:0px"></span><span class="tick" style="left:52px"></span><span class="tick" style="left:80px"></span><span class="tick" style="left:294px"></span><span class="rail-cap" style="left:26px">52dp</span><span class="rail-cap" style="left:66px">28dp</span><span class="rail-cap" style="left:187px">214dp</span></div></div>
+      <div class="phone-cap">面板 x=80–294（居中）· 球 x=0–52 · 间距 28dp</div>
+    </figure>
+        
+    <figure class="phone-cell" style="width:375px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴右边缘<span class="edge">球 x = 屏宽 − 52</span></figcaption>
+      <div class="phone" style="width:375px;height:812px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:80px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:323px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:323px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:80px;top:540px;width:295px"><span class="tick" style="left:0px"></span><span class="tick" style="left:214px"></span><span class="tick" style="left:243px"></span><span class="tick" style="left:295px"></span><span class="rail-cap" style="left:107px">214dp</span><span class="rail-cap" style="left:228.5px">29dp</span><span class="rail-cap" style="left:269px">52dp</span></div></div>
+      <div class="phone-cap">面板 x=80–294（居中）· 球 x=323–375 · 间距 29dp</div>
+    </figure>
+      </div>
+      <div class="takeaway"><span class="tk-label">要点</span><span class="tk-text">居中稳定，但离球较远（≥28dp），球动窗口不动容易觉得脱节</span></div>
+    </div>
+  </section>
+
+  <section class="shot" id="shot-c-375">
+    <div class="row-inner">
+      <div class="row-head">
+        <div class="row-title"><span class="row-name">方案 C · 球让位</span><span class="row-size">375 × 812 dp</span></div>
+        <div class="row-sub">面板仍落在现状位置，球沿垂直方向让开 64dp；球贴左时球不动。</div>
+      </div>
+      <div class="phones">
+        
+    <figure class="phone-cell" style="width:375px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴左边缘<span class="edge">球 x = 0</span></figcaption>
+      <div class="phone" style="width:375px;height:812px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:60px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:0px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:0px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:0px;top:540px;width:274px"><span class="tick" style="left:0px"></span><span class="tick" style="left:52px"></span><span class="tick" style="left:60px"></span><span class="tick" style="left:274px"></span><span class="rail-cap" style="left:26px">52dp</span><span class="rail-cap" style="left:56px">8dp</span><span class="rail-cap" style="left:167px">214dp</span></div></div>
+      <div class="phone-cap">面板 x=60–274 · 球 x=0–52（不动）</div>
+    </figure>
+        
+    <figure class="phone-cell" style="width:375px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴右边缘<span class="edge">球 x = 屏宽 − 52</span></figcaption>
+      <div class="phone" style="width:375px;height:812px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:153px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ghost" style="left:323px;top:340px">布</div><div class="ghost-tag" style="left:289px;right:auto;top:326px">原位置</div><div class="ball" style="left:323px;top:276px"><div class="ball-icon">布</div></div><div class="up-arrow" style="left:370px;top:276px;height:64px"></div><div class="move-tag" style="left:241px;top:300px">球上移 64dp</div><div class="dim-x" style="left:323px;top:252px;width:52px"><span class="dim-cap">52dp</span></div><div class="dim-x" style="left:153px;top:540px;width:214px"><span class="dim-cap">214dp</span></div></div>
+      <div class="phone-cap">面板 x=153–367 · 球 x=323–375 上移到 y=276</div>
+    </figure>
+      </div>
+      <div class="takeaway"><span class="tk-label">要点</span><span class="tk-text">球要移动 64dp（面板更高时更多），点开瞬间画面会跳一下</span></div>
+    </div>
+  </section>
+
+  <section class="shot" id="shot-current-390">
+    <div class="row-inner">
+      <div class="row-head">
+        <div class="row-title"><span class="row-name">现状</span><span class="row-size">390 × 844 dp</span></div>
+        <div class="row-sub">面板固定从球右侧展开；右侧放不下时整体夹回屏内，于是压住球。</div>
+      </div>
+      <div class="phones">
+        
+    <figure class="phone-cell" style="width:390px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴左边缘<span class="edge">球 x = 0</span></figcaption>
+      <div class="phone" style="width:390px;height:844px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:60px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:0px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:0px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:0px;top:540px;width:274px"><span class="tick" style="left:0px"></span><span class="tick" style="left:52px"></span><span class="tick" style="left:60px"></span><span class="tick" style="left:274px"></span><span class="rail-cap" style="left:26px">52dp</span><span class="rail-cap" style="left:56px">8dp</span><span class="rail-cap" style="left:167px">214dp</span></div></div>
+      <div class="phone-cap">面板 x=60–274 · 球 x=0–52</div>
+    </figure>
+        
+    <figure class="phone-cell" style="width:390px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴右边缘<span class="edge">球 x = 屏宽 − 52</span></figcaption>
+      <div class="phone" style="width:390px;height:844px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:168px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:338px;top:340px"><div class="ball-icon">布</div></div><div class="overlap" style="left:338px;top:340px;width:44px;height:52px"></div><div class="overlap-tag" style="right:4px;top:318px">重叠 44dp</div><div class="dim-x" style="left:338px;top:286px;width:52px"><span class="dim-cap">52dp</span></div><div class="dim-x" style="left:168px;top:540px;width:214px"><span class="dim-cap">214dp</span></div></div>
+      <div class="phone-cap">面板 x=168–382 · 球 x=338–390 · 重叠 44×52dp</div>
+    </figure>
+      </div>
+      <div class="takeaway"><span class="tk-label">要点</span><span class="tk-text">右贴边被压 44dp，等于球被盖住 84%</span></div>
+    </div>
+  </section>
+
+  <section class="shot" id="shot-a-390">
+    <div class="row-inner">
+      <div class="row-head">
+        <div class="row-title"><span class="row-name">方案 A · 贴球展开 · 留 12dp</span><span class="row-size">390 × 844 dp</span></div>
+        <div class="row-sub">面板放到球的另一侧，与球保持 12dp 间隙；左右都成立。</div>
+      </div>
+      <div class="phones">
+        
+    <figure class="phone-cell" style="width:390px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴左边缘<span class="edge">球 x = 0</span></figcaption>
+      <div class="phone" style="width:390px;height:844px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:64px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:0px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:0px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:0px;top:540px;width:278px"><span class="tick" style="left:0px"></span><span class="tick" style="left:52px"></span><span class="tick" style="left:64px"></span><span class="tick" style="left:278px"></span><span class="rail-cap" style="left:26px">52dp</span><span class="rail-cap" style="left:58px">12dp</span><span class="rail-cap" style="left:171px">214dp</span></div></div>
+      <div class="phone-cap">面板 x=64–278 · 球 x=0–52 · 间隙 12dp</div>
+    </figure>
+        
+    <figure class="phone-cell" style="width:390px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴右边缘<span class="edge">球 x = 屏宽 − 52</span></figcaption>
+      <div class="phone" style="width:390px;height:844px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:112px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:338px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:338px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:112px;top:540px;width:278px"><span class="tick" style="left:0px"></span><span class="tick" style="left:214px"></span><span class="tick" style="left:226px"></span><span class="tick" style="left:278px"></span><span class="rail-cap" style="left:107px">214dp</span><span class="rail-cap" style="left:220px">12dp</span><span class="rail-cap" style="left:252px">52dp</span></div></div>
+      <div class="phone-cap">面板 x=112–326 · 球 x=338–390 · 间隙 12dp</div>
+    </figure>
+      </div>
+      <div class="takeaway"><span class="tk-label">要点</span><span class="tk-text">贴球、间隙 12dp，视线连续，球在左右都成立</span></div>
+    </div>
+  </section>
+
+  <section class="shot" id="shot-b-390">
+    <div class="row-inner">
+      <div class="row-head">
+        <div class="row-title"><span class="row-name">方案 B · 窗口居中 · 不跟球</span><span class="row-size">390 × 844 dp</span></div>
+        <div class="row-sub">面板固定在屏幕水平中心，纵向与球同高；球在左右都不影响窗口位置。</div>
+      </div>
+      <div class="phones">
+        
+    <figure class="phone-cell" style="width:390px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴左边缘<span class="edge">球 x = 0</span></figcaption>
+      <div class="phone" style="width:390px;height:844px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:88px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:0px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:0px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:0px;top:540px;width:302px"><span class="tick" style="left:0px"></span><span class="tick" style="left:52px"></span><span class="tick" style="left:88px"></span><span class="tick" style="left:302px"></span><span class="rail-cap" style="left:26px">52dp</span><span class="rail-cap" style="left:70px">36dp</span><span class="rail-cap" style="left:195px">214dp</span></div></div>
+      <div class="phone-cap">面板 x=88–302（居中）· 球 x=0–52 · 间距 36dp</div>
+    </figure>
+        
+    <figure class="phone-cell" style="width:390px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴右边缘<span class="edge">球 x = 屏宽 − 52</span></figcaption>
+      <div class="phone" style="width:390px;height:844px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:88px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:338px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:338px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:88px;top:540px;width:302px"><span class="tick" style="left:0px"></span><span class="tick" style="left:214px"></span><span class="tick" style="left:250px"></span><span class="tick" style="left:302px"></span><span class="rail-cap" style="left:107px">214dp</span><span class="rail-cap" style="left:232px">36dp</span><span class="rail-cap" style="left:276px">52dp</span></div></div>
+      <div class="phone-cap">面板 x=88–302（居中）· 球 x=338–390 · 间距 36dp</div>
+    </figure>
+      </div>
+      <div class="takeaway"><span class="tk-label">要点</span><span class="tk-text">居中稳定，但离球较远（≥28dp），球动窗口不动容易觉得脱节</span></div>
+    </div>
+  </section>
+
+  <section class="shot" id="shot-c-390">
+    <div class="row-inner">
+      <div class="row-head">
+        <div class="row-title"><span class="row-name">方案 C · 球让位</span><span class="row-size">390 × 844 dp</span></div>
+        <div class="row-sub">面板仍落在现状位置，球沿垂直方向让开 64dp；球贴左时球不动。</div>
+      </div>
+      <div class="phones">
+        
+    <figure class="phone-cell" style="width:390px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴左边缘<span class="edge">球 x = 0</span></figcaption>
+      <div class="phone" style="width:390px;height:844px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:60px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ball" style="left:0px;top:340px"><div class="ball-icon">布</div></div><div class="dim-x" style="left:0px;top:316px;width:52px"><span class="dim-cap">52dp</span></div><div class="rail" style="left:0px;top:540px;width:274px"><span class="tick" style="left:0px"></span><span class="tick" style="left:52px"></span><span class="tick" style="left:60px"></span><span class="tick" style="left:274px"></span><span class="rail-cap" style="left:26px">52dp</span><span class="rail-cap" style="left:56px">8dp</span><span class="rail-cap" style="left:167px">214dp</span></div></div>
+      <div class="phone-cap">面板 x=60–274 · 球 x=0–52（不动）</div>
+    </figure>
+        
+    <figure class="phone-cell" style="width:390px">
+      <figcaption class="phone-label"><span class="dot"></span>球贴右边缘<span class="edge">球 x = 屏宽 − 52</span></figcaption>
+      <div class="phone" style="width:390px;height:844px">
+  <div class="scene">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+    <span class="path"></span><span class="light"></span><span class="grain"></span>
+  </div>
+  <span class="scene-tag">示意背景</span>
+  <div class="panel" style="left:168px;top:340px">
+    <div class="p-head">
+      <span class="p-title">附近 24 · 稀有 3</span>
+      <span class="p-badge">中心为估算</span>
+    </div>
+    <div class="p-body">
+  <div class="p-map">
+    <span class="sweep"></span>
+    <span class="ring r3"></span><span class="ring r2"></span><span class="ring r1"></span>
+    <span class="cross-h"></span><span class="cross-v"></span>
+    <span class="me"></span>
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="dot d4"></span>
+  </div>
+  <div class="p-list">
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">焰尾狐</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.24</span><span>128m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">苔石龟</span><span class="p-tag">普通</span></div>
+      <div class="p-row-meta"><span>Lv.18</span><span>96m</span><span class="p-arrow">›</span></div>
+    </div>
+    <div class="p-row">
+      <div class="p-row-top"><span class="p-name">风铃鸟</span><span class="p-tag">高重</span></div>
+      <div class="p-row-meta"><span>Lv.31</span><span>214m</span><span class="p-arrow">›</span></div>
+    </div>
+  </div></div>
+    <div class="p-foot">还有 4 只未显示</div>
+  </div><div class="ghost" style="left:338px;top:340px">布</div><div class="ghost-tag" style="left:304px;right:auto;top:326px">原位置</div><div class="ball" style="left:338px;top:276px"><div class="ball-icon">布</div></div><div class="up-arrow" style="left:385px;top:276px;height:64px"></div><div class="move-tag" style="left:256px;top:300px">球上移 64dp</div><div class="dim-x" style="left:338px;top:252px;width:52px"><span class="dim-cap">52dp</span></div><div class="dim-x" style="left:168px;top:540px;width:214px"><span class="dim-cap">214dp</span></div></div>
+      <div class="phone-cap">面板 x=168–382 · 球 x=338–390 上移到 y=276</div>
+    </figure>
+      </div>
+      <div class="takeaway"><span class="tk-label">要点</span><span class="tk-text">球要移动 64dp（面板更高时更多），点开瞬间画面会跳一下</span></div>
+    </div>
+  </section>
+  </main>
+
+  <footer>
+    <b>口径</b>：面板 214 × 182dp（44 命中区 + 28 间隔 + 90 地图 + 20 脚注），悬浮球 52dp，屏幕边距 8dp；<br>
+    球与面板默认同顶；方案 C 右贴边时球上移到 y=276。示意背景由 CSS 渐变与色块绘制，不是真机截图。
+  </footer>
+</div>
+</body>
+</html>

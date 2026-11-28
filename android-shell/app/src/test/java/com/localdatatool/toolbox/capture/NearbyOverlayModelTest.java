@@ -135,6 +135,26 @@ public class NearbyOverlayModelTest {
         assertTrue(NearbyOverlayModel.listHeight(4) > NearbyOverlayModel.MAP_SIZE);
     }
 
+    @Test public void pausedKeepsDataAndReservesStatusLine() throws Exception {
+        JSONObject json = payload("{\"battle\":false,\"nearby\":true}");
+        json.put("paused", true);
+        NearbyOverlayModel model = NearbyOverlayModel.parse(json);
+        assertTrue("停更时数据必须保留", model.paused);
+        assertEquals(5, model.total);
+        assertEquals(5, model.pets.size());
+        assertEquals("已暂停 · 采集未在刷新", NearbyOverlayModel.STATUS_PAUSED);
+        // 即使没有「还有 N 只」，也要按有脚注预留高度，状态行不能压在列表上
+        assertEquals(NearbyOverlayModel.BODY_TOP_GAP + NearbyOverlayModel.MAP_SIZE
+                + NearbyOverlayModel.FOOT_ROW_GAP,
+            NearbyOverlayModel.panelHeight(false, false, true, 5, true, 0, true));
+        // 旧网页没有 paused 字段：行为不变
+        JSONObject legacy = payload("{\"battle\":false,\"nearby\":true}");
+        assertFalse(NearbyOverlayModel.parse(legacy).paused);
+        assertEquals(NearbyOverlayModel.BODY_TOP_GAP + NearbyOverlayModel.MAP_SIZE
+                + NearbyOverlayModel.FOOT_GAP,
+            NearbyOverlayModel.panelHeight(false, false, true, 5, true, 0));
+    }
+
     @Test public void missingPetFieldsDoNotBreakParsing() throws Exception {
         JSONObject json = payload("{\"battle\":true,\"nearby\":true}");
         JSONArray pets = new JSONArray();

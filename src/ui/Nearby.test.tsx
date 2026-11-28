@@ -4,8 +4,9 @@ import { useAutoImport, requestAutoImport } from '../collector/autoImportFlow';
 import { isNearbyOwnedSession, resetCaptureOriginForTest } from '../collector/captureOriginStore';
 import type { CaptureProgress } from '../collector/captureProgress';
 import { resetNearbyAlertGateForTest } from '../collector/nearbyAlert';
-import { resetNearbyRetainedForTest } from '../collector/nearbyRetainStore';
+import { resetNearbyRetainedForTest, readNearbyRetained } from '../collector/nearbyRetainStore';
 import type { NearbySnapshot } from '../collector/nearbyStore';
+import { resetNearbyStoreForTest, writeNearbySnapshot } from '../collector/nearbyStore';
 import type { SeasonEncounter } from '../collector/captureProgress';
 import { useRareAlert } from '../collector/rareAlertStore';
 import { useNearbyFeed } from '../collector/useNearbyFeed';
@@ -87,6 +88,7 @@ const openList = () => fireEvent.click(screen.getByRole('button', { name: '列�
 
 beforeEach(() => {
   resetNearbyRetainedForTest();
+  resetNearbyStoreForTest();
   resetNearbyAlertGateForTest();
   resetCaptureOriginForTest();
   resetNearbyOverlayPanelsForTest();
@@ -129,14 +131,14 @@ describe('附近页', () => {
     expect(card.textContent).toContain('捕获后确认精灵');
   });
 
-  test('切到列表后只显示高价值精灵（普通精灵不常驻）', () => {
+  test('「全部」档列出附近全部精灵（普通精灵也出现）', () => {
     feed();
     render(<Nearby onNavigate={vi.fn()} />);
     openList();
-    expect(screen.getAllByTestId('nearby-row')).toHaveLength(1);
+    expect(screen.getAllByTestId('nearby-row')).toHaveLength(3);
     expect(screen.getByText(/护主犬/)).toBeTruthy();
-    expect(screen.queryByText(/喵喵/)).toBeNull();
-    expect(screen.queryByText(/蹦蹦种子/)).toBeNull();
+    expect(screen.getByText(/蹦蹦种子/)).toBeTruthy();
+    expect(screen.getByText(/喵喵/)).toBeTruthy();
   });
 
   test('只看稀有时列表只剩稀有精灵', () => {
@@ -144,8 +146,11 @@ describe('附近页', () => {
     render(<Nearby onNavigate={vi.fn()} />);
     openList();
     fireEvent.click(screen.getByRole('button', { name: '稀有' }));
-    expect(screen.getAllByTestId('nearby-row')).toHaveLength(1);
+    const rows = screen.getAllByTestId('nearby-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('护主犬');
     expect(screen.queryByText(/蹦蹦种子/)).toBeNull();
+    expect(screen.queryByText(/喵喵/)).toBeNull();
   });
 
   test('普通精灵也显示身高 / 体重百分比（不再等体型牌）', () => {
@@ -286,11 +291,36 @@ describe('附近页', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'data' });
   });
 
-  test('只有普通精灵时列表为空，提示只保留高价值', () => {
+  test('只有普通精灵时也进「全部」列表（不再按高价值过滤）', () => {
     feed({ ...snapshot, pets: [pets[1]] });
     render(<Nearby onNavigate={vi.fn()} />);
     openList();
-    expect(screen.getByText('还没有高价值精灵')).toBeTruthy();
+    expect(screen.getAllByTestId('nearby-row')).toHaveLength(1);
+    expect(screen.getByText(/蹦蹦种子/)).toBeTruthy();
+  });
+
+  test('附近没有精灵时「全部」档提示「附近暂时没有精灵」', () => {
+    feed({ ...snapshot, pets: [] });
+    render(<Nearby onNavigate={vi.fn()} />);
+    openList();
+    expect(screen.getByText('附近暂时没有精灵')).toBeTruthy();
+  });
+
+  test('常驻表只存高价值：快照刷新与 30s 清理都不会把普通精灵写进常驻', async () => {
+    vi.useFakeTimers();
+    try {
+      feed();
+      writeNearbySnapshot(snapshot);
+      render(<Nearby onNavigate={vi.fn()} />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(readNearbyRetained().map((row) => row.key)).toEqual(['rare']);
+      // 30s 定时清理：过去这里把整份快照（含普通精灵）写进常驻
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+      expect(readNearbyRetained().map((row) => row.key)).toEqual(['rare']);
+      expect(readNearbyRetained().every((row) => row.highValue)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('有采集桥：本页「开始采集」把会话标记为附近发起（不自动停止 / 导入）', async () => {

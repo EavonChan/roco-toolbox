@@ -71,6 +71,26 @@ describe('buildNearbyOverlayPayload 基础字段', () => {
     expect(payload.hasKey).toBe(true);
     expect(payload.updatedAt).toBe(777);
   });
+
+  test('停更标记只加状态：数据保留最后一帧，可见性不变', () => {
+    const pets = [pet({ key: 'a', pos: { x: 100, y: 0, z: 0 } })];
+    const payload = buildNearbyOverlayPayload({
+      capturing: true,
+      hasKey: true,
+      snapshot: snapshot({ pets, self: { x: 0, y: 0 }, updatedAt: 1234 }),
+      paused: true,
+    });
+    expect(payload.paused).toBe(true);
+    expect(payload.visible).toBe(true);
+    expect(payload.pets.map((item) => item.key)).toEqual(['a']);
+    expect(payload.total).toBe(1);
+    expect(payload.self).toEqual({ x: 0, y: 0 });
+    expect(payload.updatedAt).toBe(1234);
+  });
+
+  test('默认不带停更标记（旧调用方 / 数据正常）', () => {
+    expect(build([pet({ key: 'a' })]).paused).toBe(false);
+  });
 });
 
 describe('方向与距离', () => {

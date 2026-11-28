@@ -21,37 +21,53 @@ describe('测试版不自动弹新手引导', () => {
   });
 });
 
-// 2026-11-25 v5：从「界面导览」改成任务式大纲（首启 6 步 + 页内 15 步 = 23 步）
-// 2026-11-27：换蛋段补「把游戏账号绑到小组」一步（机器人同步蛋仓的前提）
-describe('教程大纲（v5）', () => {
-  test('版本号升到 5（改内容要让老用户重看一次）', () => {
-    expect(TOUR_VERSION).toBe('5');
+// 2026-11-28 v6 CLEAN2：文件导入删除，首启改成「采集 → 登录同步 → 看缺口」任务线
+// （首启 7 步 + 页内 17 步 = 24 步）
+describe('教程大纲（v6）', () => {
+  test('版本号升到 6（改内容要让老用户重看一次）', () => {
+    expect(TOUR_VERSION).toBe('6');
   });
 
-  test('首启 6 步，收尾仍是最後一步且带 hint', () => {
+  test('首启 7 步，收尾仍是最後一步且带 hint', () => {
     const steps = startStepsFor({ hasCapture: true, desktop: false });
-    expect(steps).toHaveLength(6);
+    expect(steps).toHaveLength(7);
     expect(steps[steps.length - 1].id).toBe(TOUR_HINT_STEP_ID);
     expect(steps[steps.length - 1].hint).toBe(true);
     expect(steps[steps.length - 1].anchor).toBe('guide-open');
   });
 
-  test('采集步按平台二选一：有采集桥讲「开始采集」，没有就讲「导入游戏数据」', () => {
+  test('任务线顺序：采集 → 登录同步 → 看缺口', () => {
+    const steps = startStepsFor({ hasCapture: true, desktop: false });
+    const ids = steps.map((step) => step.id);
+    expect(ids.indexOf('start-collect')).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf('start-sync')).toBe(ids.indexOf('start-collect') + 1);
+    expect(ids.indexOf('start-gap')).toBe(ids.indexOf('start-sync') + 1);
+
+    const sync = steps.find((step) => step.id === 'start-sync');
+    expect(sync?.profileSection).toBe('identity');
+    expect(sync?.anchor).toBe('profile-account');
+    // 不再教「导入文件」
+    for (const step of steps) {
+      expect(`${step.title}${step.body}`).not.toMatch(/导入文件|选文件导入|导入游戏数据|备份 \.json/);
+    }
+  });
+
+  test('采集步按平台二选一：有采集桥讲「开始采集」，网页讲「登录同步 / 装壳」', () => {
     const capture = startStepsFor({ hasCapture: true, desktop: false });
     const web = startStepsFor({ hasCapture: false, desktop: false });
 
     expect(capture.some((step) => step.anchor === 'collector-start')).toBe(true);
-    expect(capture.some((step) => step.anchor === 'profile-import')).toBe(false);
+    expect(capture.some((step) => step.anchor === 'profile-sync')).toBe(false);
 
-    // 网页 / 无采集桥：不能出现「开始采集」那步，否则会卡在禁用的「下一步」
+    // 网页 / 无采集桥：不能出现「开始采集」那步；也不能卡在「等数据」（网页没有文件导入）
     expect(web.some((step) => step.anchor === 'collector-start')).toBe(false);
-    expect(web.some((step) => step.anchor === 'profile-import')).toBe(true);
+    const webStep = web.find((step) => step.id === 'start-collect');
+    expect(webStep?.anchor).toBe('profile-sync');
+    expect(webStep?.waitForImport).toBeFalsy();
 
-    // 两版都有「等导入」那步，并且都落在「我的 · 游戏数据」
-    for (const steps of [capture, web]) {
-      const wait = steps.find((step) => step.waitForImport);
-      expect(wait?.profileSection).toBe('data');
-    }
+    // 有采集桥的版本仍等数据到位再继续，并且落在「我的 · 游戏数据」
+    const captureStep = capture.find((step) => step.waitForImport);
+    expect(captureStep?.profileSection).toBe('data');
   });
 
   test('桌面版文案换成选网卡，不再说 VPN', () => {
@@ -87,19 +103,22 @@ describe('教程大纲（v5）', () => {
     expect(TOUR_SEGMENTS.groups).toHaveLength(4);
   });
 
-  test('个人页两步保持原文（本轮不动个人页教程）', () => {
+  test('个人页两步：采集/登录同步 + 云同步（CLEAN2：不再教导入文件）', () => {
     expect(TOUR_SEGMENTS.profile).toHaveLength(2);
     expect(TOUR_SEGMENTS.profile.map((step) => step.id)).toEqual([
-      'profile-import',
+      'profile-collect',
       'profile-account',
     ]);
     expect(TOUR_SEGMENTS.profile.map((step) => step.anchor)).toEqual([
-      'profile-import',
+      'profile-sync',
       'profile-account',
     ]);
     expect(TOUR_SEGMENTS.profile.map((step) => step.profileSection)).toEqual(['data', 'identity']);
-    expect(TOUR_SEGMENTS.profile[0].title).toBe('先导入一次数据');
+    expect(TOUR_SEGMENTS.profile[0].title).toBe('采集与登录同步');
     expect(TOUR_SEGMENTS.profile[1].title).toBe('云同步（可选）');
+    for (const step of TOUR_SEGMENTS.profile) {
+      expect(`${step.title}${step.body}`).not.toMatch(/导入文件|选文件导入|导入游戏数据/);
+    }
   });
 
   test('每步都有锚点或选择器（每步都能框到一个真实位置）', () => {
@@ -180,15 +199,15 @@ describe('教程大纲（v5）', () => {
     expect(bodies).not.toContain('分两页');
   });
 
-  test('本机（无采集桥）解析出的首启是导入版；同一环境取到的数组是同一份', () => {
+  test('本机（无采集桥）解析出的首启是「登录同步」版；同一环境取到的数组是同一份', () => {
     expect(detectStartEnv().hasCapture).toBe(false);
-    expect(TOUR_SEGMENTS.start.some((step) => step.anchor === 'profile-import')).toBe(true);
+    expect(TOUR_SEGMENTS.start.some((step) => step.anchor === 'profile-sync')).toBe(true);
     expect(TOUR_SEGMENTS.start).toBe(TOUR_SEGMENTS.start);
   });
 
-  test('全部 23 步（首启 6 + 其它页 17）都能取到，且 id 不重复', () => {
+  test('全部 24 步（首启 7 + 其它页 17）都能取到，且 id 不重复', () => {
     const all = TOUR_SEGMENT_ORDER.flatMap((segment) => TOUR_SEGMENTS[segment]);
-    expect(all).toHaveLength(23);
+    expect(all).toHaveLength(24);
     const ids = all.map((step) => step.id);
     expect(new Set(ids).size).toBe(ids.length);
   });

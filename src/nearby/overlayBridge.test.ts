@@ -13,6 +13,7 @@ import { resetNearbyOverlayPanelsForTest, setNearbyOverlayPanels } from './overl
 const payload = (overrides: Partial<NearbyOverlayPayload> = {}): NearbyOverlayPayload => ({
   visible: true,
   capturing: true,
+  paused: false,
   hasKey: true,
   scene: 10003,
   self: { x: 0, y: 0 },

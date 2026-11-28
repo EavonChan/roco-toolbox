@@ -1,11 +1,11 @@
-﻿import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { importFixtures } from './helpers/importFixture';
 import { progressOf } from './progress';
 
 const importSample = async (page: Page) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  // 导入后停在导入页（2026-10-25 起不再自动跳看板），等落盘后再切
-  await expect(page.getByTestId('import-outcome')).toContainText('已保存到本机');
+  // 2026-11-28 CLEAN2：文件导入 UI 已删除，改走 roco-share 播种（helper 会等「已保存到本机」）
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await page.getByRole('button', { name: '看板', exact: true }).click();
 };
 

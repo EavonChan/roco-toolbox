@@ -3,15 +3,19 @@ import { describe, expect, test, vi } from 'vitest';
 import { EmptyState } from './EmptyState';
 
 describe('EmptyState', () => {
-  test('指向「导入数据」页，而不是没有入口的「看板」', () => {
+  test('指向「采集 / 登录同步」，而不是没有入口的「看板」或已删除的文件导入', () => {
     render(<EmptyState onGoImport={() => {}} />);
-    expect(screen.getByTestId('empty-state')).toHaveTextContent('游戏数据');
-    expect(screen.getByTestId('empty-state')).not.toHaveTextContent('看板');
+    const panel = screen.getByTestId('empty-state');
+    expect(panel).toHaveTextContent('采集');
+    expect(panel).toHaveTextContent('登录同一账号同步');
+    expect(panel).not.toHaveTextContent('看板');
+    expect(panel).not.toHaveTextContent('导入');
   });
 
-  test('点「去导入数据」触发跳转回调', () => {
+  test('点「去采集 / 同步」触发跳转回调', () => {
     const onGoImport = vi.fn();
     render(<EmptyState onGoImport={onGoImport} />);
+    expect(screen.getByTestId('empty-go-import')).toHaveTextContent('去采集 / 同步');
     fireEvent.click(screen.getByTestId('empty-go-import'));
     expect(onGoImport).toHaveBeenCalledTimes(1);
   });

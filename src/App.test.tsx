@@ -1,10 +1,10 @@
-﻿﻿import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import App from './App';
 import { CHANGELOG } from './data/changelog';
 import type { AccountSnapshot } from './domain/parseBackup';
 import { resetSnapshotCacheForTest } from './storage/snapshotStore';
-import { saveSnapshot } from './storage/snapshots';
+import { clearAllSnapshots, saveSnapshot } from './storage/snapshots';
 import { TOUR_SEGMENT_ORDER, TOUR_VERSION } from './ui/tour';
 
 const snapshot = (accountName: string): AccountSnapshot => ({
@@ -24,8 +24,10 @@ const presetFirstRunSeen = () => {
   if (CHANGELOG[0]) window.localStorage.setItem('roco.changelogSeen', CHANGELOG[0].id);
 };
 
-afterEach(() => {
+afterEach(async () => {
   window.localStorage.clear();
+  await clearAllSnapshots();
+  resetSnapshotCacheForTest();
 });
 
 describe('App', () => {
@@ -48,19 +50,20 @@ describe('App', () => {
     expect(screen.getByTestId('collection-groups')).toBeTruthy();
   });
 
-  test('壳把分享内容注入时自动切到「导入数据」页（否则分享会被静默搁置）', async () => {
+  test('壳把采集内容注入时自动切到「我的 · 采集与同步」（否则分享会被静默搁置）', async () => {
     presetFirstRunSeen();
     await saveSnapshot(snapshot('账号甲'));
     resetSnapshotCacheForTest();
 
     render(<App />);
-    // 2026-10-25：导入后不再自动跳看板，首次打开也停在「导入数据」页
-    await waitFor(() => expect(screen.getByTestId('import-input')).toBeDefined());
+    // 2026-10-25：导入后不再自动跳看板，首次打开也停在「我的」
+    await waitFor(() => expect(screen.getByTestId('profile-collect')).toBeDefined());
 
     fireEvent(window, new Event('roco-share'));
 
-    await waitFor(() => expect(screen.getByTestId('import-input')).toBeDefined());
-    expect(screen.getByText('导入游戏数据')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('profile-collect')).toBeDefined());
+    // 文件导入 UI 已删除；分享消费改由首页级的 captureIngest 监听接管
+    expect(screen.queryByTestId('import-input')).toBeNull();
   });
 
   test('没有登录时小组页指向「我的 · 小组」（个人求蛋已删除）', async () => {
@@ -99,7 +102,7 @@ describe('App', () => {
 
   test('受限存储（读页签键抛错）不白屏', () => {
     const realGetItem = Storage.prototype.getItem;
-    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
       if (key === 'roco.lastTab' || key === 'roco.swapView') throw new Error('storage disabled');
       return realGetItem.call(this, key);
     });
@@ -108,6 +111,69 @@ describe('App', () => {
       expect(screen.getByRole('heading', { name: '小布助手' })).toBeDefined();
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  /**
+   * 2026-11-28 FX1 ③：滚到 525 → 进「我的身份」→ 返回，位置要回来。
+   * 只服务「我的」页这一次来回，不是全局路由的滚动恢复。
+   */
+  test('「我的」进二级分区再返回：恢复离开前的滚动位置，内容变短就落到最大可滚', async () => {
+    presetFirstRunSeen();
+    // 2026-11-28 重排：设置行为下沉到「更多/设置」区块，只有本机有数据时才渲染；
+    // 这里先导入一份数据，再从页签进「我的」
+    await saveSnapshot(snapshot('账号甲'));
+    resetSnapshotCacheForTest();
+    const realScrollTo = Object.getOwnPropertyDescriptor(window, 'scrollTo');
+    const realScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    const realInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+    const realScrollHeight = Object.getOwnPropertyDescriptor(
+      document.documentElement,
+      'scrollHeight',
+    );
+    const scrollTo = vi.fn();
+    try {
+      Object.defineProperty(window, 'scrollTo', { configurable: true, value: scrollTo });
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: 525 });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 812 });
+      // 全页 1337px：最大可滚 525
+      Object.defineProperty(document.documentElement, 'scrollHeight', {
+        configurable: true,
+        value: 1337,
+      });
+
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: '我的' }));
+      await waitFor(() => expect(screen.getByTestId('profile-header')).toBeTruthy());
+      await waitFor(() =>
+        expect(screen.getByTestId('profile-section-identity')).toBeTruthy(),
+      );
+
+      // 进二级分区：滚顶（返回按钮旁的「‹ 返回我的」在原位）
+      fireEvent.click(screen.getByTestId('profile-section-identity'));
+      expect(screen.getByTestId('profile-identity-intro')).toBeTruthy();
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 0 }));
+
+      // 返回：回到 525，而不是被无条件复位到 0
+      fireEvent.click(screen.getByTestId('profile-section-data'));
+      expect(screen.getByTestId('profile-header')).toBeTruthy();
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 525 }));
+
+      // 内容变短（最大只能滚 200）：恢复到 200，不硬撑到 525
+      Object.defineProperty(document.documentElement, 'scrollHeight', {
+        configurable: true,
+        value: 1012,
+      });
+      fireEvent.click(screen.getByTestId('profile-section-identity'));
+      fireEvent.click(screen.getByTestId('profile-section-data'));
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 200 }));
+    } finally {
+      if (realScrollTo) Object.defineProperty(window, 'scrollTo', realScrollTo);
+      if (realScrollY) Object.defineProperty(window, 'scrollY', realScrollY);
+      if (realInnerHeight) Object.defineProperty(window, 'innerHeight', realInnerHeight);
+      if (realScrollHeight) {
+        Object.defineProperty(document.documentElement, 'scrollHeight', realScrollHeight);
+      }
     }
   });
 });

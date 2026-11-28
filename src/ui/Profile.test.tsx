@@ -1,17 +1,92 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Profile } from './Profile';
 import type { ProfileSection } from './navigation';
+import { readProfileAvatar } from '../api/profileAvatar';
+import { resetMeCacheForTest } from './accountMe';
 import { beginImport, resetImportOutcomeForTest, updateImportOutcome } from './importOutcomeStore';
 import { clearSyncFeedback } from './syncNoticeStore';
+import { clearAllSnapshots, writeSnapshots } from '../storage/snapshots';
+import { refreshSnapshots, resetSnapshotCacheForTest } from '../storage/snapshotStore';
 
-afterEach(() => {
+const json = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+/** 只关心 /api/me 的桩：返回指定用户名，其余接口一律 ok（避免单测真的打线上）。 */
+const stubMe = (username: string | null): string[] => {
+  const calls: string[] = [];
+  vi.stubGlobal('fetch', (url: string) => {
+    const path = String(url).replace(/^https?:\/\/[^/]+/, '');
+    calls.push(path);
+    const body = path.startsWith('/api/me')
+      ? { ok: true, accountId: 'acc-1', createdAt: 1, username, snapshot: null }
+      : { ok: true };
+    return Promise.resolve(json(body));
+  });
+  return calls;
+};
+
+/** 头像流程的桩：/api/me 给用户名，PUT /api/sync 可按用例成功或失败。 */
+const stubAvatarSession = (sync: 'ok' | 'fail'): Array<{ path: string; method: string }> => {
+  const calls: Array<{ path: string; method: string }> = [];
+  vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+    const path = String(url).replace(/^https?:\/\/[^/]+/, '');
+    const method = String(init?.method ?? 'GET');
+    calls.push({ path, method });
+    if (path.startsWith('/api/me')) {
+      return Promise.resolve(json({ ok: true, accountId: 'acc-1', createdAt: 1, username: '训练家小明', snapshot: null }));
+    }
+    if (path === '/api/sync' && method === 'PUT') {
+      return Promise.resolve(
+        sync === 'fail' ? json({ error: '云端暂时不可用' }, 500) : json({ ok: true, version: 2 }),
+      );
+    }
+    return Promise.resolve(json({ ok: true }));
+  });
+  return calls;
+};
+
+/** 本机已导入两只精灵：换头像的候选只来自这里。 */
+const seedImportedPets = async (): Promise<void> => {
+  const pet = (gameId: number, name: string) => ({
+    gameId,
+    name,
+    gender: '母' as const,
+    nature: '开朗',
+    voiceDb: 100,
+    medalBody: '',
+    isShiny: false,
+    account: '测试甲',
+  });
+  await writeSnapshots([
+    {
+      accountName: '测试甲',
+      gameId: 1,
+      exportedAt: '2026-11-28T00:00:00.000Z',
+      importedAt: '2026-11-28T00:00:00.000Z',
+      pets: [pet(3007, '魔力猫'), pet(3001, '喵喵')],
+      eggs: [],
+    },
+  ]);
+  await refreshSnapshots();
+};
+
+beforeEach(() => {
+  resetMeCacheForTest();
+  stubMe(null);
+});
+
+afterEach(async () => {
   cleanup();
   resetImportOutcomeForTest();
   clearSyncFeedback();
   window.localStorage.clear();
   delete window.RocoServer;
   delete window.RocoUpdate;
+  vi.unstubAllGlobals();
+  resetMeCacheForTest();
+  await clearAllSnapshots();
+  resetSnapshotCacheForTest();
 });
 
 const renderProfile = (section: ProfileSection = 'data') =>
@@ -24,7 +99,8 @@ const renderProfile = (section: ProfileSection = 'data') =>
   );
 
 describe('Profile（我的）', () => {
-  test('分区改成列表行：不再有分段控件，profile-section-* 原样挂在行上', () => {
+  test('分区改成列表行：不再有分段控件，profile-section-* 原样挂在行上', async () => {
+    await seedImportedPets();
     const onNavigate = vi.fn();
     render(
       <Profile section="data" returnToGroups={false} onNavigate={onNavigate} />,
@@ -40,7 +116,8 @@ describe('Profile（我的）', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'groups' });
   });
 
-  test('三个快捷入口：采集滚到采集块、蛋仓进换蛋蛋仓、小组进小组分区', () => {
+  test('三个快捷入口：采集滚到采集块、蛋仓进换蛋蛋仓、小组进小组分区', async () => {
+    await seedImportedPets();
     const scrollIntoView = vi.fn();
     const original = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -62,7 +139,8 @@ describe('Profile（我的）', () => {
     }
   });
 
-  test('蛋仓入口在未登录时标明需登录，登录后写清它去哪', () => {
+  test('蛋仓入口在未登录时标明需登录，登录后写清它去哪', async () => {
+    await seedImportedPets();
     window.localStorage.clear();
     const first = render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
     expect(screen.getByTestId('profile-entry-egg-stock')).toHaveTextContent('需登录');
@@ -73,27 +151,19 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('profile-entry-egg-stock')).toHaveTextContent('换蛋 · 蛋仓');
   });
 
-  test('已登录点概览卡「同步」：留在我的首页，把有「立即同步」的那块滚进视野并高亮', () => {
+  test('已登录：概览卡不再放「同步」按钮，同步只留在「私有同步」卡里', async () => {
+    await seedImportedPets();
     window.localStorage.setItem('roco.accountId', 'acc-1');
-    const scrollIntoView = vi.fn();
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scrollIntoView;
     try {
-      const onNavigate = vi.fn();
-      render(<Profile section="data" returnToGroups={false} onNavigate={onNavigate} />);
+      render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
 
-      fireEvent.click(screen.getByTestId('profile-header-action'));
-
-      // 不去「我的身份」：那一页把「立即同步」藏起来了（UI-01）
-      expect(onNavigate).not.toHaveBeenCalledWith({ type: 'open-profile', section: 'identity' });
-      expect(screen.getByTestId('profile-header')).toBeTruthy();
-      // 落点确实是带同步按钮的那一块
+      // 2026-11-28 FX1：概览卡那个「同步」只滚动、不执行同步（UI-01 的临时做法），删掉
+      expect(screen.queryByTestId('profile-header-action')).toBeNull();
+      expect(screen.getByTestId('profile-header')).not.toHaveTextContent('同步');
+      // 真正执行同步的「立即同步」还在下面那张卡里
       const block = screen.getByTestId('profile-sync-block');
-      expect(block).toHaveAttribute('data-highlight', 'true');
       expect(within(block).getByTestId('account-sync')).toHaveTextContent('立即同步');
-      expect(scrollIntoView).toHaveBeenCalledTimes(1);
     } finally {
-      Element.prototype.scrollIntoView = original;
       window.localStorage.clear();
     }
   });
@@ -111,6 +181,58 @@ describe('Profile（我的）', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'data' });
   });
 
+  test('已登录：概览卡与「我的身份」行都写用户名，头像取用户名首字', async () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    stubMe('训练家小明');
+    await seedImportedPets();
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-header-name')).toHaveTextContent('训练家小明');
+    });
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('训');
+    // 设置列表里的账号行同样不能再写死「已登录」
+    expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('训练家小明');
+  });
+
+  test('老账号没有用户名：概览卡仍写「已登录」，头像写「已」，账号行也写「已登录」', async () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    await seedImportedPets();
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    expect(screen.getByTestId('profile-header-name')).toHaveTextContent('已登录');
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('已');
+    expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('已登录');
+  });
+
+  test('未登录：概览卡写「本机模式 · 未登录」，账号行写「未登录」', async () => {
+    await seedImportedPets();
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    expect(screen.getByTestId('profile-header-name')).toHaveTextContent('本机模式 · 未登录');
+    expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('未登录');
+  });
+
+  test('用户名只查一次 /api/me：概览卡与账号面板共用同一份缓存', async () => {
+    await seedImportedPets();
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    const calls = stubMe('训练家小明');
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-header-name')).toHaveTextContent('训练家小明');
+    });
+    // 让账号面板的后台刷新也落定，再数请求
+    await act(async () => {});
+    expect(calls.filter((path) => path.startsWith('/api/me'))).toHaveLength(1);
+  });
+
   test('小组分区：未登录时给登录入口，身份面板保持隐藏', () => {
     renderProfile('groups');
     expect(screen.getByTestId('collection-groups')).toHaveAttribute('data-variant', 'admin');
@@ -118,7 +240,8 @@ describe('Profile（我的）', () => {
     expect(screen.queryByTestId('account-panel')).toBeNull();
   });
 
-  test('游戏数据里的「附近」子视图：切换发导航意图，打开时渲染附近页', () => {
+  test('游戏数据里的「附近」子视图：切换发导航意图，打开时渲染附近页', async () => {
+    await seedImportedPets();
     const onNavigate = vi.fn();
     const { rerender } = render(
       <Profile section="data" returnToGroups={false} onNavigate={onNavigate} />,
@@ -135,24 +258,39 @@ describe('Profile（我的）', () => {
       />,
     );
     expect(screen.getByTestId('nearby-page')).toBeTruthy();
-    expect(screen.queryByTestId('import-input')).toBeNull();
+    expect(screen.queryByTestId('profile-sync-block')).toBeNull();
     // 附近是数据视图的子视图：左上角仍能回到「我的」首页
     fireEvent.click(screen.getByTestId('profile-section-data'));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'data' });
   });
 
-  test('游戏数据分区：导入入口与三阶段反馈都在', () => {
+  test('游戏数据分区：采集/同步入口与三阶段反馈都在，文件导入入口已删除', async () => {
+    await seedImportedPets();
     const id = beginImport();
     updateImportOutcome(id, { local: 'saved', cloud: 'failed', message: '新增 1 个账号' });
     renderProfile('data');
 
-    expect(screen.getByTestId('import-input')).toBeTruthy();
+    expect(screen.queryByTestId('import-input')).toBeNull();
+    expect(screen.queryByTestId('import-button')).toBeNull();
+    expect(screen.getByTestId('profile-sync-block')).toBeTruthy();
     expect(screen.getByTestId('import-outcome')).toHaveTextContent('已保存到本机');
     expect(screen.getByTestId('import-outcome')).toHaveTextContent('私有云同步失败（本机数据已保存）');
     expect(screen.getByTestId('import-outcome-group')).toHaveTextContent('小组资源未自动更新');
     // 私有同步已经挪到游戏数据页：本机采集 / 导入之后紧接着就是同步
     expect(screen.getByTestId('profile-sync-intro')).toHaveTextContent('不会更新小组资源');
     expect(screen.getByTestId('account-panel')).toHaveTextContent('私有同步');
+  });
+
+  test('清空本机数据后回到新用户空态，而不是白屏', async () => {
+    await seedImportedPets();
+    renderProfile('data');
+    expect(screen.getByTestId('profile-collect')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('profile-settings-clear'));
+    fireEvent.click(screen.getByTestId('clear-local-confirm'));
+
+    await waitFor(() => expect(screen.getByTestId('profile-new-user-empty')).toBeTruthy());
+    expect(screen.queryByTestId('profile-collect')).toBeNull();
   });
 
   test('身份分区的标题与说明写清主语', () => {
@@ -164,7 +302,8 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('profile-return-groups')).toBeTruthy();
   });
 
-  test('「去小组查看」通过导航意图进入小组', () => {
+  test('「去小组查看」通过导航意图进入小组', async () => {
+    await seedImportedPets();
     const id = beginImport();
     updateImportOutcome(id, { local: 'saved' });
     const onNavigate = vi.fn();
@@ -258,5 +397,71 @@ describe('Profile（我的）', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('换头像：点页头头像开弹层，只列已导入的精灵，选一只立刻换并写云端', async () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    const calls = stubAvatarSession('ok');
+    await seedImportedPets();
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-header-name')).toHaveTextContent('训练家小明');
+    });
+
+    fireEvent.click(screen.getByTestId('profile-header-avatar'));
+    expect(screen.getByTestId('avatar-picker')).toBeTruthy();
+    // 只列导入过的两只，不列全图鉴
+    expect(screen.getByTestId('avatar-option-3007')).toHaveTextContent('魔力猫');
+    expect(screen.queryByTestId('avatar-option-3003')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('avatar-option-3007'));
+
+    // 选完立刻生效、弹层收起
+    expect(screen.queryByTestId('avatar-picker')).toBeNull();
+    const headerAvatar = screen.getByTestId('profile-header-avatar');
+    const image = within(headerAvatar).getByRole('img');
+    expect(image).toHaveAttribute('alt', '训练家小明');
+    expect(image.getAttribute('src')).toContain('/jingling/3007/icon.png');
+
+    // 本机先落盘，再异步写云端
+    expect(readProfileAvatar('acc-1')).toEqual({ kind: 'pet', gameId: 3007 });
+    await waitFor(() => {
+      expect(calls.some((call) => call.path === '/api/sync' && call.method === 'PUT')).toBe(true);
+    });
+    expect(screen.queryByTestId('profile-avatar-notice')).toBeNull();
+  });
+
+  test('换头像写云端失败：回滚成原来的头像并提示，不能显示换了其实没存', async () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    stubAvatarSession('fail');
+    await seedImportedPets();
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-header-name')).toHaveTextContent('训练家小明');
+    });
+
+    fireEvent.click(screen.getByTestId('profile-header-avatar'));
+    fireEvent.click(screen.getByTestId('avatar-option-3007'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-avatar-notice')).toHaveTextContent('已恢复原样');
+    });
+    // 回滚到默认首字，本机也不留半截状态
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('训');
+    expect(screen.queryByTestId('profile-header-avatar')?.querySelector('img')).toBeNull();
+    expect(readProfileAvatar('acc-1')).toBeNull();
+  });
+
+  test('未登录：点头像不给设置入口，只提示登录后才能设置', () => {
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId('profile-header-avatar'));
+
+    expect(screen.queryByTestId('avatar-picker')).toBeNull();
+    expect(screen.getByTestId('profile-avatar-notice')).toHaveTextContent('登录后才能设置头像');
   });
 });

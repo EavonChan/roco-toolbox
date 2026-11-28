@@ -72,7 +72,18 @@ describe('内置采集桥', () => {
     const snapshot = { id: 'capture-123.pcap', size: 100, url: 'https://roco-share.invalid/collector/12345678-1234-1234-1234-123456789abc' };
     window.RocoCapture.inspectCapture = () => JSON.stringify(snapshot);
     await expect(readCaptureSnapshot()).resolves.toEqual(snapshot);
-    for (const bad of [{ ...snapshot, url: 'https://example.com/x' }, { ...snapshot, size: 24 }, { ...snapshot, id: '../x' }]) {
+    // 新壳带裁剪代次；旧壳没有该字段也能读
+    const withGeneration = { ...snapshot, generation: 2 };
+    window.RocoCapture.inspectCapture = () => JSON.stringify(withGeneration);
+    await expect(readCaptureSnapshot()).resolves.toEqual(withGeneration);
+    for (const bad of [
+      { ...snapshot, url: 'https://example.com/x' },
+      { ...snapshot, size: 24 },
+      { ...snapshot, id: '../x' },
+      { ...snapshot, generation: -1 },
+      { ...snapshot, generation: 1.5 },
+      { ...snapshot, generation: '2' },
+    ]) {
       window.RocoCapture.inspectCapture = () => JSON.stringify(bad);
       await expect(readCaptureSnapshot()).rejects.toThrow('快照');
     }
@@ -102,14 +113,20 @@ describe('内置采集桥', () => {
 describe('实时采集的增量读取（readCaptureSnapshotBytes）', () => {
   const snapshot = { id: 'capture-123.pcap', size: 0, url: 'https://roco-share.invalid/collector/12345678-1234-1234-1234-123456789abc' };
   /** 模拟壳内文件：ref.content 是「当前完整内容」，支持 ?from=N 时只回新增段 */
-  const stubShell = (ref: { content: Uint8Array }, supportDelta = true) => {
+  const stubShell = (ref: { content: Uint8Array; generation?: number }, supportDelta = true) => {
     const fetchMock = vi.fn(async (input: string) => {
       const match = /[?&]from=(\d+)/.exec(String(input));
       const from = match ? Number(match[1]) : 0;
       const body = ref.content.slice(match && supportDelta ? from : 0);
       return {
         ok: true,
-        headers: { get: (name: string) => (name === 'X-Capture-From' && match && supportDelta ? String(from) : null) },
+        headers: {
+          get: (name: string) => {
+            if (name === 'X-Capture-From' && match && supportDelta) return String(from);
+            if (name === 'X-Capture-Generation' && ref.generation != null) return String(ref.generation);
+            return null;
+          },
+        },
         arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
       } as unknown as Response;
     });
@@ -155,5 +172,46 @@ describe('实时采集的增量读取（readCaptureSnapshotBytes）', () => {
     const other = await readCaptureSnapshotBytes({ ...snapshot, id: 'capture-456.pcap', size: 2 });
     expect([...other]).toEqual([9, 9]);
     expect(String(fetchMock.mock.calls[1][0])).not.toContain('from=');
+  });
+
+  /** H01：壳把文件重写成「24B 头 + 最近 4MiB」后，旧缓存是上一代，拼起来必然错帧。 */
+  test('裁剪代次变化：丢弃旧缓存，整份重读，不把两代拼在一起', async () => {
+    resetCaptureBytesCacheForTest();
+    const ref = { content: new Uint8Array([1, 2, 3]), generation: 0 };
+    const fetchMock = stubShell(ref);
+    await readCaptureSnapshotBytes({ ...snapshot, size: 3, generation: 0 });
+
+    // 裁剪发生：文件内容整体换成新一代，长度还比旧缓存长（旧守卫只比长度会放行）
+    ref.content = new Uint8Array([9, 9, 9, 9]);
+    ref.generation = 1;
+    const second = await readCaptureSnapshotBytes({ ...snapshot, size: 4, generation: 1 });
+    expect([...second]).toEqual([9, 9, 9, 9]);
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain('from=');
+  });
+
+  test('增量响应的代次和快照不一致（读之前刚裁剪）：回退全量，拿新一代内容', async () => {
+    resetCaptureBytesCacheForTest();
+    const ref = { content: new Uint8Array([1, 2, 3]), generation: 0 };
+    const fetchMock = stubShell(ref);
+    await readCaptureSnapshotBytes({ ...snapshot, size: 3, generation: 0 });
+
+    // 快照还是上一代（inspect 之后被裁剪），响应头已经带新一代
+    ref.content = new Uint8Array([9, 9, 9, 9, 9]);
+    ref.generation = 1;
+    const second = await readCaptureSnapshotBytes({ ...snapshot, size: 5, generation: 0 });
+    expect([...second]).toEqual([9, 9, 9, 9, 9]);
+    // 增量尝试一次失败 + 回退全量一次
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  test('旧壳没有代次字段时仍按长度增量（兼容）', async () => {
+    resetCaptureBytesCacheForTest();
+    const ref = { content: new Uint8Array([1, 2, 3]) };
+    const fetchMock = stubShell(ref);
+    await readCaptureSnapshotBytes({ ...snapshot, size: 3 });
+    ref.content = new Uint8Array([1, 2, 3, 4, 5]);
+    const second = await readCaptureSnapshotBytes({ ...snapshot, size: 5 });
+    expect([...second]).toEqual([1, 2, 3, 4, 5]);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('from=3');
   });
 });

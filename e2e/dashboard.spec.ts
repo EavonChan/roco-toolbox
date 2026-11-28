@@ -1,20 +1,23 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { importFixtures } from './helpers/importFixture';
 import { expectProgressZero, progressOf } from './progress';
 
 /**
- * 「数据管理」（导出全部数据 / 合并导入 / 重置）在「导入数据」页底部、**默认收起**（2026-10-06 重排）：
- * 用到里面的按钮或输入框之前先展开（幂等，已展开就不重复点）。
+ * 设置里的低频操作（导出）默认收在「更多」里：
+ * 先打开「我的 · 设置与帮助 → 导出 / 数据来源」弹层，再展开「更多」。
+ * CLEAN2：文件导入 / 合并导入 / 重置已删除，导出仍保留。
  */
+const openSettings = async (page: Page) => {
+  await page.getByTestId('profile-settings-more').click();
+  await expect(page.getByTestId('profile-settings-dialog')).toBeVisible();
+};
+
 const openMoreData = async (page: Page) => {
   const toggle = page.getByTestId('import-more-toggle');
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
 };
 
-/**
- * 等导入真正落盘再切页：导入中导航会被拦住（点了也不动）。
- * 2026-10-25 起导入完成后不再自动跳看板，需要看板内容的用例要自己点过去。
- */
+/** 等入库真正落盘再切页：入库中导航会被拦住（点了也不动）。 */
 const waitImported = async (page: Page) => {
   await expect(page.getByTestId('import-outcome')).toContainText('已保存到本机');
 };
@@ -54,10 +57,9 @@ test('导入抓包数据后看板给出进度与建议', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('还没有数据')).toBeVisible();
 
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
 
   await expect(page.getByText('还没有数据')).toHaveCount(0);
-  await waitImported(page);
   await openTab(page, '看板');
   await expect(
     page.getByTestId('progress-card-action-mother').getByRole('heading', { name: '母本全收集' }),
@@ -69,7 +71,7 @@ test('导入抓包数据后看板给出进度与建议', async ({ page }) => {
 
 test('母本进度：看板卡与点进去的母本页是同一口径（数字一致）', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await waitImported(page);
   await openTab(page, '看板');
 
@@ -85,31 +87,29 @@ test('母本进度：看板卡与点进去的母本页是同一口径（数字�
 });
 
 
-test('重置按钮一键清空已导入的数据', async ({ page }) => {
+test('「清空本机数据」一键清空已导入的数据（设置里二次确认）', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  await waitImported(page);
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await openTab(page, '看板');
   // 导入后母本全收集不再是 0（分子 > 0）
   expect((await progressOf(page, 'progress-card-action-mother')).numerator).toBeGreaterThan(0);
 
-  // 重置按钮在「导入数据」页，先切过去
-  page.on('dialog', (dialog) => dialog.accept());
+  // 清空入口在「我的 · 设置与帮助」，弹层二次确认
   await openTab(page, '我的');
-  await openMoreData(page);
-  await page.getByRole('button', { name: '重置导入数据' }).click();
+  await page.getByTestId('profile-settings-clear').click();
+  await expect(page.getByTestId('clear-local-dialog')).toContainText('此操作不可撤销');
+  await page.getByTestId('clear-local-confirm').click();
 
-  await expect(page.getByText('还没有数据')).toBeVisible();
-  // 清空后回到看板：两块进度归零、署名仍在
+  await expect(page.getByTestId('profile-new-user-empty')).toBeVisible();
+  // 清空后回到看板：两块进度归零
   await openTab(page, '看板');
   await expectProgressZero(page);
 });
 
 test('切页签不再闪"正在读取本地数据"', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
-  await waitImported(page);
 
   // 四个页签来回切，加载文案都不应再出现（数据已在内存缓存里）
   for (const tab of ['收集', '换蛋', '我的', '看板', '收集', '换蛋']) {
@@ -118,159 +118,34 @@ test('切页签不再闪"正在读取本地数据"', async ({ page }) => {
   }
 });
 
-test('导出全部数据 → 清空 → 导入备份，数据完整恢复（"共用一份"的手动做法）', async ({ page }) => {
+test('导出全部数据（离线备份）：下载文件名正确，清空后本机为空', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  // 导入后停在导入页（不再自动跳看板），导出入口就在这里
-  await waitImported(page);
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
 
+  await openTab(page, '我的');
+  await openSettings(page);
   await openMoreData(page);
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByTestId('export-button').click(),
   ]);
   expect(download.suggestedFilename()).toMatch(/小布助手备份-\d{4}-\d{2}-\d{2}\.json/);
-  const backupPath = await download.path();
-  expect(backupPath).not.toBeNull();
+  expect(await download.path()).not.toBeNull();
 
-  // 清空本机数据（清空后仍停在导入页，空状态可见）
-  page.on('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: '重置导入数据' }).click();
-  await expect(page.getByText('还没有数据')).toBeVisible();
+  // CLEAN2：合并导入已删除，备份只用于离线留档；清空后应用内不能再用文件恢复
+  await page.getByTestId('profile-settings-close').click();
+  await expect(page.getByTestId('profile-settings-dialog')).toHaveCount(0);
+  await page.getByTestId('profile-settings-clear').click();
+  await page.getByTestId('clear-local-confirm').click();
+  await expect(page.getByTestId('profile-new-user-empty')).toBeVisible();
 
-  // 用备份恢复（清空后合并 = 全部新增）
-  await page.getByTestId('backup-input').setInputFiles(backupPath as string);
-  await expect(page.getByTestId('data-message')).toContainText('已合并导入');
-  await expect(page.getByTestId('data-message')).toContainText('新增 1 个账号');
-  await waitImported(page);
-
-  // 恢复后回到看板：进度不再是 0
   await openTab(page, '看板');
-  await expect(page.getByText('还没有数据')).toHaveCount(0);
-  expect((await progressOf(page, 'progress-card-action-mother')).numerator).toBeGreaterThan(0);
+  await expectProgressZero(page);
 });
-
-test('合并导入：两台设备的数据合到一起，谁的账号都不会被清掉', async ({ browser }) => {
-  const BASE = 'http://localhost:4173/';
-
-  // 设备 A（平板）：导入自己的抓包 → 导出成备份；两个上下文互不共享存储，就是两台设备
-  const deviceA = await browser.newContext();
-  const pageA = await deviceA.newPage();
-  await pageA.goto(BASE);
-  await pageA.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  // 导入后停在导入页（不再自动跳看板），「N 个账号」与导出按钮都在这里
-  await waitImported(pageA);
-  await expect(pageA.getByText('1 个账号')).toBeVisible();
-  await openMoreData(pageA);
-  const [downloadA] = await Promise.all([
-    pageA.waitForEvent('download'),
-    pageA.getByTestId('export-button').click(),
-  ]);
-  // 必须先另存：download.path() 指向该上下文的临时产物目录，关掉上下文就没了
-  mkdirSync('test-results', { recursive: true });
-  const backupA = 'test-results/device-a-backup.json';
-  await downloadA.saveAs(backupA);
-  await deviceA.close();
-
-  // 设备 B（手机）：自己的账号是另一个，然后把平板那份备份合并进来
-  const deviceB = await browser.newContext();
-  const pageB = await deviceB.newPage();
-  await pageB.goto(BASE);
-  await pageB.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample-2.json');
-  await waitImported(pageB);
-  await expect(pageB.getByText('1 个账号')).toBeVisible();
-
-  pageB.on('dialog', (dialog) => dialog.accept());
-  await openMoreData(pageB);
-  await pageB.getByTestId('backup-input').setInputFiles(backupA);
-  await expect(pageB.getByTestId('data-message')).toContainText('已合并导入');
-  await expect(pageB.getByTestId('data-message')).toContainText('新增 1 个账号');
-
-  // 两边账号都在 —— 旧实现（清空后覆盖）这里会只剩平板的那个
-  await expect(pageB.getByText('2 个账号')).toBeVisible();
-  await deviceB.close();
-});
-
-test('合并导入：同账号取较新的一份，旧备份顶不回本地', async ({ page }) => {
-  // 造一份「同账号但导入时间很早」的备份
-  mkdirSync('test-results', { recursive: true });
-  const olderPath = 'test-results/older-backup.json';
-  writeFileSync(
-    olderPath,
-    JSON.stringify({
-      type: 'roco-toolbox-backup',
-      version: 1,
-      exportedAt: '2020-01-01T00:00:00.000Z',
-      catalogVersion: 'x',
-      accounts: [
-        {
-          accountName: '测试甲',
-          // 与 fixture（src/domain/__fixtures__/backup-sample.json）是同一个游戏 UID →
-          // 认作同一账号，走「取较新的一份」这条规则（2026-10-06 起账号身份是 UID，不是名字）
-          gameId: 1000001,
-          exportedAt: '2020-01-01T00:00:00.000Z',
-          importedAt: '2020-01-01T00:00:00.000Z',
-          pets: [],
-          eggs: [],
-        },
-      ],
-    }),
-    'utf8',
-  );
-
-  await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  // 导入后停在导入页（不再自动跳看板），「N 个账号」「合并导入」都在这里
-  await waitImported(page);
-  await expect(page.getByText('1 个账号')).toBeVisible();
-
-  page.on('dialog', (dialog) => dialog.accept());
-  await openMoreData(page);
-  await page.getByTestId('backup-input').setInputFiles(olderPath);
-  const message = page.getByTestId('data-message');
-  await expect(message).toContainText('新增 0 个账号');
-  await expect(message).toContainText('更新 0 个');
-  await expect(message).toContainText('保留本地较新的 1 个');
-
-  // 本地那份没被空数据顶掉：精灵还在（我的精灵里能看到 fixture 里的机械方方）
-  await openTab(page, '收集');
-  await page.getByTestId('collection-kind-inventory').click();
-  await expect(page.getByText('机械方方')).toBeVisible();
-});
-
-test('把备份文件从「导入抓包数据」入口塞进去，也能按合并导入处理', async ({ page }) => {
-  await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  // 导入后停在导入页（不再自动跳看板），导出/导入入口都在这里
-  await waitImported(page);
-
-  // 导出一份真备份，模拟「微信收到备份 → 分享给小布助手」：走的就是这条入口。
-  // 以前这里会被当成抓包解析而报错，现在按合并导入处理。
-  await openMoreData(page);
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    page.getByTestId('export-button').click(),
-  ]);
-  const backupPath = await download.path();
-  await page.getByTestId('import-input').setInputFiles(backupPath as string);
-
-  await expect(page.getByTestId('data-message')).toContainText('已合并导入');
-  // 同一份数据 → 本地时间不比它旧 → 保留本地，不报错、也不清数据
-  await expect(page.getByTestId('data-message')).toContainText('保留本地较新的 1 个');
-  await expect(page.getByText('1 个账号')).toBeVisible();
-});
-
-test('用「合并导入」选抓包文件时给出可读错误', async ({ page }) => {
-  await page.goto('/');
-  await openMoreData(page);
-  await page.getByTestId('backup-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-  await expect(page.getByText(/不是小布助手的备份文件/)).toBeVisible();
-});
-
 
 test('当前模式：看板开关切到追双牌，全程序跟着换', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await waitImported(page);
   await openTab(page, '看板');
@@ -297,7 +172,7 @@ test('当前模式：看板开关切到追双牌，全程序跟着换', async ({
 
 test('导入报告：性格不在目标池的合格公也会被列出', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-offtarget-stud.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-offtarget-stud.json']);
   // 2026-10-25 起导入后停在导入页；「本次新增」卡片在看板（2026-10-05 移至看板）
   await waitImported(page);
   await openTab(page, '看板');
@@ -313,7 +188,7 @@ test('导入报告：性格不在目标池的合格公也会被列出', async ({
 
 test('账号筛选：三页共用一份，取消账号后看板进度跟着变', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles([
+  await importFixtures(page, [
     'src/domain/__fixtures__/backup-sample.json',
     'src/domain/__fixtures__/backup-sample-2.json',
   ]);
@@ -344,7 +219,7 @@ test('账号筛选：三页共用一份，取消账号后看板进度跟着变',
 
 test('种公全收集卡可点：跳收集 · 种公阵列', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await expect(page.getByText('还没有数据')).toHaveCount(0);
   await waitImported(page);
   await openTab(page, '看板');
@@ -361,7 +236,7 @@ test('种公全收集卡可点：跳收集 · 种公阵列', async ({ page }) =>
 
 test('跳转后落在目标页顶部：切页签会重置滚动位置', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
+  await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
   await waitImported(page);
   // 2026-11-22：看板已经短到一屏装得下（滚不动），改用收集 · 母本这种长页来验「切页签回到顶部」
   await openTab(page, '收集');
@@ -376,37 +251,31 @@ test('跳转后落在目标页顶部：切页签会重置滚动位置', async ({
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test('一次导入两个文件后账号数显示为 2', async ({ page }) => {
+test('一次入库两个文件后账号数显示为 2', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('import-input').setInputFiles([
+  await importFixtures(page, [
     'src/domain/__fixtures__/backup-sample.json',
     'src/domain/__fixtures__/backup-sample-2.json',
   ]);
-  // 导入后停在导入页（不再自动跳看板），「N 个账号」就在这里
-  await waitImported(page);
-  await expect(page.getByText('2 个账号')).toBeVisible();
+  // 「N 个账号」那行随导入面板删除；账号数改从看板的账号筛选条读
+  await openTab(page, '看板');
+  await expect(page.getByTestId('dashboard-account-summary')).toContainText('(2/2)');
 });
 
 test.describe('本次导入新增', () => {
   test('按账号分组，只列合要求的精灵并标明盒子位置（卡片在看板）', async ({ page }) => {
     await page.goto('/');
-    await page.getByTestId('import-input').setInputFiles([
-      'src/domain/__fixtures__/backup-sample.json',
-      'src/domain/__fixtures__/backup-sample-2.json',
-    ]);
-    // 2026-10-25 起导入后停在导入页；卡片仍在看板（2026-10-05 移至看板）
-    await waitImported(page);
+    // CLEAN2：一次多选文件的入口已删除；多账号的合并展示由单测覆盖，这里验一份数据的明细
+    await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
     await openTab(page, '看板');
 
     const card = page.getByTestId('import-result');
     await expect(card).toBeVisible();
 
-    // 按账号分组：测试甲有货、测试乙没有
+    // 按账号分组：一份数据只有一个账号块
     const accounts = card.getByTestId('import-result-account');
-    await expect(accounts).toHaveCount(2);
+    await expect(accounts).toHaveCount(1);
     await expect(accounts.first()).toContainText('测试甲');
-    await expect(accounts.nth(1)).toContainText('测试乙');
-    await expect(accounts.nth(1)).toContainText('没有新增符合要求的精灵');
 
     // 火花：大块头 + 100dB + 公 + 固执 → 满分大婉种公；标出蛋组与盒子位置
     const stud = card.getByTestId('import-result-stud').first();
@@ -426,26 +295,23 @@ test.describe('本次导入新增', () => {
 
   test('同一份数据再导入一次 → 没有新增（不会把老精灵当成新抓的）', async ({ page }) => {
     await page.goto('/');
-    await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-    // 导入后停在导入页；「本次新增」卡片在看板
-    await waitImported(page);
+    await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
+    // 入库后停在「我的」；「本次新增」卡片在看板
     await openTab(page, '看板');
     await expect(page.getByTestId('import-result-stud').first()).toBeVisible();
 
-    // 第二次导入的入口在「导入数据」页，导入完再回看板看结果
+    // 再走一次采集入库（同一份数据），回看板看结果
     await openTab(page, '我的');
-    await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-    await waitImported(page);
+    await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
     await openTab(page, '看板');
     await expect(page.getByTestId('import-result-empty')).toBeVisible();
     await expect(page.getByTestId('import-result-stud')).toHaveCount(0);
   });
 
-  test('卡片可以收起再展开（收起态跨页签保持；刷新后历史仍在）', async ({ page }) => {
+  test('卡片可以收起再展开（收起态跨页签保持）', async ({ page }) => {
     await page.goto('/');
-    await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-    // 导入后停在导入页；卡片在看板
-    await waitImported(page);
+    await importFixtures(page, ['src/domain/__fixtures__/backup-sample.json']);
+    // 入库后停在「我的」；卡片在看板
     await openTab(page, '看板');
     await expect(page.getByTestId('import-result')).toBeVisible();
 
@@ -456,7 +322,7 @@ test.describe('本次导入新增', () => {
 
     // 切到别的页签再回看板：仍保持收起（以前展开态在组件里，回来会自己弹开）
     await openTab(page, '收集');
-  await page.getByTestId('collection-kind-studs').click();
+    await page.getByTestId('collection-kind-studs').click();
     await openTab(page, '看板');
     await expect(page.getByTestId('import-result-dismiss')).toHaveAttribute('aria-expanded', 'false');
     await expect(page.getByTestId('import-result-stud')).toHaveCount(0);
@@ -464,36 +330,5 @@ test.describe('本次导入新增', () => {
     // 再展开：内容回来
     await page.getByTestId('import-result-dismiss').click();
     await expect(page.getByTestId('import-result-stud').first()).toBeVisible();
-  });
-
-  test('历史在看板不出现，只留在「导入数据」页；可点开看某次导入明细', async ({ page }) => {
-    await page.goto('/');
-    await page.getByTestId('import-input').setInputFiles('src/domain/__fixtures__/backup-sample.json');
-    // 导入后停在导入页；卡片在看板
-    await waitImported(page);
-    await openTab(page, '看板');
-    await expect(page.getByTestId('import-result-stud').first()).toBeVisible();
-
-    // 刷新 = 重开应用：内存里的最新结果没了 → 看板不再显示「本次新增」卡片
-    await page.reload();
-    await expect(page.getByRole('heading', { name: '种公全收集' })).toBeVisible();
-    await expect(page.getByTestId('import-result')).toHaveCount(0);
-
-    // 历史入口在看「导入数据」页：卡片渲染，只提供历史，不重新展示最新内容
-    await openTab(page, '我的');
-    const card = page.getByTestId('import-result');
-    await expect(card).toBeVisible();
-    await expect(card.getByRole('heading', { name: /导入历史/ })).toBeVisible();
-    await expect(card.getByTestId('import-result-stud')).toHaveCount(0);
-
-    // 点历史条目 → 明细展开（能看到账号与精灵）
-    await card.getByTestId('import-result-entry').first().click();
-    const detail = card.getByTestId('import-result-history-detail');
-    await expect(detail).toBeVisible();
-    await expect(detail.getByTestId('import-result-stud').first()).toContainText('火花');
-
-    // 再点收起
-    await card.getByTestId('import-result-entry').first().click();
-    await expect(card.getByTestId('import-result-history-detail')).toHaveCount(0);
   });
 });

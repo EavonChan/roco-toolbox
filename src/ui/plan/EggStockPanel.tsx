@@ -84,20 +84,10 @@ const eggGuideTable = eggGuide as Record<string, EggGuideEntry>;
 function eggGuideOf(gameId:number):EggGuideEntry|null {
   return eggGuideTable[String(gameId)] ?? null;
 }
-/** 详情只展示大块头区间与档数；有实测重量时在末尾补档位。 */
-function eggGuideText(entry:EggGuideEntry, weightGrams?:number):string {
+/** 详情只展示大块头区间与档数（2026-11-28 用户口径：不要「实测 X kg 某档」后缀）。 */
+function eggGuideText(entry:EggGuideEntry):string {
   const kg = (value:number) => value.toFixed(3);
-  let text = `大块头 ${kg(entry.big)}–${kg(entry.max)}（${entry.ranges} 档）`;
-  if (typeof weightGrams === 'number' && Number.isFinite(weightGrams) && weightGrams > 0) {
-    const weight = weightGrams / 1000;
-    const band = weight >= entry.max ? '满重'
-      : weight >= entry.big ? '大块头'
-      : weight <= entry.min ? '满轻'
-      : weight <= entry.small ? '小不点'
-      : '普通';
-    text += ` · 实测 ${formatEggWeight(weightGrams)} ${band}`;
-  }
-  return text;
+  return `大块头 ${kg(entry.big)}–${kg(entry.max)}（${entry.ranges} 档）`;
 }
 
 export function EggArt({ eggGameId, name, size=43, kind='ordinary', itemConfId }: {
@@ -178,7 +168,7 @@ export function EggStockPanel({ eggs, species, busy, mutate, collapsibleFilterRa
     .sort((a,b)=>Number(selfProduced(b))-Number(selfProduced(a))||Number(isGreenNestEgg(b))-Number(isGreenNestEgg(a)));
   const egg=eggs.find(e=>e.id===selected);
   const guide=egg?eggGuideOf(egg.eggGameId):null;
-  const guideText=guide&&egg?eggGuideText(guide,egg.weightGrams):null;
+  const guideText=guide&&egg?eggGuideText(guide):null;
   /**
    * 待认领 = 家蛋行已从家园完整快照消失（`claimPending`），但还没认出对应背包蛋。
    * 计数按「当前账号 + 当前角色」来（用户口径 2026-11-27），换角色横幅跟着变。

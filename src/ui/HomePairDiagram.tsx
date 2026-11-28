@@ -28,7 +28,7 @@ const speciesByGameId = new Map(species.map((entry) => [entry.gameId, entry]));
  */
 const UNKNOWN_PET_NAME = '未知精灵';
 /** 住户和背包对不上时的提示（用户看到的名字只到物种，个体数据还没有） */
-const REFRESH_HINT = '完整导入一次抓包即可补全';
+const REFRESH_HINT = '完整采集一次抓包即可补全';
 
 const speciesNameOfBaseId = (baseId: string | undefined): string => {
   if (!baseId) return '';

@@ -18,7 +18,8 @@ import type { AccountSnapshot } from '../domain/parseBackup';
 import { listSnapshots, writeSnapshots } from '../storage/snapshots';
 import { refreshSnapshots } from '../storage/snapshotStore';
 import { API_BASE } from './analytics';
-import { type CloudMeta, authFetch, markSynced, readSyncedVersion } from './session';
+import { PROFILE_AVATAR_KEY, avatarValueBelongsTo } from './profileAvatar';
+import { type CloudMeta, authFetch, markSynced, readAccountId, readSyncedVersion } from './session';
 
 /** 跟着云端走的偏好键（其余 localStorage 键不动） */
 export const SYNCED_PREF_KEYS = [
@@ -30,6 +31,7 @@ export const SYNCED_PREF_KEYS = [
   'roco.excludedAccounts',
   'roco.petPageSize',
   'roco.copyPreviewOff',
+  PROFILE_AVATAR_KEY,
   NATURE_OVERRIDES_KEY,
   NATURE_OVERRIDES_UPDATED_AT_KEY,
 ] as const;
@@ -92,9 +94,13 @@ function fromBase64(text: string): Uint8Array {
 export async function buildSnapshot(): Promise<CloudSnapshot> {
   const accounts = await listSnapshots();
   const prefs: Record<string, string> = {};
+  const accountId = readAccountId();
   for (const key of SYNCED_PREF_KEYS) {
     const value = window.localStorage.getItem(key);
-    if (value !== null) prefs[key] = value;
+    if (value === null) continue;
+    // 头像值里带账号 id：不是当前账号的头像不上传，免得把上一个人的头像写进这个账号的云端
+    if (key === PROFILE_AVATAR_KEY && !avatarValueBelongsTo(value, accountId)) continue;
+    prefs[key] = value;
   }
   return {
     type: SNAPSHOT_TYPE,
@@ -201,6 +207,16 @@ export async function applySnapshot(
     if (typeof value !== 'string') continue;
     // 修改时间键与覆盖表成对处理，不单独参与下面的「补本机缺的键」逻辑
     if (key === NATURE_OVERRIDES_UPDATED_AT_KEY) continue;
+    // 头像按账号归属：只接受当前账号的云端值，且以云端为准（点头像换完会立刻 PUT 上去，
+    // 所以云端永远是最新那份；换设备/换回账号时靠它恢复）。别的账号的值直接跳过。
+    if (key === PROFILE_AVATAR_KEY) {
+      if (!avatarValueBelongsTo(value, readAccountId())) continue;
+      const current = window.localStorage.getItem(key);
+      if (current === value) continue;
+      window.localStorage.setItem(key, value);
+      prefsAdopted.push(key);
+      continue;
+    }
     if (key === NATURE_OVERRIDES_KEY) {
       const current = window.localStorage.getItem(key);
       const localAt = timestampOf(window.localStorage.getItem(NATURE_OVERRIDES_UPDATED_AT_KEY));

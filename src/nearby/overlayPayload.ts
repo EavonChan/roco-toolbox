@@ -90,6 +90,11 @@ export interface NearbyOverlayPayload extends DesktopOverlayPayload {
   pets: NearbyOverlayPet[];
   /** 采集中才显示面板；停止采集即收起隐藏 */
   visible: boolean;
+  /**
+   * 数据已停更（采集还在，但超过 TTL 没刷新）。
+   * 壳据此保留最后一帧并显示「已暂停 · 采集未在刷新」，而不是把窗口清空（2026-11-28）。
+   */
+  paused: boolean;
   /** 附近精灵总数（截断前的数量，含未命中目标的普通精灵） */
   total: number;
   /** 命中目标总数（截断前；列表与「还有 N 只」都按它算） */
@@ -156,6 +161,11 @@ export interface NearbyOverlaySource {
   hasKey: boolean;
   /** 最近一帧附近快照；null 表示还没收到数据 */
   snapshot: NearbySnapshot | null;
+  /**
+   * 快照已停更（超过 TTL 没刷新）：仍然按最后一帧组装，只把 paused 传给壳（2026-11-28）。
+   * 缺省 false，兼容旧调用方 / 旧测试。
+   */
+  paused?: boolean;
   /** 推送时间；不传时用快照的更新时间 */
   now?: number;
   /** 附近页顶部总范围档位；不传时读共享状态（与页面同一份） */
@@ -258,6 +268,7 @@ export function buildNearbyOverlayPayload(source: NearbyOverlaySource): NearbyOv
   return {
     visible: capturing,
     capturing,
+    paused: source.paused === true,
     hasKey,
     scene: snapshot?.scene ?? null,
     self: radar.origin,

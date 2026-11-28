@@ -175,7 +175,7 @@ export function MotherResourceEditor({
 
       {snapshots.length === 0 ? (
         <div className="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500" data-testid="mother-no-local-data">
-          本机还没有导入任何账号。先导入游戏数据，或在导入页用云同步拉齐。
+          本机还没有任何账号数据。先采集一次，或登录同一账号同步。
           {published ? '已发布的资源不会因此被撤回。' : ''}
           {onGoImport ?? onGoAccount ? (
             <button
@@ -183,7 +183,7 @@ export function MotherResourceEditor({
               onClick={onGoImport ?? onGoAccount}
               className="mt-2 block min-h-[30px] rounded-lg border border-emerald-500 px-2.5 text-xs text-emerald-700"
             >
-              去导入数据
+              去采集 / 同步
             </button>
           ) : null}
         </div>
@@ -251,7 +251,7 @@ export function MotherResourceEditor({
             className="mt-0.5 text-[11px] leading-snug text-slate-400"
             data-testid="mother-add-account-hint"
           >
-            需要先用这个游戏号在小布助手里导入一次数据，它才会出现在上面。
+            需要先用这个游戏号采集一次（或登录同步），它才会出现在上面。
           </p>
         </div>
       ) : null}

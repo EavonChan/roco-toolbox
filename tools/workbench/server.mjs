@@ -47,6 +47,7 @@ const DEFAULT_BOARD = path.join(REPO_ROOT, 'docs', '任务看板.md');
 const DEFAULT_LEDGER = path.join(REPO_ROOT, 'docs', '会话台账.md');
 const DEFAULT_PROGRESS = path.join(REPO_ROOT, 'docs', '进度');
 const DEFAULT_REPORTS = path.join(REPO_ROOT, 'docs', '汇报');
+const DEFAULT_DECISIONS = path.join(REPO_ROOT, 'docs', '待决策.md');
 const BOARD_FILE = process.env.WORKBENCH_BOARD
   ? path.resolve(process.env.WORKBENCH_BOARD)
   : DEFAULT_BOARD;
@@ -59,7 +60,13 @@ const PROGRESS_DIR = process.env.WORKBENCH_PROGRESS
 const REPORTS_DIR = process.env.WORKBENCH_REPORTS
   ? path.resolve(process.env.WORKBENCH_REPORTS)
   : DEFAULT_REPORTS;
+// 「待决策」那一页（Q-xxx 选项的来源）。工作台只读它，绝不回写。
+const DECISIONS_DOC = process.env.WORKBENCH_DECISIONS
+  ? path.resolve(process.env.WORKBENCH_DECISIONS)
+  : DEFAULT_DECISIONS;
 const APPROVALS_FILE = path.join(PROGRESS_DIR, '审批.jsonl');
+// 决策/评论：**只追加**，和审批.jsonl 分开放，互不影响格式
+const DECISIONS_FILE = path.join(PROGRESS_DIR, '决策.jsonl');
 const SNAPSHOT_DIR = path.join(PROGRESS_DIR, 'snapshots');
 
 const STATIC_DIR = HERE;
@@ -123,6 +130,35 @@ class HttpError extends Error {
 
 const stripMd = (s) => s.replace(/\*\*/g, '').replace(/`/g, '').trim();
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+
+/** 看板行的决策标识：标题的稳定 hash。状态变了、行挪到别的列，历史决策还认得出是哪一条。 */
+const decisionIdOf = (title) => 'b' + createHash('sha1').update(title || '').digest('hex').slice(0, 10);
+
+/**
+ * 「选项」格 → 选项数组。写法：`A 锁 720（推荐）, B 三栏`
+ *   - 中文逗号、英文逗号、顿号、分号都当分隔符；
+ *   - 每一项前面的一两个字母/数字是提交时用的 key；
+ *   - 带「推荐」的单独标出来，UI 只做次要高亮；
+ *   - 空值 / `—` / 没这一列 → 返回空数组（不报错）。
+ * 没有前缀字母的项退化成"整段文字就是 key"，这样写了选项也不至于点不了。
+ */
+function parseOptions(cell) {
+  const raw = stripMd(cell || '');
+  if (!raw || /^[—–-]+$/.test(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const part of raw.split(/[,，、;；]/)) {
+    const text = part.trim();
+    if (!text) continue;
+    const m = /^([A-Za-z0-9]{1,2})[\s.．、:：)）-]+(.+)$/.exec(text);
+    const key = (m ? m[1] : text).toUpperCase();
+    const label = (m ? m[2] : text).trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, label, text, recommended: /推荐/.test(text) });
+  }
+  return out;
+}
 const isTableRow = (line) => /^\s*\|/.test(line);
 const isSeparator = (line) => /^\s*\|?[\s:|-]+\|?\s*$/.test(line) && line.includes('-');
 const relPath = (file) => {
@@ -234,6 +270,7 @@ function roleOf(header) {
   if (/^详情|详情链接|^链接$/.test(h)) return 'link';
   if (/代号|编号|^id$/i.test(h)) return 'code';
   if (h === '任务' || h === '事项' || h === '项') return 'title';
+  if (/选\s*项|可选/.test(h)) return 'option';
   if (/派给|归属|负责|执行/.test(h)) return 'assignee';
   if (/开始|日期|时间/.test(h)) return 'time';
   if (/进展|结果|等什么|备注|内容|说明/.test(h)) return 'detail';
@@ -302,6 +339,7 @@ function parseBoard(text, fallbackTime) {
     const nextIdx = roles.indexOf('next');
     const detailIdx = roles.indexOf('detail');
     const linkIdx = roles.indexOf('link');
+    const optionIdx = roles.indexOf('option');
     const hasExplicitCode = codeIdx >= 0 && titleIdx >= 0 && titleIdx !== codeIdx;
 
     for (const { cells, lineIndex, raw } of dataRows) {
@@ -356,8 +394,10 @@ function parseBoard(text, fallbackTime) {
       const task = {
         id: `${section.columnKey}-${col.tasks.length + 1}`,
         key,
+        decideId: decisionIdOf(rawTitle),
         code: derivedCode,
         title: rawTitle,
+        options: optionIdx >= 0 ? parseOptions(cells[optionIdx] || '') : [],
         assignee: get('assignee'),
         status: status.symbol,
         statusKey: status.key,
@@ -415,6 +455,84 @@ function parseBoard(text, fallbackTime) {
     declaredUpdatedAt: declaredUpdatedAt ? declaredUpdatedAt.toISOString() : null,
     docDate,
   };
+}
+
+// ───────────────────────────── Markdown 解析：待决策（Q-xxx） ─────────────────────────────
+
+function decisionRoleOf(header) {
+  const h = header.replace(/[（(][^）)]*[）)]/g, '').trim();
+  if (/编号|代号|^id$/i.test(h)) return 'code';
+  if (/选\s*项|可选/.test(h)) return 'option';
+  if (/^问题$|^事项$|^项$|^待定$/.test(h)) return 'title';
+  if (/谁问|提出|来源/.test(h)) return 'asker';
+  if (/建议|结论|答复/.test(h)) return 'suggestion';
+  if (/状态/.test(h)) return 'status';
+  if (/时间|日期/.test(h)) return 'time';
+  return null;
+}
+
+/**
+ * 解析 docs/待决策.md：只看"有编号 + 有问题"的表。
+ * 状态说明 / 规则这种表没有编号列，直接跳过，不报错。
+ * 关没关：状态里有 🟢 / 已关闭，或整张表在「已关闭」章节下。
+ */
+function parseDecisionsDoc(text) {
+  const lines = text.split(/\r?\n/);
+  let heading = null;
+  const items = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^##\s+/.test(line)) {
+      heading = line.replace(/^##\s+/, '').trim();
+      continue;
+    }
+    if (!heading || !isTableRow(line) || isSeparator(line)) continue;
+    if (i + 1 >= lines.length || !isSeparator(lines[i + 1])) continue;
+
+    const header = splitRow(line);
+    const roles = header.map(decisionRoleOf);
+    const codeIdx = roles.indexOf('code');
+    const titleIdx = roles.indexOf('title');
+    if (codeIdx < 0 || titleIdx < 0) continue;
+    const optionIdx = roles.indexOf('option');
+    const askerIdx = roles.indexOf('asker');
+    const suggestionIdx = roles.indexOf('suggestion');
+    const statusIdx = roles.indexOf('status');
+    const timeIdx = roles.indexOf('time');
+    const closedByHeading = /已关闭|已收口/.test(heading);
+    const waitingByHeading = /等你|拍板/.test(heading);
+
+    let j = i + 2;
+    while (j < lines.length) {
+      if (!isTableRow(lines[j]) || isSeparator(lines[j])) break;
+      const cells = splitRow(lines[j]);
+      const id = stripMd(cells[codeIdx] || '');
+      const title = stripMd(cells[titleIdx] || '');
+      if (id && title) {
+        const statusText = statusIdx >= 0 ? stripMd(cells[statusIdx] || '') : '';
+        const sym = firstSymbol(statusText);
+        const closed = closedByHeading || /已关闭/.test(statusText) || (sym && sym.key === 'done');
+        const options = optionIdx >= 0 ? parseOptions(cells[optionIdx] || '') : [];
+        items.push({
+          id,
+          title,
+          asker: askerIdx >= 0 ? stripMd(cells[askerIdx] || '') : '',
+          suggestion: suggestionIdx >= 0 ? stripMd(cells[suggestionIdx] || '') : '',
+          status: statusText,
+          statusKey: sym ? sym.key : (closed ? 'done' : 'waiting'),
+          closed: !!closed,
+          // 只有「等你拍板」那几节（或自己声明了选项的行）才当成要点的卡片
+          waiting: !closed && (waitingByHeading || options.length > 0),
+          at: timeIdx >= 0 ? stripMd(cells[timeIdx] || '') : '',
+          options,
+          section: heading,
+        });
+      }
+      j += 1;
+    }
+    i = j - 1;
+  }
+  return items;
 }
 
 // ───────────────────────────── Markdown 解析：会话台账 ─────────────────────────────
@@ -781,11 +899,149 @@ async function sendReport(res, rawPath) {
   res.end(buf);
 }
 
+// ───────────────────────────── 决策日志（只追加） ─────────────────────────────
+
+/** 决策/评论：一行一个事件，只追加。文件不在就是"还没人点过"，不报错。 */
+async function readDecisions() {
+  let text = '';
+  try {
+    text = await readFile(DECISIONS_FILE, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return new Map();
+    throw err;
+  }
+  const latest = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    const s = line.trim();
+    if (!s) continue;
+    let rec = null;
+    try { rec = JSON.parse(s); } catch { continue; }
+    if (!rec || !rec.id) continue;
+    latest.set(String(rec.id), rec); // 后写的覆盖先写的：文件顺序就是时间顺序
+  }
+  return latest;
+}
+
+async function appendDecision(record) {
+  await mkdir(PROGRESS_DIR, { recursive: true });
+  await appendFile(DECISIONS_FILE, JSON.stringify(record) + '\n', 'utf8');
+}
+
+/** 可决策的条目：看板每一行（id = 标题稳定 hash）+ 待决策.md 的 Q-xxx。选项只认 md 里写的。 */
+async function decisionTargets() {
+  const [boardText, decisionsText] = await Promise.all([
+    readFile(BOARD_FILE, 'utf8'),
+    readFile(DECISIONS_DOC, 'utf8').catch((err) => {
+      if (err && err.code === 'ENOENT') return null;
+      throw err;
+    }),
+  ]);
+  const targets = new Map();
+  const board = parseBoard(boardText, new Date());
+  for (const col of board.columns) {
+    for (const task of col.tasks) {
+      targets.set(task.decideId, {
+        id: task.decideId,
+        title: task.title,
+        options: task.options,
+        source: relPath(BOARD_FILE),
+        kind: 'board',
+      });
+    }
+  }
+  if (decisionsText != null) {
+    for (const item of parseDecisionsDoc(decisionsText)) {
+      if (targets.has(item.id)) continue;
+      targets.set(item.id, {
+        id: item.id,
+        title: item.title,
+        options: item.options,
+        source: relPath(DECISIONS_DOC),
+        kind: 'doc',
+      });
+    }
+  }
+  return targets;
+}
+
+/** 「等你 / 待决策」清单：待决策.md 里还开着的那几条，带上最新决策/评论。 */
+async function pendingDecisionItems(decisions) {
+  let text = null;
+  try {
+    text = await readFile(DECISIONS_DOC, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return { source: relPath(DECISIONS_DOC), available: false, count: 0, items: [] };
+    throw err;
+  }
+  const items = parseDecisionsDoc(text)
+    .filter((item) => item.waiting && !item.closed)
+    .map((item) => ({ ...item, source: relPath(DECISIONS_DOC), decision: decisions.get(item.id) || null }));
+  return {
+    source: relPath(DECISIONS_DOC),
+    absolutePath: DECISIONS_DOC,
+    available: true,
+    count: items.length,
+    log: relPath(DECISIONS_FILE),
+    items,
+  };
+}
+
+async function writeDecision({ id, option, note }) {
+  const targets = await decisionTargets();
+  const target = targets.get(id);
+  if (!target) {
+    throw new HttpError(404, 'row_not_found',
+      `md 里找不到要决策的这一条（id=${id}）。可能刚被改过，等面板刷新后再点一次。`);
+  }
+  const declared = target.options.map((o) => o.key);
+  if (option && !declared.includes(option)) {
+    throw new HttpError(400, 'option_not_declared',
+      `「${id}」没有声明选项 ${option}。md 里声明的是：${declared.length ? declared.join('、') : '（空）'}（来源 ${target.source}）`,
+      { declared, options: target.options, source: target.source });
+  }
+  if (!option && !note) {
+    throw new HttpError(400, 'empty_decision', 'option 与 note 至少要给一个：只点选项 = 决策，只填一句 = 评论');
+  }
+
+  const record = { at: new Date().toISOString(), kind: option ? 'decision' : 'comment', id };
+  if (option) record.option = option;
+  record.note = note || null;
+  record.source = target.source;
+
+  try {
+    await appendDecision(record);
+  } catch (err) {
+    throw new HttpError(500, 'log_failed',
+      `决策日志写入失败：${err.message}`, { path: relPath(DECISIONS_FILE) });
+  }
+
+  return {
+    changed: true,
+    record,
+    decision: record,
+    id,
+    title: target.title,
+    option: option || null,
+    source: target.source,
+    options: target.options,
+    path: relPath(DECISIONS_FILE),
+  };
+}
+
 // ───────────────────────────── /api/board ─────────────────────────────
 
 async function boardPayload() {
-  const [text, info] = await Promise.all([readFile(BOARD_FILE, 'utf8'), stat(BOARD_FILE)]);
+  const [text, info, decisions] = await Promise.all([
+    readFile(BOARD_FILE, 'utf8'),
+    stat(BOARD_FILE),
+    readDecisions(),
+  ]);
   const parsed = parseBoard(text, info.mtime);
+  // 每张卡带上最新决策/评论（只读：来源是 决策.jsonl，md 一个字都不动）
+  for (const col of parsed.columns) {
+    for (const task of col.tasks) task.decision = decisions.get(task.decideId) || null;
+  }
+  const pending = await pendingDecisionItems(decisions);
   const repo = repoInfo();
   repo.version = await readVersion();
   repo.boardRelativePath = relPath(BOARD_FILE);
@@ -810,6 +1066,12 @@ async function boardPayload() {
     counts: parsed.counts,
     columns: parsed.columns,
     legend: parsed.legend,
+    pendingDecisions: pending,
+    decisionsLog: {
+      path: relPath(DECISIONS_FILE),
+      count: decisions.size,
+      readPolicy: '每次请求重读 JSONL，不缓存',
+    },
     approvals: await approvalsTail(5),
   };
 }
@@ -1110,6 +1372,28 @@ async function approveHandler(req, res) {
   if (!id && !key) throw new HttpError(400, 'missing_id', '缺少 id（任务标识）');
 
   const result = await withLock(() => writeApproval({ id, key, action, note: note.trim() }));
+  sendJson(res, 200, { schema: 2, ok: true, ...result });
+}
+
+// ───────────────────────────── POST /api/decide（只追加 决策.jsonl） ─────────────
+/**
+ * 快速决策 + 评论：md 仍是唯一权威，这里只往事件流写一行，**不碰任何 md**。
+ *   { id, option?: 'A', note?: string }
+ *   - option 必须在该行 md 声明的「选项」里；
+ *   - option 与 note 至少一个非空（只填备注 = 评论）；
+ *   - 与审批共用同一把串行锁（withLock），不会两条写入交叉。
+ */
+async function decideHandler(req, res) {
+  const body = await readJsonBody(req);
+  const id = body.id == null ? '' : String(body.id).trim();
+  const option = body.option == null ? '' : String(body.option).trim().toUpperCase();
+  const note = body.note == null ? '' : String(body.note).trim();
+  if (!id) throw new HttpError(400, 'missing_id', '缺少 id（Q-xxx 或看板行的 decideId）');
+  if (note.length > 500) throw new HttpError(400, 'note_too_long', 'note 最多 500 字');
+  if (!option && !note) {
+    throw new HttpError(400, 'empty_decision', 'option 与 note 至少要给一个：只点选项 = 决策，只填一句 = 评论');
+  }
+  const result = await withLock(() => writeDecision({ id, option, note }));
   sendJson(res, 200, { schema: 2, ok: true, ...result });
 }
 
@@ -1572,6 +1856,15 @@ const server = createServer(async (req, res) => {
       await approveHandler(req, res);
       return;
     }
+    if (url.pathname === '/api/decide') {
+      if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        sendText(res, 405, 'method not allowed');
+        return;
+      }
+      await decideHandler(req, res);
+      return;
+    }
     // 计时器有自己的方法表：state 收 GET，其余收 POST（POST 一律回当前状态）
     if (url.pathname.startsWith('/api/timer')) {
       await timerRoute(req, res, url.pathname);
@@ -1606,7 +1899,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) {
       throw new HttpError(400, 'bad_api_path',
         `没有这个接口：${url.pathname}。工作台只认 GET /api/board、GET /api/sessions、` +
-        'GET /api/reports、GET /api/reports/<文件名>、POST /api/approve，' +
+        'GET /api/reports、GET /api/reports/<文件名>、POST /api/approve、POST /api/decide，' +
         '以及 /api/timer/ 下的 state / start / switch / stop / heartbeat');
     }
     await serveStatic(res, url.pathname);
@@ -1619,6 +1912,8 @@ const server = createServer(async (req, res) => {
         ? `无法读取会话台账：${LEDGER_FILE}`
         : url.pathname === '/api/approve'
           ? `写看板失败：${BOARD_FILE}`
+          : url.pathname === '/api/decide'
+            ? `写决策日志失败：${DECISIONS_FILE}`
           : `无法读取看板：${BOARD_FILE}`;
     const { status, body } = errorBody(err, hint);
     process.stderr.write(`[workbench] ${url.pathname} → ${status} ${body.error}: ${body.message}\n`);
@@ -1646,8 +1941,10 @@ function listen(port, attempt) {
     console.log(`  会话数据源      ${LEDGER_FILE}`);
     console.log(`  汇报目录        ${REPORTS_DIR}`);
     console.log(`  审批日志/快照   ${APPROVALS_FILE}`);
+    console.log(`  决策日志        ${DECISIONS_FILE}`);
+    console.log(`  决策数据源      ${DECISIONS_DOC}`);
     console.log(`  工时数据        ${TIMER_DIR}（${tilde(TIMER_DIR)}，仓库外、只存本机）`);
-    console.log(`  写入策略        审批 POST /api/approve；计时 POST /api/timer/*（只追加日志）`);
+    console.log(`  写入策略        审批 POST /api/approve（改 md）；决策 POST /api/decide（只追加 JSONL）；计时 POST /api/timer/*（只追加日志）`);
     console.log(`  读取策略        每次请求重读（无缓存、只读）`);
     console.log(`  端口            ${actual}${actual !== START_PORT ? `（${START_PORT} 被占用，自动顺延）` : ''}`);
     console.log('');

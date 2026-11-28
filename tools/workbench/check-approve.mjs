@@ -420,7 +420,13 @@ try {
 
         const mdAfter = await readFile(siteA.board, 'utf8');
         const diff = diffLines(mdBefore, mdAfter);
-        const lineOk = diff.length === 1 && SYMBOL_RE.test(diff[0].after) && diff[0].after.includes('🟢') && diff[0].before.includes('🟡');
+        // 两种合法写法：行内原有 🟡 → 换成 🟢；行内本来没符号（「状态」列写的是「在跑」这类文字）→ 补一个 🟢。
+        // 两种都要求"只动这一个符号、只动这一行"。
+        const beforeLine = diff[0] ? diff[0].before : '';
+        const afterLine = diff[0] ? diff[0].after : '';
+        const onlySymbolAdded = afterLine.replace(/🟢\s?/, '') === beforeLine;
+        const symbolReplaced = beforeLine.includes('🟡') && afterLine.replace('🟢', '🟡') === beforeLine;
+        const lineOk = diff.length === 1 && afterLine.includes('🟢') && (onlySymbolAdded || symbolReplaced);
         if (lineOk) ok(`看板只有 1 行变化：${diff[0].before.trim().slice(0, 46)}… → 该行变 🟢`);
         else bad(`看板变化不对（${diff.length} 行）：${JSON.stringify(diff.map((d) => d.after)).slice(0, 200)}`);
         const rowsAfter = countBoardRows(mdAfter);

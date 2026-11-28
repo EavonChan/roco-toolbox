@@ -694,7 +694,7 @@ public final class NearbyPanelController {
         boolean hasMap = showNearby && hasMap(model);
         int hitHeight = !showBattle ? 0 : (hasHit ? NearbyOverlayModel.HIT_HEIGHT : NearbyOverlayModel.HIT_EMPTY_HEIGHT);
         int panelHeight = NearbyOverlayModel.panelHeight(
-            showBattle, hasHit, showNearby, rows, hasMap, hidden);
+            showBattle, hasHit, showNearby, rows, hasMap, hidden, model.paused);
 
         // ── 命中区 ─────────────────────────────────────
         hitBox.setVisibility(showBattle ? View.VISIBLE : View.GONE);
@@ -746,9 +746,11 @@ public final class NearbyPanelController {
             } else {
                 perfSignatureSkips++;
             }
-            footView.setVisibility(hidden > 0 ? View.VISIBLE : View.GONE);
-            if (hidden > 0) {
-                footView.setText(model.footText());
+            // 停更时脚注位改成状态行：数据照旧保留，不把窗口清空（2026-11-28）
+            boolean showFoot = hidden > 0 || model.paused;
+            footView.setVisibility(showFoot ? View.VISIBLE : View.GONE);
+            if (showFoot) {
+                footView.setText(model.paused ? NearbyOverlayModel.STATUS_PAUSED : model.footText());
                 footView.setTextColor(theme.muted);
                 setFrame(footView, 8, panelHeight - 20,
                     NearbyOverlayModel.PANEL_WIDTH - 16, NearbyOverlayModel.FOOT_TEXT_HEIGHT);

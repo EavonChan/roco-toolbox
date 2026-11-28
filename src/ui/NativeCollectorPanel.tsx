@@ -171,7 +171,7 @@ export function NativeCollectorPanel() {
         <p className="mt-1 text-xs text-slate-500">
           {desktop
             ? '桌面版采集组件没有加载成功，请重启小布助手；仍不行请更新到最新安装包。'
-            : '当前环境没有内置采集（只在安卓版小布助手安装包内提供）。网页版请用下面的「导入游戏数据」手选抓包 / 备份文件；装了安卓版仍看不到，请更新安装包。'}
+            : '当前环境没有内置采集（只在安卓版小布助手安装包内提供）。网页版只做查看：到电脑版 / 安卓版采集，或登录同一账号同步；装了安卓版仍看不到，请更新安装包。'}
         </p>
       </section>
     );
@@ -202,7 +202,7 @@ export function NativeCollectorPanel() {
         {!state.supported ? <StateNotice kind="unknown" title={desktop ? '没有找到 Npcap' : '内置采集需要 Android 8 或以上'}
           description={desktop
             ? '实时采集依赖 Npcap 抓本机网卡。请先安装 Npcap（安装时勾选 WinPcap API 兼容模式），装完重启小布助手。'
-            : '当前手机仍可手动导入已有文件。'}
+            : '当前手机系统版本过低，无法使用内置采集；换一台系统版本更高的手机，或登录同一账号同步。'}
           action={desktop
             ? <a className="text-emerald-700 underline" href="https://npcap.com/#download" target="_blank" rel="noreferrer">下载 Npcap</a>
             : undefined} /> : <>

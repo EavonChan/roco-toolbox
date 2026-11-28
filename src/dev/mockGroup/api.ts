@@ -152,7 +152,9 @@ export function handleMockApi(
   const body = asRecord(rawBody);
 
   if (pathname === '/api/me' && method === 'GET') {
-    return ok({ accountId: state.me, createdAt: Date.now() - 86_400_000, username: 'mock', snapshot: null });
+    // 用户名用群里的显示名（2026-11-28）：头像是「用户名首字 + 稳定底色」，
+    // 预览稿里出现 'm' 这种拉丁首字不代表真实效果。
+    return ok({ accountId: state.me, createdAt: Date.now() - 86_400_000, username: '阿岚', snapshot: null });
   }
   if (pathname === '/api/event') return { status: 204, body: null };
 

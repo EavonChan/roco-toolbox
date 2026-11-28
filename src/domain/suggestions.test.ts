@@ -112,13 +112,13 @@ describe('computeStudRecommendations（优质种公推荐的结构化待办）',
     );
   });
 
-  test('清单为空时：没导数据提示导入，不会误报「已全通」', () => {
+  test('清单为空时：没数据提示采集/同步，不会误报「已全通」', () => {
     expect(studEmptyNote({ hasData: false, stud: mkStud([], 14) })).toBe(
-      '导入抓包数据后给出建议',
+      '采集或同步数据后给出建议',
     );
   });
 
-  test('清单为空时：种公已全收齐要说已收集，而不是让用户去导入', () => {
+  test('清单为空时：种公已全收齐要说已收集，而不是让用户去采集', () => {
     expect(studEmptyNote({ hasData: true, stud: mkStud([], 14) })).toBe(
       '种公网络已全通，没有要补的缺口',
     );
