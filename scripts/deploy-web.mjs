@@ -139,7 +139,14 @@ const headSha = git(['rev-parse', '--short', 'HEAD']);
 const headBranch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
 if (headSha) {
   console.log('--- 构建源 ---');
+  // 注意：这里读的是**当前工作目录**的 git 状态。用 `--dist` 指向别的 worktree 构建的
+  // 产物时，两者可能不是同一份代码——要在与 dist 同一个 worktree 里执行本脚本，
+  // 否则这段数字只代表 cwd，不代表产物（2026-11-28 踩过：在主仓发 worktree 的 dist，
+  // 显示「落后 test 5」是假警报）。
   console.log(`HEAD     : ${headSha}${headBranch && headBranch !== 'HEAD' ? `（分支 ${headBranch}）` : '（detached）'}`);
+  if (!resolve(DIST).startsWith(resolve(ROOT))) {
+    console.log(`dist     : ${DIST}（在当前仓库外，上面的 HEAD 不代表这份产物）`);
+  }
   for (const ref of ['origin/test', 'origin/release']) {
     const ahead = git(['rev-list', '--count', `${ref}..HEAD`]);
     const behind = git(['rev-list', '--count', `HEAD..${ref}`]);
