@@ -27,4 +27,15 @@ describe('更多与设置区块', () => {
     render(<SettingsSection ctx={makeCtx({ accountId: null, accountName: null })} />);
     expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('未登录');
   });
+
+  test('使用统计在设置分组里可直接关闭（隐私开关不藏进弹层）', () => {
+    window.localStorage.removeItem('roco.analyticsOff');
+    render(<SettingsSection ctx={makeCtx()} />);
+
+    const toggle = screen.getByTestId('analytics-toggle');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(window.localStorage.getItem('roco.analyticsOff')).toBe('1');
+  });
 });

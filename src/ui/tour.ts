@@ -5,8 +5,8 @@
  *   把数据导进来 → 看到自己的缺口 → 知道怎么补 → 知道蛋在哪、去哪换。
  *
  * 结构：
- * - `start`：首启主线 6 步（5 步内容 + 收尾），跨「我的 · 游戏数据 → 看板 → 家园」三个页面；
- *   第 2 步按平台二选一（有采集桥讲「开始采集」，网页讲「登录同步 / 装壳」），由 `startStepsFor` 决定；
+ * - `start`：首启主线 7 步（6 步内容 + 收尾），跨「我的 · 游戏数据 → 我的身份 → 看板 → 家园」四个页面；
+ *   第 2 步按平台二选一（有采集桥讲「开始采集」，网页讲「网页不能采集」），第 3 步讲同账号登录同步；
  * - 其余分段跟着页签走：第一次进入看板 / 收集 / 附近 / 换蛋 / 家园时各弹一次；
  * - 顶部「教程」按钮 = 直接重播**当前页**那一段（文字教程已下线）。
  *
@@ -28,7 +28,7 @@ const TOUR_SEEN_PREFIX = 'roco.tourSeen.';
  * 这一步只对「先导入后入组 / 从没导入过」的人有用，不值得让所有人重走一遍整段；
  * 老用户仍是 22 步，新用户拿到 23 步。
  */
-export const TOUR_VERSION = '5';
+export const TOUR_VERSION = '6';
 
 /** 目标元素上挂的锚点属性；找不到时退化成居中说明卡（除非该步标了 skipWhenMissing）。 */
 export const TOUR_ANCHOR_ATTR = 'data-tour';
@@ -105,16 +105,16 @@ export function detectStartEnv(): TourStartEnv {
   return { hasCapture: Boolean(bridge.RocoCapture), desktop: Boolean(bridge.rocoDesktop) };
 }
 
-/** 首启第 2 步：有采集桥就讲采集；网页版没有采集桥，只讲「登录同步 / 装壳」。 */
+/** 首启第 2 步：有采集桥就讲「开始采集」；网页版没有采集桥，只讲「装壳 + 登录同步」。 */
 function collectStep(env: TourStartEnv): TourStep {
   if (!env.hasCapture) {
     return {
       id: 'start-collect',
-      title: '登录同步或装壳采集',
-      body: '网页版不能采集：到「我的」登录同一账号点「立即同步」，或装安卓版 / 电脑版采集一次；数据到位后这里会自动继续。',
+      title: '网页版怎么拿到数据',
+      body: '网页版不能采集，也不再有文件导入：装安卓版 / 电脑版采集一次，或到下一步用同一账号登录同步。',
       profileSection: 'data',
       anchor: 'profile-sync',
-      // 网页版没有采集桥：不卡在这一步等导入，让用户继续看后面的页面
+      // 网页版没有采集桥：不卡在这一步等数据，让用户继续看后面的页面
     };
   }
   if (env.desktop) {
@@ -138,7 +138,7 @@ function collectStep(env: TourStartEnv): TourStep {
 }
 
 /**
- * 首启主线：5 步内容 + 收尾。
+ * 首启主线（v6 任务线：采集 → 登录同步 → 看缺口）：6 步内容 + 收尾。
  * `TOUR_SEGMENTS.start` 用本机环境渲染一份并缓存，App 仍然只取 `TOUR_SEGMENTS[segment]`。
  */
 export function startStepsFor(env: TourStartEnv): TourStep[] {
@@ -151,6 +151,13 @@ export function startStepsFor(env: TourStartEnv): TourStep[] {
       anchor: 'tab-nav',
     },
     collectStep(env),
+    {
+      id: 'start-sync',
+      title: '登录同一账号同步',
+      body: '多设备 / 换手机：到「我的身份」用同一账号登录，点「立即同步」拉云端快照。不用再传抓包文件或备份了。',
+      profileSection: 'identity',
+      anchor: 'profile-account',
+    },
     {
       id: 'start-gap',
       title: '这就是你的缺口',

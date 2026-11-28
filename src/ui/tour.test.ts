@@ -21,19 +21,35 @@ describe('测试版不自动弹新手引导', () => {
   });
 });
 
-// 2026-11-25 v5：从「界面导览」改成任务式大纲（首启 6 步 + 页内 15 步 = 23 步）
-// 2026-11-27：换蛋段补「把游戏账号绑到小组」一步（机器人同步蛋仓的前提）
-describe('教程大纲（v5）', () => {
-  test('版本号升到 5（改内容要让老用户重看一次）', () => {
-    expect(TOUR_VERSION).toBe('5');
+// 2026-11-28 v6 CLEAN2：文件导入删除，首启改成「采集 → 登录同步 → 看缺口」任务线
+// （首启 7 步 + 页内 17 步 = 24 步）
+describe('教程大纲（v6）', () => {
+  test('版本号升到 6（改内容要让老用户重看一次）', () => {
+    expect(TOUR_VERSION).toBe('6');
   });
 
-  test('首启 6 步，收尾仍是最後一步且带 hint', () => {
+  test('首启 7 步，收尾仍是最後一步且带 hint', () => {
     const steps = startStepsFor({ hasCapture: true, desktop: false });
-    expect(steps).toHaveLength(6);
+    expect(steps).toHaveLength(7);
     expect(steps[steps.length - 1].id).toBe(TOUR_HINT_STEP_ID);
     expect(steps[steps.length - 1].hint).toBe(true);
     expect(steps[steps.length - 1].anchor).toBe('guide-open');
+  });
+
+  test('任务线顺序：采集 → 登录同步 → 看缺口', () => {
+    const steps = startStepsFor({ hasCapture: true, desktop: false });
+    const ids = steps.map((step) => step.id);
+    expect(ids.indexOf('start-collect')).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf('start-sync')).toBe(ids.indexOf('start-collect') + 1);
+    expect(ids.indexOf('start-gap')).toBe(ids.indexOf('start-sync') + 1);
+
+    const sync = steps.find((step) => step.id === 'start-sync');
+    expect(sync?.profileSection).toBe('identity');
+    expect(sync?.anchor).toBe('profile-account');
+    // 不再教「导入文件」
+    for (const step of steps) {
+      expect(`${step.title}${step.body}`).not.toMatch(/导入文件|选文件导入|导入游戏数据|备份 \.json/);
+    }
   });
 
   test('采集步按平台二选一：有采集桥讲「开始采集」，网页讲「登录同步 / 装壳」', () => {
@@ -189,9 +205,9 @@ describe('教程大纲（v5）', () => {
     expect(TOUR_SEGMENTS.start).toBe(TOUR_SEGMENTS.start);
   });
 
-  test('全部 23 步（首启 6 + 其它页 17）都能取到，且 id 不重复', () => {
+  test('全部 24 步（首启 7 + 其它页 17）都能取到，且 id 不重复', () => {
     const all = TOUR_SEGMENT_ORDER.flatMap((segment) => TOUR_SEGMENTS[segment]);
-    expect(all).toHaveLength(23);
+    expect(all).toHaveLength(24);
     const ids = all.map((step) => step.id);
     expect(new Set(ids).size).toBe(ids.length);
   });

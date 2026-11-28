@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { analyticsEnabled, setAnalyticsEnabled } from '../api/analytics';
 import { CATALOG_VERSION } from '../data/catalog';
 import { backupFileName, buildBackup } from '../domain/backup';
 import { shareToNative } from '../share/nativeShare';
@@ -10,19 +9,18 @@ import { setImportMessage, useImportMessage } from './importMessageStore';
 import { SourceNotice } from './SourceNotice';
 
 /**
- * 「设置」里的数据与隐私（2026-11-28 CLEAN2）。
+ * 「设置」里的数据与来源（2026-11-28 CLEAN2）。
  *
  * 数据入口收敛为「壳内采集 + 同账号登录同步」后，这里只保留：
  * - 导出（只做备份 / 排障，收在「更多」里；本应用不再提供文件导入）
- * - 匿名使用统计开关（埋点默认开，必须留一个关掉的地方）
  * - 数据来源署名（CC BY-SA 4.0 的合规要求）
  *
+ * 匿名统计开关已移到设置分组的「使用统计」一行（见 SettingsSection）。
  * 文件导入 / 合并导入 / 导入历史 / 重置入口已删除，入库链路见 `src/import/captureIngest.ts`。
  */
 export function ImportPanel() {
   const { snapshots } = useSnapshots();
   const dataMessage = useImportMessage();
-  const [analyticsOn, setAnalyticsOn] = useState(() => analyticsEnabled());
   // 导出是低频操作：默认收起，避免设置里一进来就是一排按钮
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -106,34 +104,6 @@ export function ImportPanel() {
             ) : null}
           </div>
         ) : null}
-      </section>
-
-      {/* 匿名统计开关（2026-10-06）：只报「设备 + 用了哪个功能」，可随时关掉。 */}
-      <section className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-700">匿名使用统计</p>
-          <p className="mt-0.5 text-xs text-slate-400">
-            只记录「哪台设备用了哪个功能」，不含精灵内容；用来知道哪些功能真有人用
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={analyticsOn}
-          data-testid="analytics-toggle"
-          onClick={() => {
-            const next = !analyticsOn;
-            setAnalyticsEnabled(next);
-            setAnalyticsOn(next);
-          }}
-          className={`min-h-[28px] shrink-0 rounded-md border px-2.5 text-xs font-medium ${
-            analyticsOn
-              ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-              : 'border-slate-200 bg-white text-slate-400'
-          }`}
-        >
-          {analyticsOn ? '已开启' : '已关闭'}
-        </button>
       </section>
 
       <SourceNotice />

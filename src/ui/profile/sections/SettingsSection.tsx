@@ -1,13 +1,14 @@
 import { useState, type ReactNode } from 'react';
+import { analyticsEnabled, setAnalyticsEnabled } from '../../../api/analytics';
 import { ImportPanel } from '../../ImportPanel';
 import { ModalSurface } from '../../primitives/ModalSurface';
 import type { SectionProps } from '../types';
 
 /**
- * 更多与设置（2026-11-28 重排）：这里只放**导航与帮助**，不放业务数字。
+ * 更多与设置（2026-11-28 重排）：这里只放**导航、帮助与隐私**，不放业务数字。
  *
- * 设置类内容（导出 / 合并导入 / 重置、隐私开关、数据来源）按规范 §0.4 不进首屏：
- * 它们收在同一行的弹层里，首屏只留一个入口。
+ * 设置类内容（导出 / 数据来源 / 匿名统计）按规范 §0.4 不进首屏：
+ * 导出与来源收在同一行的弹层里；「使用统计」是隐私开关，直接放进设置分组，不再藏进弹层。
  */
 function SettingsList({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -50,6 +51,7 @@ function SettingsRow({
 
 export function SettingsSection({ ctx }: SectionProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [analyticsOn, setAnalyticsOn] = useState(() => analyticsEnabled());
 
   return (
     <div data-section="settings" className="space-y-s3">
@@ -72,15 +74,46 @@ export function SettingsSection({ ctx }: SectionProps) {
         <SettingsRow testId="profile-guide" label="新手引导" value="重看一遍" onClick={ctx.onStartTour} />
         <SettingsRow
           testId="profile-settings-more"
-          label="导出 / 隐私"
+          label="导出 / 数据来源"
           value="设置"
           onClick={() => setSettingsOpen(true)}
         />
+        {/* 匿名统计（2026-11-28 CLEAN2）：从导入面板移进设置，保留随时关闭的入口 */}
+        <div
+          className="flex min-h-12 items-center gap-s2 px-s4 py-s1"
+          data-testid="settings-analytics"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-body text-ink">使用统计</p>
+            <p className="text-meta text-ink-muted">
+              只记录「哪台设备用了哪个功能」，不含精灵内容
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={analyticsOn}
+            aria-label="使用统计"
+            data-testid="analytics-toggle"
+            onClick={() => {
+              const next = !analyticsOn;
+              setAnalyticsEnabled(next);
+              setAnalyticsOn(next);
+            }}
+            className={`min-h-8 shrink-0 rounded-md border px-2.5 text-meta font-medium ${
+              analyticsOn
+                ? 'border-accent bg-accent-soft text-accent-strong'
+                : 'border-line bg-surface text-ink-muted'
+            }`}
+          >
+            {analyticsOn ? '已开启' : '已关闭'}
+          </button>
+        </div>
       </SettingsList>
 
       <ModalSurface
         open={settingsOpen}
-        title="更多与隐私"
+        title="导出与数据来源"
         onClose={() => setSettingsOpen(false)}
         testId="profile-settings-dialog"
         closeTestId="profile-settings-close"
