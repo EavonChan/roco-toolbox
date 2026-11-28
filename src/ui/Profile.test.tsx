@@ -281,6 +281,18 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('account-panel')).toHaveTextContent('私有同步');
   });
 
+  test('清空本机数据后回到新用户空态，而不是白屏', async () => {
+    await seedImportedPets();
+    renderProfile('data');
+    expect(screen.getByTestId('profile-collect')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('profile-settings-clear'));
+    fireEvent.click(screen.getByTestId('clear-local-confirm'));
+
+    await waitFor(() => expect(screen.getByTestId('profile-new-user-empty')).toBeTruthy());
+    expect(screen.queryByTestId('profile-collect')).toBeNull();
+  });
+
   test('身份分区的标题与说明写清主语', () => {
     const { rerender } = renderProfile('identity');
     expect(screen.getByTestId('profile-identity-intro')).toHaveTextContent('我的身份');

@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { analyticsEnabled, setAnalyticsEnabled } from '../../../api/analytics';
+import { clearLocalData } from '../../clearLocalData';
 import { ImportPanel } from '../../ImportPanel';
+import { Button } from '../../primitives/Button';
 import { ModalSurface } from '../../primitives/ModalSurface';
 import type { SectionProps } from '../types';
 
@@ -51,7 +53,19 @@ function SettingsRow({
 
 export function SettingsSection({ ctx }: SectionProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [analyticsOn, setAnalyticsOn] = useState(() => analyticsEnabled());
+
+  const confirmClear = async () => {
+    setClearing(true);
+    try {
+      await clearLocalData();
+    } finally {
+      setClearing(false);
+      setClearOpen(false);
+    }
+  };
 
   return (
     <div data-section="settings" className="space-y-s3">
@@ -77,6 +91,13 @@ export function SettingsSection({ ctx }: SectionProps) {
           label="导出 / 数据来源"
           value="设置"
           onClick={() => setSettingsOpen(true)}
+        />
+        {/* 清空本机数据（2026-11-28 CLEAN2）：文件导入删除后保留的安全阀，只清本机 */}
+        <SettingsRow
+          testId="profile-settings-clear"
+          label="清空本机数据"
+          value="不可撤销"
+          onClick={() => setClearOpen(true)}
         />
         {/* 匿名统计（2026-11-28 CLEAN2）：从导入面板移进设置，保留随时关闭的入口 */}
         <div
@@ -120,6 +141,49 @@ export function SettingsSection({ ctx }: SectionProps) {
       >
         <div className="p-s4">
           <ImportPanel />
+        </div>
+      </ModalSurface>
+
+      <ModalSurface
+        open={clearOpen}
+        title="清空本机数据"
+        onClose={() => {
+          if (!clearing) setClearOpen(false);
+        }}
+        testId="clear-local-dialog"
+        closeTestId="clear-local-close"
+        footer={
+          <div className="flex justify-end gap-s2">
+            <Button
+              variant="secondary"
+              disabled={clearing}
+              onClick={() => setClearOpen(false)}
+              data-testid="clear-local-cancel"
+            >
+              取消
+            </Button>
+            <Button
+              variant="danger"
+              busy={clearing}
+              onClick={() => void confirmClear()}
+              data-testid="clear-local-confirm"
+            >
+              确认清空
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-s3 p-s4 text-body text-ink" data-testid="clear-local-body">
+          <p>
+            清空本机的账号快照，以及由它派生的筛选、计划、「已换到」、本次新增等缓存。
+          </p>
+          <p>
+            云端那份还在：重新登录同一账号，点「私有同步 · 立即同步」就能拉回来。
+            <strong className="font-semibold"> 不想丢数据，请先同步一次。</strong>
+          </p>
+          <p className="rounded-tile border border-rose-200 bg-rose-50 px-s3 py-s2 text-rose-700">
+            此操作不可撤销。
+          </p>
         </div>
       </ModalSurface>
     </div>

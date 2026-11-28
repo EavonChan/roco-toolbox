@@ -1,9 +1,17 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SettingsSection } from './SettingsSection';
 import { makeCtx } from '../testContext';
+import { clearLocalData } from '../../clearLocalData';
 
-afterEach(cleanup);
+vi.mock('../../clearLocalData', () => ({
+  clearLocalData: vi.fn().mockResolvedValue(undefined),
+}));
+
+afterEach(() => {
+  cleanup();
+  vi.mocked(clearLocalData).mockClear();
+});
 
 describe('更多与设置区块', () => {
   test('一行一个目的地：附近 / 我的身份 / 新手引导', () => {
@@ -37,5 +45,20 @@ describe('更多与设置区块', () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(window.localStorage.getItem('roco.analyticsOff')).toBe('1');
+  });
+
+  test('清空本机数据：二次确认写清「云端还在 / 不可撤销」，确认后关闭弹层', async () => {
+    render(<SettingsSection ctx={makeCtx()} />);
+
+    fireEvent.click(screen.getByTestId('profile-settings-clear'));
+    expect(screen.getByTestId('clear-local-dialog')).toBeInTheDocument();
+    const body = screen.getByTestId('clear-local-body');
+    expect(body).toHaveTextContent('云端那份还在');
+    expect(body).toHaveTextContent('此操作不可撤销');
+    expect(body).toHaveTextContent('先同步一次');
+
+    fireEvent.click(screen.getByTestId('clear-local-confirm'));
+    await waitFor(() => expect(clearLocalData).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByTestId('clear-local-dialog')).toBeNull());
   });
 });
