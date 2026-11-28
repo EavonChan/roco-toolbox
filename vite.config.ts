@@ -109,11 +109,17 @@ export default defineConfig({
       },
       injectManifest: {
         // 应用外壳（含图鉴 json 与图标）全部缓存，断网也能打开。
-        // 2026-11-27 PWA 优化：pcap-decoder（~759KB）和 decodeCapture.worker（~1.1MB）
-        // 只在导入/抓包时用到，不预缓存，避免首次安装下载近 2MB；
-        // 它们由 sw.ts 注册 NetworkFirst 运行时缓存，有网时按需拉取。
+        // 2026-11-27 PWA 优化：抓包解析器（core，~800KB）和 decodeCapture.worker（~1.1MB）
+        // 只在导入/抓包时用到，不预缓存，避免首次安装白下近 2MB；
+        // 它们由 sw.ts 注册 NetworkFirst 运行时缓存，用到时按需拉取。
+        // 注意：workbox 默认上限是 2MiB，这两个文件都没超，必须显式排除。
         globPatterns: ['**/*.{js,css,html,svg,json,png}'],
-        globIgnores: ['**/pcap-decoder-*.js', '**/decodeCapture.worker-*.js'],
+        globIgnores: [
+          '**/core-*.js',
+          '**/decodeCapture.worker-*.js',
+          // 若将来手动把解析器命名成 pcap-decoder-*，同样排除
+          '**/pcap-decoder-*.js',
+        ],
       },
     }),
   ],
@@ -126,20 +132,20 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        // 代码分割（2026-11-27）：页面组件已用 React.lazy 动态导入，rollup 会自动按
-        // dynamic import 边界拆出 page-* chunk，这里只需把第三方库和抓包解析器单独拆出，
-        // 避免它们混进首屏 index chunk。
-        // 注意：不要把共享的 ui 模块（PetCard / primitives 等）单独拆 chunk，
-        // 否则多个 page-* 都引用它们会产生循环 chunk 警告。
+        // 第三方库单独成块（2026-11-27）：库代码在版本之间几乎不变，拆出去以后
+        // 每次发版只有 index 的 hash 变，vendor 仍命中浏览器缓存。
+        //
+        // 这里**只拆 node_modules**，不拆 src/pcap-decoder：
+        // 解析器里 `generated/catalog.json` 被首页链路上的 wildNearby 静态引用，
+        // 一旦把整个 src/pcap-decoder 归成一个 chunk，就会把 core（~800KB）从
+        // 「动态导入」变成「index 的静态依赖」，首屏反而多下 800KB（实测见
+        // docs/采择记录.md PR25 条）。解析器本身 rollup 已经按 dynamic import
+        // 自动拆成独立的 core-*.js，不需要介入。
         manualChunks: (id) => {
           const idStr = id as string;
-          if (idStr.includes('node_modules')) {
-            if (/node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(idStr)) return 'vendor-react';
-            return 'vendor';
-          }
-          // 抓包解析器单独一块（仅 ImportPanel 用到，不进首屏）
-          if (idStr.includes('/src/pcap-decoder/')) return 'pcap-decoder';
-          return undefined;
+          if (!idStr.includes('node_modules')) return undefined;
+          if (/node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(idStr)) return 'vendor-react';
+          return 'vendor';
         },
       },
     },

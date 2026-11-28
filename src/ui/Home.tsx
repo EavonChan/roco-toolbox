@@ -5,6 +5,7 @@ import { EmptyState } from './EmptyState';
 import { HomeDemandPlacements } from './HomeDemandPlacements';
 import { HomePairCards } from './HomePairCards';
 import { sortByAccountName } from './accountOrder';
+import { readHomeView, saveHomeView, subscribeHomeView, type HomeView } from './homeView';
 import { CARD, HINT, PAGE, TITLE } from './primitives/styles';
 import { RailAside, RailLayout } from './primitives/RailLayout';
 import { useSnapshots } from './useSnapshots';
@@ -250,8 +251,6 @@ function AccountHome({
     </section>
   );
 }
-
-import { readHomeView, saveHomeView, subscribeHomeView, type HomeView } from './homeView';
 
 /** 家园现状默认展示首个账号；接单上窝可从页头切换。 */
 export function HomeLand({ onGoImport, onGoGroups, onGoAccount }: HomeLandProps = {}) {
