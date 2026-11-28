@@ -18,7 +18,8 @@ import {
   type TourStep,
 } from './ui/tour';
 import { Dashboard } from './ui/Dashboard';
-import { HomeLand, saveHomeView } from './ui/Home';
+import { HomeLand } from './ui/Home';
+import { saveHomeView } from './ui/homeView';
 import { Collection } from './ui/Collection';
 import { CollectionGroups } from './ui/CollectionGroups';
 import { BattleHudOrb } from './ui/BattleHudOrb';
