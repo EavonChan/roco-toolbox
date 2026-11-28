@@ -28,10 +28,10 @@ describe('「我的」页配方', () => {
     // 设置块不设 when：新用户也要能从「我的」进身份 / 看引导；
     // 「不进首屏」靠配方顺序（排最后），不靠隐藏。
     expect(screen.getByTestId('profile-home').getAttribute('data-sections')).toBe(
-      'identity,new-user,settings',
+      'identity,entries,new-user,settings',
     );
     expect(screen.queryByTestId('profile-todos')).toBeNull();
-    expect(screen.queryByTestId('profile-quick-entries')).toBeNull();
+    expect(screen.getByTestId('profile-quick-entries')).toBeTruthy();
     expect(screen.queryByTestId('profile-collect')).toBeNull();
     expect(screen.getByTestId('profile-new-user')).toBeTruthy();
   });

@@ -37,7 +37,8 @@ const ENTRIES: SectionDef = {
   id: 'entries',
   title: '三个入口',
   render: EntriesSection,
-  when: hasData,
+  // 不设 when：入口是**导航**，未登录/无数据时也要能进（小组页自己会给"请先登录"）。
+  // 有没有内容由各入口内部决定，不靠整块隐藏——隐藏会让未登录用户找不到进组入口。
 };
 
 const NEW_USER: SectionDef = {
