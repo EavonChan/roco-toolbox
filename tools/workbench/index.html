@@ -292,6 +292,43 @@
     border:1px solid var(--line);background:var(--surface-2);
   }
   .note:focus{outline:none;border-color:color-mix(in srgb,var(--primary) 55%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 12%,transparent)}
+
+  /* ── 快速决策 + 评论（等你 / 待决策 卡片） ── */
+  .decide{display:flex;flex-direction:column;gap:6px;margin-top:var(--p-4);cursor:default}
+  .decide-opts{display:flex;flex-wrap:wrap;gap:6px}
+  .optbtn{
+    appearance:none;cursor:pointer;font:inherit;font-size:var(--fs-12);font-weight:600;
+    display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:4px 12px;
+    border-radius:var(--r-8);line-height:1.4;white-space:nowrap;
+    color:var(--waiting-ink);border:1px solid color-mix(in srgb,var(--waiting) 26%,var(--line));
+    background:color-mix(in srgb,var(--waiting) 6%,var(--surface));
+    transition:background .15s,border-color .15s,color .15s;
+  }
+  .optbtn:hover{background:color-mix(in srgb,var(--waiting) 14%,var(--surface));border-color:color-mix(in srgb,var(--waiting) 45%,var(--line))}
+  /* 「推荐」只做次要强调：粗一点的边，不抢按钮的点击态 */
+  .optbtn.rec{border-color:color-mix(in srgb,var(--waiting) 52%,var(--line));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--waiting) 22%,transparent)}
+  .optbtn.is-picked,.optbtn.is-picked:hover{background:var(--waiting);border-color:var(--waiting);color:#fff}
+  .optbtn.is-picked::before{content:"✓";font-weight:700}
+  .decide-note{display:flex;gap:6px;align-items:center}
+  .dnote{
+    flex:1 1 auto;min-width:0;font:inherit;font-size:var(--fs-12);min-height:32px;
+    padding:6px 10px;border-radius:var(--r-8);color:var(--text);
+    border:1px solid var(--line);background:var(--surface-2);
+  }
+  .dnote:focus{outline:none;border-color:color-mix(in srgb,var(--primary) 55%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 12%,transparent)}
+  .btn.send{flex:none}
+  .badge.decided{color:var(--done-ink);border-color:color-mix(in srgb,var(--done) 30%,var(--line));background:color-mix(in srgb,var(--done) 10%,transparent)}
+  .badge.decided[data-kind="comment"]{color:var(--waiting-ink);border-color:color-mix(in srgb,var(--waiting) 30%,var(--line));background:color-mix(in srgb,var(--waiting) 10%,transparent)}
+  /* 待决策.md 那几条：接在「等你」列下面，单独一小节 */
+  .subhead{
+    display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+    margin:var(--p-8) 0 0;padding-top:var(--p-12);border-top:1px dashed var(--line);
+  }
+  .subhead h3{margin:0;font-size:var(--fs-13);font-weight:600;color:var(--text-2)}
+  .subhead .n{font-size:var(--fs-12);color:var(--muted-2)}
+  .subhead .src{font-size:var(--fs-12);color:var(--muted-2);margin-left:auto}
+  .card.dcard{background:color-mix(in srgb,var(--waiting) 4%,var(--surface))}
+  .card .src{font-size:var(--fs-12);color:var(--muted-2)}
   details.raw{font-size:var(--fs-12);color:var(--muted)}
   details.raw summary{cursor:pointer;color:var(--muted-2);user-select:none}
   details.raw summary:hover{color:var(--text-2)}
@@ -622,6 +659,10 @@
     .srow .blocker,.srow .conflict{grid-column:1 / -1}
     .kv{grid-template-columns:56px minmax(0,1fr)}
     .actions{gap:var(--p-8)}
+    /* 决策：窄屏按钮/输入框都按 40px 可点，选项多时自动换行，不横向溢出 */
+    .optbtn{min-height:40px;flex:1 1 auto;justify-content:center}
+    .dnote{min-height:40px}
+    .btn.send{min-height:40px}
     /* 汇报：列表在上、正文在下，列表限高，正文不用先滚过一整列文件 */
     .reports{grid-template-columns:1fr;gap:var(--p-12)}
     .rlist{position:static;max-height:38vh;padding:var(--p-8)}
@@ -840,6 +881,9 @@
     open: new Set(),
     notes: new Map(),
     msg: new Map(),
+    // 决策/评论：decided 是"点了就立刻显示"的乐观态，drafts 记住还没发出去的备注
+    decided: new Map(),
+    drafts: new Map(),
     stageFilter: null,
     taskTotal: 0,
     busy: false,
@@ -1164,6 +1208,46 @@
     reportBodyEl.setAttribute('aria-busy', 'false');
   }
 
+  // ── 快速决策：卡片上的选项按钮 + 一句评论 ──
+  function decisionOf(cardKey, fallback) {
+    return state.decided.get(cardKey) || fallback || null;
+  }
+
+  function decisionBadge(dec) {
+    if (!dec) return '';
+    const isComment = !dec.option;
+    const label = isComment ? '已评论' : '已决策 · ' + dec.option;
+    const tip = [dec.note || '', exact(dec.at)].filter(Boolean).join(' · ');
+    return `<span class="badge decided" data-kind="${isComment ? 'comment' : 'decision'}"` +
+      (tip ? ` title="${esc(tip)}"` : '') + `>${esc(label)}</span>`;
+  }
+
+  /** 选项按钮 + 备注框。选项只来自 md 的「选项」列；点按钮立刻发，不等 md 回写。 */
+  function decideWidget(id, options, dec) {
+    const opts = options || [];
+    const picked = dec && dec.option ? dec.option : null;
+    const draft = state.drafts.get(id) || '';
+    const buttons = opts.map((o) => {
+      const on = picked === o.key;
+      return `<button type="button" class="optbtn${o.recommended ? ' rec' : ''}${on ? ' is-picked' : ''}"` +
+        ` data-act="decide" data-decide-id="${esc(id)}" data-opt="${esc(o.key)}"` +
+        ` aria-pressed="${on ? 'true' : 'false'}" title="记下：选 ${esc(o.key)}（写决策.jsonl，不改 md）">` +
+        `${esc(o.text || (o.key + ' ' + o.label))}</button>`;
+    }).join('');
+    return `<div class="decide">` +
+      (buttons ? `<div class="decide-opts">${buttons}</div>` : '') +
+      `<div class="decide-note">` +
+        `<input type="text" class="dnote" maxlength="500" data-draft-id="${esc(id)}"` +
+        ` placeholder="${buttons ? '备注或评论…' : '写一句评论…'}" value="${esc(draft)}" aria-label="备注或评论">` +
+        `<button type="button" class="btn send" data-act="decide-comment" data-decide-id="${esc(id)}">记录</button>` +
+      `</div>` +
+    `</div>`;
+  }
+
+  function pendingItems() {
+    return (state.board && state.board.pendingDecisions && state.board.pendingDecisions.items) || [];
+  }
+
   function card(task) {
     const status = task.statusKey || 'doing';
     const open = state.open.has(task.key);
@@ -1182,6 +1266,9 @@
 
     const approveOff = status === 'done' ? ' disabled title="已经是 🟢"' : ' title="把这一行改成 🟢 并记一条审批"';
     const rejectOff = status === 'blocked' ? ' disabled title="已经是 🔴"' : ' title="把这一行改成 🔴 并记一条审批"';
+    const options = task.options || [];
+    const canDecide = options.length > 0 || status === 'waiting';
+    const dec = decisionOf(task.key, task.decision);
 
     const kv = [
       ['任务', esc(task.title)],
@@ -1199,6 +1286,7 @@
       `<div class="card-top">` +
         (task.code ? `<span class="code">${esc(task.code)}</span>` : '') +
         `<span class="badge" data-status="${esc(status)}">${esc(task.status || '')} ${esc(task.statusLabel || '')}</span>` +
+        decisionBadge(dec) +
       `</div>` +
       `<h3 class="title">${esc(task.title)}</h3>` +
       meta.join('') +
@@ -1210,6 +1298,7 @@
         `<button type="button" class="btn no" data-act="reject"${rejectOff}>打回</button>` +
         `<span class="act-msg"${msgFresh ? ` data-kind="${esc(msg.kind)}"` : ''}>${msgFresh ? esc(msg.text) : ''}</span>` +
       `</div>` +
+      (canDecide ? decideWidget(task.decideId, options, dec) : '') +
       `<div class="card-more">` +
         `<dl class="kv">${kv.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>` +
         `<label class="note-row"><span>打回原因（可选，会写进审批日志）</span>` +
@@ -1222,15 +1311,49 @@
       `</article>`;
   }
 
+  /** docs/待决策.md 里还开着的 Q-xxx：也是一张可点的卡 */
+  function decisionCard(item) {
+    const key = 'd:' + item.id;
+    const open = state.open.has(key);
+    const msg = state.msg.get(key);
+    const msgFresh = msg && Date.now() - msg.at < 120000;
+    const statusKey = item.statusKey || 'waiting';
+    const dec = decisionOf(key, item.decision);
+    const meta = [];
+    if (item.asker) meta.push(`<div class="meta"><span class="k">谁问的</span><span class="v">${esc(item.asker)}</span></div>`);
+    if (item.at) meta.push(`<div class="meta"><span class="k">提出</span><span class="v">${esc(item.at)}</span></div>`);
+    return `<article class="card dcard${open ? ' is-open' : ''}" data-status="${esc(statusKey)}" data-key="${esc(key)}" ` +
+      `data-decide-id="${esc(item.id)}" data-id="${esc(item.id)}" tabindex="0" aria-expanded="${open ? 'true' : 'false'}">` +
+      `<div class="card-top">` +
+        `<span class="code">${esc(item.id)}</span>` +
+        `<span class="badge" data-status="${esc(statusKey)}">${esc(item.status || '待决策')}</span>` +
+        decisionBadge(dec) +
+      `</div>` +
+      `<h3 class="title">${esc(item.title)}</h3>` +
+      meta.join('') +
+      (item.suggestion ? `<p class="detail">${esc(item.suggestion)}</p>` : '') +
+      `<div class="src">来自 ${esc(item.source || 'docs/待决策.md')}</div>` +
+      decideWidget(item.id, item.options || [], dec) +
+      `<div class="actions"><span class="act-msg"${msgFresh ? ` data-kind="${esc(msg.kind)}"` : ''}>${msgFresh ? esc(msg.text) : ''}</span></div>` +
+      `</article>`;
+  }
+
   function renderBoard(data) {
+    const pending = (data.pendingDecisions && data.pendingDecisions.items) || [];
     boardEl.innerHTML = (data.columns || []).map((col) => {
       const cards = col.tasks.length
         ? col.tasks.map(card).join('')
         : '<div class="empty">暂无任务</div>';
+      // 「等你」列下面接上 docs/待决策.md 还开着的那几条（同一列、单独小节）
+      const extra = col.key === 'waiting' && pending.length
+        ? `<div class="subhead"><h3>待决策</h3><span class="n">${pending.length}</span>` +
+          `<span class="src">${esc((data.pendingDecisions && data.pendingDecisions.source) || 'docs/待决策.md')}</span></div>` +
+          `<div class="cards">${pending.map(decisionCard).join('')}</div>`
+        : '';
       return `<section class="col" data-col="${esc(col.key)}" aria-label="${esc(col.title)}">` +
         `<div class="col-head"><span class="swatch" aria-hidden="true"></span>` +
         `<h2>${esc(col.title)}</h2><span class="n">${col.count}</span></div>` +
-        `<div class="cards">${cards}</div></section>`;
+        `<div class="cards">${cards}</div>${extra}</section>`;
     }).join('');
     boardEl.setAttribute('aria-busy', 'false');
   }
@@ -1301,6 +1424,7 @@
       data.repo && data.repo.version,
       data.counts,
       data.columns,
+      data.pendingDecisions && data.pendingDecisions.items,
       data.approvals && data.approvals.total,
     ]);
   }
@@ -1388,13 +1512,62 @@
     }
   }
 
+  async function decide(id, option, key) {
+    if (!id || state.busy) return;
+    const inputEl = boardEl.querySelector(`.dnote[data-draft-id="${id}"]`);
+    const note = inputEl ? inputEl.value.trim() : (state.drafts.get(id) || '').trim();
+    if (!option && !note) {
+      toast('先写一句备注，或点一个选项', 'error');
+      return;
+    }
+    state.busy = true;
+    // 乐观态：不等 md/jsonl 回来，按钮立刻变「已选」，右上角立刻显示状态
+    state.decided.set(key, { option: option || null, note: note || null, kind: option ? 'decision' : 'comment', at: new Date().toISOString() });
+    state.drafts.delete(id);
+    state.msg.set(key, { text: '提交中…', kind: 'pending', at: Date.now() });
+    repaintCard(key);
+    try {
+      const res = await fetch('/api/decide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, option: option || undefined, note: note || undefined }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.ok) throw new Error(payload.message || ('HTTP ' + res.status));
+      const saved = payload.record || {};
+      state.decided.set(key, saved);
+      const text = saved.option ? `已决策 · ${saved.option}` : '已评论';
+      state.msg.set(key, { text: '已记下（刷新后仍在）', kind: 'done', at: Date.now() });
+      toast(text + '，已记到 ' + (payload.path || 'docs/进度/决策.jsonl') + '（刷新后仍在）', 'done');
+      await loadBoard(true);
+      // server 已经把最新决策带回来了，去掉乐观态，避免和 JSONL 里的真相打架
+      state.decided.delete(key);
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      state.decided.delete(key);
+      state.msg.set(key, { text: '没记下来：' + msg, kind: 'error', at: Date.now() });
+      toast('决策没记下来：' + msg, 'error');
+      repaintCard(key);
+    } finally {
+      state.busy = false;
+    }
+  }
+
   function repaintCard(key) {
-    const task = firstTaskByKey(key) || firstTaskById(key);
-    if (!task) return;
     const el = boardEl.querySelector(`.card[data-key="${key}"]`);
     if (!el) return;
+    const decideId = el.getAttribute('data-decide-id') || '';
+    let html = '';
+    if (key.startsWith('d:')) {
+      const item = pendingItems().find((it) => it.id === decideId);
+      if (item) html = decisionCard(item);
+    } else {
+      const task = firstTaskByKey(key) || firstTaskById(key);
+      if (task) html = card(task);
+    }
+    if (!html) return;
     const tmp = document.createElement('div');
-    tmp.innerHTML = card(task);
+    tmp.innerHTML = html;
     const next = tmp.firstElementChild;
     if (next) el.replaceWith(next);
   }
@@ -1844,10 +2017,15 @@
     if (actEl) {
       e.stopPropagation();
       if (actEl.disabled) return;
+      const act = actEl.getAttribute('data-act');
       const host = actEl.closest('.card');
       const key = host && host.getAttribute('data-key');
+      if (act === 'decide' || act === 'decide-comment') {
+        decide(actEl.getAttribute('data-decide-id'), act === 'decide' ? actEl.getAttribute('data-opt') : '', key);
+        return;
+      }
       const task = firstTaskByKey(key);
-      if (task) approve(task, actEl.getAttribute('data-act'));
+      if (task) approve(task, act);
       return;
     }
     if (e.target.closest('a,button,textarea,input,summary,details,label')) return;
@@ -1865,10 +2043,27 @@
   });
 
   boardEl.addEventListener('input', (e) => {
+    const draftEl = e.target.closest('.dnote');
+    if (draftEl) {
+      const id = draftEl.getAttribute('data-draft-id');
+      if (draftEl.value.trim()) state.drafts.set(id, draftEl.value);
+      else state.drafts.delete(id);
+      return;
+    }
     const noteEl = e.target.closest('.note');
     if (!noteEl) return;
     const host = noteEl.closest('.card');
     if (host) state.notes.set(host.getAttribute('data-key'), noteEl.value);
+  });
+
+  // 备注框里按回车 = 点「记录」（评论），不用去够按钮
+  boardEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const draftEl = e.target.closest('.dnote');
+    if (!draftEl) return;
+    e.preventDefault();
+    const host = draftEl.closest('.card');
+    decide(draftEl.getAttribute('data-draft-id'), '', host && host.getAttribute('data-key'));
   });
 
   sessionsEl.addEventListener('click', (e) => {
