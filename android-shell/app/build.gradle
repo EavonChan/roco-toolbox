@@ -150,16 +150,17 @@ tasks.register('verifyShellInvariants') {
         need('BattleOverlayController.java', battle, 'LONG_PRESS_MS')
         need('BattleOverlayController.java', battle, 'longPressHide')
 
-        // 4b. 悬浮球外观与吸边（2026-11-10 用户定稿）：0.85 缩放、8dp 吸边阈值、
-        //     3 秒无操作半透明、右吸边时面板向左展开，避免以后哪次构建把这些丢掉
+        // 4b. 悬浮球外观与吸边（2026-11-10 定稿；2026-11-28 方案 A 修正）：
+        //     0.85 缩放、8dp 吸边阈值、3 秒无操作半透明；
+        //     吸附按球的可见边缘（旧版按球心永远吸不上），面板贴球展开留 12dp
         need('BattleOverlayController.java', battle, 'ORB_ICON_SCALE = 0.85f')
         need('BattleOverlayController.java', battle, 'SNAP_THRESHOLD_DP = 8')
         need('BattleOverlayController.java', battle, 'SNAP_FADE_DELAY_MS = 3000L')
-        need('BattleOverlayController.java', battle, 'snappedSide == 2')
+        need('BattleOverlayController.java', battle, 'OverlayGeometry.snapToEdge(')
         def panelSource = read(file('src/main/java/com/localdatatool/toolbox/capture/NearbyPanelController.java'))
-        need('NearbyPanelController.java', panelSource, 'lastOrbSnappedRight')
-        need('NearbyPanelController.java', panelSource, 'lastOrbX - edge - panelParams.width')
-        need('NearbyPanelController.java', panelSource, 'lastOrbX + lastOrbSize + edge')
+        need('NearbyPanelController.java', panelSource, 'PANEL_GAP_DP = 12')
+        need('NearbyPanelController.java', panelSource, 'OverlayGeometry.panelSpot(')
+        need('NearbyPanelController.java', panelSource, 'userPositioned')
 
         // 5. 采集桥来源必须跟随当前站点，否则测试站读不到本机采集
         need('CaptureBridgePolicy.java',
@@ -206,7 +207,7 @@ tasks.register('verifyShellInvariants') {
         if (!problems.isEmpty()) {
             throw new GradleException('壳不变量校验失败：\n - ' + problems.join('\n - '))
         }
-        println '壳不变量校验通过（版本清单 / 地图 240·120·side_units / 面板 214 / 长按隐藏 / 采集桥来源 / 通道模型）'
+        println '壳不变量校验通过（版本清单 / 地图 240·120·side_units / 面板 214·贴球 12dp / 长按隐藏 / 采集桥来源 / 通道模型）'
     }
 }
 

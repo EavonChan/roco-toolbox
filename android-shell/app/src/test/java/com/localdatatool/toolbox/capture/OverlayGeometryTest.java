@@ -68,4 +68,67 @@ public class OverlayGeometryTest {
             assertTrue(position[1] + 300 <= 844 - EDGE);
         }
     }
+
+    // ── 方案 A（2026-11-28）：贴球展开、留 12dp；两侧放不下时贴屏边 + 上下错开 ──
+    private static final int PANEL_W = 214;
+    private static final int PANEL_H = 182;
+    private static final int BALL = 52;
+    private static final int GAP = 12;
+
+    private static int[] spot(int ballX, int ballY, int screenW, int screenH) {
+        return OverlayGeometry.panelSpot(
+            PANEL_W, PANEL_H, ballX, ballY, BALL, BALL, screenW, screenH, GAP);
+    }
+
+    @Test public void panelSitsBesideBallWithTwelveDpGap() {
+        // 375：球贴左边缘（x=0）→ 面板在球的右侧，x = 0 + 52 + 12
+        assertArrayEquals(new int[] { 64, 340 }, spot(0, 340, 375, 812));
+        // 375：球贴右边缘（x=323）→ 面板在球的左侧，x = 323 - 12 - 214
+        assertArrayEquals(new int[] { 97, 340 }, spot(323, 340, 375, 812));
+        // 390：球贴右边缘（x=338）→ x = 338 - 12 - 214
+        assertArrayEquals(new int[] { 112, 340 }, spot(338, 340, 390, 844));
+    }
+
+    @Test public void panelNeverOverlapsBallInAnyPosition() {
+        int[][] balls = {
+            { 0, 340 }, { 323, 340 }, { 323, 8 }, { 0, 700 }, { 323, 700 },
+            { 161, 340 }, { 161, 60 }, { 161, 700 }
+        };
+        for (int[] ball : balls) {
+            int[] position = spot(ball[0], ball[1], 375, 812);
+            assertFalse(
+                "球在 " + ball[0] + "," + ball[1] + " 时面板压住了球",
+                OverlayGeometry.overlaps(
+                    position[0], position[1], PANEL_W, PANEL_H,
+                    ball[0], ball[1], BALL, BALL, GAP));
+            assertTrue("面板必须留在屏内", position[0] >= GAP);
+            assertTrue("面板必须留在屏内", position[1] >= GAP);
+            assertTrue("面板必须留在屏内", position[0] + PANEL_W <= 375 - GAP);
+            assertTrue("面板必须留在屏内", position[1] + PANEL_H <= 812 - GAP);
+        }
+    }
+
+    @Test public void panelFollowsBallOnTheSameSide() {
+        // 球贴右、只上下移动：面板 x 不变，纵向跟着球
+        int[] top = spot(323, 120, 375, 812);
+        int[] bottom = spot(323, 560, 375, 812);
+        assertEquals(top[0], bottom[0]);
+        assertEquals(120, top[1]);
+        assertEquals(560, bottom[1]);
+        // 仍在右半屏、只是往里挪：面板仍然贴球左侧，横向一起跟
+        int[] moved = spot(280, 560, 375, 812);
+        assertEquals(280 - GAP - PANEL_W, moved[0]);
+        assertEquals(560, moved[1]);
+    }
+
+    @Test public void snapUsesTheVisibleBallEdgeInsteadOfItsCenter() {
+        // 旧口径按「球心距边 8dp」：球完全在屏内时球心离边至少 26dp，永远吸不上；
+        // 新口径按可见边缘，贴边 / 距边 8px 内都能吸附。
+        assertArrayEquals(new int[] { 0, 1 }, OverlayGeometry.snapToEdge(0, BALL, 390, 8));
+        assertArrayEquals(new int[] { 0, 1 }, OverlayGeometry.snapToEdge(5, BALL, 390, 8));
+        assertArrayEquals(new int[] { 338, 2 }, OverlayGeometry.snapToEdge(338, BALL, 390, 8));
+        assertArrayEquals(new int[] { 338, 2 }, OverlayGeometry.snapToEdge(332, BALL, 390, 8));
+        // 中间位置不吸
+        assertArrayEquals(new int[] { 100, 0 }, OverlayGeometry.snapToEdge(100, BALL, 390, 8));
+    }
 }

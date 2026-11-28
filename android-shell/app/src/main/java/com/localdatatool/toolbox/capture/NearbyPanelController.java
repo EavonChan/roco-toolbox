@@ -54,8 +54,9 @@ import java.util.List;
  *
  * <p>只负责面板本身：展开后的命中区、标题行、内嵌网页小地图、精灵列表与脚注。
  * 球的图标 / 拖动 / 夹取仍由 {@link BattleOverlayController} 负责，本类通过
- * {@link #setOrbRect(int, int, int, int, int)} 拿球当前的屏幕坐标，只在**首次展开**时
- * 按「球在哪一侧就从另一侧展开」算一个不压住球的落点（{@link OverlayGeometry#oppositeOfBall}）。</p>
+ * {@link #setOrbRect(int, int, int, int, int)} 拿球当前的屏幕坐标，按「贴球展开、留 12dp」自动落点
+ * （{@link OverlayGeometry#panelSpot}）；球在正中两侧放不下时才退化为「贴屏边 + 上下错开」。
+ * 面板展开期间球移动，面板跟着走（用户自己拖过面板后不再跟随）。</p>
  *
  * <p>面板可拖动（按住标题栏 / 空白区），松手把位置写进 SharedPreferences，下次展开沿用；
  * 地图是 WebView，自己吃掉触摸，按在图上不会拖动面板。</p>
@@ -78,6 +79,11 @@ public final class NearbyPanelController {
     private static final String KEY_PANEL_X = "x";
     private static final String KEY_PANEL_Y = "y";
     private static final int DRAG_SLOP_DP = 4;
+    /**
+     * 面板与悬浮球之间的间隙（dp，2026-11-28 方案 A 定稿 12）：
+     * 球贴边时面板向内侧展开，两者留 12dp，避免压球又不会离得太远。
+     */
+    private static final int PANEL_GAP_DP = 12;
 
     private final Activity activity;
     private final WindowManager windowManager;
@@ -110,12 +116,13 @@ public final class NearbyPanelController {
     private int lastOrbX;
     private int lastOrbY;
     private int lastOrbSize;
-    /** 球是否吸附在右边缘：是则面板向左展开，否则一律在球的右侧（2026-11-10）。 */
-    private boolean lastOrbSnappedRight;
     private int lastScreenWidth;
     private int lastScreenHeight;
-    /** 本次展开是否已经定过落点；用户拖过之后不再按默认规则重算 */
-    private boolean positioned;
+    /**
+     * 用户是否自己拖过面板（2026-11-28）：拖过就尊重用户位置，只夹回屏内；
+     * 没拖过才按「贴球展开」自动落点，并跟随球移动。
+     */
+    private boolean userPositioned;
     private float downRawX;
     private float downRawY;
     private int dragStartX;
@@ -240,19 +247,19 @@ public final class NearbyPanelController {
     }
 
     /**
-     * 记录球当前的位置与屏幕尺寸，供**首次展开**时算默认落点：
-     * 默认在球的右侧、与球同一垂直位置；球吸附在右边缘时改为向左展开。
-     * 球拖动时只更新记录，不移动已经展开的面板。
+     * 记录球当前的位置与屏幕尺寸（2026-11-28：不再需要调用方传「是否吸附右边缘」）。
+     * 面板展开且用户没拖过时，球一移动面板就跟着重排；用户拖过之后只更新记录、不动面板。
      */
-    public void setOrbRect(int orbX, int orbY, int orbSize, int screenWidth, int screenHeight,
-                           boolean snappedRight) {
+    public void setOrbRect(int orbX, int orbY, int orbSize, int screenWidth, int screenHeight) {
+        boolean changed = !hasOrbRect || orbX != lastOrbX || orbY != lastOrbY
+            || orbSize != lastOrbSize || screenWidth != lastScreenWidth || screenHeight != lastScreenHeight;
         hasOrbRect = true;
         lastOrbX = orbX;
         lastOrbY = orbY;
         lastOrbSize = orbSize;
         lastScreenWidth = screenWidth;
         lastScreenHeight = screenHeight;
-        lastOrbSnappedRight = snappedRight;
+        if (changed && expanded && panel != null && !userPositioned) placePanel();
     }
 
     /** 屏幕旋转 / 尺寸变化：把面板夹回新的屏幕范围，不重算默认落点。 */
@@ -272,43 +279,42 @@ public final class NearbyPanelController {
     }
 
     /**
-     * 面板落点（2026-11-10）：
+     * 面板落点（2026-11-28 方案 A 定稿）：
      * <ul>
-     *   <li>有球的位置 → 固定在球的右侧、与球同一垂直位置；球吸附在右边缘时向左展开。
-     *       不做智能避让、不自动换边，只把结果夹回屏幕内；</li>
+     *   <li>用户拖过面板 → 尊重用户位置，只夹回屏内；</li>
+     *   <li>有球的位置 → {@link OverlayGeometry#panelSpot}：贴球展开并留 12dp；
+     *       球在正中、两侧都放不下时退化为「贴屏边 + 上下错开」；</li>
      *   <li>还没有球的位置 → 沿用存档位置；</li>
      *   <li>都没有 → 屏幕默认位置。</li>
      * </ul>
      */
     private void placePanel() {
         if (panel == null || panelParams == null) return;
-        int edge = dp(NearbyOverlayModel.EDGE);
-        if (!positioned) {
-            int savedX = prefs.getInt(KEY_PANEL_X, Integer.MIN_VALUE);
-            int savedY = prefs.getInt(KEY_PANEL_Y, Integer.MIN_VALUE);
-            int[] spot;
-            if (hasOrbRect) {
-                int anchorX = lastOrbSnappedRight
-                    ? lastOrbX - edge - panelParams.width
-                    : lastOrbX + lastOrbSize + edge;
-                spot = OverlayGeometry.clamp(anchorX, lastOrbY,
-                    panelParams.width, panelParams.height,
-                    lastScreenWidth, lastScreenHeight, edge);
-            } else if (savedX != Integer.MIN_VALUE && savedY != Integer.MIN_VALUE) {
-                spot = OverlayGeometry.clamp(savedX, savedY,
-                    panelParams.width, panelParams.height,
-                    lastScreenWidth, lastScreenHeight, edge);
-            } else {
-                spot = OverlayGeometry.startPosition(
-                    panelParams.width, panelParams.height,
-                    lastScreenWidth, lastScreenHeight, edge, 0.3f);
-            }
-            panelParams.x = spot[0];
-            panelParams.y = spot[1];
-            positioned = true;
-        } else {
+        // 用户拖过、或手正按在面板上拖动：不要再按默认规则把面板拽回球旁边
+        if (userPositioned || dragging) {
             clampPanel();
+            safeUpdate();
+            return;
         }
+        int edge = dp(NearbyOverlayModel.EDGE);
+        int savedX = prefs.getInt(KEY_PANEL_X, Integer.MIN_VALUE);
+        int savedY = prefs.getInt(KEY_PANEL_Y, Integer.MIN_VALUE);
+        int[] spot;
+        if (hasOrbRect) {
+            spot = OverlayGeometry.panelSpot(panelParams.width, panelParams.height,
+                lastOrbX, lastOrbY, lastOrbSize, lastOrbSize,
+                lastScreenWidth, lastScreenHeight, dp(PANEL_GAP_DP));
+        } else if (savedX != Integer.MIN_VALUE && savedY != Integer.MIN_VALUE) {
+            spot = OverlayGeometry.clamp(savedX, savedY,
+                panelParams.width, panelParams.height,
+                lastScreenWidth, lastScreenHeight, edge);
+        } else {
+            spot = OverlayGeometry.startPosition(
+                panelParams.width, panelParams.height,
+                lastScreenWidth, lastScreenHeight, edge, 0.3f);
+        }
+        panelParams.x = spot[0];
+        panelParams.y = spot[1];
         safeUpdate();
     }
 
@@ -355,6 +361,8 @@ public final class NearbyPanelController {
                     panelParams.y = dragStartY + Math.round(event.getRawY() - downRawY);
                     clampPanel();
                     safeUpdate();
+                    // 用户自己定过位置：之后不再跟着球跑（下次重新展开才会回到默认落点）
+                    userPositioned = true;
                     prefs.edit()
                         .putInt(KEY_PANEL_X, panelParams.x)
                         .putInt(KEY_PANEL_Y, panelParams.y)
@@ -387,7 +395,7 @@ public final class NearbyPanelController {
 
     private void collapse() {
         expanded = false;
-        positioned = false;
+        userPositioned = false;
         dragging = false;
         if (panel == null) return;
         try {

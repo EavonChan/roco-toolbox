@@ -87,6 +87,63 @@ public final class OverlayGeometry {
         return clamp(x, y, width, height, screenWidth, screenHeight, edge);
     }
 
+    /**
+     * 面板贴球展开（2026-11-28，方案 A）：球在左半屏就放球的右侧，在右半屏就放球的左侧，
+     * 与球保持 {@code gap} 的间隙。
+     *
+     * <p>只负责「一侧放得下」的情形：横向放不下（球在屏幕正中附近）返回 {@code null}，
+     * 由 {@link #panelSpot} 退化为 {@link #oppositeOfBall} 的「贴屏边 + 上下错开」。</p>
+     *
+     * @return {left, top}；横向放不下时返回 {@code null}
+     */
+    public static int[] besideBall(int width, int height,
+                                   int ballX, int ballY, int ballWidth, int ballHeight,
+                                   int screenWidth, int screenHeight, int gap) {
+        int edge = Math.max(0, gap);
+        boolean ballOnRight = ballX + ballWidth / 2 >= screenWidth / 2;
+        int x = ballOnRight ? ballX - gap - width : ballX + ballWidth + gap;
+        if (x < edge || x + width > screenWidth - edge) return null;
+        return clamp(x, ballY, width, height, screenWidth, screenHeight, edge);
+    }
+
+    /**
+     * 悬浮面板的默认落点（方案 A / 2026-11-28）：
+     * <ol>
+     *   <li>优先贴球展开（{@link #besideBall}，间隙 12dp）；</li>
+     *   <li>球在屏幕正中、左右都放不下 → 退化为 {@link #oppositeOfBall}：
+     *       贴屏边，再上下错开，保证不压球。</li>
+     * </ol>
+     *
+     * @return {left, top}
+     */
+    public static int[] panelSpot(int width, int height,
+                                  int ballX, int ballY, int ballWidth, int ballHeight,
+                                  int screenWidth, int screenHeight, int gap) {
+        int[] beside = besideBall(width, height, ballX, ballY, ballWidth, ballHeight,
+            screenWidth, screenHeight, gap);
+        if (beside != null) return beside;
+        return oppositeOfBall(width, height, ballX, ballY, ballWidth, ballHeight,
+            screenWidth, screenHeight, gap);
+    }
+
+    /**
+     * 拖拽结束的吸边判定（2026-11-28 修）。
+     *
+     * <p>旧口径按「球心距屏幕边 8dp」判断，但 {@code clamp} 会保证球完整留在屏内，
+     * 球心离边至少半个球宽（26dp），条件永远不成立 —— 吸附 / 向左展开的分支从没执行过。
+     * 现在按**球可见边缘**判断：球左边距 ≤ threshold 吸左，球右边距 ≤ threshold 吸右。</p>
+     *
+     * @return {吸附后的 x, side}；side：0 = 未吸附，1 = 左边缘，2 = 右边缘
+     */
+    public static int[] snapToEdge(int ballX, int ballWidth, int screenWidth, int threshold) {
+        int safeThreshold = Math.max(0, threshold);
+        if (ballX <= safeThreshold) return new int[] { 0, 1 };
+        if (ballX + ballWidth >= screenWidth - safeThreshold) {
+            return new int[] { screenWidth - ballWidth, 2 };
+        }
+        return new int[] { ballX, 0 };
+    }
+
     /** 两个矩形是否相交（含间距）。 */
     public static boolean overlaps(int x, int y, int width, int height,
                                    int otherX, int otherY, int otherWidth, int otherHeight, int gap) {

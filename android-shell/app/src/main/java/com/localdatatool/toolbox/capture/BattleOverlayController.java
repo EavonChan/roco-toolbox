@@ -91,8 +91,8 @@ public final class BattleOverlayController {
     /** 长按判定：按住 500ms 且位移不超过 slop 才算长按隐藏，超过按拖动处理 */
     private static final long LONG_PRESS_MS = 500L;
     /**
-     * 拖拽结束吸边阈值（2026-11-10）：球中心距屏幕左右边缘 8dp 以内就吸附到该边，
-     * 只对齐 x，保留原来的上下位置（不上下吸）。
+     * 拖拽结束吸边阈值（2026-11-28 修正口径）：球的**可见边缘**距屏幕左右边缘 8dp 以内就吸附到该边
+     * （旧版按球心判定，球被夹在屏内时永远达不到，实际从未吸附）。只对齐 x，保留原来的上下位置。
      */
     private static final int SNAP_THRESHOLD_DP = 8;
     /** 吸附后多久没有操作开始半透明（常量，方便以后调）。 */
@@ -641,34 +641,28 @@ public final class BattleOverlayController {
         return builder;
     }
 
-    /** 把球当前屏幕坐标同步给面板（面板只在展开时用来算默认落点，之后不再跟着球走）。 */
+    /** 把球当前屏幕坐标同步给面板：面板展开时按「贴球展开」自动落点，并跟着球移动（2026-11-28）。 */
     private void syncPanelAnchor() {
         if (orbParams == null) return;
         Point screen = screenSize();
-        // 吸附在右边缘时面板向左展开，其余情况一律在球的右侧（不做智能避让）
-        nearbyPanel.setOrbRect(
-            orbParams.x, orbParams.y, orbParams.width, screen.x, screen.y, snappedSide == 2);
+        nearbyPanel.setOrbRect(orbParams.x, orbParams.y, orbParams.width, screen.x, screen.y);
     }
 
     /**
-     * 吸边判定（2026-11-10）：球中心距屏幕左右边缘 8dp 以内就吸附到该边。
-     * 只改 x、不动 y，所以吸附本身不会让球上下跳。
+     * 吸边判定（2026-11-28 修）：按球的**可见边缘**距屏幕左右边缘 8dp 以内判定。
+     *
+     * <p>旧口径用球心距边 8dp；但球被 {@code clampToScreen} 完整夹在屏内，球心离边至少半个球宽，
+     * 条件永远不成立（吸附 / 向左展开的分支从没执行过）。改成看可见边缘后，球贴边才会真的吸附。
+     * 只改 x、不动 y，所以吸附本身不会让球上下跳。</p>
      *
      * @return 0 未吸附，1 左边缘，2 右边缘
      */
     private int snapSideOf(WindowManager.LayoutParams params) {
         Point screen = screenSize();
-        float centerX = params.x + params.width / 2f;
-        int threshold = dp(SNAP_THRESHOLD_DP);
-        if (centerX <= threshold) {
-            params.x = 0;
-            return 1;
-        }
-        if (centerX >= screen.x - threshold) {
-            params.x = screen.x - params.width;
-            return 2;
-        }
-        return 0;
+        int[] snapped = OverlayGeometry.snapToEdge(
+            params.x, params.width, screen.x, dp(SNAP_THRESHOLD_DP));
+        params.x = snapped[0];
+        return snapped[1];
     }
 
     /** 吸附且 3 秒无操作后半透明；没吸附则立刻恢复 100%。 */
