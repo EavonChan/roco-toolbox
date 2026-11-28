@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Profile } from './Profile';
 import { resetMeCacheForTest } from './accountMe';
 import { clearSyncFeedback } from './syncNoticeStore';
-import { clearAllSnapshots } from '../storage/snapshots';
-import { resetSnapshotCacheForTest } from '../storage/snapshotStore';
+import { clearAllSnapshots, writeSnapshots } from '../storage/snapshots';
+import { refreshSnapshots, resetSnapshotCacheForTest } from '../storage/snapshotStore';
 
 /**
  * 「我的」页的交互手感（2026-11-28 FX1，依据 docs/评审-UI-2026-11-28.md §6）。
@@ -47,7 +47,19 @@ const renderData = () =>
   render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
 
 describe('② 页内跳转不被顶栏盖住', () => {
-  test('「采集数据」的落点带 scroll-mt-24（96px），标题不会被 88px 的 sticky 头吃掉', () => {
+  test('「采集数据」的落点带 scroll-mt-24（96px），标题不会被 88px 的 sticky 头吃掉', async () => {
+    // 2026-11-28 重排后：入口/采集块只在有本机数据时出现，先塞一份
+    await writeSnapshots([
+      {
+        accountName: '测试甲',
+        gameId: 1,
+        exportedAt: '2026-11-28T00:00:00.000Z',
+        importedAt: '2026-11-28T00:00:00.000Z',
+        pets: [],
+        eggs: [],
+      },
+    ]);
+    await refreshSnapshots();
     const scrollIntoView = vi.fn();
     const original = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -69,7 +81,19 @@ describe('② 页内跳转不被顶栏盖住', () => {
 });
 
 describe('④ 点击与切换的反馈', () => {
-  test('列表行有按下态，且用的是 DESIGN1 的 surface token（不新写颜色）', () => {
+  test('列表行有按下态，且用的是 DESIGN1 的 surface token（不新写颜色）', async () => {
+    // 设置类列表只在有数据时出现（新用户首屏只有一句空态）
+    await writeSnapshots([
+      {
+        accountName: '测试甲',
+        gameId: 1,
+        exportedAt: '2026-11-28T00:00:00.000Z',
+        importedAt: '2026-11-28T00:00:00.000Z',
+        pets: [],
+        eggs: [],
+      },
+    ]);
+    await refreshSnapshots();
     renderData();
 
     for (const id of ['profile-section-identity', 'profile-guide']) {
@@ -105,7 +129,19 @@ describe('④ 点击与切换的反馈', () => {
 });
 
 describe('① 概览卡不再有伪同步按钮', () => {
-  test('已登录：右上角什么都不放，同步只留在「私有同步」卡里', () => {
+  test('已登录：右上角什么都不放，同步只留在「私有同步」卡里', async () => {
+    // 2026-11-28 重排后：新用户首屏不出现「采集与同步」，先给一份本机数据
+    await writeSnapshots([
+      {
+        accountName: '测试甲',
+        gameId: 1,
+        exportedAt: '2026-11-28T00:00:00.000Z',
+        importedAt: '2026-11-28T00:00:00.000Z',
+        pets: [],
+        eggs: [],
+      },
+    ]);
+    await refreshSnapshots();
     window.localStorage.setItem('roco.accountId', 'acc-1');
     try {
       renderData();

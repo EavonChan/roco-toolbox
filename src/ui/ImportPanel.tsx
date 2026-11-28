@@ -50,9 +50,27 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 export interface ImportPanelProps {
   /** 匿名统计下方、数据来源前给调用方留的一块（2026-11-21：私有同步卡片）。 */
   afterAnalytics?: ReactNode;
+  /**
+   * 紧凑模式（2026-11-28「我的」页重排）：只留导入主动作与导入结果。
+   * 设置类内容（导出 / 合并导入 / 重置 / 隐私开关 / 数据来源）一律不进首屏与空态，
+   * 由「设置」区块或数据态下的完整面板承担。
+   */
+  compact?: boolean;
+  /** 页面已有一句空态时，不再重复「还没有数据」 */
+  hideEmptyHint?: boolean;
+  /** 只渲染设置（导出 / 合并导入 / 重置、隐私开关、数据来源），供设置区块的弹层使用 */
+  settingsOnly?: boolean;
+  /** 主面板不渲染设置——「我的」页把设置下沉到设置区块 */
+  hideSettings?: boolean;
 }
 
-export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
+export function ImportPanel({
+  afterAnalytics,
+  compact = false,
+  hideEmptyHint = false,
+  settingsOnly = false,
+  hideSettings = false,
+}: ImportPanelProps = {}) {
   const { snapshots, loaded } = useSnapshots();
   // 历史入口常驻：只要有导入历史，卡片就渲染（重启后入口仍在，2026-10-05 用户拍板）
   const importHistory = useLastImportHistory();
@@ -474,96 +492,15 @@ export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
     }
   };
 
-  return (
-    <main className="mx-auto max-w-md space-y-3 p-4">
-      {/* 用真正的 button 触发隐藏 input：部分手机内置浏览器对 label 包裹 hidden input 支持不佳 */}
-      <button
-        type="button"
-        data-testid="import-button"
-        data-tour="profile-import"
-        onClick={() => fileInputRef.current?.click()}
-        className="flex min-h-[44px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 text-base font-medium text-white"
-      >
-        {importing ? '导入中…' : '导入游戏数据'}
-      </button>
-      <p className="-mt-1 text-center text-xs text-slate-400">
-        采集器分享到「小布助手」会自动导入；也可手选 .pcap / .json（可多选）
-      </p>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/json,.json,.pcap,application/vnd.tcpdump.pcap"
-        multiple
-        className="hidden"
-        data-testid="import-input"
-        onChange={(event) => {
-          const files = Array.from(event.target.files ?? []);
-          if (files.length > 0) void handleImport(files);
-          event.target.value = '';
-        }}
-      />
-
-      {/* 导入结果 / 错误紧跟主按钮：导入失败、合并结果都在这里第一时间看到 */}
-      {importError || actionError ? (
-        <div className="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700">
-          {importError ?? actionError}
-        </div>
-      ) : null}
-      {dataMessage ? (
-        <p className="-mt-1 text-xs text-emerald-700" data-testid="data-message">
-          {dataMessage}
-        </p>
-      ) : null}
-
-      {!loaded ? (
-        <div className="min-h-[44px] rounded-lg bg-slate-50 p-3" aria-busy="true" data-testid="import-loading">
-          <div className="h-3 w-24 animate-pulse rounded bg-slate-200" />
-          <div className="mt-1.5 h-3 w-3/4 animate-pulse rounded bg-slate-200" />
-        </div>
-      ) : snapshots.length === 0 ? (
-        <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500" data-testid="import-empty">
-          还没有数据。用上面的「导入游戏数据」或本机采集导入一次，看板会自动算出两块进度。
-        </div>
-      ) : null}
-
-      {/* 当前数据状态放在主按钮下面：有几个账号、上次什么时候导的 */}
-      {loaded && snapshots.length > 0 ? (
-        <p className="text-xs text-slate-400">
-          <span>{snapshots.length} 个账号</span>
-          {lastImportedAt ? <span> · 上次导入 {new Date(lastImportedAt).toLocaleString()}</span> : null}
-        </p>
-      ) : null}
-
-      {stale ? (
-        <div className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800">
-          数据已超过一周未更新，请重新导入抓包数据。
-        </div>
-      ) : null}
-
-      {autoConflict ? (
-        <div
-          className="rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700"
-          data-testid="sync-conflict-notice"
-        >
-          已保存到本机。云端刚被别的设备改过，这次自动同步没完成——到下面「云同步」点一次「立即同步」即可。
-        </div>
-      ) : null}
-
-      {syncNotice ? (
-        <div
-          className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800"
-          data-testid="sync-adopted-notice"
-        >
-          {syncNotice}
-        </div>
-      ) : null}
-
-      {/* 云同步面板已移到「我的 · 工具箱身份 / 私有同步」（2026-10-24）：这里不再重复挂载认证与同步 */}
-      {/* 导入历史入口（「本次新增」明细在看板，2026-10-05 用户拍板） */}
-      {importHistory.length > 0 ? <ImportResultCard /> : null}
-
+  /** 设置类内容（导出/合并导入/重置、隐私开关、数据来源）：
+   *  「我的」页重排后由设置区块挂一个 settingsOnly 面板，主面板用 hideSettings 下沉。 */
+  const showSettings = settingsOnly || !(compact || hideSettings);
+  const settingsBlocks = (
+    <>
       {/* 低频操作收在底部、默认收起：导出 / 合并导入 / 重置。
-          合并导入与主按钮、分享导入重复度很高（换设备也已经有云同步），所以下沉到这里。 */}
+          合并导入与主按钮、分享导入重复度很高（换设备也已经有云同步），所以下沉到这里。
+          紧凑模式（空态）不渲染：这些都是设置，不是新用户的首屏动作。 */}
+      {showSettings ? (
       <section className="rounded-2xl bg-white shadow-sm" data-testid="import-more">
         <button
           type="button"
@@ -625,8 +562,11 @@ export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
           </div>
         ) : null}
       </section>
+      ) : null}
 
-      {/* 匿名统计开关（2026-10-06）：只报「设备 + 用了哪个功能」，可随时关掉 */}
+      {/* 匿名统计开关（2026-10-06）：只报「设备 + 用了哪个功能」，可随时关掉。
+          设置类内容，紧凑模式（空态）不渲染。 */}
+      {showSettings ? (
       <section className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-700">匿名使用统计</p>
@@ -653,10 +593,112 @@ export function ImportPanel({ afterAnalytics }: ImportPanelProps = {}) {
           {analyticsOn ? '已开启' : '已关闭'}
         </button>
       </section>
+      ) : null}
 
-      {afterAnalytics}
+      {showSettings ? <SourceNotice /> : null}
+    </>
+  );
 
-      <SourceNotice />
-    </main>
+  // 设置区块里的弹层只挂设置，不再重复整块导入面板
+  if (settingsOnly) {
+    return (
+      <div className="space-y-3" data-testid="import-settings">
+        {settingsBlocks}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3" data-testid="import-panel" data-compact={compact ? 'true' : undefined}>
+      {/* 用真正的 button 触发隐藏 input：部分手机内置浏览器对 label 包裹 hidden input 支持不佳 */}
+      <button
+        type="button"
+        data-testid="import-button"
+        data-tour="profile-import"
+        onClick={() => fileInputRef.current?.click()}
+        className="flex min-h-[44px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 text-base font-medium text-white"
+      >
+        {importing ? '导入中…' : '导入游戏数据'}
+      </button>
+      <p className="-mt-1 text-center text-xs text-slate-500">
+        采集器分享到「小布助手」会自动导入；也可手选 .pcap / .json（可多选）
+      </p>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json,.pcap,application/vnd.tcpdump.pcap"
+        multiple
+        className="hidden"
+        data-testid="import-input"
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          if (files.length > 0) void handleImport(files);
+          event.target.value = '';
+        }}
+      />
+
+      {/* 导入结果 / 错误紧跟主按钮：导入失败、合并结果都在这里第一时间看到 */}
+      {importError || actionError ? (
+        <div className="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700">
+          {importError ?? actionError}
+        </div>
+      ) : null}
+      {dataMessage ? (
+        <p className="-mt-1 text-xs text-emerald-700" data-testid="data-message">
+          {dataMessage}
+        </p>
+      ) : null}
+
+      {!loaded ? (
+        <div className="min-h-[44px] rounded-lg bg-slate-50 p-3" aria-busy="true" data-testid="import-loading">
+          <div className="h-3 w-24 animate-pulse rounded bg-slate-200" />
+          <div className="mt-1.5 h-3 w-3/4 animate-pulse rounded bg-slate-200" />
+        </div>
+      ) : snapshots.length === 0 && !hideEmptyHint ? (
+        <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500" data-testid="import-empty">
+          还没有数据。用上面的「导入游戏数据」或本机采集导入一次，看板会自动算出两块进度。
+        </div>
+      ) : null}
+
+      {/* 当前数据状态放在主按钮下面：有几个账号、上次什么时候导的 */}
+      {loaded && snapshots.length > 0 ? (
+        <p className="text-xs text-slate-500">
+          <span>{snapshots.length} 个账号</span>
+          {lastImportedAt ? <span> · 上次导入 {new Date(lastImportedAt).toLocaleString()}</span> : null}
+        </p>
+      ) : null}
+
+      {stale ? (
+        <div className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800">
+          数据已超过一周未更新，请重新导入抓包数据。
+        </div>
+      ) : null}
+
+      {autoConflict ? (
+        <div
+          className="rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700"
+          data-testid="sync-conflict-notice"
+        >
+          已保存到本机。云端刚被别的设备改过，这次自动同步没完成——到下面「云同步」点一次「立即同步」即可。
+        </div>
+      ) : null}
+
+      {syncNotice ? (
+        <div
+          className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800"
+          data-testid="sync-adopted-notice"
+        >
+          {syncNotice}
+        </div>
+      ) : null}
+
+      {/* 云同步面板已移到「我的 · 工具箱身份 / 私有同步」（2026-10-24）：这里不再重复挂载认证与同步 */}
+      {/* 导入历史入口（「本次新增」明细在看板，2026-10-05 用户拍板） */}
+      {importHistory.length > 0 && !compact ? <ImportResultCard /> : null}
+
+      {compact ? null : afterAnalytics}
+
+      {showSettings ? settingsBlocks : null}
+    </div>
   );
 }

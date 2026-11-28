@@ -1,0 +1,30 @@
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { SettingsSection } from './SettingsSection';
+import { makeCtx } from '../testContext';
+
+afterEach(cleanup);
+
+describe('更多与设置区块', () => {
+  test('一行一个目的地：附近 / 我的身份 / 新手引导', () => {
+    const onGoNearby = vi.fn();
+    const onGoIdentity = vi.fn();
+    const onStartTour = vi.fn();
+    render(<SettingsSection ctx={makeCtx({ onGoNearby, onGoIdentity, onStartTour })} />);
+
+    fireEvent.click(screen.getByTestId('data-view-nearby'));
+    fireEvent.click(screen.getByTestId('profile-section-identity'));
+    fireEvent.click(screen.getByTestId('profile-guide'));
+
+    expect(onGoNearby).toHaveBeenCalledTimes(1);
+    expect(onGoIdentity).toHaveBeenCalledTimes(1);
+    expect(onStartTour).toHaveBeenCalledTimes(1);
+    // 身份行沿用用户名口径（RUI P1-02）
+    expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('训练家小明');
+  });
+
+  test('断数据不炸：未登录时身份行写「未登录」', () => {
+    render(<SettingsSection ctx={makeCtx({ accountId: null, accountName: null })} />);
+    expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('未登录');
+  });
+});

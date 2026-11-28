@@ -1,5 +1,5 @@
 import type { NavigationIntent, ProfileSection } from './navigation';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { appUpdateSnapshot, checkAppUpdate, hasAppUpdateShell, installAppUpdateBridge, seedAppUpdate, subscribeAppUpdate } from '../collector/appUpdate';
 import { readAccountId, subscribeSession } from '../api/session';
 import { AccountPanel } from './AccountPanel';
@@ -8,12 +8,10 @@ import { collectAvatarCandidates } from './avatarCandidates';
 import { CollectionGroups } from './CollectionGroups';
 import { Nearby } from './Nearby';
 import { NearbyErrorBoundary } from './NearbyErrorBoundary';
-import { ImportOutcomeNotice } from './ImportOutcomeNotice';
-import { ImportPanel } from './ImportPanel';
-import { NativeCollectorPanel } from './NativeCollectorPanel';
 import { ProfileAvatarPicker } from './ProfileAvatarPicker';
-import { ProfileHeader } from './ProfileHeader';
-import { ProfileQuickEntries } from './ProfileQuickEntries';
+import { ProfileHome } from './profile/ProfileHome';
+import { useProfileTodos } from './profile/useProfileTodos';
+import type { ProfilePageContext } from './profile/types';
 import { useProfileAvatar } from './useProfileAvatar';
 import { Button } from './primitives/Button';
 import { ServerAddressPanel, serverBridge, toggleServer } from './ServerAddressPanel';
@@ -40,58 +38,13 @@ export interface ProfileProps {
 const VERSION_TAPS = 5;
 const TAP_WINDOW_MS = 2000;
 
-/** 一行一个目的地（2026-11-25 U2）：48px 行高满足「导航保留 40~44px」。
- *  按下态用 DESIGN1 的 surface token（2026-11-28 FX1 ④）：移动端没有 hover，
- *  active 是唯一的即时确认。 */
-function ProfileRow({
-  testId,
-  label,
-  value,
-  onClick,
-}: {
-  testId: string;
-  label: string;
-  value?: string;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      data-testid={testId}
-      className="flex min-h-[48px] w-full items-center gap-2 px-4 text-left text-sm text-slate-800 transition-colors active:bg-surface-sunken disabled:text-slate-500 disabled:active:bg-transparent"
-    >
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {value ? <span className="shrink-0 text-xs text-slate-500">{value}</span> : null}
-      <span aria-hidden className="shrink-0 text-slate-300">
-        ›
-      </span>
-    </button>
-  );
-}
-
-/** 分组列表容器：标题 11px 灰字 + 分隔线，行与行之间不画卡片。 */
-function ProfileList({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
-      <h2 className="px-4 pb-1 pt-3 text-[11px] font-semibold tracking-wide text-slate-400">{title}</h2>
-      <div className="divide-y divide-slate-100">{children}</div>
-    </section>
-  );
-}
-
 /**
- * 「我的」（2026-11-25 U2 方案 A）。
+ * 「我的」。
  *
- * 结构从「三段式分段控件」改成「首页 + 行 → 二级分区」：
- * 1. 账号概览卡（谁在用 / 几个角色 / 上次采集）；
- * 2. 三个高频入口（采集数据 / 我的蛋仓 / 我的小组）；
- * 3. 采集与导入（本机采集 + 导入卡，导入仍是这一页的主动作）；
- * 4. 账号 / 设置与帮助 两组列表，行为一行一个目的地。
- *
- * 分区内容（小组 / 身份 / 游戏数据）原样保留，只是入口从分段按钮换成列表行；
- * `profile-section-*` 的 testid 仍然挂在可点击元素上，e2e 点击路径不变。
+ * 2026-11-28 重排（RUI-01/03/04/05）：首页不再是一个大组件，而是由
+ * `src/ui/profile/recipes.ts` 的配方决定放哪些区块；二级分区（小组 / 身份 / 游戏数据）
+ * 仍是本文件里的子视图。首屏只回答「我现在什么状态」：身份 → 三个数字 → 三个入口；
+ * 采集/导入与更多设置排在它们后面。
  */
 export function Profile({
   section,
@@ -112,6 +65,8 @@ export function Profile({
   // 头像（2026-11-28）：A 图鉴精灵 + 云端；点头像直接换
   const avatarState = useProfileAvatar(accountId);
   const avatarCandidates = useMemo(() => collectAvatarCandidates(snapshots), [snapshots]);
+  // 首屏待办数字（2026-11-28 用户口径：待认领 / 待确认 / 附近目标；收集进度归看板）
+  const todos = useProfileTodos(accountId);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   useEffect(() => {
     if (!accountId) setAvatarPickerOpen(false);
@@ -128,8 +83,12 @@ export function Profile({
   const [serverSwitching, setServerSwitching] = useState(false);
   const [serverNotice, setServerNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const versionTaps = useRef<number[]>([]);
-  /** 「采集数据」入口：把视线带到下面的采集 / 导入块（不再多一次跳页） */
-  const collectRef = useRef<HTMLDivElement>(null);
+  /** 「采集数据」入口：滚到采集/导入区块（区块自带 scroll-mt，让开 sticky 头）。 */
+  const scrollToCollect = () => {
+    document
+      .querySelector('[data-testid="profile-collect"]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   /** 换头像：未登录只提示，不给弹层入口（2026-11-28） */
   const openAvatarPicker = () => {
     if (!accountId) {
@@ -141,7 +100,7 @@ export function Profile({
   const closeAvatarPicker = () => setAvatarPickerOpen(false);
   const goImportFromAvatar = () => {
     setAvatarPickerOpen(false);
-    collectRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    scrollToCollect();
   };
   // 概览卡右上角的「同步」2026-11-28 已删（FX1 ①）：它不执行同步、只滚动到下面的
   // 「私有同步」卡并高亮 2 秒，属于「按钮 = 滚动」的伪动作。同步只留「立即同步」一处。
@@ -190,6 +149,26 @@ export function Profile({
 
   const goSection = (next: ProfileSection) => onNavigate({ type: 'open-profile', section: next });
   const backToProfile = () => goSection('data');
+  /** 首页区块共享的只读数据 + 回调（区块之间不互相 import）。 */
+  const pageCtx: ProfilePageContext = {
+    loaded,
+    snapshots,
+    accountId,
+    accountName,
+    avatar: avatarState.avatar,
+    avatarNotice: avatarState.notice,
+    todos,
+    onOpenAvatar: openAvatarPicker,
+    onCollect: scrollToCollect,
+    onGoEggStock: () => onNavigate({ type: 'open-egg-stock' }),
+    onGoGroups: () => goSection('groups'),
+    onOpenGroups: () => onNavigate({ type: 'open-groups' }),
+    onGoIdentity: () => goSection('identity'),
+    onGoNearby: () => onNavigate({ type: 'tab', page: 'nearby' }),
+    onStartTour,
+    autoConflict,
+    onAutoConflictHandled: () => setSyncConflict(null),
+  };
   /** 二级分区（小组 / 我的身份）左上角的返回行；就是回到「我的」首页（数据视图）。 */
   const backRow = (
     <button
@@ -226,107 +205,7 @@ export function Profile({
         </>
       ) : null}
 
-      {section === 'data' && dataView === 'import' ? (
-        <>
-          <ProfileHeader
-            snapshots={snapshots}
-            accountId={accountId}
-            accountName={accountName}
-            avatar={avatarState.avatar}
-            onAvatarClick={openAvatarPicker}
-            onGoAccount={() => goSection('identity')}
-          />
-          {avatarState.notice ? (
-            <p
-              role="status"
-              data-testid="profile-avatar-notice"
-              className={`text-xs ${
-                avatarState.notice.tone === 'error' ? 'text-rose-600' : 'text-slate-500'
-              }`}
-            >
-              {avatarState.notice.text}
-            </p>
-          ) : null}
-          <ProfileQuickEntries
-            eggStockHint={accountId ? '换蛋 · 蛋仓' : '需登录'}
-            onCollect={() => collectRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })}
-            onEggStock={() => onNavigate({ type: 'open-egg-stock' })}
-            onGroups={() => goSection('groups')}
-          />
-
-          {loaded && snapshots.length === 0 ? (
-            <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="first-run-card">
-              <h2 className="text-base font-semibold text-slate-900">先采集一次，看看还缺什么</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                小布助手帮你算洛克王国的孵蛋缺口：还缺哪只母本、怎么配窝、跟谁换蛋。
-                都按你导入的游戏数据算，数据只存在本机。
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                导入后可去「看板」看缺什么、「收集」补齐、「换蛋」互换。
-              </p>
-              {onStartTour ? (
-                <Button
-                  variant="secondary"
-                  className="mt-2 active:bg-surface-sunken"
-                  onClick={onStartTour}
-                  data-testid="first-run-guide"
-                >
-                  教程
-                </Button>
-              ) : null}
-            </section>
-          ) : null}
-
-          {/* 「采集数据」的落点（2026-11-28 FX1 ②）：scroll-mt-24 = 96px，
-              让 88px 的 sticky 头不再盖住块内标题「本机采集」。
-              页内跳转统一用这条：滚过去时目标自己让出头部高度，调用点不再各减一次。 */}
-          <div ref={collectRef} className="scroll-mt-24 space-y-3" data-testid="profile-collect">
-            <ImportOutcomeNotice onOpenGroups={() => onNavigate({ type: 'open-groups' })} />
-            <NativeCollectorPanel />
-            {/* 私有同步（2026-11-21 从独立分区挪到这里）：本机采集 / 导入的下方。
-                2026-11-28 FX1：概览卡的伪「同步」已删，同步只剩这块卡里的「立即同步」，
-                所以不再需要高亮与滚动落点。 */}
-            <ImportPanel
-              afterAnalytics={
-                <div data-testid="profile-sync-block">
-                  <AccountPanel
-                    section="sync"
-                    autoConflict={autoConflict}
-                    onAutoConflictHandled={() => setSyncConflict(null)}
-                  />
-                </div>
-              }
-            />
-          </div>
-
-          <ProfileList title="数据">
-            <ProfileRow
-              testId="data-view-nearby"
-              label="附近精灵"
-              value="采集时实时看"
-              onClick={() => onNavigate({ type: 'tab', page: 'nearby' })}
-            />
-          </ProfileList>
-
-          <ProfileList title="账号">
-            <ProfileRow
-              testId="profile-section-identity"
-              label="我的身份"
-              value={accountId ? accountName || '已登录' : '未登录'}
-              onClick={() => goSection('identity')}
-            />
-          </ProfileList>
-
-          <ProfileList title="设置与帮助">
-            <ProfileRow
-              testId="profile-guide"
-              label="新手引导"
-              value="重看一遍"
-              onClick={onStartTour}
-            />
-          </ProfileList>
-        </>
-      ) : null}
+      {section === 'data' && dataView === 'import' ? <ProfileHome ctx={pageCtx} /> : null}
 
       {section === 'groups' ? (
         <>
@@ -415,7 +294,7 @@ export function Profile({
         data-testid="app-version"
         onClick={onVersionTap}
       >
-        <span className="text-[10px] text-slate-300">版本 {__APP_BUILD__}</span>
+        <span className="text-[10px] text-ink-muted">版本 {__APP_BUILD__}</span>
         {updateSupported ? null : envBadge}
       </div>
 

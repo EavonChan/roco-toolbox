@@ -99,7 +99,8 @@ const renderProfile = (section: ProfileSection = 'data') =>
   );
 
 describe('Profile（我的）', () => {
-  test('分区改成列表行：不再有分段控件，profile-section-* 原样挂在行上', () => {
+  test('分区改成列表行：不再有分段控件，profile-section-* 原样挂在行上', async () => {
+    await seedImportedPets();
     const onNavigate = vi.fn();
     render(
       <Profile section="data" returnToGroups={false} onNavigate={onNavigate} />,
@@ -115,7 +116,8 @@ describe('Profile（我的）', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'groups' });
   });
 
-  test('三个快捷入口：采集滚到采集块、蛋仓进换蛋蛋仓、小组进小组分区', () => {
+  test('三个快捷入口：采集滚到采集块、蛋仓进换蛋蛋仓、小组进小组分区', async () => {
+    await seedImportedPets();
     const scrollIntoView = vi.fn();
     const original = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -137,7 +139,8 @@ describe('Profile（我的）', () => {
     }
   });
 
-  test('蛋仓入口在未登录时标明需登录，登录后写清它去哪', () => {
+  test('蛋仓入口在未登录时标明需登录，登录后写清它去哪', async () => {
+    await seedImportedPets();
     window.localStorage.clear();
     const first = render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
     expect(screen.getByTestId('profile-entry-egg-stock')).toHaveTextContent('需登录');
@@ -148,7 +151,8 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('profile-entry-egg-stock')).toHaveTextContent('换蛋 · 蛋仓');
   });
 
-  test('已登录：概览卡不再放「同步」按钮，同步只留在「私有同步」卡里', () => {
+  test('已登录：概览卡不再放「同步」按钮，同步只留在「私有同步」卡里', async () => {
+    await seedImportedPets();
     window.localStorage.setItem('roco.accountId', 'acc-1');
     try {
       render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
@@ -181,6 +185,7 @@ describe('Profile（我的）', () => {
     window.localStorage.setItem('roco.deviceToken', 'token-1');
     window.localStorage.setItem('roco.accountId', 'acc-1');
     stubMe('训练家小明');
+    await seedImportedPets();
 
     render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
 
@@ -192,9 +197,10 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('训练家小明');
   });
 
-  test('老账号没有用户名：概览卡仍写「已登录」，头像写「已」，账号行也写「已登录」', () => {
+  test('老账号没有用户名：概览卡仍写「已登录」，头像写「已」，账号行也写「已登录」', async () => {
     window.localStorage.setItem('roco.deviceToken', 'token-1');
     window.localStorage.setItem('roco.accountId', 'acc-1');
+    await seedImportedPets();
 
     render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
 
@@ -203,7 +209,8 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('profile-section-identity')).toHaveTextContent('已登录');
   });
 
-  test('未登录：概览卡写「本机模式 · 未登录」，账号行写「未登录」', () => {
+  test('未登录：概览卡写「本机模式 · 未登录」，账号行写「未登录」', async () => {
+    await seedImportedPets();
     render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
 
     expect(screen.getByTestId('profile-header-name')).toHaveTextContent('本机模式 · 未登录');
@@ -232,7 +239,8 @@ describe('Profile（我的）', () => {
     expect(screen.queryByTestId('account-panel')).toBeNull();
   });
 
-  test('游戏数据里的「附近」子视图：切换发导航意图，打开时渲染附近页', () => {
+  test('游戏数据里的「附近」子视图：切换发导航意图，打开时渲染附近页', async () => {
+    await seedImportedPets();
     const onNavigate = vi.fn();
     const { rerender } = render(
       <Profile section="data" returnToGroups={false} onNavigate={onNavigate} />,
@@ -255,7 +263,8 @@ describe('Profile（我的）', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'data' });
   });
 
-  test('游戏数据分区：导入入口与三阶段反馈都在', () => {
+  test('游戏数据分区：导入入口与三阶段反馈都在', async () => {
+    await seedImportedPets();
     const id = beginImport();
     updateImportOutcome(id, { local: 'saved', cloud: 'failed', message: '新增 1 个账号' });
     renderProfile('data');
@@ -278,7 +287,8 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('profile-return-groups')).toBeTruthy();
   });
 
-  test('「去小组查看」通过导航意图进入小组', () => {
+  test('「去小组查看」通过导航意图进入小组', async () => {
+    await seedImportedPets();
     const id = beginImport();
     updateImportOutcome(id, { local: 'saved' });
     const onNavigate = vi.fn();
