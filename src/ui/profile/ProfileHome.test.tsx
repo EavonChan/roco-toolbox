@@ -22,11 +22,13 @@ describe('「我的」页配方', () => {
     expect(screen.queryByTestId('profile-new-user')).toBeNull();
   });
 
-  test('没有数据：只剩身份 + 一句空态（不出现数字/入口/采集重复空态）', () => {
+  test('没有数据：身份 + 一句空态 + 更多/设置（不出现数字/入口/采集重复空态）', () => {
     render(<ProfileHome ctx={makeCtx({ snapshots: [] })} />);
 
+    // 设置块不设 when：新用户也要能从「我的」进身份 / 看引导；
+    // 「不进首屏」靠配方顺序（排最后），不靠隐藏。
     expect(screen.getByTestId('profile-home').getAttribute('data-sections')).toBe(
-      'identity,new-user',
+      'identity,new-user,settings',
     );
     expect(screen.queryByTestId('profile-todos')).toBeNull();
     expect(screen.queryByTestId('profile-quick-entries')).toBeNull();

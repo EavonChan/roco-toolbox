@@ -11,7 +11,7 @@ import {
 } from '../domain/motherCriteria';
 import { useTabletLandscape, useWideLandscape } from './useWideLandscape';import { PetAvatar } from './PetAvatar';
 import { PetCardLayout, type PetCardStatus } from './PetCardLayout';
-import { shouldUseThreeColumns } from './motherColumnLayout';
+import { shouldUseThreeColumnsEstimated } from './motherColumnLayout';
 import { SearchField } from './primitives/SearchField';
 import { InlineMultiSelect } from './primitives/InlineMultiSelect';
 import { SegmentedControl } from './primitives/SegmentedControl';
@@ -499,6 +499,14 @@ export function MotherView({
   /**
    * 三列蛋组（2026-11-21 用户口径）：收起筛选且屏幕够宽时，
    * 只有「两列一屏放不下全部蛋组」才排三列；两列能一屏放下就保持两列大卡。
+   *
+   * P4（2026-11-27）：不再在 useLayoutEffect 里临时改两列、逐个
+   * getBoundingClientRect 量真实高度（≥1200px 宽横屏一次收起筛选要 149.5ms，
+   * 因为测量本身便宜但引起整页重排贵）。改用估算高度：分区高度 = header 30px
+   * + ceil(链数/4) × 108px，gap 固定 8px，列表顶部按视口 15% 估算。
+   *
+   * 仍然留在 useLayoutEffect：估算只是算术，不读 DOM 就不会强制重排；
+   * 放回 layout 阶段才能保持「收起/展开筛选时列数在第一帧就是对的」，不会 2 列闪一下再跳 3 列。
    */
   const [threeColumns, setThreeColumns] = useState(false);
   const [layoutTick, setLayoutTick] = useState(0);
@@ -521,40 +529,19 @@ export function MotherView({
       setThreeColumns(false);
       return;
     }
-    const list = chainListRef.current;
-    if (!list) {
-      setThreeColumns(false);
-      return;
-    }
     // 还有「显示更多蛋组」= 两列本来就没展示完全部蛋组
     if (hiddenChainSections > 0) {
       setThreeColumns(true);
       return;
     }
-    // 同步按两列量一次真实高度，量完立刻还原，绘制前完成不会闪
-    const previous = list.style.gridTemplateColumns;
-    list.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
-    const heights = Array.from(list.children)
-      .filter(
-        (child): child is HTMLElement =>
-          child instanceof HTMLElement &&
-          child.getAttribute('data-testid')?.startsWith('mother-chain-group-') === true,
-      )
-      .map((child) => child.getBoundingClientRect().height);
-    list.style.gridTemplateColumns = previous;
-    const gap = Number.parseFloat(getComputedStyle(list).rowGap) || 0;
-    // 列表上方还有计划汇总等块：按列表在文档里的顶部算真实可用高度，
-    // 否则 3:2 这类屏会把「列表刚好 800px」误判成一屏放得下。
-    const listTop = list.getBoundingClientRect().top + window.scrollY;
-    const availableHeight = window.innerHeight - Math.max(0, listTop);
     setThreeColumns(
-      shouldUseThreeColumns({
-        sectionHeights: heights,
-        totalSections: chainSections.length,
-        gap,
-        viewportHeight: availableHeight,
+      shouldUseThreeColumnsEstimated({
+        sectionGroupCounts: chainSections.map((section) => section.groups.length),
+        viewportHeight: window.innerHeight,
+        listTopRatio: 0.15,
       }),
     );
+    // layoutTick 只在 resize 时变化，用于重算；chainListRef 不再需要读 DOM
   }, [filterCollapsed, chainFilter, chainSections, hiddenChainSections, layoutTick, plan.length]);
 
   /** 打开「未收集母本怎么补」悬浮窗：目标卡用当前目标奖牌，路线按本号优先找 */
