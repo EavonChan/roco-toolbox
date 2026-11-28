@@ -290,7 +290,7 @@ export function Profile({
 
       {/* 构建时间（原顶栏版本标记）：排障时确认「拿到的是不是最新一版」 */}
       <div
-        className="flex flex-col items-center gap-1 pt-1 transition-opacity active:opacity-70"
+        className="flex flex-col items-center gap-1 rounded-tile px-s3 pt-1 transition-colors active:bg-surface-sunken"
         data-testid="app-version"
         onClick={onVersionTap}
       >

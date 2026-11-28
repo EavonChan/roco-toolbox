@@ -4,7 +4,7 @@ import App from './App';
 import { CHANGELOG } from './data/changelog';
 import type { AccountSnapshot } from './domain/parseBackup';
 import { resetSnapshotCacheForTest } from './storage/snapshotStore';
-import { saveSnapshot } from './storage/snapshots';
+import { clearAllSnapshots, saveSnapshot } from './storage/snapshots';
 import { TOUR_SEGMENT_ORDER, TOUR_VERSION } from './ui/tour';
 
 const snapshot = (accountName: string): AccountSnapshot => ({
@@ -24,8 +24,10 @@ const presetFirstRunSeen = () => {
   if (CHANGELOG[0]) window.localStorage.setItem('roco.changelogSeen', CHANGELOG[0].id);
 };
 
-afterEach(() => {
+afterEach(async () => {
   window.localStorage.clear();
+  await clearAllSnapshots();
+  resetSnapshotCacheForTest();
 });
 
 describe('App', () => {
@@ -115,8 +117,11 @@ describe('App', () => {
    * 2026-11-28 FX1 ③：滚到 525 → 进「我的身份」→ 返回，位置要回来。
    * 只服务「我的」页这一次来回，不是全局路由的滚动恢复。
    */
-  test('「我的」进二级分区再返回：恢复离开前的滚动位置，内容变短就落到最大可滚', () => {
+  test('「我的」进二级分区再返回：恢复离开前的滚动位置，内容变短就落到最大可滚', async () => {
     presetFirstRunSeen();
+    // 2026-11-28 重排：设置行随「更多/设置」下沉，只有本机有数据时渲染；先落一份快照，再从页签进「我的」
+    await saveSnapshot(snapshot('账号甲'));
+    resetSnapshotCacheForTest();
     const realScrollTo = Object.getOwnPropertyDescriptor(window, 'scrollTo');
     const realScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
     const realInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
@@ -136,7 +141,9 @@ describe('App', () => {
       });
 
       render(<App />);
-      expect(screen.getByTestId('profile-header')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: '我的' }));
+      await waitFor(() => expect(screen.getByTestId('profile-header')).toBeTruthy());
+      await waitFor(() => expect(screen.getByTestId('profile-section-identity')).toBeTruthy());
 
       // 进二级分区：滚顶（返回按钮旁的「‹ 返回我的」在原位）
       fireEvent.click(screen.getByTestId('profile-section-identity'));
