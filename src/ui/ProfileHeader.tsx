@@ -1,4 +1,6 @@
 import type { AccountSnapshot } from '../domain/parseBackup';
+import type { ProfileAvatarPet } from '../api/profileAvatar';
+import { ProfileAvatar } from './ProfileAvatar';
 
 /** 「我的」页顶部的账号概览卡（2026-11-25 U2 方案 A）。
  *
@@ -11,6 +13,10 @@ export interface ProfileHeaderProps {
   accountId: string | null;
   /** 账号名（用户名）；没有就写「已登录」 */
   accountName?: string | null;
+  /** 自定义头像（2026-11-28）；null/不传 = 用户名首字 */
+  avatar?: ProfileAvatarPet | null;
+  /** 点头像：打开换头像弹层（未登录时由上层决定是提示还是开弹层） */
+  onAvatarClick?: () => void;
   /** 右侧动作：未登录 = 登录，已登录 = 同步；都去「我的身份」 */
   onGoAccount: () => void;
   /**
@@ -32,7 +38,15 @@ const timeText = (value: string): string => {
   });
 };
 
-export function ProfileHeader({ snapshots, accountId, accountName, onGoAccount, onSync }: ProfileHeaderProps) {
+export function ProfileHeader({
+  snapshots,
+  accountId,
+  accountName,
+  avatar = null,
+  onAvatarClick,
+  onGoAccount,
+  onSync,
+}: ProfileHeaderProps) {
   const loggedIn = accountId != null && accountId !== '';
   const capturedAt = snapshots.reduce(
     (latest, snapshot) => (snapshot.importedAt > latest ? snapshot.importedAt : latest),
@@ -44,20 +58,20 @@ export function ProfileHeader({ snapshots, accountId, accountName, onGoAccount, 
       ? '还没采集过数据 · 先在下面导入一次'
       : `${snapshots.length} 个角色 · 上次采集 ${timeText(capturedAt)}`;
   const nameText = loggedIn ? accountName || '已登录' : '本机模式 · 未登录';
+  // 默认头像的底色：用户名优先，老账号（没有用户名）用账号 id，未登录用中性色
+  const colorSeed = loggedIn ? accountName || accountId : null;
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm" data-testid="profile-header">
       <div className="flex items-center gap-3">
-        <div
-          data-testid="profile-header-avatar"
-          className={`flex size-11 shrink-0 items-center justify-center rounded-full border text-base font-semibold ${
-            loggedIn
-              ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
-              : 'border-slate-200 bg-slate-100 text-slate-500'
-          }`}
-        >
-          {loggedIn ? nameText.slice(0, 1) : '本'}
-        </div>
+        <ProfileAvatar
+          testId="profile-header-avatar"
+          avatar={avatar}
+          name={nameText}
+          colorSeed={colorSeed}
+          size={56}
+          onClick={onAvatarClick}
+        />
         <div className="min-w-0 flex-1">
           <p
             className="flex items-center gap-1.5 text-[15px] font-semibold text-slate-900"

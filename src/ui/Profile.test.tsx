@@ -2,9 +2,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Profile } from './Profile';
 import type { ProfileSection } from './navigation';
+import { readProfileAvatar } from '../api/profileAvatar';
 import { resetMeCacheForTest } from './accountMe';
 import { beginImport, resetImportOutcomeForTest, updateImportOutcome } from './importOutcomeStore';
 import { clearSyncFeedback } from './syncNoticeStore';
+import { clearAllSnapshots, writeSnapshots } from '../storage/snapshots';
+import { refreshSnapshots, resetSnapshotCacheForTest } from '../storage/snapshotStore';
+
+const json = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 /** 只关心 /api/me 的桩：返回指定用户名，其余接口一律 ok（避免单测真的打线上）。 */
 const stubMe = (username: string | null): string[] => {
@@ -15,11 +21,54 @@ const stubMe = (username: string | null): string[] => {
     const body = path.startsWith('/api/me')
       ? { ok: true, accountId: 'acc-1', createdAt: 1, username, snapshot: null }
       : { ok: true };
-    return Promise.resolve(
-      new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-    );
+    return Promise.resolve(json(body));
   });
   return calls;
+};
+
+/** 头像流程的桩：/api/me 给用户名，PUT /api/sync 可按用例成功或失败。 */
+const stubAvatarSession = (sync: 'ok' | 'fail'): Array<{ path: string; method: string }> => {
+  const calls: Array<{ path: string; method: string }> = [];
+  vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+    const path = String(url).replace(/^https?:\/\/[^/]+/, '');
+    const method = String(init?.method ?? 'GET');
+    calls.push({ path, method });
+    if (path.startsWith('/api/me')) {
+      return Promise.resolve(json({ ok: true, accountId: 'acc-1', createdAt: 1, username: '训练家小明', snapshot: null }));
+    }
+    if (path === '/api/sync' && method === 'PUT') {
+      return Promise.resolve(
+        sync === 'fail' ? json({ error: '云端暂时不可用' }, 500) : json({ ok: true, version: 2 }),
+      );
+    }
+    return Promise.resolve(json({ ok: true }));
+  });
+  return calls;
+};
+
+/** 本机已导入两只精灵：换头像的候选只来自这里。 */
+const seedImportedPets = async (): Promise<void> => {
+  const pet = (gameId: number, name: string) => ({
+    gameId,
+    name,
+    gender: '母' as const,
+    nature: '开朗',
+    voiceDb: 100,
+    medalBody: '',
+    isShiny: false,
+    account: '测试甲',
+  });
+  await writeSnapshots([
+    {
+      accountName: '测试甲',
+      gameId: 1,
+      exportedAt: '2026-11-28T00:00:00.000Z',
+      importedAt: '2026-11-28T00:00:00.000Z',
+      pets: [pet(3007, '魔力猫'), pet(3001, '喵喵')],
+      eggs: [],
+    },
+  ]);
+  await refreshSnapshots();
 };
 
 beforeEach(() => {
@@ -27,7 +76,7 @@ beforeEach(() => {
   stubMe(null);
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   resetImportOutcomeForTest();
   clearSyncFeedback();
@@ -36,6 +85,8 @@ afterEach(() => {
   delete window.RocoUpdate;
   vi.unstubAllGlobals();
   resetMeCacheForTest();
+  await clearAllSnapshots();
+  resetSnapshotCacheForTest();
 });
 
 const renderProfile = (section: ProfileSection = 'data') =>
@@ -330,5 +381,71 @@ describe('Profile（我的）', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('换头像：点页头头像开弹层，只列已导入的精灵，选一只立刻换并写云端', async () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    const calls = stubAvatarSession('ok');
+    await seedImportedPets();
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-header-name')).toHaveTextContent('训练家小明');
+    });
+
+    fireEvent.click(screen.getByTestId('profile-header-avatar'));
+    expect(screen.getByTestId('avatar-picker')).toBeTruthy();
+    // 只列导入过的两只，不列全图鉴
+    expect(screen.getByTestId('avatar-option-3007')).toHaveTextContent('魔力猫');
+    expect(screen.queryByTestId('avatar-option-3003')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('avatar-option-3007'));
+
+    // 选完立刻生效、弹层收起
+    expect(screen.queryByTestId('avatar-picker')).toBeNull();
+    const headerAvatar = screen.getByTestId('profile-header-avatar');
+    const image = within(headerAvatar).getByRole('img');
+    expect(image).toHaveAttribute('alt', '训练家小明');
+    expect(image.getAttribute('src')).toContain('/jingling/3007/icon.png');
+
+    // 本机先落盘，再异步写云端
+    expect(readProfileAvatar('acc-1')).toEqual({ kind: 'pet', gameId: 3007 });
+    await waitFor(() => {
+      expect(calls.some((call) => call.path === '/api/sync' && call.method === 'PUT')).toBe(true);
+    });
+    expect(screen.queryByTestId('profile-avatar-notice')).toBeNull();
+  });
+
+  test('换头像写云端失败：回滚成原来的头像并提示，不能显示换了其实没存', async () => {
+    window.localStorage.setItem('roco.deviceToken', 'token-1');
+    window.localStorage.setItem('roco.accountId', 'acc-1');
+    stubAvatarSession('fail');
+    await seedImportedPets();
+
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-header-name')).toHaveTextContent('训练家小明');
+    });
+
+    fireEvent.click(screen.getByTestId('profile-header-avatar'));
+    fireEvent.click(screen.getByTestId('avatar-option-3007'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-avatar-notice')).toHaveTextContent('已恢复原样');
+    });
+    // 回滚到默认首字，本机也不留半截状态
+    expect(screen.getByTestId('profile-header-avatar')).toHaveTextContent('训');
+    expect(screen.queryByTestId('profile-header-avatar')?.querySelector('img')).toBeNull();
+    expect(readProfileAvatar('acc-1')).toBeNull();
+  });
+
+  test('未登录：点头像不给设置入口，只提示登录后才能设置', () => {
+    render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId('profile-header-avatar'));
+
+    expect(screen.queryByTestId('avatar-picker')).toBeNull();
+    expect(screen.getByTestId('profile-avatar-notice')).toHaveTextContent('登录后才能设置头像');
   });
 });

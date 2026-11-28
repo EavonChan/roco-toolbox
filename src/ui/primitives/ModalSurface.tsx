@@ -119,8 +119,8 @@ export function ModalSurface({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[100] flex justify-center bg-slate-900/40 p-4 ${
-        placement === 'sheet' ? 'items-end p-0' : 'items-center'
+      className={`fixed inset-0 z-[100] flex justify-center bg-slate-900/40 ${
+        placement === 'sheet' ? 'items-end p-0' : 'items-center p-4'
       }`}
       data-testid={testId}
     >

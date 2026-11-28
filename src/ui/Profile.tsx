@@ -1,17 +1,20 @@
 import type { NavigationIntent, ProfileSection } from './navigation';
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { appUpdateSnapshot, checkAppUpdate, hasAppUpdateShell, installAppUpdateBridge, seedAppUpdate, subscribeAppUpdate } from '../collector/appUpdate';
 import { readAccountId, subscribeSession } from '../api/session';
 import { AccountPanel } from './AccountPanel';
 import { useAccountName } from './accountMe';
+import { collectAvatarCandidates } from './avatarCandidates';
 import { CollectionGroups } from './CollectionGroups';
 import { Nearby } from './Nearby';
 import { NearbyErrorBoundary } from './NearbyErrorBoundary';
 import { ImportOutcomeNotice } from './ImportOutcomeNotice';
 import { ImportPanel } from './ImportPanel';
 import { NativeCollectorPanel } from './NativeCollectorPanel';
+import { ProfileAvatarPicker } from './ProfileAvatarPicker';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileQuickEntries } from './ProfileQuickEntries';
+import { useProfileAvatar } from './useProfileAvatar';
 import { Button } from './primitives/Button';
 import { ServerAddressPanel, serverBridge, toggleServer } from './ServerAddressPanel';
 import { serverEnvOf } from './serverEnv';
@@ -104,6 +107,13 @@ export function Profile({
   const accountId = useSyncExternalStore(subscribeSession, readAccountId, () => null);
   // 用户名：与账号面板共用一份 /api/me 缓存（2026-11-28 RUI P1-02），读不到就退回「已登录」
   const accountName = useAccountName(accountId);
+  // 头像（2026-11-28）：A 图鉴精灵 + 云端；点头像直接换
+  const avatarState = useProfileAvatar(accountId);
+  const avatarCandidates = useMemo(() => collectAvatarCandidates(snapshots), [snapshots]);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  useEffect(() => {
+    if (!accountId) setAvatarPickerOpen(false);
+  }, [accountId]);
   // 更新入口（1.3.6）：壳负责检查 / 下载 / 安装，这里只显示状态与触发
   const update = useSyncExternalStore(subscribeAppUpdate, appUpdateSnapshot);
   const [updateSupported] = useState(hasAppUpdateShell);
@@ -118,6 +128,19 @@ export function Profile({
   const versionTaps = useRef<number[]>([]);
   /** 「采集数据」入口：把视线带到下面的采集 / 导入块（不再多一次跳页） */
   const collectRef = useRef<HTMLDivElement>(null);
+  /** 换头像：未登录只提示，不给弹层入口（2026-11-28） */
+  const openAvatarPicker = () => {
+    if (!accountId) {
+      avatarState.showNotice('登录后才能设置头像');
+      return;
+    }
+    setAvatarPickerOpen(true);
+  };
+  const closeAvatarPicker = () => setAvatarPickerOpen(false);
+  const goImportFromAvatar = () => {
+    setAvatarPickerOpen(false);
+    collectRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  };
   /**
    * 已登录时概览卡的「同步」要落到真有同步按钮的地方（UI-01）：
    * 「我的身份」页面把「立即同步」藏起来了，所以这里滚到数据页的「私有同步」卡并短暂高亮。
@@ -221,9 +244,22 @@ export function Profile({
             snapshots={snapshots}
             accountId={accountId}
             accountName={accountName}
+            avatar={avatarState.avatar}
+            onAvatarClick={openAvatarPicker}
             onGoAccount={() => goSection('identity')}
             onSync={scrollToSync}
           />
+          {avatarState.notice ? (
+            <p
+              role="status"
+              data-testid="profile-avatar-notice"
+              className={`text-xs ${
+                avatarState.notice.tone === 'error' ? 'text-rose-600' : 'text-slate-500'
+              }`}
+            >
+              {avatarState.notice.text}
+            </p>
+          ) : null}
           <ProfileQuickEntries
             eggStockHint={accountId ? '换蛋 · 蛋仓' : '需登录'}
             onCollect={() => collectRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })}
@@ -396,6 +432,23 @@ export function Profile({
         <span className="text-[10px] text-slate-300">版本 {__APP_BUILD__}</span>
         {updateSupported ? null : envBadge}
       </div>
+
+      {section === 'data' && dataView === 'import' ? (
+        <ProfileAvatarPicker
+          open={avatarPickerOpen}
+          current={avatarState.avatar}
+          candidates={avatarCandidates}
+          displayName={accountName || '已登录'}
+          colorSeed={accountId ? accountName || accountId : null}
+          busy={avatarState.busy}
+          onPick={(next) => {
+            setAvatarPickerOpen(false);
+            void avatarState.choose(next);
+          }}
+          onClose={closeAvatarPicker}
+          onGoImport={goImportFromAvatar}
+        />
+      ) : null}
 
       {serverPanelOpen ? (
         <ServerAddressPanel onClose={() => setServerPanelOpen(false)} />
