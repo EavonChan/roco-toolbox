@@ -58,8 +58,34 @@ export function freshNearbySnapshot(
   return snapshot;
 }
 
-const store = createModuleStore<NearbySnapshot | null>(null);
+/** 悬浮窗用的快照视图：保留最后一帧，附带「是否已停更」。 */
+export interface RetainedNearbySnapshot {
+  snapshot: NearbySnapshot;
+  /** true = 超过 TTL 没更新：停更时保留最后一帧，只标注「已暂停 · 采集未在刷新」 */
+  paused: boolean;
+}
 
+/**
+ * 悬浮窗快照（2026-11-28）：停更不再清空。
+ *
+ * 之前超过 TTL 就返回 null，payload 的 self / pets 变成空 → 壳里 {@code teardown()}，
+ * 用户看到的是「窗口突然变空」，会以为坏了。这里改成：
+ * - 换采集会话仍必须失效（上一局的精灵不能留在屏幕上）；
+ * - 同一会话超过 TTL 只标 {@code paused}，数据照旧给壳，壳显示「已暂停」；
+ * - 采集恢复后 updatedAt 变新，下一次推送自动回到 normal，不需要用户操作。
+ */
+export function retainedNearbySnapshot(
+  snapshot: NearbySnapshot | null,
+  session: string | null | undefined,
+  now = Date.now(),
+  ttlMs = NEARBY_SNAPSHOT_TTL_MS,
+): RetainedNearbySnapshot | null {
+  if (!snapshot) return null;
+  if (session != null && snapshot.session !== session) return null;
+  return { snapshot, paused: now - snapshot.updatedAt > ttlMs };
+}
+
+const store = createModuleStore<NearbySnapshot | null>(null);
 export function writeNearbySnapshot(snapshot: NearbySnapshot): void {
   store.set(snapshot);
 }

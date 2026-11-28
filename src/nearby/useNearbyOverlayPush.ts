@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CollectorState } from '../collector/nativeCollector';
 import { readCollectorState } from '../collector/nativeCollector';
 import { useBattleTarget } from '../collector/battleTargetStore';
-import { freshNearbySnapshot, useNearbySnapshot } from '../collector/nearbyStore';
+import { retainedNearbySnapshot, useNearbySnapshot } from '../collector/nearbyStore';
 import { registerLiveTick } from '../collector/useCaptureProgress';
 import { useNearbyFilter } from './nearbyFilterStore';
 import { useNearbyTargets } from './nearbyTargetStore';
@@ -35,8 +35,11 @@ const STATE_POLL_MS = 800;
 export function useNearbyOverlayPush(): void {
   const supported = hasNearbyOverlayShell();
   const [state, setState] = useState<CollectorState | null>(null);
-  // 换局后旧会话的附近数据不再推给壳（O-9），停止采集仍保留同一 session 的最后一帧
-  const snapshot = freshNearbySnapshot(useNearbySnapshot(), state?.fileId);
+  // 换局后旧会话的附近数据不再推给壳（O-9）；同一会话停更时保留最后一帧并标「已暂停」，
+  // 不再像以前那样把 self / pets 清空导致窗口变空（2026-11-28）。
+  const view = retainedNearbySnapshot(useNearbySnapshot(), state?.fileId);
+  const snapshot = view?.snapshot ?? null;
+  const paused = view?.paused === true;
   const panels = useNearbyOverlayPanels();
   // 列表口径与附近页共用同一份状态：顶部三档（含目标档）+ 战斗目标的维度筛选 + 蹲守名单
   const filter = useNearbyFilter();
@@ -73,8 +76,8 @@ export function useNearbyOverlayPush(): void {
 
   const capturing = state?.phase === 'capturing';
 
-  const latest = useRef({ snapshot, hasKey: Boolean(snapshot?.hasKey) });
-  latest.current = { snapshot, hasKey: Boolean(snapshot?.hasKey) };
+  const latest = useRef({ snapshot, hasKey: Boolean(snapshot?.hasKey), paused });
+  latest.current = { snapshot, hasKey: Boolean(snapshot?.hasKey), paused };
   /** 尾随补发读的都是 ref：定时器触发时补推的一定是最新一帧，而不是排期那一刻的旧数据。 */
   const filterRef = useRef(filter);
   filterRef.current = filter;
@@ -111,14 +114,15 @@ export function useNearbyOverlayPush(): void {
         capturing: visible,
         hasKey: latest.current.hasKey,
         snapshot: latest.current.snapshot,
+        paused: latest.current.paused,
         filter: filterRef.current,
         target: targetRef.current,
         targets: targetsRef.current,
       });
       // 数据没变化就不推：以前 250ms 无条件推，实体堆积时每次都让壳重建地图（2026-11-12）
       const signature = JSON.stringify([
-        visible, configNonce.current, payload.pets, payload.mapPets, payload.self, payload.scene,
-        payload.total, payload.matched, payload.alertTotal, payload.rareTotal,
+        visible, configNonce.current, payload.paused, payload.pets, payload.mapPets, payload.self,
+        payload.scene, payload.total, payload.matched, payload.alertTotal, payload.rareTotal,
       ]);
       if (signature === lastPayloadSignature.current) return;
       lastPayloadSignature.current = signature;
@@ -154,7 +158,7 @@ export function useNearbyOverlayPush(): void {
       }
     }
     push(true);
-  }, [supported, capturing, snapshot, panels, filter, target, targets]);
+  }, [supported, capturing, paused, snapshot, panels, filter, target, targets]);
 
   // 页面卸载 / 重载兜底收起，避免壳停在最后一帧
   useEffect(() => {

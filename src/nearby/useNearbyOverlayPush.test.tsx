@@ -1,7 +1,11 @@
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { NearbySnapshot } from '../collector/nearbyStore';
-import { resetNearbyStoreForTest, writeNearbySnapshot } from '../collector/nearbyStore';
+import {
+  NEARBY_SNAPSHOT_TTL_MS,
+  resetNearbyStoreForTest,
+  writeNearbySnapshot,
+} from '../collector/nearbyStore';
 import { resetNearbyOverlayBridgeForTest } from './overlayBridge';
 import { resetNearbyOverlayPanelsForTest, setNearbyOverlayPanel } from './overlayPanels';
 import { useNearbyOverlayPush } from './useNearbyOverlayPush';
@@ -67,6 +71,20 @@ describe('useNearbyOverlayPush（应用级悬浮面板推送）', () => {
     expect(sent.visible).toBe(true);
     expect(sent.pets.length).toBe(1);
     expect(sent.panels).toEqual({ battle: true, nearby: true });
+  });
+
+  test('停更超过 TTL 也不清空：仍推最后一帧，只带 paused 标记', async () => {
+    const update = installShell(() => 'capturing');
+    writeNearbySnapshot({ ...snapshot, updatedAt: Date.now() - NEARBY_SNAPSHOT_TTL_MS - 1 });
+
+    render(<Harness />);
+
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    const sent = lastPayload(update);
+    expect(sent.visible).toBe(true);
+    expect(sent.paused).toBe(true);
+    expect(sent.pets.length).toBe(1);
+    expect(sent.total).toBe(1);
   });
 
   test('停止采集时推一次 visible=false，壳侧据此收起', async () => {
