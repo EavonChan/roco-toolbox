@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { Button } from './Button';
-import { Field } from './Field';
 import { FilterPanel } from './FilterPanel';
 import { InlineSelect } from './InlineSelect';
 import { ModalSurface } from './ModalSurface';
@@ -193,14 +192,7 @@ describe('FilterPanel', () => {
   });
 });
 
-describe('Field 与 Button', () => {
-  test('错误用 aria-invalid / aria-describedby 关联', () => {
-    render(<Field label="恢复码" error="恢复码不对" defaultValue="abc" />);
-    const input = screen.getByRole('textbox', { name: '恢复码' });
-    expect(input).toHaveAttribute('aria-invalid', 'true');
-    expect(input).toHaveAccessibleDescription('恢复码不对');
-  });
-
+describe('Button', () => {
   test('忙碌态实际禁用并播报', () => {
     render(<Button busy>提交</Button>);
     const button = screen.getByRole('button');

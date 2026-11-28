@@ -6,7 +6,7 @@ import type { EggGroup } from './eggStockGroups';
  * 同类蛋聚合卡（2026-11-25 U5，口径 = 同物种）。
  *
  * 主卡只回答两件事：**这是什么蛋、有几颗**；外加必要状态（已挂出数、待认领数、自产、绿窝）。
- * 性格 / 体型 / 声音的差异**不在卡上展开**——点开卡片，由 `EggGroupLevel2` 按性格分组展示。
+ * 性格 / 体型 / 声音的差异**不在卡上展开**——点开卡片看明细（二级分组卡已随死代码删除）。
  * `×N` 做在蛋图右下角，像「一堆蛋」的计数，不占名字宽度。
  */
 export function EggGroupCard({ group, total, name, expanded, onToggle }: {
