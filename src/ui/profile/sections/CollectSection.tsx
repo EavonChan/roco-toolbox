@@ -12,7 +12,12 @@ import type { SectionProps } from '../types';
  */
 export function CollectSection({ ctx }: SectionProps) {
   return (
-    <div data-section="collect" data-testid="profile-collect" className="scroll-mt-24 space-y-s3">
+    <div
+      data-section="collect"
+      data-testid="profile-collect"
+      data-tour="profile-sync"
+      className="scroll-mt-24 space-y-s3"
+    >
       <ImportOutcomeNotice onOpenGroups={ctx.onOpenGroups} />
       <Card testId="profile-collect-card">
         <NativeCollectorPanel compact />
