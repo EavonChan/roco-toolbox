@@ -218,14 +218,14 @@ describe('绑定面板：找不到游戏号的出口（2026-11-27）', () => {
     const entry = screen.getByTestId('mother-add-account');
     expect(entry).toHaveTextContent('没有找到你的游戏号');
     expect(screen.getByTestId('mother-add-account-hint')).toHaveTextContent(
-      '需要先用这个游戏号在小布助手里导入一次数据',
+      '需要先用这个游戏号采集一次（或登录同步）',
     );
 
     fireEvent.click(entry.querySelector('button') as HTMLButtonElement);
     expect(onGoImport).toHaveBeenCalledTimes(1);
   });
 
-  test('没有本机数据时「去导入数据」走导入，而不是去登录（身份页）', () => {
+  test('没有本机数据时「去采集 / 同步」走采集入口，而不是去登录（身份页）', () => {
     const onGoImport = vi.fn();
     const onGoAccount = vi.fn();
     render(
@@ -238,7 +238,7 @@ describe('绑定面板：找不到游戏号的出口（2026-11-27）', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText('去导入数据'));
+    fireEvent.click(screen.getByText('去采集 / 同步'));
     expect(onGoImport).toHaveBeenCalledTimes(1);
     expect(onGoAccount).not.toHaveBeenCalled();
   });

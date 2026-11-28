@@ -63,10 +63,10 @@ export function ProfileAvatarPicker({
         >
           {candidates.length === 0 ? (
             <EmptyState
-              title="还没有精灵可选，先导入一次数据"
-              description="导入后，这里只列你自己有的精灵。"
-              testId="avatar-empty"
-              action={onGoImport ? { label: '去导入', onClick: onGoImport } : undefined}
+          title="还没有精灵可选"
+          description="采集或登录同步后，这里只列你自己有的精灵。"
+          testId="avatar-empty"
+          action={onGoImport ? { label: '去采集 / 同步', onClick: onGoImport } : undefined}
             />
           ) : (
             <div className="grid grid-cols-4 gap-s2" data-testid="avatar-options">

@@ -91,10 +91,10 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const { snapshots, loaded, refreshError, refreshedAt } = useSnapshots();
   usePlanBadge();
-  // 壳（APK）把分享内容注入**当前页面**，而消费分享的监听挂在「导入数据」页里（只挂载当前页）：
+  // 壳（APK）把采集内容注入**当前页面**，而消费分享的监听挂在「我的 · 游戏数据」首页里（只挂载当前页）：
   // 应用开着且停在别的页签时，分享会被静默搁置（看起来像「分享过来什么都没发生」）。
-  // 所以一收到分享事件就切到导入页；导入完成后**不再自动跳看板**（2026-10-25 用户要求）：
-  // 现在用户多在工具箱内采集导入，更关心采集/导入/上传是否成功，应留在原页看进度。
+  // 所以一收到分享事件就切到「我的」；入库完成后**不再自动跳看板**（2026-10-25 用户要求）：
+  // 现在用户多在工具箱内采集导入，更关心采集/入库/上传是否成功，应留在原页看进度。
   useEffect(() => {
     const onShare = () => {
       navigate({ type: 'open-profile', section: 'data' });

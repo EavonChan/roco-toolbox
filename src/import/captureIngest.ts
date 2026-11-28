@@ -4,14 +4,7 @@ import { syncNow } from '../api/sync';
 import { CATALOG_VERSION, eggGroupNames, species } from '../data/catalog';
 import { analyzeImport } from '../domain/importDiff';
 import { accountKeyOf, parseBackup, type AccountSnapshot } from '../domain/parseBackup';
-import {
-  isToolboxBackup,
-  mergeImportedSnapshot,
-  mergeSnapshots,
-  parseToolboxBackup,
-  type MergeResult,
-  type ToolboxBackup,
-} from '../domain/backup';
+import { mergeImportedSnapshot } from '../domain/backup';
 import { groupMothersByEgg, plannedAchievements, type TargetMode } from '../domain/petFilters';
 import { isCollectorCaptureUrl } from '../pcap/collectorUrl';
 import { decodeUrlInWorker } from '../pcap/decodeInWorker';
@@ -20,14 +13,14 @@ import { fetchShellCapture, takeNativeShare } from '../share/nativeShare';
 import { takeSharedFile } from '../share/shareTarget';
 import { setLastImportResult } from '../storage/lastImportStore';
 import { refreshSnapshots } from '../storage/snapshotStore';
-import { saveSnapshot, writeSnapshots } from '../storage/snapshots';
+import { saveSnapshot } from '../storage/snapshots';
 import { autoPublishGroups, collectPendingDemandClaims } from '../ui/groupAutoPublish';
 import { setImportMessage } from '../ui/importMessageStore';
 import { beginImport, updateImportOutcome } from '../ui/importOutcomeStore';
-import { getMotherPlan, mergeMotherPlan } from '../ui/motherPlanStore';
+import { getMotherPlan } from '../ui/motherPlanStore';
 import { setSyncConflict, setSyncNotice } from '../ui/syncNoticeStore';
 import { recordSyncedPets } from '../ui/syncAdditions';
-import { adoptBackupTargetMode, getTargetMode } from '../ui/targetModeStore';
+import { getTargetMode } from '../ui/targetModeStore';
 
 /**
  * 采集入库（2026-11-28 从 `ImportPanel` 抽出，Stage 0）。
@@ -53,23 +46,8 @@ export interface IngestCaptureOptions {
   readFile?: (file: File) => Promise<unknown>;
 }
 
-/** 合并结果的反馈文案，两个入口（手选 / 分享）共用 */
-export function mergeMessage(name: string, merged: MergeResult): string {
-  return `已合并导入「${name}」：新增 ${merged.added.length} 个账号 · 更新 ${merged.updated.length} 个 · 保留本地较新的 ${merged.kept.length} 个`;
-}
-
-/**
- * 备份里的「规划数据」：目标模式（本地优先，本机没选过才采用备份的值）+ 计划收集（并集）。
- * 返回给用户的说明文案。
- */
-export function applyBackupPlanning(backup: ToolboxBackup): string[] {
-  adoptBackupTargetMode(backup.targetMode);
-  const addedCount = mergeMotherPlan(backup.motherPlan ?? []);
-  return addedCount > 0 ? [`计划收集新增 ${addedCount} 条`] : [];
-}
-
 /** 计划收集的达成提示：只报这次导入「从不合格变合格」的链 */
-export function achievementMessages(
+function achievementMessages(
   previous: AccountSnapshot[],
   next: AccountSnapshot[],
   planBefore: readonly string[],
@@ -94,7 +72,7 @@ export function achievementMessages(
  * 主入口与「合并导入」共用，避免两条导入路径行为不一致。
  * 失败不影响本机与云同步，也不打断用户操作。
  */
-export function afterImport(
+function afterImport(
   operationId: number,
   working: AccountSnapshot[],
   touched: Set<string>,
@@ -118,7 +96,7 @@ export function afterImport(
 }
 
 /** 导入后把「本次新增里符合看板分类的」记下来，给顶部那张卡片用；然后自动云同步 */
-export function reportNewPets(
+function reportNewPets(
   previous: AccountSnapshot[],
   imported: AccountSnapshot[],
   operationId: number,
@@ -175,12 +153,10 @@ export function reportNewPets(
 }
 
 /**
- * 入库入口。一份文件可能是：
- * - 采集器抓包（.pcap / 抓包 JSON）→ 按账号替换该账号的快照（「重新抓了一次」的正确语义）
- * - 工具箱备份（自己导出的）→ **合并**，多设备同步靠它
+ * 入库入口（壳内采集 / 桌面「解析并导入」共用）。
  *
- * 之所以不分成两个按钮：微信收到备份后「分享给小布助手」时走的就是这条入口，
- * 那时用户没机会选按钮，只能靠内容自己认。
+ * 只认采集器抓包（.pcap / 抓包 JSON）：按账号替换该账号的快照（「重新抓了一次」的正确语义）。
+ * 工具箱备份的合并导入已随数据入口收敛删除（2026-11-28）；换设备走同账号登录同步。
  */
 export async function ingestCaptureFiles({
   files,
@@ -193,9 +169,8 @@ export async function ingestCaptureFiles({
   try {
     // 先记住导入前的数据，"本次新增"才有得比
     const previous = snapshots;
-    // 计划收集的达成判定要用「导入前」的计划（备份带进来的新计划不参与本次判定）
+    // 计划收集的达成判定要用「导入前」的计划
     const planBefore = [...getMotherPlan()];
-    // 合并以「当前写进去的状态」为准，多文件时后一个能看见前一个的结果
     let working = [...snapshots];
     const imported: AccountSnapshot[] = [];
     /** 这次导入涉及的账号：自动发布时并进小组的选号（手动取消过的旧账号不会被加回来） */
@@ -205,19 +180,6 @@ export async function ingestCaptureFiles({
     for (const file of files) {
       // 抓包文件（.pcap）会自动交给采集器那套解析器解成 JSON，其余按 JSON 读
       const raw = await readFile(file);
-
-      if (isToolboxBackup(raw)) {
-        const backup = parseToolboxBackup(raw);
-        const merged = mergeSnapshots(working, backup.accounts);
-        working = merged.snapshots;
-        await writeSnapshots(working);
-        for (const account of backup.accounts) {
-          touched.add(account.accountKey ?? accountKeyOf(account));
-        }
-        messages.push(mergeMessage(file.name, merged));
-        messages.push(...applyBackupPlanning(backup));
-        continue;
-      }
 
       const parsed = parseBackup(raw, new Date().toISOString());
       // 按**账号身份（游戏 UID）**替换：重名但不同 UID 的两个账号是两个账号，互不顶掉
@@ -237,7 +199,7 @@ export async function ingestCaptureFiles({
     reportNewPets(previous, working, operationId, mode);
     // 抓包导入也可能让计划里的链达标
     messages.push(...achievementMessages(previous, working, planBefore));
-    // 分享进来的来源说明放最前面，后面接合并/计划的说明（合并结果不在「本次新增」卡片里）
+    // 分享进来的来源说明放最前面，后面接计划达成的说明
     const parts = sourceLabel ? [sourceLabel, ...messages] : messages;
     const text = parts.length > 0 ? parts.join('；') : null;
     if (text) setImportMessage(text);

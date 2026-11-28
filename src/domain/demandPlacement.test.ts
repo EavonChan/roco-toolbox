@@ -467,7 +467,7 @@ describe('buildDemandPlacements', () => {
 
     expect(result.accounts).toHaveLength(0);
     expect(result.unassigned[0].reason).toBe('no-data');
-    expect(result.unassigned[0].message).toContain('导入游戏数据');
+    expect(result.unassigned[0].message).toContain('采集一次或登录同步');
   });
 
   test('手动挑的候选配对排到第一，即使它的概率低于默认配对（2026-11-01 拍板）', () => {

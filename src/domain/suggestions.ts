@@ -80,7 +80,7 @@ export function studEmptyNote(input: {
   hasData: boolean;
   stud: { groupCount: number; passedGroups: number };
 }): string {
-  if (!input.hasData) return '导入抓包数据后给出建议';
+  if (!input.hasData) return '采集或同步数据后给出建议';
   if (input.stud.groupCount === 0) {
     return '还没设置有效的种公目标：先在看板勾目标档位、覆盖度勾蛋组';
   }

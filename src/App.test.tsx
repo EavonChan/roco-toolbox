@@ -50,19 +50,20 @@ describe('App', () => {
     expect(screen.getByTestId('collection-groups')).toBeTruthy();
   });
 
-  test('壳把分享内容注入时自动切到「导入数据」页（否则分享会被静默搁置）', async () => {
+  test('壳把采集内容注入时自动切到「我的 · 采集与同步」（否则分享会被静默搁置）', async () => {
     presetFirstRunSeen();
     await saveSnapshot(snapshot('账号甲'));
     resetSnapshotCacheForTest();
 
     render(<App />);
-    // 2026-10-25：导入后不再自动跳看板，首次打开也停在「导入数据」页
-    await waitFor(() => expect(screen.getByTestId('import-input')).toBeDefined());
+    // 2026-10-25：导入后不再自动跳看板，首次打开也停在「我的」
+    await waitFor(() => expect(screen.getByTestId('profile-collect')).toBeDefined());
 
     fireEvent(window, new Event('roco-share'));
 
-    await waitFor(() => expect(screen.getByTestId('import-input')).toBeDefined());
-    expect(screen.getByText('导入游戏数据')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('profile-collect')).toBeDefined());
+    // 文件导入 UI 已删除；分享消费改由首页级的 captureIngest 监听接管
+    expect(screen.queryByTestId('import-input')).toBeNull();
   });
 
   test('没有登录时小组页指向「我的 · 小组」（个人求蛋已删除）', async () => {
@@ -119,7 +120,8 @@ describe('App', () => {
    */
   test('「我的」进二级分区再返回：恢复离开前的滚动位置，内容变短就落到最大可滚', async () => {
     presetFirstRunSeen();
-    // 2026-11-28 重排：设置行随「更多/设置」下沉，只有本机有数据时渲染；先落一份快照，再从页签进「我的」
+    // 2026-11-28 重排：设置行为下沉到「更多/设置」区块，只有本机有数据时才渲染；
+    // 这里先导入一份数据，再从页签进「我的」
     await saveSnapshot(snapshot('账号甲'));
     resetSnapshotCacheForTest();
     const realScrollTo = Object.getOwnPropertyDescriptor(window, 'scrollTo');
@@ -143,7 +145,9 @@ describe('App', () => {
       render(<App />);
       fireEvent.click(screen.getByRole('button', { name: '我的' }));
       await waitFor(() => expect(screen.getByTestId('profile-header')).toBeTruthy());
-      await waitFor(() => expect(screen.getByTestId('profile-section-identity')).toBeTruthy());
+      await waitFor(() =>
+        expect(screen.getByTestId('profile-section-identity')).toBeTruthy(),
+      );
 
       // 进二级分区：滚顶（返回按钮旁的「‹ 返回我的」在原位）
       fireEvent.click(screen.getByTestId('profile-section-identity'));

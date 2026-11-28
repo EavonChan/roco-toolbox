@@ -1,23 +1,28 @@
+import { AccountPanel } from '../../AccountPanel';
 import { EmptyState } from '../../kit';
-import { ImportPanel } from '../../ImportPanel';
 import type { SectionProps } from '../types';
 
 /**
- * 新用户空态（2026-11-28，RUI-03）：**一句空态 + 一个动作**。
+ * 新用户空态（2026-11-28，RUI-03 + CLEAN2）：**一句事实 + 两条取数路径**。
  *
- * 以前首屏有 4 块都在说「还没有数据」（引导卡 / 本机采集说明 / 导入按钮 / 导入面板空态），
- * 现在只保留这一块；导入成功后本区块消失，数字与入口区块接管首屏。
+ * 文件导入删除后，新用户只剩两条路：到电脑版 / 安卓版采集，或登录同一账号同步。
+ * 同步面板就放在空态下面，网页用户首日也能登录拉云端快照。
  */
-export function NewUserSection(_props: SectionProps) {
+export function NewUserSection({ ctx }: SectionProps) {
   return (
     <div data-section="new-user" data-testid="profile-new-user" className="space-y-s3">
       <EmptyState
-        title="还没有导入数据"
-        description="导入一次游戏数据，看板和这里都会按它算；数据只存在本机。"
+        title="还没有数据"
+        description="到电脑版或安卓版采集一次，或登录同一账号同步；网页版只做查看。"
         testId="profile-new-user-empty"
       />
-      {/* 紧凑模式：只留导入按钮与导入结果；设置类内容不下沉到空态里 */}
-      <ImportPanel compact hideEmptyHint />
+      <div data-testid="profile-new-user-sync" data-tour="profile-sync">
+        <AccountPanel
+          section="sync"
+          autoConflict={ctx.autoConflict}
+          onAutoConflictHandled={ctx.onAutoConflictHandled}
+        />
+      </div>
     </div>
   );
 }

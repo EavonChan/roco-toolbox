@@ -1,3 +1,4 @@
+import { useCaptureShareIngest } from '../../import/useCaptureIngest';
 import { PROFILE_ACTIVE } from './recipes';
 import type { ProfilePageContext, SectionDef } from './types';
 
@@ -14,6 +15,8 @@ export interface ProfileHomeProps {
 }
 
 export function ProfileHome({ ctx, recipe = PROFILE_ACTIVE }: ProfileHomeProps) {
+  // 壳内采集（roco-share）的监听挂在首页级别：采集卡 / 设置弹层都不再持有它
+  useCaptureShareIngest();
   const visible = recipe.filter((section) => (section.when ? section.when(ctx) : true));
   return (
     <div data-testid="profile-home" data-sections={visible.map((section) => section.id).join(',')}>

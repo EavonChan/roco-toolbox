@@ -72,7 +72,7 @@ export function SettingsSection({ ctx }: SectionProps) {
         <SettingsRow testId="profile-guide" label="新手引导" value="重看一遍" onClick={ctx.onStartTour} />
         <SettingsRow
           testId="profile-settings-more"
-          label="导出 / 合并导入 / 重置 / 隐私"
+          label="导出 / 隐私"
           value="设置"
           onClick={() => setSettingsOpen(true)}
         />
@@ -86,7 +86,7 @@ export function SettingsSection({ ctx }: SectionProps) {
         closeTestId="profile-settings-close"
       >
         <div className="p-s4">
-          <ImportPanel settingsOnly />
+          <ImportPanel />
         </div>
       </ModalSurface>
     </div>

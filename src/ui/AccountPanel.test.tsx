@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { encodeSnapshot } from '../api/sync';
 import { clearSession } from '../api/session';
 import { resetMeCacheForTest } from './accountMe';
-import { getLastImportHistory, getLastImportResult, resetLastImportForTest } from '../storage/lastImportStore';
+import { getLastImportResult, resetLastImportForTest } from '../storage/lastImportStore';
 import { resetSnapshotCacheForTest } from '../storage/snapshotStore';
 import { clearAllSnapshots } from '../storage/snapshots';
 import { AccountPanel } from './AccountPanel';
@@ -219,8 +219,6 @@ describe('云同步面板（用户名 + 密码）', () => {
     await waitFor(() => {
       expect(getLastImportResult()?.[0].mothers[0].pets[0].label).toBe('云端母本');
     });
-    // 同步不是导入 → 不写「导入历史」
-    expect(getLastImportHistory()).toEqual([]);
   });
 
   test('导入后的自动上传冲突：显示二选一，处理完通知上层清除提示', async () => {

@@ -49,7 +49,7 @@ export function ProfileHeader({
   // 没有数据时不编造时间：新用户要先看到「还没有」才敢往下点
   const stateText =
     snapshots.length === 0
-      ? '还没采集过数据 · 先在下面导入一次'
+      ? '还没采集过数据 · 去采集或登录同步'
       : `${snapshots.length} 个角色 · 上次采集 ${timeText(capturedAt)}`;
   const nameText = loggedIn ? accountName || '已登录' : '本机模式 · 未登录';
   // 默认头像的底色：用户名优先，老账号（没有用户名）用账号 id，未登录用中性色
@@ -81,7 +81,7 @@ export function ProfileHeader({
           </p>
         </div>
         {/* 已登录时右上角不再放「同步」（2026-11-28 FX1）：那个按钮只滚动、不执行同步，
-            首屏的绿色强调只留「导入游戏数据」一处；同步只留在「私有同步」卡里。
+            首屏不再有绿色强调的导入动作；同步只留在「私有同步」卡里。
             未登录时「登录」是本机模式的唯一动作，保留。 */}
         {loggedIn ? null : (
           <button

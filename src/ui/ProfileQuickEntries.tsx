@@ -32,7 +32,7 @@ export function ProfileQuickEntries({
           </svg>
         </span>
         <span className="text-body font-semibold leading-tight text-ink-strong">采集数据</span>
-        <span className="text-caption leading-tight text-ink-muted">导入 / 本机采集</span>
+        <span className="text-caption leading-tight text-ink-muted">采集 / 登录同步</span>
       </button>
 
       <button type="button" onClick={onEggStock} data-testid="profile-entry-egg-stock" className={TILE}>

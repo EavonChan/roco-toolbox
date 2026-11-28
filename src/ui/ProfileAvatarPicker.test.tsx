@@ -63,12 +63,12 @@ describe('ProfileAvatarPicker（换头像弹层）', () => {
     expect(screen.getByTestId('avatar-option-3001')).toHaveAttribute('aria-pressed', 'false');
   });
 
-  test('没有精灵可选：给空态和「去导入」，不列全图鉴', () => {
+  test('没有精灵可选：给空态和「去采集 / 同步」，不列全图鉴', () => {
     const onGoImport = vi.fn();
     open({ candidates: [], onGoImport });
 
-    expect(screen.getByTestId('avatar-empty')).toHaveTextContent('还没有精灵可选，先导入一次数据');
-    fireEvent.click(screen.getByRole('button', { name: '去导入' }));
+    expect(screen.getByTestId('avatar-empty')).toHaveTextContent('还没有精灵可选');
+    fireEvent.click(screen.getByRole('button', { name: '去采集 / 同步' }));
     expect(onGoImport).toHaveBeenCalledTimes(1);
   });
 

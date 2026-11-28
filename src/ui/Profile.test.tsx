@@ -218,6 +218,7 @@ describe('Profile（我的）', () => {
   });
 
   test('用户名只查一次 /api/me：概览卡与账号面板共用同一份缓存', async () => {
+    await seedImportedPets();
     window.localStorage.setItem('roco.deviceToken', 'token-1');
     window.localStorage.setItem('roco.accountId', 'acc-1');
     const calls = stubMe('训练家小明');
@@ -257,19 +258,21 @@ describe('Profile（我的）', () => {
       />,
     );
     expect(screen.getByTestId('nearby-page')).toBeTruthy();
-    expect(screen.queryByTestId('import-input')).toBeNull();
+    expect(screen.queryByTestId('profile-sync-block')).toBeNull();
     // 附近是数据视图的子视图：左上角仍能回到「我的」首页
     fireEvent.click(screen.getByTestId('profile-section-data'));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'open-profile', section: 'data' });
   });
 
-  test('游戏数据分区：导入入口与三阶段反馈都在', async () => {
+  test('游戏数据分区：采集/同步入口与三阶段反馈都在，文件导入入口已删除', async () => {
     await seedImportedPets();
     const id = beginImport();
     updateImportOutcome(id, { local: 'saved', cloud: 'failed', message: '新增 1 个账号' });
     renderProfile('data');
 
-    expect(screen.getByTestId('import-input')).toBeTruthy();
+    expect(screen.queryByTestId('import-input')).toBeNull();
+    expect(screen.queryByTestId('import-button')).toBeNull();
+    expect(screen.getByTestId('profile-sync-block')).toBeTruthy();
     expect(screen.getByTestId('import-outcome')).toHaveTextContent('已保存到本机');
     expect(screen.getByTestId('import-outcome')).toHaveTextContent('私有云同步失败（本机数据已保存）');
     expect(screen.getByTestId('import-outcome-group')).toHaveTextContent('小组资源未自动更新');

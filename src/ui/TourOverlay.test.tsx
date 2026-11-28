@@ -8,6 +8,7 @@ import {
   markSegmentSeen,
   migrateLegacyTourSeen,
   segmentPending,
+  startStepsFor,
   startTourPending,
 } from './tour';
 import { TourOverlay } from './TourOverlay';
@@ -53,10 +54,11 @@ describe('新手引导', () => {
       'home',
       'profile',
     ]);
-    // 首启（本机没有采集桥 → 导入版）：讲清楚「先导数据」并等导入完成
+    // 首启（本机没有采集桥 → 登录同步版）：讲清楚「先让数据进来」；网页不卡在等导入
     const startTitles = TOUR_SEGMENTS.start.map((step) => step.title).join('|');
     expect(startTitles).toContain('数据');
-    expect(TOUR_SEGMENTS.start.some((step) => step.waitForImport)).toBe(true);
+    expect(TOUR_SEGMENTS.start.some((step) => step.waitForImport)).toBe(false);
+    expect(startStepsFor({ hasCapture: true, desktop: false }).some((step) => step.waitForImport)).toBe(true);
 
     expect(TOUR_SEGMENTS.dashboard.map((step) => step.title).join('|')).toContain('目标');
     expect(TOUR_SEGMENTS.collection.map((step) => step.title).join('|')).toContain('视图');

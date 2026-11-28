@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, test } from 'vitest';
 import type { AccountSnapshot } from '../domain/parseBackup';
-import { getLastImportHistory, getLastImportResult, resetLastImportForTest } from '../storage/lastImportStore';
+import { getLastImportResult, resetLastImportForTest } from '../storage/lastImportStore';
 import { resetSnapshotCacheForTest } from '../storage/snapshotStore';
 import { clearAllSnapshots, listSnapshots, writeSnapshots } from '../storage/snapshots';
 import { recordSyncedPets } from './syncAdditions';
@@ -53,8 +53,6 @@ describe('recordSyncedPets', () => {
     expect(result?.[0].accountName).toBe('云端甲');
     expect(result?.[0].mothers[0].motherClass).toBe('大婉');
     expect(result?.[0].mothers[0].pets[0].label).toBe('云端母本');
-    // 同步不是导入 → 不写「导入历史（N 次）」
-    expect(getLastImportHistory()).toEqual([]);
   });
 
   test('同步没带来合格新增 → 不动卡片（别用空卡盖掉上一次的导入结果）', async () => {
