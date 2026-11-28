@@ -1,7 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OwnedPet, SpeciesEntry } from '../domain/types';
 import { PetList } from './PetList';
+
+// 全量并行跑时 jsdom 的 setTimeout(0) 会被拖慢，waitFor 默认 1s 偶发超时；
+// 这里把等待上限抬到 3s —— 只放宽等待，不放宽任何断言（2026-11-28）。
+configure({ asyncUtilTimeout: 3000 });
 
 const pets: OwnedPet[] = Array.from({ length: 21 }, (_, index): OwnedPet => ({
   gameId: index + 1,
