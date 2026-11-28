@@ -1,48 +1,36 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { analyticsEnabled, setAnalyticsEnabled, track } from '../api/analytics';
+import { analyticsEnabled, setAnalyticsEnabled } from '../api/analytics';
 import { readAccountId } from '../api/session';
-import { syncNow } from '../api/sync';
-import { analyzeImport } from '../domain/importDiff';
-import { accountKeyOf, parseBackup, type AccountSnapshot } from '../domain/parseBackup';
-import { groupMothersByEgg, plannedAchievements } from '../domain/petFilters';
-import { eggGroupNames, species } from '../data/catalog';
-import { saveSnapshot, writeSnapshots } from '../storage/snapshots';
+import { accountKeyOf, type AccountSnapshot } from '../domain/parseBackup';
+import { CATALOG_VERSION } from '../data/catalog';
+import { writeSnapshots } from '../storage/snapshots';
 import {
   backupFileName,
   buildBackup,
-  isToolboxBackup,
-  mergeImportedSnapshot,
   mergeSnapshots,
   parseToolboxBackup,
-  type MergeResult,
-  type ToolboxBackup,
 } from '../domain/backup';
-import { CATALOG_VERSION } from '../data/catalog';
 import { refreshSnapshots } from '../storage/snapshotStore';
-import {
-  setLastImportResult,
-} from '../storage/lastImportStore';
 import { ImportResultCard } from './ImportResultCard';
 import { SourceNotice } from './SourceNotice';
 import { useSnapshots } from './useSnapshots';
 import { useLastImportHistory } from './useLastImportResult';
-import { takeSharedFile } from '../share/shareTarget';
-import { fetchShellCapture, shareToNative, takeNativeShare } from '../share/nativeShare';
-import { readCaptureFile } from '../pcap/readCaptureFile';
-import { isCollectorCaptureUrl } from '../pcap/collectorUrl';
-import { decodeUrlInWorker } from '../pcap/decodeInWorker';
-import {
-  adoptBackupTargetMode,
-  getTargetMode,
-  useTargetMode,
-} from './targetModeStore';
-import { getMotherPlan, mergeMotherPlan } from './motherPlanStore';
+import { shareToNative } from '../share/nativeShare';
+import { getTargetMode, useTargetMode } from './targetModeStore';
+import { getMotherPlan } from './motherPlanStore';
 import { setImportMessage, useImportMessage } from './importMessageStore';
 import { beginImport, updateImportOutcome, useImportOutcome } from './importOutcomeStore';
-import { setSyncConflict, setSyncNotice, useSyncFeedback } from './syncNoticeStore';
+import { useSyncFeedback } from './syncNoticeStore';
 import { resetImportedData } from './resetImportedData';
-import { recordSyncedPets } from './syncAdditions';
-import { autoPublishGroups, collectPendingDemandClaims } from './groupAutoPublish';
+import {
+  achievementMessages,
+  afterImport,
+  applyBackupPlanning,
+  consumePendingShares,
+  ingestCaptureFiles,
+  mergeMessage,
+  reportNewPets,
+} from '../import/captureIngest';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -93,8 +81,6 @@ export function ImportPanel({
   // 底部「更多」折叠区（导出 / 合并导入 / 重置）：低频操作收起来，默认收起
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const speciesByGameId = useMemo(() => new Map(species.map((entry) => [entry.gameId, entry])), []);
-
   const lastImportedAt = useMemo(() => {
     if (snapshots.length === 0) return null;
     return snapshots.reduce((latest, s) => (s.importedAt > latest ? s.importedAt : latest), '');
@@ -106,273 +92,34 @@ export function ImportPanel({
     return Number.isFinite(ts) && Date.now() - ts > SEVEN_DAYS_MS;
   }, [lastImportedAt]);
 
-  /** 导入后把"本次新增里符合看板分类的"记下来，给顶部那张卡片用 */
-  const reportNewPets = (
-    previous: AccountSnapshot[],
-    imported: AccountSnapshot[],
-    operationId: number,
-  ) => {
-    setLastImportResult(
-      analyzeImport({
-        previous,
-        imported,
-        species,
-        eggGroupNames,
-        mode,
-      }),
-    );
-    // 埋点：只报规模，不报内容（账号数 / 精灵数）
-    track('import_success', {
-      accounts: imported.length,
-      pets: imported.reduce((sum, snapshot) => sum + snapshot.pets.length, 0),
-    });
-    // 开了云同步的话，导入成功后直接做一次「云同步」（拉云端 → 与本机合并 → 推回云端，
-    // 2026-10-07）：分享导入是跨设备的主路径，顺手对齐就不必让用户再去「云同步」点一次。
-    // 尽力而为：失败不影响本地，也不打断用户操作。
-    // 2026-10-06 修：遇 409 是**正常返回 `{ok:false}` 而不是抛异常**，
-    // 原来的 `.catch(() => {})` 因此永远不触发 → 冲突被静默吞掉，用户以为同步好了。
-    // 现在把冲突交给「云同步」面板展示（用户在那里二选一），并在顶部给一条提示。
-    if (readAccountId()) {
-      updateImportOutcome(operationId, { cloud: 'syncing' });
-      void syncNow()
-        .then((result) => {
-          if (!result.ok) {
-            updateImportOutcome(operationId, { cloud: 'conflict' });
-            setSyncConflict(result.conflict);
-            return;
-          }
-          updateImportOutcome(operationId, { cloud: 'synced' });
-          // 从云端补上了本机没有的设置键：这些键是模块级 store 启动时读的，刷新才生效。
-          // 这里**不刷新**——分享导入后还要跳看板看「本次新增」，刷新会把它冲掉；
-          // 所以只给一条提示，用户想立刻生效就自己刷新。
-          if (result.prefsAdopted.length > 0) {
-            setSyncNotice('设置已按云端更新，刷新页面后生效。');
-          }
-          // 同步带进来的精灵也算进「本次新增」：比的是**这次导入前**的本机快照，
-          // 所以导入 + 同步合并起来一起展示（覆盖掉上面只按导入内容写的卡片）
-          if (result.added.length > 0 || result.updated.length > 0) {
-            void recordSyncedPets(previous);
-          }
-        })
-        // 网络/服务端异常也要留一条提示：这是导入后自动触发的，用户没主动点过任何按钮
-        .catch(() => {
-          updateImportOutcome(operationId, { cloud: 'failed' });
-          setSyncNotice('自动同步没成功（网络异常），到「我的 · 私有同步」点一次「立即同步」重试。');
-        });
-    }
-  };
-
-  /** 合并结果的反馈文案，两个入口（手选 / 分享）共用 */
-  const mergeMessage = (name: string, merged: MergeResult): string =>
-    `已合并导入「${name}」：新增 ${merged.added.length} 个账号 · 更新 ${merged.updated.length} 个 · 保留本地较新的 ${merged.kept.length} 个`;
-
   /**
-   * 备份里的「规划数据」：目标模式（本地优先，本机没选过才采用备份的值）+ 计划收集（并集）。
-   * 返回给用户的说明文案。
+   * 入库入口（壳内采集 / 手选文件 / 分享共用）。真正的解析、写库、自动同步与小组发布
+   * 都在 `src/import/captureIngest.ts`，这里只是把最新的本机快照交给它。
    */
-  const applyBackupPlanning = (backup: ToolboxBackup): string[] => {
-    adoptBackupTargetMode(backup.targetMode);
-    const addedCount = mergeMotherPlan(backup.motherPlan ?? []);
-    return addedCount > 0 ? [`计划收集新增 ${addedCount} 条`] : [];
-  };
-
-  /** 计划收集的达成提示：只报这次导入「从不合格变合格」的链 */
-  const achievementMessages = (
-    previous: AccountSnapshot[],
-    next: AccountSnapshot[],
-    planBefore: readonly string[],
-  ): string[] => {
-    if (planBefore.length === 0) return [];
-    const modeNow = getTargetMode();
-    const groupsOf = (list: AccountSnapshot[]) =>
-      groupMothersByEgg(list.flatMap((item) => item.pets), speciesByGameId, species, modeNow);
-    const beforeKeys = new Set(
-      plannedAchievements(groupsOf(previous), planBefore).map((group) => group.chainKey),
-    );
-    const achieved = plannedAchievements(groupsOf(next), planBefore).filter(
-      (group) => !beforeKeys.has(group.chainKey),
-    );
-    if (achieved.length === 0) return [];
-    const names = achieved.slice(0, 3).map((group) => group.formLabel || '未知精灵');
-    return [
-      `计划收集达成 ${achieved.length} 个：${names.join('、')}${achieved.length > 3 ? ' 等' : ''}`,
-    ];
-  };
-
-  /**
-   * 导入后的尽力而为收尾：把资源同步到已加入的小组 + 看看有没有人接了我的需求。
-   * 主入口与「合并导入」共用，避免两条导入路径行为不一致。
-   * 失败不影响本机与云同步，也不打断用户操作。
-   */
-  const afterImport = (
-    operationId: number,
-    working: AccountSnapshot[],
-    touched: Set<string>,
-  ) => {
-    void Promise.all([
-      autoPublishGroups({
-        snapshots: working,
-        species,
-        catalogVersion: CATALOG_VERSION,
-        touchedAccountKeys: [...touched],
-      }).catch(() => 0),
-      // 顺带看看有没有人接了我的需求，且这次导入的数据里确实已经有这颗蛋
-      collectPendingDemandClaims({ snapshots: working, species }).catch(() => []),
-    ]).then(([count, claims]) => {
-      if (count === 0 && claims.length === 0) return;
-      updateImportOutcome(operationId, {
-        ...(count > 0 ? { group: 'updated' as const, groupCount: count } : {}),
-        ...(claims.length > 0 ? { claims } : {}),
-      });
-    });
-  };
-
-  /**
-   * 导入入口。一个入口认两种文件：
-   * - 采集器抓包（.pcap / 抓包 JSON）→ 按账号替换该账号的快照（「重新抓了一次」的正确语义）
-   * - 工具箱备份（自己导出的）→ **合并**，多设备同步靠它
-   *
-   * 之所以不分成两个按钮：微信收到备份后「分享给小布助手」时走的就是这条入口，
-   * 那时用户没机会选按钮，只能靠内容自己认。
-   */
-  const handleImport = async (
+  const handleImport = (
     files: File[],
     sourceLabel?: string,
-    readFile: (file: File) => Promise<unknown> = readCaptureFile,
-  ): Promise<AccountSnapshot[] | null> => {
-    const operationId = beginImport();
-    currentOp.current = operationId;
-    try {
-      // 先记住导入前的数据，"本次新增"才有得比
-      const previous = snapshots;
-      // 计划收集的达成判定要用「导入前」的计划（备份带进来的新计划不参与本次判定）
-      const planBefore = [...getMotherPlan()];
-      // 合并以「当前写进去的状态」为准，多文件时后一个能看见前一个的结果
-      let working = [...snapshots];
-      const imported: AccountSnapshot[] = [];
-      /** 这次导入涉及的账号：自动发布时并进小组的选号（手动取消过的旧账号不会被加回来） */
-      const touched = new Set<string>();
-      const messages: string[] = [];
-
-      for (const file of files) {
-        // 抓包文件（.pcap）会自动交给采集器那套解析器解成 JSON，其余按 JSON 读
-        const raw = await readFile(file);
-
-        if (isToolboxBackup(raw)) {
-          const backup = parseToolboxBackup(raw);
-          const merged = mergeSnapshots(working, backup.accounts);
-          working = merged.snapshots;
-          await writeSnapshots(working);
-          for (const account of backup.accounts) touched.add(account.accountKey ?? accountKeyOf(account));
-          messages.push(mergeMessage(file.name, merged));
-          messages.push(...applyBackupPlanning(backup));
-          continue;
-        }
-
-        const parsed = parseBackup(raw, new Date().toISOString());
-        // 按**账号身份（游戏 UID）**替换：重名但不同 UID 的两个账号是两个账号，互不顶掉
-        const key = accountKeyOf(parsed);
-        // 这次抓包没进家园场景时不要丢掉本机已有的家园（2026-11-01 用户反馈）
-        const snapshot = mergeImportedSnapshot(
-          parsed,
-          working.find((item) => accountKeyOf(item) === key),
-        );
-        await saveSnapshot(snapshot);
-        working = [...working.filter((item) => accountKeyOf(item) !== key), snapshot];
-        imported.push(snapshot);
-        touched.add(key);
-      }
-
-      await refreshSnapshots();
-      reportNewPets(previous, working, operationId);
-      // 抓包导入也可能让计划里的链达标
-      messages.push(...achievementMessages(previous, working, planBefore));
-      // 分享进来的来源说明放最前面，后面接合并/计划的说明（合并结果不在「本次新增」卡片里）
-      const parts = sourceLabel ? [sourceLabel, ...messages] : messages;
-      const text = parts.length > 0 ? parts.join('；') : null;
-      if (text) setImportMessage(text);
-      updateImportOutcome(operationId, {
-        local: 'saved',
-        message: text,
-        cloud: readAccountId() ? 'syncing' : 'not-enabled',
-      });
-      // 导入后直接把资源同步到已加入的小组（发布不再是用户必须记得的一步）。
-      afterImport(operationId, working, touched);
-      return imported;
-    } catch (error) {
-      updateImportOutcome(operationId, {
-        local: 'failed',
-        message: error instanceof Error ? error.message : '导入失败',
-      });
-      return null;
-    }
-  };
+    readFile?: (file: File) => Promise<unknown>,
+  ): Promise<AccountSnapshot[] | null> =>
+    ingestCaptureFiles({ files, snapshots, mode, sourceLabel, readFile });
 
   // 晚到的分享要用最新的 handleImport，否则「本次新增」是拿旧快照在比
   const importRef = useRef(handleImport);
   importRef.current = handleImport;
 
   /**
-   * 分享进来的数据有三个来源：
-   * 1. 浏览器里走系统分享（Web Share Target）→ Service Worker 存进缓存，见 shareTarget.ts
-   * 2. 原生壳接住分享的 JSON → 壳直接注入文本，见 nativeShare.ts
-   * 3. 原生壳接住分享的抓包（采集器的「分享文件」）→ 壳拦下请求返回字节，页面自己去取
+   * 分享进来的数据由 captureIngest.consumePendingShares 统一消费：
+   * 浏览器系统分享 / 壳注入的文本 / 壳拦下的抓包字节，三条来源都走同一条入库链路。
    * 等本机数据读完（loaded）再导，否则「本次新增」是在和空数据比。
    */
   useEffect(() => {
     if (!loaded) return;
 
-    const consume = async () => {
-      // 来源说明交给 handleImport 一起拼：这里再 setImportMessage 会把
-      // 「已合并导入…新增/更新/保留」这句覆盖掉，用户就看不到这次到底动了什么
-      const importOne = async (file: File, done: string, readFile?: (file: File) => Promise<unknown>) => {
-        return importRef.current([file], done, readFile);
-      };
-
-      const fromBrowser = await takeSharedFile();
-      if (fromBrowser) {
-        const name = fromBrowser.name || 'shared.json';
-        // 原始字节交给 readCaptureFile 按魔数分流：JSON 走解析、PCAP 走采集器解析器
-        const result = await importOne(
-          new File([fromBrowser.blob], name),
-          `已导入分享进来的采集数据（${name}）`,
-        );
-        return result;
-      }
-
-      const fromShell = takeNativeShare();
-      if (!fromShell) return;
-      try {
-        if (fromShell.kind === 'capture') {
-          const name = fromShell.name || 'capture.pcap';
-          if (isCollectorCaptureUrl(fromShell.url)) {
-            // Metadata only on the UI thread: Worker streams the native file and decodes there.
-            const result = await importOne(new File([], name), `已解析并导入本机采集数据（${name}）`,
-              async () => (await decodeUrlInWorker(fromShell.url, name)).payload);
-            return result;
-          }
-          const bytes = await fetchShellCapture(fromShell.url);
-          const result = await importOne(
-            new File([bytes], name, { type: 'application/octet-stream' }),
-            `已解析并导入分享进来的抓包数据（${name}）`,
-          );
-          return result;
-        } else {
-          const name = fromShell.name || 'shared.json';
-          const result = await importOne(
-            new File([fromShell.text], name, { type: 'application/json' }),
-            `已导入分享进来的采集数据（${name}）`,
-          );
-          return result;
-        }
-      } catch (error) {
-        setActionError(error instanceof Error ? error.message : '导入分享的数据失败');
-      }
-    };
-
     // 消费分享数据；失败也要给提示，不能让它变成未处理的 rejection（数据会静默丢掉）
     const runConsume = () => {
-      void consume().catch((error) => {
+      void consumePendingShares((file, label, readFile) =>
+        importRef.current([file], label, readFile),
+      ).catch((error) => {
         setActionError(error instanceof Error ? error.message : '处理分享进来的数据失败');
       });
     };
@@ -461,7 +208,7 @@ export function ImportPanel({
 
       await writeSnapshots(merged.snapshots);
       await refreshSnapshots();
-      reportNewPets(previous, merged.snapshots, operationId);
+      reportNewPets(previous, merged.snapshots, operationId, mode);
       setActionError(null);
       const text = [
         mergeMessage(file.name, merged),
