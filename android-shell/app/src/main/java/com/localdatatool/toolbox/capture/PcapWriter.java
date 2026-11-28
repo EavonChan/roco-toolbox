@@ -25,6 +25,8 @@ public final class PcapWriter implements Closeable {
     private BufferedOutputStream output;
     private long size = 24;
     private boolean closed;
+    /** 每次成功裁剪 +1：文件被整体重写，网页侧据它决定是否整份重读（2026-11-28，H01）。 */
+    private int generation;
     /** 找不到记录边界时不反复整份扫描（正常 flush 后不会发生）。 */
     private boolean trimBlocked;
     public PcapWriter(File file, long limit) throws IOException { this(file, limit, false); }
@@ -53,6 +55,8 @@ public final class PcapWriter implements Closeable {
     }
     public synchronized void flush() throws IOException { if (!closed) output.flush(); }
     public synchronized long flushSnapshot() throws IOException { flush(); return size; }
+    /** 当前裁剪代次（0 = 还没裁剪过；旧壳 / 新会话都从 0 开始）。 */
+    public synchronized int generation() { return generation; }
     /**
      * 战斗模式下超过上限就滚动裁剪；返回当前文件字节数（裁剪后主线程据此发现文件变小）。
      * 裁剪失败不终止采集：重新打开原文件继续追加，本次不再重试，让 128MiB 硬上限兜底。
@@ -84,6 +88,8 @@ public final class PcapWriter implements Closeable {
             output.close();
             replaceFile(temp, file);
             open(true);
+            // 文件已经被重写成「24B 头 + 最近一段」：旧前缀不再属于当前文件，网页必须整份重读
+            generation++;
             // 标记只用于拒绝「完整导入」；写失败不影响继续采集
             try { CaptureFiles.markTrimmed(file); } catch (IOException ignored) { }
         } catch (IOException error) {

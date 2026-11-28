@@ -47,6 +47,7 @@ public class CaptureFilesTest {
         ip[0] = 0x45;
         long time = 1000;
         try (PcapWriter writer = new PcapWriter(file, CaptureFiles.MAX_BYTES, true)) {
+            assertEquals("新文件代次从 0 开始", 0, writer.generation());
             // 每条记录 16 + 1000 + 14 = 1030 字节，8300 条约 8.5MiB
             for (int index = 0; index < 8300; index++) assertTrue(writer.append(ip, time++));
             long before = writer.flushSnapshot();
@@ -55,10 +56,14 @@ public class CaptureFilesTest {
             assertTrue("trim 后应明显变小", after < before);
             assertTrue("只保留最近一段", after <= PcapWriter.TRIM_KEEP_BYTES + 1030 + 24);
             assertTrue(after > 24);
+            assertEquals("裁剪成功要换一代，网页据此整份重读", 1, writer.generation());
             assertPcapRecords(file);
             assertTrue(new File(file.getPath() + ".trimmed").isFile());
             // 裁剪后仍能继续追加，且还是合法 pcap
             assertTrue(writer.append(ip, time));
+            // 没到阈值再调一次不能凭空换代
+            writer.trimIfNeeded();
+            assertEquals(1, writer.generation());
         }
         assertPcapRecords(file);
     }

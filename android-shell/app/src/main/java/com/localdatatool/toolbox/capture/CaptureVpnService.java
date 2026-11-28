@@ -125,6 +125,8 @@ public final class CaptureVpnService extends VpnService {
                     STATE.savedBytes = output.flushSnapshot();
                     // 战斗模式：超过 8MiB 就只保留最近 4MiB；返回的是裁剪后的真实大小
                     STATE.savedBytes = output.trimIfNeeded();
+                    // 裁剪是整体重写：代次一起更新，网页读到代数变化就整份重读（2026-11-28，H01）
+                    STATE.generation = output.generation();
                     flushed = now;
                 }
                 if (now - notified > 1000) {

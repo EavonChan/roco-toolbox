@@ -222,7 +222,9 @@ public final class CaptureController {
             String token = UUID.randomUUID().toString();
             if (grants.size() > 20) grants.clear();
             grants.put(token, snapshot);
-            return new JSONObject().put("id", file.getName()).put("size", snapshot.size).put("url", FILE_PREFIX + token).toString();
+            return new JSONObject().put("id", file.getName()).put("size", snapshot.size)
+                .put("generation", state.generation)
+                .put("url", FILE_PREFIX + token).toString();
         }
     }
     public String shareCapture(String id) {
@@ -268,13 +270,23 @@ public final class CaptureController {
             } catch (Exception ignored) {
                 from = 0;
             }
-            if (from < 0 || from > grant.size) throw new IOException("invalid capture range");
+            // 实时快照（session 非空）的长度 / 代次都按**响应这一刻**算：
+            // grant 发出后文件可能刚被裁剪过，套用旧长度会把新一代文件从旧位置截断。
+            long total = grant.size;
+            long generation = 0;
+            if (!grant.session.isEmpty()) {
+                total = Math.min(grant.size,
+                    Math.min(CaptureVpnService.STATE.savedBytes, grant.file.length()));
+                generation = CaptureVpnService.STATE.generation;
+            }
+            if (from < 0 || from > total) throw new IOException("invalid capture range");
             Map<String, String> headers = new HashMap<>();
             headers.put("Access-Control-Allow-Origin", siteOrigin); headers.put("Cache-Control", "no-store");
-            headers.put("Content-Length", Long.toString(grant.size - from));
+            headers.put("Content-Length", Long.toString(total - from));
             headers.put("X-Capture-From", Long.toString(from));
-            headers.put("X-Capture-Total", Long.toString(grant.size));
-            return new WebResourceResponse("application/octet-stream", null, 200, "OK", headers, grant.open(from));
+            headers.put("X-Capture-Total", Long.toString(total));
+            headers.put("X-Capture-Generation", Long.toString(generation));
+            return new WebResourceResponse("application/octet-stream", null, 200, "OK", headers, grant.open(from, total));
         } catch (Exception error) {
             return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
         }

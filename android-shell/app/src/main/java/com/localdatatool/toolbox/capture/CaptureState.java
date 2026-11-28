@@ -7,6 +7,11 @@ public final class CaptureState {
     public volatile long packets, bytes;
     public volatile String fileId = "";
     public volatile long savedBytes;
+    /**
+     * 采集文件裁剪代次（2026-11-28，H01）：每次裁剪 +1，随 inspectCapture 与
+     * {@code X-Capture-Generation} 下发，网页发现变化就整份重读，不再把两代字节拼在一起。
+     */
+    public volatile int generation;
     /** 采集模式：battle = 附近 / 战斗浮窗发起（允许滚动裁剪）；full = 导入导向。 */
     public volatile String mode = "full";
     /**
@@ -23,7 +28,7 @@ public final class CaptureState {
         if (busy()) return false;
         this.mode = "battle".equals(mode) ? "battle" : "full";
         packets = bytes = 0;
-        fileId = ""; savedBytes = 0;
+        fileId = ""; savedBytes = 0; generation = 0;
         phase = "starting"; message = "等待系统 VPN 授权";
         return true;
     }

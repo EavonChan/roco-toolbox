@@ -13,7 +13,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.SystemClock;
 import android.provider.OpenableColumns;
+import android.util.Log;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
@@ -150,17 +152,50 @@ public class MainActivity extends Activity {
      */
     private static final long LIVE_TICK_BUSY_MS = 250;
     private static final long LIVE_TICK_IDLE_MS = 1200;
+    /**
+     * 心跳回执超时（2026-11-28）：WebView 被冻结时 {@code evaluateJavascript} 会静默变成空操作，
+     * 回调永远不来。连续这么久没有回执就认为页面已经不跑了，reload 一次自愈。
+     */
+    private static final long LIVE_TICK_REPLY_TIMEOUT_MS = 9_000L;
+    /** 两次自愈 reload 的最小间隔：页面加载慢时不至于反复重建。 */
+    private static final long LIVE_TICK_RELOAD_GAP_MS = 30_000L;
+    /** 最近一次心跳回执（elapsedRealtime）；页面看不到时它停住就说明 JS 不跑了。 */
+    private long lastLiveTickReplyAt;
+    /** 上一次心跳自愈 reload 的时间，用来限流。 */
+    private long lastLiveTickReloadAt;
+    /** 上一轮心跳是否为「采集中」，用于采集开始 / 结束那一刻重置回执计时。 */
+    private boolean liveTickBusy;
     /** 是否已经把 WebView 渲染进程提到 IMPORTANT，后台采集结束时用它恢复默认策略。 */
     private boolean rendererBoosted;
     private final Runnable liveTickTask = new Runnable() {
         @Override public void run() {
             boolean busy = CaptureVpnService.STATE.busy();
+            long now = SystemClock.elapsedRealtime();
+            // 采集开始 / 结束那一刻重置回执计时：上一次采集留下的旧时间不能算到这一次头上
+            if (busy != liveTickBusy) {
+                liveTickBusy = busy;
+                lastLiveTickReplyAt = now;
+            }
             if (webView != null && !pageVisible && busy) {
                 // 每轮复核一次渲染优先级（2026-11-10 保活）：渲染进程可能被系统换掉、
                 // 也可能在重建后回到默认策略；只靠 onPause 那一次提升会永久丢掉保障。
                 // 降级不在这里做，统一由采集停止流程（CaptureState.onIdle）触发。
                 if (!rendererBoosted) applyRendererPriority(true);
-                webView.evaluateJavascript("window.__rocoLiveTick&&window.__rocoLiveTick()", null);
+                // 连续 9s 没有回执 = 页面 JS 已经不跑了（WebView 冻结 / 渲染进程卡死）。
+                // 只 reload 不重建：页面重新加载后会重新注册 __rocoLiveTick，采集在 VpnService 里不中断。
+                if (pageReady
+                    && now - lastLiveTickReplyAt > LIVE_TICK_REPLY_TIMEOUT_MS
+                    && now - lastLiveTickReloadAt > LIVE_TICK_RELOAD_GAP_MS) {
+                    lastLiveTickReloadAt = now;
+                    // 给新页面一个完整超时窗口，避免加载慢时被判定成又一次无回执
+                    lastLiveTickReplyAt = now;
+                    pageReady = false;
+                    Log.w("RocoPerf", "WebView 心跳 " + LIVE_TICK_REPLY_TIMEOUT_MS
+                        + "ms 无回执，已 reload 页面自愈");
+                    try { webView.reload(); } catch (Exception ignored) { }
+                }
+                webView.evaluateJavascript("window.__rocoLiveTick&&window.__rocoLiveTick()", value ->
+                    lastLiveTickReplyAt = SystemClock.elapsedRealtime());
             }
             liveTick.postDelayed(this, busy ? LIVE_TICK_BUSY_MS : LIVE_TICK_IDLE_MS);
         }
@@ -228,6 +263,8 @@ public class MainActivity extends Activity {
             webView.loadUrl(serverConfig.baseUrl() + "/");
         });
         liveTick.postDelayed(liveTickTask, 1500);
+        // 心跳回执基准：首轮之前先当「刚刚有回执」，避免刚启动就被判定成冻结
+        lastLiveTickReplyAt = SystemClock.elapsedRealtime();
         // 首屏加载完再看有没有新版，避免更新弹窗和页面加载抢焦点
         liveTick.postDelayed(silentUpdateCheck, 3000);
     }
@@ -465,6 +502,8 @@ public class MainActivity extends Activity {
         super.onResume();
         // 回到前台：页面自己的定时器恢复，渲染进程回到默认策略
         pageVisible = true;
+        // 前台时页面不靠心跳回执判断存活，重置一次，避免后台旧时间导致回后台立刻 reload
+        lastLiveTickReplyAt = SystemClock.elapsedRealtime();
         applyRendererPriority(false);
         // 用户可能刚去系统设置里授予了悬浮窗权限：回来时把还在采集的球重新画上
         if (battleOverlay != null) battleOverlay.onResume();
@@ -477,6 +516,8 @@ public class MainActivity extends Activity {
         // 切到游戏 / 其它应用：页面定时器会被 WebView 节流，刷新交给原生心跳；
         // 同时把渲染进程提到 IMPORTANT，避免系统内存紧张（游戏在前台）时把它压缩 / 回收
         pageVisible = false;
+        // 之后只看心跳回执判断页面是否还活着：从现在开始计时
+        lastLiveTickReplyAt = SystemClock.elapsedRealtime();
         applyRendererPriority(true);
         super.onPause();
     }
@@ -561,6 +602,7 @@ public class MainActivity extends Activity {
         rendererBoosted = false;
         if (!pageVisible) applyRendererPriority(true);
         pageReady = false;
+        lastLiveTickReplyAt = SystemClock.elapsedRealtime();
         webView.loadUrl(serverConfig.baseUrl() + "/");
         showMessage("页面已被系统回收，已自动恢复显示");
     }

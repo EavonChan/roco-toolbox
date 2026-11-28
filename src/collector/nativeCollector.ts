@@ -9,7 +9,19 @@ export interface CollectorState {
   /** 桌面采集已到 128MiB 上限：此时 savedBytes 允许略超上限，面板按 message 显示原因而不是判整份无效 */
   capped?: boolean;
 }
-export type CaptureSnapshot = { id: string; size: number; url: string };
+export type CaptureSnapshot = {
+  id: string;
+  size: number;
+  url: string;
+  /**
+   * 采集文件裁剪代次（2026-11-28，H01）。
+   *
+   * 战斗模式超过 8MiB 后壳会把文件重写成「24B 头 + 最近 4MiB」；网页缓存的是上一代字节，
+   * 只比长度会把两代拼在一起（帧头错位 → 每轮解码失败 → 快照永不更新）。
+   * 每次裁剪壳自增这个值；旧壳没有该字段时为 undefined（按 0 处理，仍按长度兜底）。
+   */
+  generation?: number;
+};
 export type CollectorAction = 'startCapture' | 'stopCapture' | 'openGame' | 'importCapture' | 'shareCapture' | 'deleteCapture';
 /** 采集模式：battle = 附近 / 战斗浮窗发起，允许原生滚动裁剪控制文件大小；full = 「我的」页导入导向。 */
 export type StartCaptureMode = 'battle' | 'full';
@@ -123,7 +135,9 @@ export async function readCaptureSnapshot(): Promise<CaptureSnapshot | null> {
   let snapshot: CaptureSnapshot;
   try { snapshot = JSON.parse(text) as CaptureSnapshot; } catch { throw new Error('无法读取采集快照'); }
   if (!snapshot || !/^capture-[0-9]+\.pcap$/.test(snapshot.id) || !Number.isSafeInteger(snapshot.size)
-    || snapshot.size <= 24 || typeof snapshot.url !== 'string' || !isCollectorCaptureUrl(snapshot.url)) {
+    || snapshot.size <= 24 || typeof snapshot.url !== 'string' || !isCollectorCaptureUrl(snapshot.url)
+    || (snapshot.generation != null
+      && (!Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0))) {
     throw new Error('本机采集快照无效');
   }
   // 与 capped 状态对齐：超过上限是已知的「采满了」，不是数据损坏；提示先解析导入，别让入口看起来坏了
@@ -131,8 +145,8 @@ export async function readCaptureSnapshot(): Promise<CaptureSnapshot | null> {
   return snapshot;
 }
 
-/** 实时巡检的字节缓存：记住已读位置，下一轮只取新增的一段。 */
-let liveBytes: { id: string; bytes: Uint8Array } | null = null;
+/** 实时巡检的字节缓存：记住已读位置与所属代次，下一轮只取新增的一段。 */
+let liveBytes: { id: string; bytes: Uint8Array; generation?: number } | null = null;
 
 /** 测试用：清空增量缓存。 */
 export function resetCaptureBytesCacheForTest(): void {
@@ -150,36 +164,51 @@ export function resetCaptureBytesCacheForTest(): void {
  */
 export async function readCaptureSnapshotBytes(snapshot: CaptureSnapshot, signal?: AbortSignal): Promise<Uint8Array> {
   const cached = liveBytes;
-  if (cached && cached.id === snapshot.id && cached.bytes.length <= snapshot.size) {
+  // 代次变了 = 壳已经把文件整体重写过（24B 头 + 最近 4MiB）：旧缓存是上一代的字节，
+  // 不能按长度续拼，必须整份重读（H01，2026-11-28）。旧壳没有代次时两边都是 undefined。
+  if (cached && cached.id === snapshot.id && cached.generation === snapshot.generation
+    && cached.bytes.length <= snapshot.size) {
     if (cached.bytes.length === snapshot.size) return cached.bytes;
     try {
-      const delta = await fetchCaptureDelta(snapshot.url, cached.bytes.length, signal);
+      const delta = await fetchCaptureDelta(snapshot.url, cached.bytes.length, snapshot.generation, signal);
       if (cached.bytes.length + delta.length > MAX_CAPTURE_BYTES) throw new Error('抓包超过 128MiB');
       const merged = new Uint8Array(cached.bytes.length + delta.length);
       merged.set(cached.bytes, 0);
       merged.set(delta, cached.bytes.length);
-      liveBytes = { id: snapshot.id, bytes: merged };
+      liveBytes = { id: snapshot.id, bytes: merged, generation: snapshot.generation };
       return merged;
     } catch (error) {
       if (error instanceof Error && error.message.includes('128MiB')) throw error;
       // 主动取消（切页 / 后台心跳重启卡死轮次）：不要再回退全量读一遍
       if ((error as { name?: string } | null)?.name === 'AbortError') throw error;
-      // 旧壳不支持 from / 响应头对不上：回退全量读取
+      // 旧壳不支持 from / 响应头对不上 / 读之前刚好裁剪过：回退全量读取
     }
   }
   const response = await fetch(snapshot.url, { cache: 'no-store', credentials: 'omit', signal });
   if (!response.ok) throw new Error('无法读取本机原包，请返回小布助手重新导入');
   const bytes = new Uint8Array(await response.arrayBuffer());
-  liveBytes = { id: snapshot.id, bytes };
+  liveBytes = { id: snapshot.id, bytes, generation: snapshot.generation };
   return bytes;
 }
 
-async function fetchCaptureDelta(url: string, from: number, signal?: AbortSignal): Promise<Uint8Array> {
+async function fetchCaptureDelta(
+  url: string,
+  from: number,
+  generation: number | undefined,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
   const response = await fetch(`${url}?from=${from}`, { cache: 'no-store', credentials: 'omit', signal });
   if (!response.ok) throw new Error('无法增量读取本机原包');
   // 校验拦截器确实理解了 from（旧壳会忽略 query 返回全量，那会让拼接错位，必须识别出来）
   const servedFrom = Number(response.headers.get('X-Capture-From'));
   if (servedFrom !== from) throw new Error('当前壳不支持增量读取');
+  // 新壳同时回代次：检查之后、读取之前刚好裁剪过的话，这一段属于新一代，不能接到旧前缀后面
+  if (generation != null) {
+    const servedGeneration = response.headers.get('X-Capture-Generation');
+    if (servedGeneration == null || Number(servedGeneration) !== generation) {
+      throw new Error('采集文件已裁剪，需要整份重读');
+    }
+  }
   return new Uint8Array(await response.arrayBuffer());
 }
 export async function collectorAction(action: CollectorAction, id?: string): Promise<void> {

@@ -20,7 +20,18 @@ final class CaptureSnapshot {
      * 网页侧会记住已读位置，只取新增的一段（2026-11-08）。
      */
     InputStream open(long from) throws IOException {
-        if (from < 0 || from > size) throw new IOException("invalid capture range");
+        return open(from, size);
+    }
+
+    /**
+     * 从 {@code from} 读到 {@code limit}（含）为止。
+     *
+     * 实时快照的 {@code size} 只是颁发 grant 那一刻的长度；真正响应时文件可能刚被裁剪
+     * （整体重写、变短）或又长回来，所以由调用方按**当前**文件长度再收一次口，
+     * 避免按旧长度去读新一代文件（2026-11-28，H01）。{@code limit} 不得超过 {@link #size}。
+     */
+    InputStream open(long from, long limit) throws IOException {
+        if (from < 0 || from > limit || limit > size) throw new IOException("invalid capture range");
         FileInputStream input = new FileInputStream(file);
         long skipped = 0;
         while (skipped < from) {
@@ -28,7 +39,7 @@ final class CaptureSnapshot {
             if (count <= 0) throw new EOFException("采集快照未完整保存，请稍后重试");
             skipped += count;
         }
-        final long length = size - from;
+        final long length = limit - from;
         return new FilterInputStream(input) {
             private long remaining = length;
             @Override public int read() throws IOException {
