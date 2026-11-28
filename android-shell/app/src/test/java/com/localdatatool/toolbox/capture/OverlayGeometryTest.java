@@ -94,17 +94,21 @@ public class OverlayGeometryTest {
             { 0, 340 }, { 323, 340 }, { 323, 8 }, { 0, 700 }, { 323, 700 },
             { 161, 340 }, { 161, 60 }, { 161, 700 }
         };
-        for (int[] ball : balls) {
-            int[] position = spot(ball[0], ball[1], 375, 812);
-            assertFalse(
-                "球在 " + ball[0] + "," + ball[1] + " 时面板压住了球",
-                OverlayGeometry.overlaps(
-                    position[0], position[1], PANEL_W, PANEL_H,
-                    ball[0], ball[1], BALL, BALL, GAP));
-            assertTrue("面板必须留在屏内", position[0] >= GAP);
-            assertTrue("面板必须留在屏内", position[1] >= GAP);
-            assertTrue("面板必须留在屏内", position[0] + PANEL_W <= 375 - GAP);
-            assertTrue("面板必须留在屏内", position[1] + PANEL_H <= 812 - GAP);
+        // 普通面板 182，命中区有数据时 202：两种高度都不能压球
+        for (int height : new int[] { PANEL_H, 202 }) {
+            for (int[] ball : balls) {
+                int[] position = OverlayGeometry.panelSpot(
+                    PANEL_W, height, ball[0], ball[1], BALL, BALL, 375, 812, GAP);
+                assertFalse(
+                    "球在 " + ball[0] + "," + ball[1] + "、面板高 " + height + " 时压住了球",
+                    OverlayGeometry.overlaps(
+                        position[0], position[1], PANEL_W, height,
+                        ball[0], ball[1], BALL, BALL, GAP));
+                assertTrue("面板必须留在屏内", position[0] >= GAP);
+                assertTrue("面板必须留在屏内", position[1] >= GAP);
+                assertTrue("面板必须留在屏内", position[0] + PANEL_W <= 375 - GAP);
+                assertTrue("面板必须留在屏内", position[1] + height <= 812 - GAP);
+            }
         }
     }
 
