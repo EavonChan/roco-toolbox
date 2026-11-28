@@ -16,7 +16,7 @@ import { species, eggGroupNames } from '../data/catalog';
 import { buildRadar, DEFAULT_RADAR_RADIUS_M, type RadarData } from '../pcap/nearbyRadar';
 import { worldMapForScene } from '../pcap/worldMap';
 import { createSelfEstimate, updateSelfEstimate } from '../pcap/selfOdometry';
-import { pruneRetained, isHighValuePet, type RetainedEntry } from '../pcap/nearbyRetain';
+import { composeNearbyRows, isHighValuePet, pruneRetained, retainablePets, type RetainedEntry } from '../pcap/nearbyRetain';
 import { KIND_LABELS, rareAlertTitle } from '../pcap/rareRules';
 import type { NavigationIntent } from './navigation';
 import { NearbyBattleCard } from './NearbyBattleCard';
@@ -60,7 +60,7 @@ const mmss = (totalSeconds: number): string => {
  */
 const OVERLAY_PUSH_INTERVAL_MS = 250;
 
-/** 常驻列表排序：仍在视野内 → 目标出现 → 稀有牌子多 → 距离近。 */
+/** 附近列表排序：仍在视野内 → 目标出现 → 稀有牌子多 → 距离近。 */
 function sortRows(rows: readonly RetainedEntry[], radar: RadarData): RetainedEntry[] {
   const distanceOf = new Map(radar.points.map((point) => [point.key, point.distanceM]));
   return [...rows].sort((left, right) => {
@@ -239,8 +239,9 @@ function NearbyRowItem({
 /**
  * 附近页（2026-11-06）：雷达 / 列表两种视图，共用筛选。
  *
- * - 雷达画「当前还在视野内」的精灵；列表是常驻列表，高价值（稀有 / 目标出现）
- *   离开视野后仍保留 10 分钟，普通精灵离开即清理。
+ * - 雷达画「当前还在视野内」的精灵；列表 = 当前快照里的全部精灵
+ *   ∪ 已离开视野但仍在 10 分钟内的「高价值」常驻条目（2026-11-28 修正：
+ *   「全部」档不再只列高价值，普通精灵也在；常驻表本身仍只收高价值）。
  * - 目标出现时走系统通知 + 页内强提示；性格 / 性别野生实体读不到，标记「需确认」。
  * - 雷达中心是附近精灵坐标的几何中位数（真实抓包里没有自身坐标帧），只作估算。
  */
@@ -276,6 +277,11 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   const overlayPendingStart = useRef(false);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+  /**
+   * 常驻表（只含高价值条目，可持久到模块 store）。与展示用的 `rows` 分开：
+   * `rows` 还包含当前视野里的普通精灵，不能写进常驻表（2026-11-28）。
+   */
+  const retainedRef = useRef<RetainedEntry[]>(rows);
   const sessionRef = useRef<string | null>(null);
   // 估算自身位置：用精灵帧间位移做里程计，否则走动时点位看起来不动（2026-11-06）
   const selfRef = useRef(createSelfEstimate());
@@ -303,37 +309,42 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
     setSelf(next.self);
   }, [snapshot]);
 
-  // 每次快照到达就刷新常驻列表；离开视野的高价值条目由 pruneRetained 按 10 分钟 TTL 清理。
+  // 每次快照到达就刷新常驻表与展示列表（2026-11-28：列表 = 快照全部精灵 ∪ 已离开的高价值常驻）；
+  // 常驻表只收高价值，离开视野的高价值条目由 pruneRetained 按 10 分钟 TTL 清理。
   // 换采集会话时先清空上一局的常驻列表与共享去重表，避免旧精灵压住新一局。
   useEffect(() => {
     if (!snapshot) return;
-    let base = rowsRef.current;
+    const now = Date.now();
+    let base = retainedRef.current;
+    let shown = rowsRef.current;
     if (sessionRef.current !== snapshot.session) {
       sessionRef.current = snapshot.session;
       nearbyAlertGate.reset();
       setExpandedKey(null);
       base = [];
+      shown = [];
     }
-    const next = pruneRetained(
-      base,
-      snapshot.pets.filter((pet) => classify(pet).highValue),
-      Date.now(),
-      classify,
-    );
+    const retained = pruneRetained(base, retainablePets(snapshot.pets, classify), now, classify);
+    retainedRef.current = retained;
+    writeNearbyRetained(retained);
+    const next = composeNearbyRows(shown, retained, snapshot.pets, now, classify);
     rowsRef.current = next;
-    writeNearbyRetained(next);
     setRows(next);
   }, [snapshot, classify]);
 
-  // 没有新快照时也要定期清理到期的「已离开」记录
+  // 没有新快照时也要定期清理到期的「已离开」记录；
+  // 常驻表同样只收高价值（2026-11-28 修掉旧问题：这里曾把整份 snap.pets 写进常驻）。
   useEffect(() => {
     const timer = window.setInterval(() => {
-      const current = readNearbyRetained();
+      const retained = readNearbyRetained();
       const snap = readNearbySnapshot();
-      if (!snap || current.length === 0) return;
-      const next = pruneRetained(current, snap.pets, Date.now(), classify);
+      if (!snap || retained.length === 0) return;
+      const now = Date.now();
+      const nextRetained = pruneRetained(retained, retainablePets(snap.pets, classify), now, classify);
+      retainedRef.current = nextRetained;
+      writeNearbyRetained(nextRetained);
+      const next = composeNearbyRows(rowsRef.current, nextRetained, snap.pets, now, classify);
       rowsRef.current = next;
-      writeNearbyRetained(next);
       setRows(next);
     }, 30_000);
     return () => window.clearInterval(timer);
@@ -391,8 +402,9 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
   const captureBusy = state != null && ['starting', 'capturing', 'stopping'].includes(state.phase);
   /** 有采集桥（安卓壳）才给本页开关；网页版只能去「我的 · 游戏数据」导入文件 */
   const captureSupported = checked && state != null;
-  // 目标档即使暂时没有精灵数据也要显示筛选区：否则「编辑 / 清除」入口会消失
-  const hasAny = rows.length > 0 || pets.length > 0 || filter === 'target';
+  // 附近页有快照就显示筛选区与列表空态（2026-11-28：附近没精灵时「全部」档也要能提示
+  // 「附近暂时没有精灵」，不再直接落到整页空态）；目标档没有数据也要保留编辑 / 清除入口。
+  const hasAny = snapshot != null || rows.length > 0 || pets.length > 0 || filter === 'target';
 
   // 目标都不在视野时开始计时（只在页面里显示等待时长，不发通知、不打断）
   useEffect(() => {
@@ -926,8 +938,8 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
           ) : rows.length === 0 ? (
             <StateNotice
               kind="empty-data"
-              title="还没有高价值精灵"
-              description="地图仍显示当前普通精灵；常驻列表只保留目标出现、炫彩 / 异色 / 污染的精灵。"
+              title="附近暂时没有精灵"
+              description="进入野外场景并开始采集后，附近的精灵会实时出现在这里；高价值精灵离开视野后保留 10 分钟。"
             />
           ) : filtered.length === 0 ? (
             <StateNotice
@@ -936,11 +948,11 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
               description="切换到「全部」查看其它附近精灵。"
             />
           ) : (
-            <section className="space-y-1" aria-label="附近精灵常驻列表">
+            <section className="space-y-1" aria-label="附近精灵列表">
               <p className="px-1 text-[11px] text-slate-400">
                 {filter === 'target'
                   ? `蹲守 ${targets.length} 只 · 离开视野后保留 10 分钟`
-                  : `常驻 ${rows.length} 只 · 仅高价值（目标出现 / 炫彩异色污染），离开后保留 10 分钟`}
+                  : `列表 ${filtered.length} 只 · 高价值精灵离开视野后保留 10 分钟`}
               </p>
               {filtered.map((row) => (
                 <NearbyRowItem
@@ -1039,7 +1051,7 @@ export function Nearby({ onNavigate, embedded = false }: NearbyProps) {
               </p>
               {fullscreenRows.length === 0 ? (
                 <p className="rounded-xl bg-slate-900 px-3 py-2 text-xs text-slate-300">
-                  {filter === 'target' ? `目标的 ${targets.length} 只都不在视野内` : '还没有高价值精灵'}
+                  {filter === 'target' ? `目标的 ${targets.length} 只都不在视野内` : '附近暂时没有精灵'}
                 </p>
               ) : fullscreenRows.map((row) => (
                 <NearbyRowItem
