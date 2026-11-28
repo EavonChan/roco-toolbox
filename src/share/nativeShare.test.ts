@@ -10,21 +10,10 @@ describe('原生壳分享进来的内容', () => {
     expect(takeNativeShare()).toBeNull();
   });
 
-  test('文本分享（JSON）能取到，取走后清空', () => {
+  test('文本分享（旧备份 JSON）不再消费：取走后清空，返回 null', () => {
     window.__rocoPendingShare = { name: 'hatch-backup.json', text: '{"accounts":[]}' };
-
-    expect(takeNativeShare()).toEqual({
-      kind: 'text',
-      name: 'hatch-backup.json',
-      text: '{"accounts":[]}',
-    });
     expect(takeNativeShare()).toBeNull();
-  });
-
-  test('壳没给出文件名时也能取到内容', () => {
-    window.__rocoPendingShare = { text: '{"accounts":[]}' };
-
-    expect(takeNativeShare()).toEqual({ kind: 'text', name: '', text: '{"accounts":[]}' });
+    expect(takeNativeShare()).toBeNull();
   });
 
   test('抓包分享：给出壳上的取用地址，默认走约定地址', () => {

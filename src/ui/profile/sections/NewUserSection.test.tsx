@@ -16,6 +16,10 @@ describe('新用户空态区块', () => {
     );
     expect(screen.getByTestId('profile-new-user-sync')).toBeTruthy();
     expect(screen.getByTestId('account-panel')).toHaveTextContent('私有同步');
+    // 全新安装也要能开始采集：采集卡（无桥时是说明卡）必须在这里出现
+    expect(
+      screen.queryByTestId('native-collector') ?? screen.queryByTestId('native-collector-fallback'),
+    ).toBeTruthy();
     // 文件导入 / 隐私开关 / 导出：都不在空态里
     expect(screen.queryByTestId('import-button')).toBeNull();
     expect(screen.queryByTestId('import-input')).toBeNull();

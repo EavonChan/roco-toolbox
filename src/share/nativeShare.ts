@@ -1,22 +1,20 @@
 /**
- * 原生壳 APK（android-shell）分享进来的数据。
+ * 原生壳 APK（android-shell）分享进来的采集抓包。
  *
  * 系统分享面板 → 壳接住 → 壳把内容挂到 window.__rocoPendingShare 上并派发 'roco-share' 事件；
- * 页面这里把内容取走，交给导入流程。在普通浏览器里这个值永远是空的，什么也不会发生。
+ * 页面这里把内容取走，交给采集入库流程。在普通浏览器里这个值永远是空的，什么也不会发生。
  *
- * 两种形态：
- * - 小文件（JSON）：壳直接把文本塞进来
- * - 抓包（PCAP，二进制）：壳拦下对 SHELL_CAPTURE_URL 的请求、把字节原样返回，
- *   页面自己去 fetch。走拦截而不是塞文本，是因为二进制当文本读会被破坏，
- *   而几 MB 的 base64 字符串塞进 evaluateJavascript 又太重。
- *   用独立来源（.invalid 是保留域名，永远解析不到）是为了绕开网页自己的 Service Worker，
- *   否则请求会先被它接管。
+ * 2026-11-28 CLEAN2：网页 Share Target 与「文本分享（备份 JSON）」已随文件导入一起删除，
+ * 这里只保留壳内采集的抓包（二进制）分支。
+ *
+ * 抓包（PCAP，二进制）：壳拦下对 SHELL_CAPTURE_URL 的请求、把字节原样返回，页面自己去 fetch。
+ * 走拦截而不是塞文本，是因为二进制当文本读会被破坏，而几 MB 的 base64 字符串塞进
+ * evaluateJavascript 又太重。用独立来源（.invalid 是保留域名，永远解析不到）是为了绕开
+ * 网页自己的 Service Worker，否则请求会先被它接管。
  */
 export const SHELL_CAPTURE_URL = 'https://roco-share.invalid/capture.pcap';
 
-export type NativeShare =
-  | { kind: 'text'; name: string; text: string }
-  | { kind: 'capture'; name: string; url: string };
+export type NativeShare = { kind: 'capture'; name: string; url: string };
 
 declare global {
   interface Window {
@@ -29,12 +27,7 @@ declare global {
   }
 }
 
-/** 只看有没有待处理的分享，不取走。用于应用启动时先停在「导入数据」页等它被消费。 */
-export function hasPendingNativeShare(): boolean {
-  return typeof window !== 'undefined' && window.__rocoPendingShare != null;
-}
-
-/** 取出壳注入的分享内容；没有就返回 null。取走后立即清空，避免重复导入。 */
+/** 取出壳注入的采集抓包；没有（或不是抓包）就返回 null。取走后立即清空，避免重复导入。 */
 export function takeNativeShare(): NativeShare | null {
   if (typeof window === 'undefined') return null;
   const pending = window.__rocoPendingShare;
@@ -44,9 +37,7 @@ export function takeNativeShare(): NativeShare | null {
   if (pending.kind === 'capture') {
     return { kind: 'capture', name: pending.name ?? '', url: pending.url || SHELL_CAPTURE_URL };
   }
-  if (typeof pending.text === 'string') {
-    return { kind: 'text', name: pending.name ?? '', text: pending.text };
-  }
+  // 文本分享（备份 JSON）已不支持：直接丢弃，避免留下「分享过来没反应」的假路径
   return null;
 }
 

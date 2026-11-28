@@ -8,7 +8,6 @@ import { resetSnapshotCacheForTest } from '../storage/snapshotStore';
 import { consumePendingShares, ingestCaptureFiles } from './captureIngest';
 import { decodeUrlInWorker } from '../pcap/decodeInWorker';
 import { takeNativeShare } from '../share/nativeShare';
-import { takeSharedFile } from '../share/shareTarget';
 
 vi.mock('../api/analytics', () => ({
   track: vi.fn(),
@@ -23,11 +22,6 @@ vi.mock('../share/nativeShare', async (importOriginal) => {
   return { ...actual, takeNativeShare: vi.fn() };
 });
 
-vi.mock('../share/shareTarget', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../share/shareTarget')>();
-  return { ...actual, takeSharedFile: vi.fn(async () => null) };
-});
-
 const fixture = JSON.parse(
   readFileSync(resolve(process.cwd(), 'src/domain/__fixtures__/backup-sample.json'), 'utf8'),
 );
@@ -38,7 +32,6 @@ beforeEach(async () => {
   resetSnapshotCacheForTest();
   resetImportOutcomeForTest();
   resetLastImportForTest();
-  vi.mocked(takeSharedFile).mockResolvedValue(null);
   vi.mocked(takeNativeShare).mockReturnValue(null);
   vi.mocked(decodeUrlInWorker).mockReset();
 });

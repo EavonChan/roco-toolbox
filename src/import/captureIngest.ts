@@ -1,4 +1,3 @@
-import { track } from '../api/analytics';
 import { readAccountId } from '../api/session';
 import { syncNow } from '../api/sync';
 import { CATALOG_VERSION, eggGroupNames, species } from '../data/catalog';
@@ -10,7 +9,6 @@ import { isCollectorCaptureUrl } from '../pcap/collectorUrl';
 import { decodeUrlInWorker } from '../pcap/decodeInWorker';
 import { readCaptureFile } from '../pcap/readCaptureFile';
 import { fetchShellCapture, takeNativeShare } from '../share/nativeShare';
-import { takeSharedFile } from '../share/shareTarget';
 import { setLastImportResult } from '../storage/lastImportStore';
 import { refreshSnapshots } from '../storage/snapshotStore';
 import { saveSnapshot } from '../storage/snapshots';
@@ -111,11 +109,8 @@ function reportNewPets(
       mode,
     }),
   );
-  // 埋点：只报规模，不报内容（账号数 / 精灵数）
-  track('import_success', {
-    accounts: imported.length,
-    pets: imported.reduce((sum, snapshot) => sum + snapshot.pets.length, 0),
-  });
+  // 埋点（2026-11-28 CLEAN2）：`import_success` 已随文件导入一起下线；
+  // 采集入库的进度由 importOutcomeStore 的三阶段反馈承担。
   // 开了云同步的话，导入成功后直接做一次「云同步」（拉云端 → 与本机合并 → 推回云端，
   // 2026-10-07）：分享导入是跨设备的主路径，顺手对齐就不必让用户再去「云同步」点一次。
   // 尽力而为：失败不影响本地，也不打断用户操作。
@@ -228,48 +223,29 @@ export type PendingShareIngest = (
 ) => Promise<AccountSnapshot[] | null>;
 
 /**
- * 消费分享进来的数据（三条来源）：
- * 1. 浏览器里走系统分享（Web Share Target）→ Service Worker 存进缓存，见 shareTarget.ts
- * 2. 原生壳接住分享的 JSON → 壳直接注入文本，见 nativeShare.ts
- * 3. 原生壳接住分享的抓包（采集器的「分享文件」）→ 壳拦下请求返回字节，页面自己去取
+ * 消费壳内采集分享进来的抓包（`roco-share` → 壳拦下的文件字节）。
  *
- * 由调用方保证「本机数据已读完」再调（否则「本次新增」是在和空数据比）；
+ * 2026-11-28 CLEAN2：网页 Share Target 与文本分享（备份 JSON）已删除，
+ * 这里只剩壳内采集这一条来源。由调用方保证「本机数据已读完」再调；
  * 解码失败会抛错，让调用方展示可读提示。
  */
 export async function consumePendingShares(ingest: PendingShareIngest): Promise<void> {
-  const fromBrowser = await takeSharedFile();
-  if (fromBrowser) {
-    const name = fromBrowser.name || 'shared.json';
-    // 原始字节交给 readCaptureFile 按魔数分流：JSON 走解析、PCAP 走采集器解析器
-    await ingest(new File([fromBrowser.blob], name), `已导入分享进来的采集数据（${name}）`);
-    return;
-  }
-
   const fromShell = takeNativeShare();
   if (!fromShell) return;
 
-  if (fromShell.kind === 'capture') {
-    const name = fromShell.name || 'capture.pcap';
-    if (isCollectorCaptureUrl(fromShell.url)) {
-      // Metadata only on the UI thread: Worker streams the native file and decodes there.
-      await ingest(
-        new File([], name),
-        `已解析并导入本机采集数据（${name}）`,
-        async () => (await decodeUrlInWorker(fromShell.url, name)).payload,
-      );
-      return;
-    }
-    const bytes = await fetchShellCapture(fromShell.url);
+  const name = fromShell.name || 'capture.pcap';
+  if (isCollectorCaptureUrl(fromShell.url)) {
+    // Metadata only on the UI thread: Worker streams the native file and decodes there.
     await ingest(
-      new File([bytes], name, { type: 'application/octet-stream' }),
-      `已解析并导入分享进来的抓包数据（${name}）`,
+      new File([], name),
+      `已解析并导入本机采集数据（${name}）`,
+      async () => (await decodeUrlInWorker(fromShell.url, name)).payload,
     );
     return;
   }
-
-  const name = fromShell.name || 'shared.json';
+  const bytes = await fetchShellCapture(fromShell.url);
   await ingest(
-    new File([fromShell.text], name, { type: 'application/json' }),
-    `已导入分享进来的采集数据（${name}）`,
+    new File([bytes], name, { type: 'application/octet-stream' }),
+    `已解析并导入分享进来的抓包数据（${name}）`,
   );
 }
