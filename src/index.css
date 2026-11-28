@@ -1050,3 +1050,19 @@ main.mx-auto.max-w-md.collection-sim-page {
   .sim-card-stats { gap: 0.5px; }
   .sim-card-nature-text { padding: 0 0.05rem; }
 }
+
+/* ==========================================================================
+   「我的」页切 section 的淡入（2026-11-28 FX1 ④，见 docs/评审-UI-2026-11-28.md §6.4）
+   只做透明度 120ms，不做位移：位移会和滚动位置打架。
+   容器由 Profile.tsx 按 section 换 key，动画因此每次重播。
+   ========================================================================== */
+@keyframes profile-section-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.profile-section-fade {
+  animation: profile-section-fade 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-section-fade { animation: none; }
+}

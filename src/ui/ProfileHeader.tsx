@@ -17,13 +17,8 @@ export interface ProfileHeaderProps {
   avatar?: ProfileAvatarPet | null;
   /** 点头像：打开换头像弹层（未登录时由上层决定是提示还是开弹层） */
   onAvatarClick?: () => void;
-  /** 右侧动作：未登录 = 登录，已登录 = 同步；都去「我的身份」 */
+  /** 指向「我的身份」：未登录时右上角的「登录」用它 */
   onGoAccount: () => void;
-  /**
-   * 已登录时的「同步」（UI-01）：账号页把「立即同步」藏起来了，
-   * 所以同步要走自己的落点（滚到「私有同步」卡），不能沿用到账号页。
-   */
-  onSync?: () => void;
 }
 
 const timeText = (value: string): string => {
@@ -45,7 +40,6 @@ export function ProfileHeader({
   avatar = null,
   onAvatarClick,
   onGoAccount,
-  onSync,
 }: ProfileHeaderProps) {
   const loggedIn = accountId != null && accountId !== '';
   const capturedAt = snapshots.reduce(
@@ -86,14 +80,19 @@ export function ProfileHeader({
             {stateText}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={loggedIn && onSync ? onSync : onGoAccount}
-          data-testid="profile-header-action"
-          className="min-h-[36px] shrink-0 rounded-lg border border-emerald-200 bg-white px-3 text-sm font-medium text-emerald-700"
-        >
-          {loggedIn ? '同步' : '登录'}
-        </button>
+        {/* 已登录时右上角不再放「同步」（2026-11-28 FX1）：那个按钮只滚动、不执行同步，
+            首屏的绿色强调只留「导入游戏数据」一处；同步只留在「私有同步」卡里。
+            未登录时「登录」是本机模式的唯一动作，保留。 */}
+        {loggedIn ? null : (
+          <button
+            type="button"
+            onClick={onGoAccount}
+            data-testid="profile-header-action"
+            className="min-h-[36px] shrink-0 rounded-lg border border-emerald-200 bg-white px-3 text-sm font-medium text-emerald-700 transition-colors active:bg-surface-sunken"
+          >
+            登录
+          </button>
+        )}
       </div>
     </section>
   );

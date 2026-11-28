@@ -36,6 +36,7 @@ import {
   type NavigationIntent,
 } from './ui/navigation';
 import { readLastTab, saveLastTab } from './ui/lastTab';
+import { rememberProfileScroll, restoreProfileScroll } from './ui/profileScroll';
 import { readSwapMainView, saveSwapMainView } from './ui/swapViewStore';
 import { getImportOutcome, useImportOutcome } from './ui/importOutcomeStore';
 import { usePlanBadge } from './ui/plan/usePlanBadge';
@@ -50,6 +51,11 @@ export default function App() {
   );
   const navigationRef = useRef(navigation);
   navigationRef.current = navigation;
+  /**
+   * 「我的」页进二级分区前记住的滚动位置（2026-11-28 FX1 ③）。
+   * 只服务「首页 → 身份/小组 → 返回」这一次来回，不是全局路由的滚动记忆。
+   */
+  const profileScrollY = useRef<number | null>(null);
   const [groupsDraftDirty, setGroupsDraftDirty] = useState(false);
   const { confirmLeave, leaveConfirmation } = useDraftLeaveGuard(groupsDraftDirty);
   /** 统一入口：页面只发意图，状态变化全部走纯函数（见 ui/navigation.ts）。 */
@@ -59,6 +65,11 @@ export default function App() {
     if (getImportOutcome().local === 'importing' && intent.type !== 'consume-focus') return;
     const current = navigationRef.current;
     const next = resolveNavigation(current, intent);
+    // 进二级分区前记住当前滚动位置；返回首页时由下面的 useLayoutEffect 消费（2026-11-28 FX1）
+    const remembered = rememberProfileScroll(current, next, window.scrollY ?? 0);
+    if (remembered != null) profileScrollY.current = remembered;
+    // 记下的位置只在「回到我的首页」那次跳转里有效；去了别处就作废
+    else if (!(next.page === 'profile' && next.profileSection === 'data')) profileScrollY.current = null;
     // 小组资源草稿既可能改在「小组」页，也可能改在「我的 · 小组」：两边离开都要拦一下。
     const inGroupAdmin = (state: AppNavigation): boolean =>
       state.page === 'groups' || (state.page === 'profile' && state.profileSection === 'groups');
@@ -92,7 +103,16 @@ export default function App() {
   }, [navigate]);
   // 切页面（含看板卡片跳转）时回到页面顶部：否则新页面会沿用上一页的滚动偏移，
   // 跳转落点不准（2026-10-05 修）。用 useLayoutEffect 在浏览器绘制前复位，避免闪现旧位置。
+  // 例外（2026-11-28 FX1 ③）：从「我的」二级分区返回首页时恢复离开前的位置，内容变短就落到最大可滚。
   useLayoutEffect(() => {
+    const backToProfileHome = navigation.page === 'profile' && navigation.profileSection === 'data';
+    const saved = profileScrollY.current;
+    if (backToProfileHome && saved != null) {
+      profileScrollY.current = null;
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: restoreProfileScroll(saved, maxScroll), left: 0, behavior: 'auto' });
+      return;
+    }
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [navigation.page, navigation.profileSection]);
   // 更新内容弹窗：启动时算一次「本机没看过的更新」，点「知道了」后记住已读（2026-10-05 起固定做法）

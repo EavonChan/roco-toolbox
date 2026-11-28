@@ -1,4 +1,4 @@
-﻿﻿import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import App from './App';
 import { CHANGELOG } from './data/changelog';
@@ -99,7 +99,7 @@ describe('App', () => {
 
   test('受限存储（读页签键抛错）不白屏', () => {
     const realGetItem = Storage.prototype.getItem;
-    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
       if (key === 'roco.lastTab' || key === 'roco.swapView') throw new Error('storage disabled');
       return realGetItem.call(this, key);
     });
@@ -108,6 +108,61 @@ describe('App', () => {
       expect(screen.getByRole('heading', { name: '小布助手' })).toBeDefined();
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  /**
+   * 2026-11-28 FX1 ③：滚到 525 → 进「我的身份」→ 返回，位置要回来。
+   * 只服务「我的」页这一次来回，不是全局路由的滚动恢复。
+   */
+  test('「我的」进二级分区再返回：恢复离开前的滚动位置，内容变短就落到最大可滚', () => {
+    presetFirstRunSeen();
+    const realScrollTo = Object.getOwnPropertyDescriptor(window, 'scrollTo');
+    const realScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    const realInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+    const realScrollHeight = Object.getOwnPropertyDescriptor(
+      document.documentElement,
+      'scrollHeight',
+    );
+    const scrollTo = vi.fn();
+    try {
+      Object.defineProperty(window, 'scrollTo', { configurable: true, value: scrollTo });
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: 525 });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 812 });
+      // 全页 1337px：最大可滚 525
+      Object.defineProperty(document.documentElement, 'scrollHeight', {
+        configurable: true,
+        value: 1337,
+      });
+
+      render(<App />);
+      expect(screen.getByTestId('profile-header')).toBeTruthy();
+
+      // 进二级分区：滚顶（返回按钮旁的「‹ 返回我的」在原位）
+      fireEvent.click(screen.getByTestId('profile-section-identity'));
+      expect(screen.getByTestId('profile-identity-intro')).toBeTruthy();
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 0 }));
+
+      // 返回：回到 525，而不是被无条件复位到 0
+      fireEvent.click(screen.getByTestId('profile-section-data'));
+      expect(screen.getByTestId('profile-header')).toBeTruthy();
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 525 }));
+
+      // 内容变短（最大只能滚 200）：恢复到 200，不硬撑到 525
+      Object.defineProperty(document.documentElement, 'scrollHeight', {
+        configurable: true,
+        value: 1012,
+      });
+      fireEvent.click(screen.getByTestId('profile-section-identity'));
+      fireEvent.click(screen.getByTestId('profile-section-data'));
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 200 }));
+    } finally {
+      if (realScrollTo) Object.defineProperty(window, 'scrollTo', realScrollTo);
+      if (realScrollY) Object.defineProperty(window, 'scrollY', realScrollY);
+      if (realInnerHeight) Object.defineProperty(window, 'innerHeight', realInnerHeight);
+      if (realScrollHeight) {
+        Object.defineProperty(document.documentElement, 'scrollHeight', realScrollHeight);
+      }
     }
   });
 });

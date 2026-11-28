@@ -40,7 +40,9 @@ export interface ProfileProps {
 const VERSION_TAPS = 5;
 const TAP_WINDOW_MS = 2000;
 
-/** 一行一个目的地（2026-11-25 U2）：48px 行高满足「导航保留 40~44px」。 */
+/** 一行一个目的地（2026-11-25 U2）：48px 行高满足「导航保留 40~44px」。
+ *  按下态用 DESIGN1 的 surface token（2026-11-28 FX1 ④）：移动端没有 hover，
+ *  active 是唯一的即时确认。 */
 function ProfileRow({
   testId,
   label,
@@ -58,7 +60,7 @@ function ProfileRow({
       onClick={onClick}
       disabled={!onClick}
       data-testid={testId}
-      className="flex min-h-[48px] w-full items-center gap-2 px-4 text-left text-sm text-slate-800 disabled:text-slate-500"
+      className="flex min-h-[48px] w-full items-center gap-2 px-4 text-left text-sm text-slate-800 transition-colors active:bg-surface-sunken disabled:text-slate-500 disabled:active:bg-transparent"
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {value ? <span className="shrink-0 text-xs text-slate-500">{value}</span> : null}
@@ -141,25 +143,8 @@ export function Profile({
     setAvatarPickerOpen(false);
     collectRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   };
-  /**
-   * 已登录时概览卡的「同步」要落到真有同步按钮的地方（UI-01）：
-   * 「我的身份」页面把「立即同步」藏起来了，所以这里滚到数据页的「私有同步」卡并短暂高亮。
-   */
-  const syncBlockRef = useRef<HTMLDivElement>(null);
-  const [syncHighlight, setSyncHighlight] = useState(false);
-  const syncHighlightTimer = useRef<number | null>(null);
-  const scrollToSync = () => {
-    setSyncHighlight(true);
-    syncBlockRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    if (syncHighlightTimer.current != null) window.clearTimeout(syncHighlightTimer.current);
-    syncHighlightTimer.current = window.setTimeout(() => {
-      syncHighlightTimer.current = null;
-      setSyncHighlight(false);
-    }, 2000);
-  };
-  useEffect(() => () => {
-    if (syncHighlightTimer.current != null) window.clearTimeout(syncHighlightTimer.current);
-  }, []);
+  // 概览卡右上角的「同步」2026-11-28 已删（FX1 ①）：它不执行同步、只滚动到下面的
+  // 「私有同步」卡并高亮 2 秒，属于「按钮 = 滚动」的伪动作。同步只留「立即同步」一处。
 
   const onVersionTap = () => {
     const bridge = serverBridge();
@@ -211,7 +196,7 @@ export function Profile({
       type="button"
       onClick={backToProfile}
       data-testid="profile-section-data"
-      className="flex min-h-[44px] w-full items-center gap-1 px-1 text-left text-sm font-medium text-emerald-700"
+      className="flex min-h-[44px] w-full items-center gap-1 px-1 text-left text-sm font-medium text-emerald-700 transition-colors active:bg-surface-sunken"
     >
       ‹ 返回我的
     </button>
@@ -229,6 +214,9 @@ export function Profile({
         </p>
       ) : null}
 
+      {/* 切 section 的淡入（2026-11-28 FX1 ④）：120ms 只做透明度，不做位移——位移会和滚动打架。
+          key 跟着 section 换，等于换一个容器让动画重播；容器本身沿用原来的 space-y-3，不改版式。 */}
+      <div key={section} data-testid="profile-section-fade" className="profile-section-fade space-y-3">
       {section === 'data' && dataView === 'nearby' ? (
         <>
           {backRow}
@@ -247,7 +235,6 @@ export function Profile({
             avatar={avatarState.avatar}
             onAvatarClick={openAvatarPicker}
             onGoAccount={() => goSection('identity')}
-            onSync={scrollToSync}
           />
           {avatarState.notice ? (
             <p
@@ -280,7 +267,7 @@ export function Profile({
               {onStartTour ? (
                 <Button
                   variant="secondary"
-                  className="mt-2"
+                  className="mt-2 active:bg-surface-sunken"
                   onClick={onStartTour}
                   data-testid="first-run-guide"
                 >
@@ -290,22 +277,18 @@ export function Profile({
             </section>
           ) : null}
 
-          <div ref={collectRef} className="space-y-3" data-testid="profile-collect">
+          {/* 「采集数据」的落点（2026-11-28 FX1 ②）：scroll-mt-24 = 96px，
+              让 88px 的 sticky 头不再盖住块内标题「本机采集」。
+              页内跳转统一用这条：滚过去时目标自己让出头部高度，调用点不再各减一次。 */}
+          <div ref={collectRef} className="scroll-mt-24 space-y-3" data-testid="profile-collect">
             <ImportOutcomeNotice onOpenGroups={() => onNavigate({ type: 'open-groups' })} />
             <NativeCollectorPanel />
             {/* 私有同步（2026-11-21 从独立分区挪到这里）：本机采集 / 导入的下方。
-                2026-11-26 UI-01：概览卡「同步」直接滚到这一块（里面有「立即同步」），
-                所以只有同步卡本身带 ref 与高亮，不再把用户丢到把同步按钮藏起来的身份页。 */}
+                2026-11-28 FX1：概览卡的伪「同步」已删，同步只剩这块卡里的「立即同步」，
+                所以不再需要高亮与滚动落点。 */}
             <ImportPanel
               afterAnalytics={
-                <div
-                  ref={syncBlockRef}
-                  data-testid="profile-sync-block"
-                  data-highlight={syncHighlight ? 'true' : 'false'}
-                  className={`rounded-2xl transition ${
-                    syncHighlight ? 'ring-2 ring-emerald-400 ring-offset-2' : ''
-                  }`}
-                >
+                <div data-testid="profile-sync-block">
                   <AccountPanel
                     section="sync"
                     autoConflict={autoConflict}
@@ -351,6 +334,7 @@ export function Profile({
           {returnToGroups ? (
             <Button
               variant="secondary"
+              className="active:bg-surface-sunken"
               onClick={() => onNavigate({ type: 'open-groups' })}
               data-testid="profile-return-groups"
             >
@@ -374,6 +358,7 @@ export function Profile({
           {returnToGroups ? (
             <Button
               variant="secondary"
+              className="active:bg-surface-sunken"
               onClick={() => onNavigate({ type: 'open-groups' })}
               data-testid="profile-return-groups"
             >
@@ -393,6 +378,7 @@ export function Profile({
           />
         </>
       ) : null}
+      </div>
 
       {/* 更新入口 A：左「检查更新 / 当前版本」右按钮；有新版变「更新」并显示新版本号 */}
       {updateSupported ? (
@@ -416,7 +402,7 @@ export function Profile({
             onClick={() => { checkAppUpdate(); }}
             disabled={update.state === 'checking'}
             data-testid="app-update-button"
-            className="min-h-[28px] shrink-0 rounded-lg border border-slate-200 px-2 text-xs text-slate-600 disabled:text-slate-300"
+            className="min-h-[28px] shrink-0 rounded-lg border border-slate-200 px-2 text-xs text-slate-600 transition-colors active:bg-surface-sunken disabled:text-slate-300"
           >
             {update.state === 'available' ? '更新' : update.state === 'checking' ? '检查中' : '检查'}
           </button>
@@ -425,7 +411,7 @@ export function Profile({
 
       {/* 构建时间（原顶栏版本标记）：排障时确认「拿到的是不是最新一版」 */}
       <div
-        className="flex flex-col items-center gap-1 pt-1"
+        className="flex flex-col items-center gap-1 pt-1 transition-opacity active:opacity-70"
         data-testid="app-version"
         onClick={onVersionTap}
       >

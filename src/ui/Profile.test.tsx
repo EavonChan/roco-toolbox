@@ -148,27 +148,18 @@ describe('Profile（我的）', () => {
     expect(screen.getByTestId('profile-entry-egg-stock')).toHaveTextContent('换蛋 · 蛋仓');
   });
 
-  test('已登录点概览卡「同步」：留在我的首页，把有「立即同步」的那块滚进视野并高亮', () => {
+  test('已登录：概览卡不再放「同步」按钮，同步只留在「私有同步」卡里', () => {
     window.localStorage.setItem('roco.accountId', 'acc-1');
-    const scrollIntoView = vi.fn();
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scrollIntoView;
     try {
-      const onNavigate = vi.fn();
-      render(<Profile section="data" returnToGroups={false} onNavigate={onNavigate} />);
+      render(<Profile section="data" returnToGroups={false} onNavigate={vi.fn()} />);
 
-      fireEvent.click(screen.getByTestId('profile-header-action'));
-
-      // 不去「我的身份」：那一页把「立即同步」藏起来了（UI-01）
-      expect(onNavigate).not.toHaveBeenCalledWith({ type: 'open-profile', section: 'identity' });
-      expect(screen.getByTestId('profile-header')).toBeTruthy();
-      // 落点确实是带同步按钮的那一块
+      // 2026-11-28 FX1：概览卡那个「同步」只滚动、不执行同步（UI-01 的临时做法），删掉
+      expect(screen.queryByTestId('profile-header-action')).toBeNull();
+      expect(screen.getByTestId('profile-header')).not.toHaveTextContent('同步');
+      // 真正执行同步的「立即同步」还在下面那张卡里
       const block = screen.getByTestId('profile-sync-block');
-      expect(block).toHaveAttribute('data-highlight', 'true');
       expect(within(block).getByTestId('account-sync')).toHaveTextContent('立即同步');
-      expect(scrollIntoView).toHaveBeenCalledTimes(1);
     } finally {
-      Element.prototype.scrollIntoView = original;
       window.localStorage.clear();
     }
   });
